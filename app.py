@@ -824,7 +824,7 @@ def exibir_tela_login():
                                     st.rerun()
                         else:
                             st.error("⛔ Nº de Polícia ou senha incorretos ou acesso inativo.")
-                            
+
         # 2. AUTOATENDIMENTO (SELF-SERVICE)
         elif etapa == "SELF_SERVICE_RESET":
             st.markdown("##### 📲 Recuperação Autônoma de Senha")
@@ -1060,62 +1060,63 @@ def exibir_tela_login():
 
         # 6. LOGINS FUTUROS (VALIDAÇÃO DIRECT 2FA)
         elif etapa == "VALIDAR_2FA":
-            usr_temp = st.session_state["login_temp_dados"]
-            st.info(f"📲 **Validação por Fator Autenticador (2FA)**\n\nMilitar: `{usr_temp.get('nome_guerra','Militar')}`\n\nDigite o código de 6 dígitos gerado no seu aplicativo autenticador.")
+    usr_temp = st.session_state["login_temp_dados"]
+    st.info(f"📲 **Validação por Fator Autenticador (2FA)**\n\nMilitar: `{usr_temp.get('nome_guerra','Militar')}`\n\nDigite o código de 6 dígitos gerado no seu aplicativo autenticador.")
 
-            with st.form("form_validar_2fa"):
-                pin_input = st.text_input("Código PIN (6 dígitos):", placeholder="123456", max_chars=6)
-                c_btn1, c_btn2 = st.columns([2, 1])
+    with st.form("form_validar_2fa"):
+        pin_input = st.text_input("Código PIN (6 dígitos):", placeholder="123456", max_chars=6)
+        c_btn1, c_btn2 = st.columns([2, 1])
+        
+        with c_btn1:
+            btn_confirmar_2fa = st.form_submit_button("✅ Validar PIN e Entrar")
+        with c_btn2:
+            btn_cancelar_2fa = st.form_submit_button("❌ Cancelar")
+
+        if btn_cancelar_2fa:
+            st.session_state["etapa_login"] = "CREDENCIAIS"
+            st.session_state["login_temp_dados"] = None
+            st.rerun()
+
+        if btn_confirmar_2fa:
+            secret_salvo = usr_temp.get("mfa_secret")
+            totp_validador = pyotp.TOTP(secret_salvo) if secret_salvo else None
+
+            # 🔒 Apenas a verificação real do aplicativo Authy/Google Authenticator
+            pin_valido = totp_validador.verify(pin_input) if totp_validador else False
+
+            if pin_valido:
+                usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
+                novo_token_sessao = secrets.token_hex(16)
+
+                if supabase and usr_temp.get("id") != "u_master_1337468":
+                    try:
+                        supabase.table("usuarios").update({
+                            "token_sessao_ativa": novo_token_sessao
+                        }).eq("id", usr_temp["id"]).execute()
+                    except Exception:
+                        pass
+
+                st.session_state["autenticado"] = True
+                st.session_state["token_sessao_dispositivo"] = novo_token_sessao
+                st.session_state["usuario_dados"] = {
+                    "usuario": usr_login_final,
+                    "nome_guerra": usr_temp.get("nome_guerra", "OLIVEIRA ALVES"),
+                    "cargo_funcao": usr_temp.get("cargo_funcao", "PROGRAMADOR"),
+                    "nivel_acesso": usr_temp.get("nivel_acesso", "PROGRAMADOR"),
+                    "unidade": usr_temp.get("unidade", "21º BPM"),
+                    "email_recuperacao": usr_temp.get("email_recuperacao", "oliveira.alves@pmmg.mg.gov.br"),
+                    "celular_recuperacao": usr_temp.get("celular_recuperacao", "32999998888")
+                }
                 
-                with c_btn1:
-                    btn_confirmar_2fa = st.form_submit_button("✅ Validar PIN e Entrar")
-                with c_btn2:
-                    btn_cancelar_2fa = st.form_submit_button("❌ Cancelar")
+                registrar_log_login(usr_login_final)
 
-                if btn_cancelar_2fa:
-                    st.session_state["etapa_login"] = "CREDENCIAIS"
-                    st.session_state["login_temp_dados"] = None
-                    st.rerun()
-
-                if btn_confirmar_2fa:
-                    secret_salvo = usr_temp.get("mfa_secret")
-                    totp_validador = pyotp.TOTP(secret_salvo) if secret_salvo else None
-
-                    pin_valido = (totp_validador and totp_validador.verify(pin_input)) or pin_input == "123456"
-
-                    if pin_valido:
-                        usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
-                        novo_token_sessao = secrets.token_hex(16)
-
-                        if supabase and usr_temp.get("id") != "u_master_1337468":
-                            try:
-                                supabase.table("usuarios").update({
-                                    "token_sessao_ativa": novo_token_sessao
-                                }).eq("id", usr_temp["id"]).execute()
-                            except Exception:
-                                pass
-
-                        st.session_state["autenticado"] = True
-                        st.session_state["token_sessao_dispositivo"] = novo_token_sessao
-                        st.session_state["usuario_dados"] = {
-                            "usuario": usr_login_final,
-                            "nome_guerra": usr_temp.get("nome_guerra", "OLIVEIRA ALVES"),
-                            "cargo_funcao": usr_temp.get("cargo_funcao", "PROGRAMADOR"),
-                            "nivel_acesso": usr_temp.get("nivel_acesso", "PROGRAMADOR"),
-                            "unidade": usr_temp.get("unidade", "21º BPM"),
-                            "email_recuperacao": usr_temp.get("email_recuperacao", "oliveira.alves@pmmg.mg.gov.br"),
-                            "celular_recuperacao": usr_temp.get("celular_recuperacao", "32999998888")
-                        }
-                        
-                        registrar_log_login(usr_login_final)
-
-                        st.session_state["ultima_atividade"] = datetime.datetime.now()
-                        st.session_state["etapa_login"] = "CREDENCIAIS"
-                        st.session_state["login_temp_dados"] = None
-                        st.success("✅ Acesso autenticado com sucesso!")
-                        st.rerun()
-                    else:
-                        st.error("⛔ Código de autenticação incorreto.")
+                st.session_state["ultima_atividade"] = datetime.datetime.now()
+                st.session_state["etapa_login"] = "CREDENCIAIS"
+                st.session_state["login_temp_dados"] = None
+                st.success("✅ Acesso autenticado com sucesso!")
+                st.rerun()
+            else:
+                st.error("⛔ Código de autenticação incorreto.")
 
 # INTERROMPE A EXECUÇÃO CASO O MILITAR NÃO ESTEJA AUTENTICADO
 if not st.session_state["autenticado"]:
