@@ -647,7 +647,35 @@ def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
         else:
             total_minutos_equivalentes += 1.0
 
-    return round(total_minutos_equivalentes / 60.0, 2)
+    return round(total_minutos_equivalentes / 60.0, 2)# --- INÍCIO DA FUNÇÃO UNIVERSAL DE SALVAMENTO ---
+def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
+    """Atualiza os dados do usuário no Supabase contornando variações de colunas"""
+    if not supabase:
+        return False
+    pm_limpo = str(num_pm).replace("-", "").replace(".", "").strip().lower()
+    
+    for col in ["usuario_login", "usuario"]:
+        try:
+            res = supabase.table("usuarios").update(payload).eq(col, num_pm).execute()
+            if res.data:
+                return True
+            res_limpo = supabase.table("usuarios").update(payload).eq(col, pm_limpo).execute()
+            if res_limpo.data:
+                return True
+        except Exception:
+            pass
+
+    try:
+        payload_insert = payload.copy()
+        payload_insert["usuario_login"] = num_pm
+        payload_insert["usuario"] = num_pm
+        payload_insert["ativo"] = True
+        supabase.table("usuarios").upsert(payload_insert).execute()
+        return True
+    except Exception:
+        pass
+    return False
+# --- FIM DA FUNÇÃO UNIVERSAL DE SALVAMENTO ---
 
 # =========================================================================
 # 🔐 5. AUTENTICAÇÃO MILITAR, SESSÃO ÚNICA (DISPOSITIVO ÚNICO) E 2FA
@@ -2131,6 +2159,7 @@ elif modulo == "GESTOES_USUARIOS":
                         except Exception as e:
                             st.error(f"Erro ao salvar unidade: {e}")
 
+# --- INÍCIO DO BLOCO MEU PERFIL ---
 elif modulo == "MEU_PERFIL":
     st.title("👤 Meu Perfil, Permissões e Segurança de Acesso")
     st.caption("Gerencie seus contatos de recuperação, atualize sua senha e acompanhe o histórico de acessos da sua conta.")
@@ -2198,52 +2227,59 @@ elif modulo == "MEU_PERFIL":
             )
 
     with aba_p2:
-        st.markdown("##### ⚙️ Atualização de Dados e Credenciais")
+        st.markdown("##### ⚙️ Atualização de Contatos Corporativos")
         
-        with st.form("form_atualizar_perfil_usuario"):
+        # FORMULÁRIO 1: EXCLUSIVO PARA E-MAIL E CELULAR
+        with st.form("form_atualizar_contatos_usuario"):
             novo_email = st.text_input("E-mail Institucional de Recuperação:", value=usr.get("email_recuperacao", ""))
             novo_celular = st.text_input("Celular Corporativo (com DDD):", value=usr.get("celular_recuperacao", ""))
-            
-            st.divider()
-            st.markdown("**🔒 Alteração de Senha de Acesso (Opcional):**")
-            senha_atual = st.text_input("Senha Atual para Confirmação:", type="password", placeholder="Digite sua senha atual")
-            nova_senha_p = st.text_input("Nova Senha Forte:", type="password", placeholder="Preencha apenas se for alterar a senha")
-            conf_senha_p = st.text_input("Confirme a Nova Senha:", type="password", placeholder="Repita a nova senha")
+            btn_salvar_contatos = st.form_submit_button("📱 Salvar Apenas Contatos")
 
-            btn_salvar_perfil = st.form_submit_button("💾 Salvar Alterações do Perfil")
-
-            if btn_salvar_perfil:
-                if nova_senha_p:
-                    if not senha_atual:
-                        st.error("⚠️ Digite sua senha atual para autorizar a troca de senha.")
-                    elif nova_senha_p != conf_senha_p:
-                        st.error("⚠️ A nova senha e a confirmação não coincidem.")
-                    else:
-                        s_valida, msg_s = validar_senha_forte(nova_senha_p)
-                        if not s_valida:
-                            st.error(f"⛔ **Requisito de Senha Não Atendido:** {msg_s}")
-                        else:
-                            hash_nova_p = gerar_hash_senha(nova_senha_p)
-                            if supabase:
-                                try:
-                                    supabase.table("usuarios").update({"senha_hash": hash_nova_p}).eq("usuario_login", usr['usuario']).execute()
-                                except Exception:
-                                    pass
-                            registrar_audit_log(usr['usuario'], usr['usuario'], "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário no Perfil")
-                            st.success("✅ Senha e dados atualizados com sucesso!")
+            if btn_salvar_contatos:
+                usr["email_recuperacao"] = novo_email
+                usr["celular_recuperacao"] = novo_celular
+                
+                payload_contatos = {
+                    "email_recuperacao": novo_email,
+                    "celular_recuperacao": novo_celular
+                }
+                
+                if salvar_usuario_universal_supabase(usr['usuario'], payload_contatos):
+                    registrar_audit_log(usr['usuario'], usr['usuario'], "ATUALIZAR_CONTATOS", f"E-mail ({novo_email}) e Celular atualizados no Supabase.")
+                    st.success("✅ Contatos corporativos salvos com sucesso no Supabase!")
+                    st.rerun()
                 else:
-                    usr["email_recuperacao"] = novo_email
-                    usr["celular_recuperacao"] = novo_celular
-                    if supabase:
-                        try:
-                            supabase.table("usuarios").update({
-                                "email_recuperacao": novo_email,
-                                "celular_recuperacao": novo_celular
-                            }).eq("usuario_login", usr['usuario']).execute()
-                        except Exception:
-                            pass
-                    registrar_audit_log(usr['usuario'], usr['usuario'], "ATUALIZAR_CONTATOS", "Contatos de recuperação atualizados no Perfil")
-                    st.success("✅ Contatos corporativos atualizados!")
+                    st.warning("⚠️ Contatos atualizados temporariamente na sessão.")
+
+        st.divider()
+        st.markdown("##### 🔒 Alteração de Senha de Acesso")
+        
+        # FORMULÁRIO 2: EXCLUSIVO PARA SENHA
+        with st.form("form_atualizar_senha_usuario"):
+            senha_atual = st.text_input("Senha Atual para Confirmação:", type="password", placeholder="Digite sua senha atual")
+            nova_senha_p = st.text_input("Nova Senha Forte:", type="password", placeholder="Digite a nova senha")
+            conf_senha_p = st.text_input("Confirme a Nova Senha:", type="password", placeholder="Repita a nova senha")
+            btn_salvar_senha = st.form_submit_button("🔑 Salvar Apenas Nova Senha")
+
+            if btn_salvar_senha:
+                if not senha_atual:
+                    st.error("⚠️ Digite sua senha atual para autorizar a troca de senha.")
+                elif nova_senha_p != conf_senha_p:
+                    st.error("⚠️ A nova senha e a confirmação não coincidem.")
+                else:
+                    s_valida, msg_s = validar_senha_forte(nova_senha_p)
+                    if not s_valida:
+                        st.error(f"⛔ **Requisito Não Atendido:** {msg_s}")
+                    else:
+                        hash_nova_p = gerar_hash_senha(nova_senha_p)
+                        payload_senha = {"senha_hash": hash_nova_p}
+                        
+                        if salvar_usuario_universal_supabase(usr['usuario'], payload_senha):
+                            registrar_audit_log(usr['usuario'], usr['usuario'], "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário no Perfil.")
+                            st.success("✅ Senha atualizada no banco de dados com sucesso!")
+                            st.rerun()
+                        else:
+                            st.error("⚠️ Falha ao salvar a nova senha no banco de dados.")
 
     with aba_p3:
         st.markdown("##### 📜 Registro Auditável de Logins e Operações")
@@ -2282,3 +2318,4 @@ elif modulo == "MEU_PERFIL":
             )
         else:
             st.info("ℹ️ Nenhum evento crítico registrado para este usuário nas últimas sessões.")
+# --- FIM DO BLOCO MEU PERFIL ---
