@@ -2016,24 +2016,33 @@ elif modulo == "GESTOES_USUARIOS":
                     key="sel_reset_s"
                 )
                 if st.button("🔑 Resetar Credenciais (`numeropm`)", use_container_width=True):
+                    # 🚨 Tratamento: Remove hífen/pontuação para alinhar ao login
+                    pm_limpo = str(milit_reset_pm).replace("-", "").replace(".", "").strip().lower()
+                    
                     if supabase:
                         try:
                             supabase.table("usuarios").update({
                                 "primeiro_acesso": True,
                                 "mfa_habilitado": False,
                                 "mfa_secret": None,
+                                "senha_hash": None,
                                 "token_sessao_ativa": None,
                                 "ativo": True
-                            }).eq("usuario_login", milit_reset_pm).execute()
+                            }).or_(f"usuario_login.eq.{milit_reset_pm},usuario_login.eq.{pm_limpo}").execute()
                         except Exception:
                             pass
+                            
+                    # Reseta o contador de erros em memória caso estivesse bloqueado
+                    if pm_limpo in st.session_state.get("tentativas_login", {}):
+                        st.session_state["tentativas_login"][pm_limpo] = 0
+                        
                     registrar_audit_log(
                         usr_id_operador, 
                         milit_reset_pm, 
                         "RESET_SENHA", 
-                        "Credenciais resetadas para a senha padrão inicial (numeropm) e conta desbloqueada"
+                        f"Credenciais resetadas para a senha padrão ({pm_limpo}pm) e conta desbloqueada"
                     )
-                    st.success(f"✅ Conta do Nº {milit_reset_pm} restaurada para a padrão inicial (`{milit_reset_pm}pm`) e desbloqueada!")
+                    st.success(f"✅ Conta do Nº {milit_reset_pm} restaurada para a senha padrão (`{pm_limpo}pm`) e desbloqueada!")
 
             with col_act3:
                 st.markdown("**📱 Resetar Apenas o 2FA (Novo Celular):**")
