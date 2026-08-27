@@ -812,10 +812,11 @@ def exibir_tela_login():
                         usuario_db = None
                         pm_limpo = str(num_pm_input).replace("-", "").replace(".", "").strip().lower()
 
-                        # Consulta o usuário no Supabase
+                        # Consulta o usuário no Supabase abrangendo ambas as colunas (usuario / usuario_login)
                         if supabase:
                             try:
-                                res = supabase.table("usuarios").select("*").or_(f"usuario_login.eq.{num_pm_input},usuario_login.eq.{pm_limpo}").execute()
+                                condicao_busca = f"usuario_login.eq.{num_pm_input},usuario_login.eq.{pm_limpo},usuario.eq.{num_pm_input},usuario.eq.{pm_limpo}"
+                                res = supabase.table("usuarios").select("*").or_(condicao_busca).execute()
                                 if res.data and len(res.data) > 0:
                                     usuario_db = res.data[0]
                             except Exception:
@@ -849,6 +850,7 @@ def exibir_tela_login():
                                     usuario_valido = {
                                         "id": "u_master_1337468",
                                         "usuario_login": "1337468",
+                                        "usuario": "1337468",
                                         "nome_guerra": "OLIVEIRA ALVES",
                                         "cargo_funcao": "PROGRAMADOR DO SIOP",
                                         "nivel_acesso": "PROGRAMADOR",
@@ -861,12 +863,8 @@ def exibir_tela_login():
                                     }
 
                             if usuario_valido:
-                                # ✅ SUCESSO: Reseta os erros acumulados no BANCO
-                                if supabase and usuario_db:
-                                    try:
-                                        supabase.table("usuarios").update({"tentativas_erradas": 0}).eq("id", usuario_db["id"]).execute()
-                                    except Exception:
-                                        pass
+                                # ✅ SUCESSO: Zera os erros acumulados no Supabase via função universal
+                                salvar_usuario_universal_supabase(pm_limpo, {"tentativas_erradas": 0})
 
                                 senha_padrao_primeiro = f"{pm_limpo}pm"
                                 eh_primeiro = usuario_valido.get("primeiro_acesso", True) or (pwd_input == senha_padrao_primeiro)
@@ -883,23 +881,23 @@ def exibir_tela_login():
                                     st.session_state["etapa_login"] = "VALIDAR_2FA"
                                     st.rerun()
                             else:
-                                # ⛔ ERRO DE SENHA: Incrementa tentativas e atualiza BANCO DE DADOS
+                                # ⛔ ERRO DE SENHA: Incrementa tentativas e atualiza no BANCO DE DADOS
                                 novas_tentativas = tentativas_banco + 1
                                 restantes = 3 - novas_tentativas
 
-                                if supabase and usuario_db:
-                                    try:
-                                        if novas_tentativas >= 3:
-                                            supabase.table("usuarios").update({"tentativas_erradas": novas_tentativas, "ativo": False}).eq("id", usuario_db["id"]).execute()
-                                            registrar_audit_log(pm_limpo, pm_limpo, "BLOQUEIO_CONTA", "Conta bloqueada automaticamente por 3 tentativas incorretas de senha.")
-                                        else:
-                                            supabase.table("usuarios").update({"tentativas_erradas": novas_tentativas}).eq("id", usuario_db["id"]).execute()
-                                    except Exception:
-                                        pass
-
                                 if novas_tentativas >= 3:
+                                    # Bloqueia a conta no Supabase e registra a auditoria
+                                    salvar_usuario_universal_supabase(pm_limpo, {
+                                        "tentativas_erradas": novas_tentativas,
+                                        "ativo": False
+                                    })
+                                    registrar_audit_log(pm_limpo, pm_limpo, "BLOQUEIO_CONTA", "Conta bloqueada automaticamente por 3 tentativas incorretas de senha.")
                                     st.error("⛔ **CONTA BLOQUEADA:** Você errou a senha 3 vezes. A conta foi bloqueada de forma permanente. Entre em contato com a P1.")
                                 else:
+                                    # Atualiza apenas a contagem no Supabase
+                                    salvar_usuario_universal_supabase(pm_limpo, {
+                                        "tentativas_erradas": novas_tentativas
+                                    })
                                     st.error(f"⛔ **Nº de Polícia ou senha incorretos.** Você tem mais {restantes} tentativa(s) antes do bloqueio definitivo da conta.")
 
         # 2. AUTOATENDIMENTO (SELF-SERVICE)
