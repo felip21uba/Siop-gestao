@@ -744,7 +744,7 @@ if st.session_state["autenticado"]:
         except Exception:
             pass
 
-# TELA DE LOGIN INSTITUCIONAL
+# TELA DE LOGIN INSTITUCIONAL (COM BLOQUEIO PERSISTENTE NO BANCO)
 def exibir_tela_login():
     col_l1, col_l2, col_l3 = st.columns([1, 1.8, 1])
     with col_l2:
@@ -776,42 +776,43 @@ def exibir_tela_login():
                     if not num_pm_input or not pwd_input:
                         st.warning("⚠️ Digite o Nº de Polícia e a senha para acessar.")
                     else:
-                        # Contador de erros por número de polícia
-                        if num_pm_input not in st.session_state["tentativas_login"]:
-                            st.session_state["tentativas_login"][num_pm_input] = 0
+                        usuario_db = None
+                        pm_limpo = str(num_pm_input).replace("-", "").replace(".", "").strip().lower()
 
-                        # TRAVA 1: Excesso de erros previne login e aciona bloqueio
-                        if st.session_state["tentativas_login"][num_pm_input] >= 3:
+                        # Consulta o usuário no Supabase
+                        if supabase:
+                            try:
+                                res = supabase.table("usuarios").select("*").or_(f"usuario_login.eq.{num_pm_input},usuario_login.eq.{pm_limpo}").execute()
+                                if res.data and len(res.data) > 0:
+                                    usuario_db = res.data[0]
+                            except Exception:
+                                pass
+
+                        # 🛑 TRAVA 1: Verifica status ativo no BANCO (Garante bloqueio mesmo em guia anônima)
+                        if usuario_db and not usuario_db.get("ativo", True):
+                            st.error("⛔ **CONTA BLOQUEADA OU INATIVA:** Excesso de tentativas ou bloqueio administrativo. Entre em contato com a P1 para desbloqueio.")
+                            st.stop()
+
+                        # Busca histórico de erros direto do banco
+                        tentativas_banco = usuario_db.get("tentativas_erradas", 0) if usuario_db else 0
+
+                        if tentativas_banco >= 3:
                             bloquear_usuario_supabase(num_pm_input)
-                            st.error("⛔ **CONTA BLOQUEADA:** Excesso de tentativas incorretas (máximo 3). Entre em contato com o Administrador/P1 para desbloqueio.")
+                            st.error("⛔ **CONTA BLOQUEADA:** Excesso de tentativas incorretas (máximo 3). Entre em contato com a P1 para desbloqueio.")
                         else:
                             usuario_valido = None
-                            u_db_encontrado = None
                             senha_hash_digitada = gerar_hash_senha(pwd_input)
 
-                            if supabase:
-                                try:
-                                    res = supabase.table("usuarios").select("*").eq("usuario_login", num_pm_input).execute()
-                                    if res.data and len(res.data) > 0:
-                                        u_db_encontrado = res.data[0]
-                                        
-                                        # Trava de usuário inativo/bloqueado
-                                        if not u_db_encontrado.get("ativo", True):
-                                            st.error("⛔ **CONTA BLOQUEADA OU INATIVA:** Entre em contato com a P1.")
-                                            st.stop()
+                            if usuario_db:
+                                senha_banco = usuario_db.get("senha_hash") or usuario_db.get("senha")
+                                senha_padrao = f"{pm_limpo}pm"
 
-                                        senha_banco = u_db_encontrado.get("senha_hash") or u_db_encontrado.get("senha")
-                                        senha_padrao = f"{num_pm_input}pm"
-
-                                        if (senha_banco and (senha_banco == senha_hash_digitada or senha_banco == pwd_input)) or pwd_input == senha_padrao:
-                                            usuario_valido = u_db_encontrado
-                                except Exception:
-                                    pass
+                                if (senha_banco and (senha_banco == senha_hash_digitada or senha_banco == pwd_input)) or pwd_input == senha_padrao:
+                                    usuario_valido = usuario_db
 
                             # Programador Master Fixo
-                            if not usuario_valido and num_pm_input == "1337468":
-                                senha_inicial_esperada = "1337468pm"
-                                if pwd_input == senha_inicial_esperada:
+                            if not usuario_valido and pm_limpo == "1337468":
+                                if pwd_input == "1337468pm":
                                     usuario_valido = {
                                         "id": "u_master_1337468",
                                         "usuario_login": "1337468",
@@ -827,8 +828,14 @@ def exibir_tela_login():
                                     }
 
                             if usuario_valido:
-                                st.session_state["tentativas_login"][num_pm_input] = 0
-                                senha_padrao_primeiro = f"{num_pm_input}pm"
+                                # ✅ SUCESSO: Reseta os erros acumulados no BANCO
+                                if supabase and usuario_db:
+                                    try:
+                                        supabase.table("usuarios").update({"tentativas_erradas": 0}).eq("id", usuario_db["id"]).execute()
+                                    except Exception:
+                                        pass
+
+                                senha_padrao_primeiro = f"{pm_limpo}pm"
                                 eh_primeiro = usuario_valido.get("primeiro_acesso", True) or (pwd_input == senha_padrao_primeiro)
 
                                 st.session_state["login_temp_dados"] = usuario_valido
@@ -843,16 +850,24 @@ def exibir_tela_login():
                                     st.session_state["etapa_login"] = "VALIDAR_2FA"
                                     st.rerun()
                             else:
-                                st.session_state["tentativas_login"][num_pm_input] += 1
-                                erros_atuais = st.session_state["tentativas_login"][num_pm_input]
-                                restantes = 3 - erros_atuais
+                                # ⛔ ERRO DE SENHA: Incrementa tentativas e atualiza BANCO DE DADOS
+                                novas_tentativas = tentativas_banco + 1
+                                restantes = 3 - novas_tentativas
 
-                                if erros_atuais >= 3:
-                                    bloquear_usuario_supabase(num_pm_input)
-                                    registrar_audit_log(num_pm_input, num_pm_input, "BLOQUEIO_CONTA", "Conta bloqueada automaticamente por 3 tentativas incorretas de senha.")
-                                    st.error("⛔ **CONTA BLOQUEADA:** Você errou a senha 3 vezes. A conta foi bloqueada. Entre em contato com o Administrador do Sistema.")
+                                if supabase and usuario_db:
+                                    try:
+                                        if novas_tentativas >= 3:
+                                            supabase.table("usuarios").update({"tentativas_erradas": novas_tentativas, "ativo": False}).eq("id", usuario_db["id"]).execute()
+                                            registrar_audit_log(pm_limpo, pm_limpo, "BLOQUEIO_CONTA", "Conta bloqueada automaticamente por 3 tentativas incorretas de senha.")
+                                        else:
+                                            supabase.table("usuarios").update({"tentativas_erradas": novas_tentativas}).eq("id", usuario_db["id"]).execute()
+                                    except Exception:
+                                        pass
+
+                                if novas_tentativas >= 3:
+                                    st.error("⛔ **CONTA BLOQUEADA:** Você errou a senha 3 vezes. A conta foi bloqueada de forma permanente. Entre em contato com a P1.")
                                 else:
-                                    st.error(f"⛔ **Nº de Polícia ou senha incorretos.** Você tem mais {restantes} tentativa(s) antes do bloqueio da conta.")
+                                    st.error(f"⛔ **Nº de Polícia ou senha incorretos.** Você tem mais {restantes} tentativa(s) antes do bloqueio definitivo da conta.")
 
         # 2. AUTOATENDIMENTO (SELF-SERVICE)
         elif etapa == "SELF_SERVICE_RESET":
@@ -977,13 +992,14 @@ def exibir_tela_login():
                         novo_historico = ([hash_nova_senha] + historico)[:3]
                         usr_temp["historico_senhas"] = novo_historico
 
-                        if supabase and usr_temp.get("id") != "u_master_1337468":
+                        # ✅ Atualiza no Supabase usando o usuario_login (funciona para o Master e para qualquer PM)
+                        if supabase:
                             try:
                                 supabase.table("usuarios").update({
                                     "senha_hash": hash_nova_senha,
                                     "primeiro_acesso": False,
                                     "historico_senhas": novo_historico
-                                }).eq("id", usr_temp["id"]).execute()
+                                }).eq("usuario_login", num_pm_c).execute()
                             except Exception:
                                 pass
 
@@ -1044,15 +1060,24 @@ def exibir_tela_login():
                     else:
                         novo_token_sessao = secrets.token_hex(16)
 
-                        if supabase and usr_temp.get("id") != "u_master_1337468":
+                        if supabase:
                             try:
+                                # Normaliza o número de polícia para garantir o vínculo
+                                num_pm_c = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
+                                pm_limpo = str(num_pm_c).replace("-", "").replace(".", "").strip().lower()
+
+                                # ✅ Atualiza no Supabase para QUALQUER usuário (incluindo o Master)
                                 res_u = supabase.table("usuarios").update({
                                     "mfa_habilitado": True,
                                     "mfa_secret": secret_totp,
                                     "email_recuperacao": email_input,
                                     "celular_recuperacao": celular_input,
-                                    "token_sessao_ativa": novo_token_sessao
-                                }).eq("id", usr_temp["id"]).execute()
+                                    "token_sessao_ativa": novo_token_sessao,
+                                    "primeiro_acesso": False
+                                }).or_(f"usuario_login.eq.{num_pm_c},usuario_login.eq.{pm_limpo}").execute()
+
+                            except Exception as err:
+                                st.warning(f"⚠️ Erro ao atualizar Supabase: {err}")
 
                                 if not res_u.data:
                                     supabase.table("usuarios").update({
@@ -1116,11 +1141,16 @@ def exibir_tela_login():
                         usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
                         novo_token_sessao = secrets.token_hex(16)
 
-                        if supabase and usr_temp.get("id") != "u_master_1337468":
+                        if supabase:
                             try:
+                                num_pm_c = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
+                                pm_limpo = str(num_pm_c).replace("-", "").replace(".", "").strip().lower()
+
                                 supabase.table("usuarios").update({
-                                    "token_sessao_ativa": novo_token_sessao
-                                }).eq("id", usr_temp["id"]).execute()
+                                    "senha_hash": hash_nova_senha,
+                                    "primeiro_acesso": False,
+                                    "historico_senhas": novo_historico
+                                }).or_(f"usuario_login.eq.{num_pm_c},usuario_login.eq.{pm_limpo}").execute()
                             except Exception:
                                 pass
 
