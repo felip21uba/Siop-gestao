@@ -11,6 +11,7 @@ import re
 import pyotp
 import qrcode
 import random
+import hashlib
 from supabase import create_client, Client
 
 # IMPORTS DO OPENPYXL (EXCEL)
@@ -110,7 +111,7 @@ st.markdown(f"""
             color: {text_cor} !important;
         }}
         
-        /* CABEÇALHO DO EXPANDER (A barra do Passo que ficava escura) */
+        /* CABEÇALHO DO EXPANDER */
         div[data-testid="stExpander"] {{
             background-color: {form_bg} !important;
             border: 1px solid {border_cor} !important;
@@ -133,7 +134,7 @@ st.markdown(f"""
             font-weight: 700 !important;
         }}
 
-        /* CAMPOS DE ENTRADA (Inputs, Selectbox, Text Area) */
+        /* CAMPOS DE ENTRADA */
         div[data-baseweb="input"],
         div[data-baseweb="select"] > div {{
             background-color: {input_bg} !important;
@@ -222,6 +223,9 @@ def conectar_supabase():
 
 supabase = conectar_supabase()
 
+def gerar_hash_senha(senha: str) -> str:
+    return hashlib.sha256(senha.encode('utf-8')).hexdigest()
+
 # =========================================================================
 # 🛢️ FUNÇÕES DE INTEGRAÇÃO DE BANCO DE DADOS (SUPABASE - CRUD & AUDITORIA)
 # =========================================================================
@@ -236,6 +240,14 @@ def registrar_audit_log(operador_pm, alvo_pm, tipo_acao, descricao):
                 "tipo_acao": tipo_acao,
                 "descricao_detalhada": descricao
             }).execute()
+        except Exception:
+            pass
+
+def bloquear_usuario_supabase(num_pm: str):
+    """Bloqueia a conta do usuário no Supabase por excesso de erros"""
+    if supabase:
+        try:
+            supabase.table("usuarios").update({"ativo": False}).eq("usuario_login", num_pm).execute()
         except Exception:
             pass
 
@@ -503,7 +515,7 @@ Data: {datetime.date.today().strftime("%d de %B de %Y")}
 
 4. Por fim, informo que o sistema encontra-se munido de plano de contingência para exportação física e digital do Quadro Geral em formatos .PDF e .XLSX.
 
-5. Respeitosamente, submeto o presente documento à apreciação de Vossa Senhoria para fins de ciência e arquivamento junto à Seção de Planejamento e P/1.
+5. Respeitosamente, submeto o presente documento à appreciation de Vossa Senhoria para fins de ciência e arquivamento junto à Seção de Planejamento e P/1.
 
 
 __________________________________________
@@ -511,7 +523,6 @@ __________________________________________
 Programador / Gestor do SIOP
 """
     return texto.encode("utf-8")
-
 
 def gerar_pdf_parte_informativa(num_parte="12.4/2026", responsavel_nome="FELIPE OLIVEIRA ALVES", responsavel_posto="CAP QOPM"):
     buffer = io.BytesIO()
@@ -643,6 +654,7 @@ def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
 # =========================================================================
 
 def validar_senha_forte(senha: str) -> tuple[bool, str]:
+    """Validação institucional de senha forte exigida pelo Comando"""
     if len(senha) < 8:
         return False, "A senha deve ter no mínimo 8 caracteres."
     if not re.search(r"[A-Z]", senha):
@@ -682,7 +694,7 @@ def registrar_log_login(num_pm: str):
         except Exception:
             pass
 
-# Inicialização do estado global de sessão
+# Inicialização do estado global de sessão e controle de erros
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 if "usuario_dados" not in st.session_state:
@@ -691,6 +703,8 @@ if "token_sessao_dispositivo" not in st.session_state:
     st.session_state["token_sessao_dispositivo"] = None
 if "ultima_atividade" not in st.session_state:
     st.session_state["ultima_atividade"] = datetime.datetime.now()
+if "tentativas_login" not in st.session_state:
+    st.session_state["tentativas_login"] = {}
 
 if "etapa_login" not in st.session_state:
     st.session_state["etapa_login"] = "CREDENCIAIS"
@@ -762,55 +776,61 @@ def exibir_tela_login():
                     if not num_pm_input or not pwd_input:
                         st.warning("⚠️ Digite o Nº de Polícia e a senha para acessar.")
                     else:
-                        usuario_valido = None
+                        # Contador de erros por número de polícia
+                        if num_pm_input not in st.session_state["tentativas_login"]:
+                            st.session_state["tentativas_login"][num_pm_input] = 0
 
-                        if supabase:
-                            try:
-                                res = supabase.table("usuarios").select("*").eq("usuario_login", num_pm_input).eq("ativo", True).execute()
-                                if res.data and len(res.data) > 0:
-                                    usuario_valido = res.data[0]
-                            except Exception:
+                        # TRAVA 1: Excesso de erros previne login e aciona bloqueio
+                        if st.session_state["tentativas_login"][num_pm_input] >= 3:
+                            bloquear_usuario_supabase(num_pm_input)
+                            st.error("⛔ **CONTA BLOQUEADA:** Excesso de tentativas incorretas (máximo 3). Entre em contato com o Administrador/P1 para desbloqueio.")
+                        else:
+                            usuario_valido = None
+                            u_db_encontrado = None
+                            senha_hash_digitada = gerar_hash_senha(pwd_input)
+
+                            if supabase:
                                 try:
-                                    res = supabase.table("usuarios").select("*").eq("usuario", num_pm_input).eq("ativo", True).execute()
+                                    res = supabase.table("usuarios").select("*").eq("usuario_login", num_pm_input).execute()
                                     if res.data and len(res.data) > 0:
-                                        usuario_valido = res.data[0]
+                                        u_db_encontrado = res.data[0]
+                                        
+                                        # Trava de usuário inativo/bloqueado
+                                        if not u_db_encontrado.get("ativo", True):
+                                            st.error("⛔ **CONTA BLOQUEADA OU INATIVA:** Entre em contato com a P1.")
+                                            st.stop()
+
+                                        senha_banco = u_db_encontrado.get("senha_hash") or u_db_encontrado.get("senha")
+                                        senha_padrao = f"{num_pm_input}pm"
+
+                                        if (senha_banco and (senha_banco == senha_hash_digitada or senha_banco == pwd_input)) or pwd_input == senha_padrao:
+                                            usuario_valido = u_db_encontrado
                                 except Exception:
                                     pass
 
-                       # PROGRAMADOR MASTER FIXO (1337468 - OLIVEIRA ALVES)
-                        if not usuario_valido and num_pm_input == "1337468":
-                            senha_inicial_esperada = "1337468pm"
-                            
-                            # 🚨 TRAVA DE SEGURANÇA: Só cria o usuário se a senha bater!
-                            # (Ajuste caso a senha do master não seja mais a inicial)
-                            if pwd_input == senha_inicial_esperada:
-                                usuario_valido = {
-                                    "id": "u_master_1337468",
-                                    "usuario_login": "1337468",
-                                    "nome_guerra": "OLIVEIRA ALVES",
-                                    "cargo_funcao": "PROGRAMADOR DO SIOP",
-                                    "nivel_acesso": "PROGRAMADOR",
-                                    "unidade": st.session_state.get("cfg_unidade", "21º BPM"),
-                                    "primeiro_acesso": True,
-                                    "mfa_secret": None,
-                                    "email_recuperacao": "felip21uba@gmail.com",
-                                    "celular_recuperacao": "32 988042901",
-                                    "historico_senhas": ["1337468pm"]
-                                }
+                            # Programador Master Fixo
+                            if not usuario_valido and num_pm_input == "1337468":
+                                senha_inicial_esperada = "1337468pm"
+                                if pwd_input == senha_inicial_esperada:
+                                    usuario_valido = {
+                                        "id": "u_master_1337468",
+                                        "usuario_login": "1337468",
+                                        "nome_guerra": "OLIVEIRA ALVES",
+                                        "cargo_funcao": "PROGRAMADOR DO SIOP",
+                                        "nivel_acesso": "PROGRAMADOR",
+                                        "unidade": st.session_state.get("cfg_unidade", "21º BPM"),
+                                        "primeiro_acesso": True,
+                                        "mfa_secret": None,
+                                        "email_recuperacao": "felip21uba@gmail.com",
+                                        "celular_recuperacao": "32 988042901",
+                                        "historico_senhas": ["1337468pm"]
+                                    }
 
-                        # 🔒 VALIDAÇÃO RIGOROSA DO FLUXO DE LOGIN
-                        if usuario_valido:
-                            # Se for do CSV, valida se a senha bate com a coluna do arquivo
-                            senha_banco = usuario_valido.get("senha") or usuario_valido.get("senha_hash")
-                            senha_padrao_primeiro = f"{num_pm_input}pm"
-
-                            # Valida se a senha digitada bate com a do CSV OU com a senha padrão inicial
-                            senha_correta = (pwd_input == senha_banco) or (pwd_input == senha_padrao_primeiro)
-
-                            if not senha_correta:
-                                st.error("⛔ Nº de Polícia ou senha incorretos ou acesso inativo.")
-                            else:
+                            if usuario_valido:
+                                st.session_state["tentativas_login"][num_pm_input] = 0
+                                senha_padrao_primeiro = f"{num_pm_input}pm"
                                 eh_primeiro = usuario_valido.get("primeiro_acesso", True) or (pwd_input == senha_padrao_primeiro)
+
                                 st.session_state["login_temp_dados"] = usuario_valido
 
                                 if eh_primeiro and pwd_input == senha_padrao_primeiro:
@@ -822,8 +842,17 @@ def exibir_tela_login():
                                 else:
                                     st.session_state["etapa_login"] = "VALIDAR_2FA"
                                     st.rerun()
-                        else:
-                            st.error("⛔ Nº de Polícia ou senha incorretos ou acesso inativo.")
+                            else:
+                                st.session_state["tentativas_login"][num_pm_input] += 1
+                                erros_atuais = st.session_state["tentativas_login"][num_pm_input]
+                                restantes = 3 - erros_atuais
+
+                                if erros_atuais >= 3:
+                                    bloquear_usuario_supabase(num_pm_input)
+                                    registrar_audit_log(num_pm_input, num_pm_input, "BLOQUEIO_CONTA", "Conta bloqueada automaticamente por 3 tentativas incorretas de senha.")
+                                    st.error("⛔ **CONTA BLOQUEADA:** Você errou a senha 3 vezes. A conta foi bloqueada. Entre em contato com o Administrador do Sistema.")
+                                else:
+                                    st.error(f"⛔ **Nº de Polícia ou senha incorretos.** Você tem mais {restantes} tentativa(s) antes do bloqueio da conta.")
 
         # 2. AUTOATENDIMENTO (SELF-SERVICE)
         elif etapa == "SELF_SERVICE_RESET":
@@ -887,10 +916,9 @@ def exibir_tela_login():
             pin_esperado = st.session_state["pin_recuperacao_temp"]
 
             st.info(f"🔑 **Código Enviado para {usr_reset.get('nome_guerra', 'Militar')}**")
-            st.caption(f"🧪 *(Modo Homologação - PIN enviado ao dispositivo: `{pin_esperado}`)*")
 
             with st.form("form_validar_pin_selfservice"):
-                pin_digitado = st.text_input("Código de Validação (6 dígitos):", placeholder="123456", max_chars=6)
+                pin_digitado = st.text_input("Código de Validação (6 dígitos):", placeholder="Ex: 849201", max_chars=6)
                 
                 c_vpin1, c_vpin2 = st.columns([2, 1])
                 with c_vpin1:
@@ -904,20 +932,19 @@ def exibir_tela_login():
                     st.rerun()
 
                 if btn_confirmar_pin:
-                    if pin_digitado == pin_esperado or pin_digitado == "123456":
+                    if pin_digitado == pin_esperado:
                         st.session_state["etapa_login"] = "TROCAR_SENHA"
                         st.success("✅ Código verificado! Agora você pode cadastrar sua nova senha.")
                         st.rerun()
                     else:
                         st.error("⛔ Código incorreto. Digite o número de 6 dígitos recebido.")
 
-        # 4. TROCA OBRIGATÓRIA DE SENHA
+        # 4. TROCA OBRIGATÓRIA DE SENHA (VALIDAÇÃO ESTRITA)
         elif etapa == "TROCAR_SENHA":
             usr_temp = st.session_state["login_temp_dados"]
             num_pm_c = usr_temp.get('usuario_login') or usr_temp.get('usuario', 'PM')
             historico = usr_temp.get("historico_senhas", []) or []
 
-            # Busca posto/graduação atualizado do militar na lista global
             militar_cad = next((m for m in st.session_state.get("lista_militares", []) if str(m.get("num_policia")) == str(num_pm_c)), None)
             
             if militar_cad:
@@ -926,7 +953,7 @@ def exibir_tela_login():
                 nome_exibicao = usr_temp.get('nome_guerra', 'Militar')
 
             st.warning(f"🔒 **Redefinição de Senha de Acesso**\n\nOlá, **{nome_exibicao}** (Nº {num_pm_c}). Cadastre sua nova senha de acesso.")
-            st.caption("📌 **Regras de Segurança:** Mínimo 8 caracteres (Maiúscula, Minúscula, Número e Símbolo). **Proibido reutilizar as últimas 3 senhas.**")
+            st.caption("📌 **Padrão Obrigatório de Senha:** Mínimo de 8 caracteres, contendo pelo menos 1 letra maiúscula, 1 minúscula, 1 número e 1 caractere especial. Proibido reutilizar as últimas 3 senhas.")
 
             with st.form("form_trocar_senha_historico"):
                 nova_senha = st.text_input("Nova Senha Forte:", type="password", placeholder="Ex: Pmmg@2026#Secure")
@@ -936,22 +963,24 @@ def exibir_tela_login():
                 if btn_salvar_nova_senha:
                     senha_valida, msg_erro = validar_senha_forte(nova_senha)
                     senha_inicial_proibida = f"{num_pm_c}pm"
+                    hash_nova_senha = gerar_hash_senha(nova_senha)
 
                     if not senha_valida:
-                        st.error(f"⚠️ {msg_erro}")
+                        st.error(f"⛔ **Requisito de Senha Não Atendido:** {msg_erro}")
                     elif nova_senha != confirma_senha:
                         st.error("⚠️ As senhas digitadas não coincidem.")
                     elif nova_senha == senha_inicial_proibida:
                         st.error(f"⚠️ A nova senha não pode ser a senha padrão inicial (`{senha_inicial_proibida}`).")
-                    elif nova_senha in historico:
+                    elif nova_senha in historico or hash_nova_senha in historico:
                         st.error("⛔ **Política de Segurança Violada:** Esta senha já foi utilizada recentemente. Você não pode reutilizar nenhuma das suas últimas 3 senhas.")
                     else:
-                        novo_historico = ([nova_senha] + historico)[:3]
+                        novo_historico = ([hash_nova_senha] + historico)[:3]
                         usr_temp["historico_senhas"] = novo_historico
 
                         if supabase and usr_temp.get("id") != "u_master_1337468":
                             try:
                                 supabase.table("usuarios").update({
+                                    "senha_hash": hash_nova_senha,
                                     "primeiro_acesso": False,
                                     "historico_senhas": novo_historico
                                 }).eq("id", usr_temp["id"]).execute()
@@ -992,7 +1021,7 @@ def exibir_tela_login():
                 st.image(qr_bytes, width=200, caption="Código de Sincronização 2FA")
 
             with st.form("form_confirmar_config_2fa_e_contatos"):
-                pin_teste = st.text_input("Código PIN de 6 dígitos gerado no App:", placeholder="123456", max_chars=6)
+                pin_teste = st.text_input("Código PIN de 6 dígitos gerado no App:", placeholder="Ex: 849201", max_chars=6)
                 st.divider()
                 st.markdown("**📌 Contatos Corporativos para Recuperação Autônoma de Senha:**")
                 
@@ -1010,7 +1039,7 @@ def exibir_tela_login():
 
                     if not email_input or not celular_input:
                         st.error("⚠️ O preenchimento do e-mail e do celular é obrigatório para garantir a recuperação de senha autônoma.")
-                    elif not (totp.verify(pin_teste) or pin_teste == "123456"):
+                    elif not totp.verify(pin_teste):
                         st.error("⛔ Código de verificação do Autenticador incorreto.")
                     else:
                         novo_token_sessao = secrets.token_hex(16)
@@ -1060,63 +1089,62 @@ def exibir_tela_login():
 
         # 6. LOGINS FUTUROS (VALIDAÇÃO DIRECT 2FA)
         elif etapa == "VALIDAR_2FA":
-    usr_temp = st.session_state["login_temp_dados"]
-    st.info(f"📲 **Validação por Fator Autenticador (2FA)**\n\nMilitar: `{usr_temp.get('nome_guerra','Militar')}`\n\nDigite o código de 6 dígitos gerado no seu aplicativo autenticador.")
+            usr_temp = st.session_state["login_temp_dados"]
+            st.info(f"📲 **Validação por Fator Autenticador (2FA)**\n\nMilitar: `{usr_temp.get('nome_guerra','Militar')}`\n\nDigite o código de 6 dígitos gerado no seu aplicativo autenticador.")
 
-    with st.form("form_validar_2fa"):
-        pin_input = st.text_input("Código PIN (6 dígitos):", placeholder="123456", max_chars=6)
-        c_btn1, c_btn2 = st.columns([2, 1])
-        
-        with c_btn1:
-            btn_confirmar_2fa = st.form_submit_button("✅ Validar PIN e Entrar")
-        with c_btn2:
-            btn_cancelar_2fa = st.form_submit_button("❌ Cancelar")
-
-        if btn_cancelar_2fa:
-            st.session_state["etapa_login"] = "CREDENCIAIS"
-            st.session_state["login_temp_dados"] = None
-            st.rerun()
-
-        if btn_confirmar_2fa:
-            secret_salvo = usr_temp.get("mfa_secret")
-            totp_validador = pyotp.TOTP(secret_salvo) if secret_salvo else None
-
-            # 🔒 Apenas a verificação real do aplicativo Authy/Google Authenticator
-            pin_valido = totp_validador.verify(pin_input) if totp_validador else False
-
-            if pin_valido:
-                usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
-                novo_token_sessao = secrets.token_hex(16)
-
-                if supabase and usr_temp.get("id") != "u_master_1337468":
-                    try:
-                        supabase.table("usuarios").update({
-                            "token_sessao_ativa": novo_token_sessao
-                        }).eq("id", usr_temp["id"]).execute()
-                    except Exception:
-                        pass
-
-                st.session_state["autenticado"] = True
-                st.session_state["token_sessao_dispositivo"] = novo_token_sessao
-                st.session_state["usuario_dados"] = {
-                    "usuario": usr_login_final,
-                    "nome_guerra": usr_temp.get("nome_guerra", "OLIVEIRA ALVES"),
-                    "cargo_funcao": usr_temp.get("cargo_funcao", "PROGRAMADOR"),
-                    "nivel_acesso": usr_temp.get("nivel_acesso", "PROGRAMADOR"),
-                    "unidade": usr_temp.get("unidade", "21º BPM"),
-                    "email_recuperacao": usr_temp.get("email_recuperacao", "oliveira.alves@pmmg.mg.gov.br"),
-                    "celular_recuperacao": usr_temp.get("celular_recuperacao", "32999998888")
-                }
+            with st.form("form_validar_2fa"):
+                pin_input = st.text_input("Código PIN (6 dígitos):", placeholder="Ex: 849201", max_chars=6)
+                c_btn1, c_btn2 = st.columns([2, 1])
                 
-                registrar_log_login(usr_login_final)
+                with c_btn1:
+                    btn_confirmar_2fa = st.form_submit_button("✅ Validar PIN e Entrar")
+                with c_btn2:
+                    btn_cancelar_2fa = st.form_submit_button("❌ Cancelar")
 
-                st.session_state["ultima_atividade"] = datetime.datetime.now()
-                st.session_state["etapa_login"] = "CREDENCIAIS"
-                st.session_state["login_temp_dados"] = None
-                st.success("✅ Acesso autenticado com sucesso!")
-                st.rerun()
-            else:
-                st.error("⛔ Código de autenticação incorreto.")
+                if btn_cancelar_2fa:
+                    st.session_state["etapa_login"] = "CREDENCIAIS"
+                    st.session_state["login_temp_dados"] = None
+                    st.rerun()
+
+                if btn_confirmar_2fa:
+                    secret_salvo = usr_temp.get("mfa_secret")
+                    totp_validador = pyotp.TOTP(secret_salvo) if secret_salvo else None
+
+                    pin_valido = totp_validador.verify(pin_input) if totp_validador else False
+
+                    if pin_valido:
+                        usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
+                        novo_token_sessao = secrets.token_hex(16)
+
+                        if supabase and usr_temp.get("id") != "u_master_1337468":
+                            try:
+                                supabase.table("usuarios").update({
+                                    "token_sessao_ativa": novo_token_sessao
+                                }).eq("id", usr_temp["id"]).execute()
+                            except Exception:
+                                pass
+
+                        st.session_state["autenticado"] = True
+                        st.session_state["token_sessao_dispositivo"] = novo_token_sessao
+                        st.session_state["usuario_dados"] = {
+                            "usuario": usr_login_final,
+                            "nome_guerra": usr_temp.get("nome_guerra", "OLIVEIRA ALVES"),
+                            "cargo_funcao": usr_temp.get("cargo_funcao", "PROGRAMADOR"),
+                            "nivel_acesso": usr_temp.get("nivel_acesso", "PROGRAMADOR"),
+                            "unidade": usr_temp.get("unidade", "21º BPM"),
+                            "email_recuperacao": usr_temp.get("email_recuperacao", "oliveira.alves@pmmg.mg.gov.br"),
+                            "celular_recuperacao": usr_temp.get("celular_recuperacao", "32999998888")
+                        }
+                        
+                        registrar_log_login(usr_login_final)
+
+                        st.session_state["ultima_atividade"] = datetime.datetime.now()
+                        st.session_state["etapa_login"] = "CREDENCIAIS"
+                        st.session_state["login_temp_dados"] = None
+                        st.success("✅ Acesso autenticado com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("⛔ Código de autenticação incorreto.")
 
 # INTERROMPE A EXECUÇÃO CASO O MILITAR NÃO ESTEJA AUTENTICADO
 if not st.session_state["autenticado"]:
@@ -1369,7 +1397,7 @@ with st.sidebar:
         st.session_state["modulo_ativo"] = "MEU_PERFIL"
         st.rerun()
 
-    # 🎨 ALTERNADOR VISUAL DE TEMA (LEITURA SEGURA)
+    # 🎨 ALTERNADOR VISUAL DE TEMA
     st.divider()
     st.markdown("**🎨 Visualização da Interface:**")
     
@@ -1994,7 +2022,8 @@ elif modulo == "GESTOES_USUARIOS":
                                 "primeiro_acesso": True,
                                 "mfa_habilitado": False,
                                 "mfa_secret": None,
-                                "token_sessao_ativa": None
+                                "token_sessao_ativa": None,
+                                "ativo": True
                             }).eq("usuario_login", milit_reset_pm).execute()
                         except Exception:
                             pass
@@ -2002,9 +2031,9 @@ elif modulo == "GESTOES_USUARIOS":
                         usr_id_operador, 
                         milit_reset_pm, 
                         "RESET_SENHA", 
-                        "Credenciais resetadas para a senha padrão inicial (numeropm)"
+                        "Credenciais resetadas para a senha padrão inicial (numeropm) e conta desbloqueada"
                     )
-                    st.success(f"✅ Conta do Nº {milit_reset_pm} restaurada para a padrão inicial (`{milit_reset_pm}pm`)!")
+                    st.success(f"✅ Conta do Nº {milit_reset_pm} restaurada para a padrão inicial (`{milit_reset_pm}pm`) e desbloqueada!")
 
             with col_act3:
                 st.markdown("**📱 Resetar Apenas o 2FA (Novo Celular):**")
@@ -2153,13 +2182,27 @@ elif modulo == "MEU_PERFIL":
                     else:
                         s_valida, msg_s = validar_senha_forte(nova_senha_p)
                         if not s_valida:
-                            st.error(f"⚠️ {msg_s}")
+                            st.error(f"⛔ **Requisito de Senha Não Atendido:** {msg_s}")
                         else:
+                            hash_nova_p = gerar_hash_senha(nova_senha_p)
+                            if supabase:
+                                try:
+                                    supabase.table("usuarios").update({"senha_hash": hash_nova_p}).eq("usuario_login", usr['usuario']).execute()
+                                except Exception:
+                                    pass
                             registrar_audit_log(usr['usuario'], usr['usuario'], "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário no Perfil")
                             st.success("✅ Senha e dados atualizados com sucesso!")
                 else:
                     usr["email_recuperacao"] = novo_email
                     usr["celular_recuperacao"] = novo_celular
+                    if supabase:
+                        try:
+                            supabase.table("usuarios").update({
+                                "email_recuperacao": novo_email,
+                                "celular_recuperacao": novo_celular
+                            }).eq("usuario_login", usr['usuario']).execute()
+                        except Exception:
+                            pass
                     registrar_audit_log(usr['usuario'], usr['usuario'], "ATUALIZAR_CONTATOS", "Contatos de recuperação atualizados no Perfil")
                     st.success("✅ Contatos corporativos atualizados!")
 
