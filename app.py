@@ -651,33 +651,23 @@ def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
 
 # --- INÍCIO DA FUNÇÃO UNIVERSAL DE SALVAMENTO ---
 def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
-    """Atualiza os dados do usuário no Supabase com suporte a hífen e variações de coluna"""
+    """Atualiza o banco e exibe alerta direto caso o Supabase recuse o Update"""
     if not supabase:
+        st.error("❌ Conexão com o Supabase não estabelecida.")
         return False
         
     pm_bruto = str(num_pm).strip()
     pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
 
-    # Mapeia as variações possíveis para garantir o acerto na busca
-    condicao_or = f"usuario_login.eq.{pm_bruto},usuario_login.eq.{pm_limpo},usuario.eq.{pm_bruto},usuario.eq.{pm_limpo}"
-
-    try:
-        res = supabase.table("usuarios").update(payload).or_(condicao_or).execute()
-        if res.data and len(res.data) > 0:
-            return True
-    except Exception:
-        pass
-
-    # Caso a linha ainda não exista no banco, realiza a inserção
-    try:
-        payload_insert = payload.copy()
-        payload_insert["usuario_login"] = pm_bruto
-        payload_insert["usuario"] = pm_bruto
-        payload_insert["ativo"] = True
-        supabase.table("usuarios").upsert(payload_insert).execute()
-        return True
-    except Exception:
-        pass
+    # Executa a gravação direta
+    for identificador in [pm_bruto, pm_limpo]:
+        for col in ["usuario", "usuario_login"]:
+            try:
+                res = supabase.table("usuarios").update(payload).eq(col, identificador).execute()
+                if res.data and len(res.data) > 0:
+                    return True
+            except Exception as e:
+                st.warning(f"⚠️ Erro ao gravar no Supabase: {e}")
 
     return False
 # --- FIM DA FUNÇÃO UNIVERSAL DE SALVAMENTO ---
