@@ -647,33 +647,38 @@ def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
         else:
             total_minutos_equivalentes += 1.0
 
-    return round(total_minutos_equivalentes / 60.0, 2)# --- INÍCIO DA FUNÇÃO UNIVERSAL DE SALVAMENTO ---
+    return round(total_minutos_equivalentes / 60.0, 2)
+
+# --- INÍCIO DA FUNÇÃO UNIVERSAL DE SALVAMENTO ---
 def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
-    """Atualiza os dados do usuário no Supabase contornando variações de colunas"""
+    """Atualiza os dados do usuário no Supabase com suporte a hífen e variações de coluna"""
     if not supabase:
         return False
-    pm_limpo = str(num_pm).replace("-", "").replace(".", "").strip().lower()
-    
-    for col in ["usuario_login", "usuario"]:
-        try:
-            res = supabase.table("usuarios").update(payload).eq(col, num_pm).execute()
-            if res.data:
-                return True
-            res_limpo = supabase.table("usuarios").update(payload).eq(col, pm_limpo).execute()
-            if res_limpo.data:
-                return True
-        except Exception:
-            pass
+        
+    pm_bruto = str(num_pm).strip()
+    pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
+
+    # Mapeia as variações possíveis para garantir o acerto na busca
+    condicao_or = f"usuario_login.eq.{pm_bruto},usuario_login.eq.{pm_limpo},usuario.eq.{pm_bruto},usuario.eq.{pm_limpo}"
 
     try:
+        res = supabase.table("usuarios").update(payload).or_(condicao_or).execute()
+        if res.data and len(res.data) > 0:
+            return True
+    except Exception:
+        pass
+
+    # Caso a linha ainda não exista no banco, realiza a inserção
+    try:
         payload_insert = payload.copy()
-        payload_insert["usuario_login"] = num_pm
-        payload_insert["usuario"] = num_pm
+        payload_insert["usuario_login"] = pm_bruto
+        payload_insert["usuario"] = pm_bruto
         payload_insert["ativo"] = True
         supabase.table("usuarios").upsert(payload_insert).execute()
         return True
     except Exception:
         pass
+
     return False
 # --- FIM DA FUNÇÃO UNIVERSAL DE SALVAMENTO ---
 
