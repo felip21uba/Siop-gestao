@@ -95,11 +95,10 @@ def gerar_hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
 # =========================================================================
-# 🛢️ NOVA ABORDAGEM DE PERSISTÊNCIA DIRETA NO SUPABASE
+# 🛢️ PERSISTÊNCIA DIRETA E ATUALIZAÇÃO BLINDADA DO SUPABASE
 # =========================================================================
 
 def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
-    """Atualização direta com suporte a múltiplos formatos de chaves e tipos no PostgreSQL"""
     if not supabase:
         return False
         
@@ -113,14 +112,13 @@ def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
     if not payload_limpo:
         return True
 
-    # Monta variantes numéricas e textuais para bater com o tipo da coluna
-    variantes_matrícula = [pm_bruto, pm_limpo]
+    variantes_matricula = [pm_bruto, pm_limpo]
     if pm_limpo.isdigit():
-        variantes_matrícula.append(int(pm_limpo))
+        variantes_matricula.append(int(pm_limpo))
 
     sucesso = False
     for col_m in ["usuario_login", "usuario"]:
-        for val_m in variantes_matrícula:
+        for val_m in variantes_matricula:
             try:
                 res = supabase.table("usuarios").update(payload_limpo).eq(col_m, val_m).execute()
                 if res.data and len(res.data) > 0:
@@ -597,7 +595,7 @@ if "pin_recuperacao_temp" not in st.session_state:
 if "pin_2fa_canal_temp" not in st.session_state:
     st.session_state["pin_2fa_canal_temp"] = None
 
-# ⏰ TIMEOUT DINÂMICO DE SESSÃO (30 MINUTOS PADRÃO OU 30 DIAS SE MARCADOR ATIVO)
+# TIMEOUT DINÂMICO DE SESSÃO
 MINUTOS_TIMEOUT = st.session_state.get("timeout_minutos_sessao", 30)
 if st.session_state["autenticado"]:
     tempo_inativo = (datetime.datetime.now() - st.session_state["ultima_atividade"]).total_seconds() / 60.0
@@ -645,7 +643,6 @@ def exibir_tela_login():
                 num_pm_input = st.text_input("Nº de Polícia / Matrícula:", placeholder="Ex: 1337468").strip().replace("-", "").lower()
                 pwd_input = st.text_input("Senha de Acesso:", type="password", placeholder="******").strip()
                 
-                # 🔘 NOVO: MARCADOR DE SESSÃO ESTENDIDA (30 DIAS)
                 lembrar_dispositivo = st.checkbox("📌 Permanecer conectado neste dispositivo por 30 dias")
                 
                 c_login1, c_login2 = st.columns([2, 1])
@@ -720,12 +717,16 @@ def exibir_tela_login():
                                     }
 
                             if usuario_valido:
-                                salvar_usuario_universal_supabase(pm_limpo, {"tentativas_erradas": 0})
+                                token_sessao_login = secrets.token_hex(16)
+                                salvar_usuario_universal_supabase(pm_limpo, {
+                                    "tentativas_erradas": 0,
+                                    "token_sessao_ativa": token_sessao_login
+                                })
+                                st.session_state["token_sessao_dispositivo"] = token_sessao_login
                                 st.session_state["login_temp_dados"] = usuario_valido
                                 
-                                # Define tempo de expiração na sessão
                                 if lembrar_dispositivo:
-                                    st.session_state["timeout_minutos_sessao"] = 30 * 24 * 60  # 30 dias em minutos
+                                    st.session_state["timeout_minutos_sessao"] = 30 * 24 * 60
                                 else:
                                     st.session_state["timeout_minutos_sessao"] = 30
 
@@ -893,7 +894,7 @@ def exibir_tela_login():
                         st.success("✅ Nova senha cadastrada e persistida no Supabase!")
                         st.rerun()
 
-        # 5. CONFIGURAÇÃO DE 2FA (EXIBIDO APENAS UMA VEZ NO PRIMEIRO SETUP)
+        # 5. CONFIGURAÇÃO DE 2FA (EXIBIDO APENAS NO PRIMEIRO CADASTRO DO AUTHY)
         elif etapa == "CONFIGURAR_2FA":
             usr_temp = st.session_state.get("login_temp_dados", {})
             num_pm_c = usr_temp.get('usuario_login') or usr_temp.get('usuario', '1337468')
@@ -929,7 +930,7 @@ def exibir_tela_login():
                         novo_token_sessao = secrets.token_hex(16)
                         usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
 
-                        # ✅ Salva no banco de dados e NUNCA MAIS exibe o QR Code
+                        # ✅ PERSISTÊNCIA DEFINITIVA DO MFA_SECRET NO BANCO DE DADOS
                         salvar_usuario_universal_supabase(usr_login_final, {
                             "mfa_habilitado": True,
                             "mfa_secret": secret_totp,
@@ -978,7 +979,6 @@ def exibir_tela_login():
                 key="radio_metodo_2fa_seletor"
             )
 
-            # Lógica para envio de PIN por E-mail ou WhatsApp
             if "Aplicativo" not in metodo_2fa:
                 contato_destino = usr_temp.get("email_recuperacao") if "E-mail" in metodo_2fa else usr_temp.get("celular_recuperacao")
                 contato_mascarado = mascarar_contato(contato_destino)
@@ -1010,13 +1010,11 @@ def exibir_tela_login():
                 if btn_confirmar_2fa:
                     codigo_valido = False
 
-                    # Validação 1: Via Aplicativo Autenticador (Authy/TOTP)
                     if "Aplicativo" in metodo_2fa:
                         secret_salvo = usr_temp.get("mfa_secret")
                         totp_validador = pyotp.TOTP(secret_salvo) if secret_salvo else None
                         if totp_validador and totp_validador.verify(pin_input):
                             codigo_valido = True
-                    # Validação 2: Via PIN enviado por E-mail ou WhatsApp
                     else:
                         pin_esperado_canal = st.session_state.get("pin_2fa_canal_temp")
                         if pin_esperado_canal and pin_input == pin_esperado_canal:
@@ -2107,7 +2105,7 @@ elif modulo == "MEU_PERFIL":
                 if not senha_atual:
                     st.error("⚠️ Digite sua senha atual para autorizar a troca de senha.")
                 elif nova_senha_p != conf_senha_p:
-                    st.error("⚠️ As senhas digitadas não coincidem.")
+                    st.error("⚠️ A nova senha e a confirmação não coincidem.")
                 else:
                     s_valida, msg_s = validar_senha_forte(nova_senha_p)
                     if not s_valida:
