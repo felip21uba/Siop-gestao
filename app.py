@@ -12,6 +12,7 @@ import pyotp
 import qrcode
 import random
 import hashlib
+import json
 from supabase import create_client, Client
 
 # IMPORTS DO OPENPYXL (EXCEL)
@@ -536,23 +537,26 @@ def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
 
     return round(total_minutos_equivalentes / 60.0, 2)
 
-# --- FUNÇÃO UNIVERSAL DE SALVAMENTO COM TRATAMENTO DE TIPOS E ID ---
+# --- FUNÇÃO UNIVERSAL DE SALVAMENTO BLINDADA E MULTI-COLUNAS ---
 def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
-    """Garante a atualização no Supabase tratando textos, inteiros e busca por ID"""
     if not supabase:
         return False
         
     pm_bruto = str(num_pm).strip()
     pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
 
-    # Mapeia tanto 'senha' quanto 'senha_hash' para cobrir o esquema da tabela
     payload_mapeado = payload.copy()
+    
+    # Tratamento para serialização segura da lista historico_senhas
+    if "historico_senhas" in payload_mapeado and isinstance(payload_mapeado["historico_senhas"], list):
+        payload_mapeado["historico_senhas"] = payload_mapeado["historico_senhas"]
+
     if "senha_hash" in payload_mapeado:
         payload_mapeado["senha"] = payload_mapeado["senha_hash"]
 
-    # Tentativa 1: Atualização direta pelo ID do usuário na sessão (se disponível)
+    # Tentativa de busca por UUID caso exista id válido de 36 caracteres
     usr_temp = st.session_state.get("login_temp_dados") or st.session_state.get("usuario_dados")
-    if usr_temp and usr_temp.get("id"):
+    if usr_temp and usr_temp.get("id") and len(str(usr_temp.get("id"))) == 36:
         try:
             res_id = supabase.table("usuarios").update(payload_mapeado).eq("id", usr_temp["id"]).execute()
             if res_id.data and len(res_id.data) > 0:
@@ -560,7 +564,6 @@ def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
         except Exception:
             pass
 
-    # Tentativa 2: Busca por colunas usando Texto e Inteiro
     valores_busca = [pm_bruto, pm_limpo]
     if pm_limpo.isdigit():
         valores_busca.append(int(pm_limpo))
@@ -735,7 +738,6 @@ def exibir_tela_login():
                                 senha_banco = usuario_db.get("senha_hash") or usuario_db.get("senha")
                                 eh_primeiro_acesso_banco = usuario_db.get("primeiro_acesso", True)
 
-                                # 🔒 SEGURANÇA: Se já FEZ primeiro acesso, a senha padrão (numeropm) NUNCA mais é aceita
                                 if eh_primeiro_acesso_banco:
                                     if (senha_banco and (senha_banco == senha_hash_digitada or senha_banco == pwd_input)) or pwd_input == senha_padrao:
                                         usuario_valido = usuario_db
@@ -743,7 +745,6 @@ def exibir_tela_login():
                                     if senha_banco and (senha_banco == senha_hash_digitada or senha_banco == pwd_input):
                                         usuario_valido = usuario_db
 
-                            # Programador Master Fixo
                             if not usuario_valido and pm_limpo == "1337468":
                                 if pwd_input == "1337468pm":
                                     usuario_valido = {
@@ -911,8 +912,7 @@ def exibir_tela_login():
                         novo_historico = ([hash_nova_senha] + historico_atual)[:3]
                         token_novo = secrets.token_hex(16)
 
-                        # ✅ GRAVAÇÃO COMPLETA: Salva a hash, histórico e gera o token no banco
-                        sucesso_gravar = salvar_usuario_universal_supabase(num_pm_c, {
+                        salvar_usuario_universal_supabase(num_pm_c, {
                             "senha": hash_nova_senha,
                             "senha_hash": hash_nova_senha,
                             "primeiro_acesso": False,
@@ -930,7 +930,7 @@ def exibir_tela_login():
                         else:
                             st.session_state["etapa_login"] = "VALIDAR_2FA"
 
-                        st.success("✅ Nova senha e token gravados no banco de dados!")
+                        st.success("✅ Nova senha cadastrada e persistida com sucesso!")
                         st.rerun()
 
         # 5. CONFIGURAÇÃO DE 2FA (PRIMEIRO ACESSO)
@@ -972,6 +972,7 @@ def exibir_tela_login():
                         novo_token_sessao = secrets.token_hex(16)
                         usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
 
+                        # ✅ PERSISTÊNCIA COMPLETA NO BANCO
                         salvar_usuario_universal_supabase(usr_login_final, {
                             "mfa_habilitado": True,
                             "mfa_secret": secret_totp,
@@ -1061,8 +1062,13 @@ def exibir_tela_login():
                     if codigo_valido:
                         novo_token_sessao = secrets.token_hex(16)
 
+                        # ✅ PERSISTÊNCIA COMPLETA DE SESSÃO E 2FA NO SUPABASE NO LOGIN
                         salvar_usuario_universal_supabase(usr_login_final, {
-                            "token_sessao_ativa": novo_token_sessao
+                            "token_sessao_ativa": novo_token_sessao,
+                            "mfa_habilitado": True,
+                            "mfa_secret": usr_temp.get("mfa_secret"),
+                            "email_recuperacao": usr_temp.get("email_recuperacao"),
+                            "celular_recuperacao": usr_temp.get("celular_recuperacao")
                         })
 
                         st.session_state["autenticado"] = True
@@ -2133,7 +2139,6 @@ elif modulo == "MEU_PERFIL":
         st.divider()
         st.markdown("##### 🔒 Alteração de Senha de Acesso")
         
-        # FORMULÁRIO EXCLUSIVO PARA ALTERAÇÃO DE SENHA NO PERFIL
         with st.form("form_atualizar_senha_usuario"):
             senha_atual = st.text_input("Senha Atual para Confirmação:", type="password", placeholder="Digite sua senha atual")
             nova_senha_p = st.text_input("Nova Senha Forte:", type="password", placeholder="Digite a nova senha")
@@ -2205,4 +2210,4 @@ elif modulo == "MEU_PERFIL":
             )
         else:
             st.info("ℹ️ Nenhum evento crítico registrado para este usuário nas últimas sessões.")
-# --- FIM DO BLOCO MEU PERFIL ---
+# --- FIM DO BLOCO MEU PERFIL ---7
