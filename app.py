@@ -44,24 +44,17 @@ URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/B
 if "tema_visual" not in st.session_state:
     st.session_state["tema_visual"] = "DARK"
 
-# Define propriedades visuais dinâmicas com base no tema escolhido
 if st.session_state["tema_visual"] == "DARK":
     bg_cor = "#0f172a"
     form_bg = "#1e293b"
     text_cor = "#f8fafc"
     border_cor = "#4E442A"
-    
-    # Botões Secundários (Inativos)
     sec_bg = "#9D8B5C"
     sec_text = "#000000"
     sec_border = "#4E442A"
-    
-    # Botões Primários (Ativos)
     pri_bg = "#4E442A"
     pri_text = "#ffffff"
     pri_border = "#9D8B5C"
-    
-    # Expanders e Inputs no Modo Escuro
     expander_bg = "#1e293b"
     input_bg = "#0f172a"
     input_text = "#f8fafc"
@@ -71,18 +64,12 @@ else:
     form_bg = "#ffffff"
     text_cor = "#0f172a"
     border_cor = "#cbd5e1"
-    
-    # Botões Secundários (Inativos)
     sec_bg = "#e2e8f0"
     sec_text = "#1e293b"
     sec_border = "#94a3b8"
-    
-    # Botões Primários (Ativos)
     pri_bg = "#1e293b"
     pri_text = "#ffffff"
     pri_border = "#0f172a"
-    
-    # Expanders e Inputs no Modo Claro
     expander_bg = "#e2e8f0"
     input_bg = "#ffffff"
     input_text = "#0f172a"
@@ -90,124 +77,22 @@ else:
 
 st.markdown(f"""
     <style>
-        /* Fundo Geral da Aplicação */
-        .stApp {{
-            background-color: {bg_cor} !important;
-            color: {text_cor} !important;
-        }}
-        
-        /* BARRA LATERAL (SIDEBAR) */
-        section[data-testid="stSidebar"] {{
-            background-color: {sidebar_bg} !important;
-            border-right: 1px solid {border_cor} !important;
-        }}
-        
-        section[data-testid="stSidebar"] p,
-        section[data-testid="stSidebar"] h1,
-        section[data-testid="stSidebar"] h2,
-        section[data-testid="stSidebar"] h3,
-        section[data-testid="stSidebar"] span,
-        section[data-testid="stSidebar"] div {{
-            color: {text_cor} !important;
-        }}
-        
-        /* CABEÇALHO DO EXPANDER */
-        div[data-testid="stExpander"] {{
-            background-color: {form_bg} !important;
-            border: 1px solid {border_cor} !important;
-            border-radius: 8px !important;
-        }}
-        
-        div[data-testid="stExpander"] summary,
-        div[data-testid="stExpander"] details summary,
-        div[data-testid="stExpander"] header {{
-            background-color: {expander_bg} !important;
-            color: {text_cor} !important;
-            border-radius: 8px !important;
-        }}
-        
-        div[data-testid="stExpander"] summary p,
-        div[data-testid="stExpander"] summary span,
-        div[data-testid="stExpander"] summary svg {{
-            color: {text_cor} !important;
-            fill: {text_cor} !important;
-            font-weight: 700 !important;
-        }}
-
-        /* CAMPOS DE ENTRADA */
-        div[data-baseweb="input"],
-        div[data-baseweb="select"] > div {{
-            background-color: {input_bg} !important;
-            color: {input_text} !important;
-            border: 1px solid {border_cor} !important;
-            border-radius: 6px !important;
-        }}
-        
-        div[data-baseweb="input"] input,
-        div[data-baseweb="select"] span {{
-            color: {input_text} !important;
-        }}
-        
-        /* Containers e Formulários Globais */
-        .stForm, div[data-testid="stForm"] {{
-            background-color: {form_bg} !important;
-            border: 2px solid {border_cor} !important;
-            border-radius: 12px !important;
-            padding: 20px !important;
-        }}
-        
-        /* Rótulos de Texto Globais */
-        .stForm label, p, h1, h2, h3, h4, h5, h6, span, label {{
-            color: {text_cor} !important;
-        }}
-        
-        /* BOTÕES SECUNDÁRIOS */
-        div[data-testid="stColumn"] button[kind="secondary"],
-        div[data-testid="stElementContainer"] button[kind="secondary"] {{
-            background-color: {sec_bg} !important;
-            border: 1px solid {sec_border} !important;
-            opacity: 1 !important;
-        }}
-        
-        div[data-testid="stColumn"] button[kind="secondary"] p,
-        div[data-testid="stElementContainer"] button[kind="secondary"] p,
-        div[data-testid="stColumn"] button[kind="secondary"] div,
-        div[data-testid="stElementContainer"] button[kind="secondary"] div {{
-            color: {sec_text} !important;
-            font-weight: 700 !important;
-        }}
-
-        /* BOTÕES PRIMÁRIOS */
-        div[data-testid="stColumn"] button[kind="primary"],
-        div[data-testid="stElementContainer"] button[kind="primary"],
-        .stFormSubmitButton > button {{
-            background-color: {pri_bg} !important;
-            border: 2px solid {pri_border} !important;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.15) !important;
-            opacity: 1 !important;
-        }}
-
-        div[data-testid="stColumn"] button[kind="primary"] p,
-        div[data-testid="stElementContainer"] button[kind="primary"] p,
-        div[data-testid="stColumn"] button[kind="primary"] div,
-        div[data-testid="stElementContainer"] button[kind="primary"] div,
-        .stFormSubmitButton > button p,
-        .stFormSubmitButton > button div {{
-            color: {pri_text} !important;
-            font-weight: 800 !important;
-        }}
-
-        /* Hover */
-        div[data-testid="stColumn"] button[kind="primary"]:hover,
-        div[data-testid="stElementContainer"] button[kind="primary"]:hover,
-        .stFormSubmitButton > button:hover {{
-            background-color: {sec_bg} !important;
-        }}
-        
-        div[data-testid="stColumn"] button[kind="primary"]:hover p,
-        div[data-testid="stElementContainer"] button[kind="primary"]:hover p {{
-            color: {sec_text} !important;
-        }}
+        .stApp {{ background-color: {bg_cor} !important; color: {text_cor} !important; }}
+        section[data-testid="stSidebar"] {{ background-color: {sidebar_bg} !important; border-right: 1px solid {border_cor} !important; }}
+        section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3, section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] div {{ color: {text_cor} !important; }}
+        div[data-testid="stExpander"] {{ background-color: {form_bg} !important; border: 1px solid {border_cor} !important; border-radius: 8px !important; }}
+        div[data-testid="stExpander"] summary, div[data-testid="stExpander"] details summary, div[data-testid="stExpander"] header {{ background-color: {expander_bg} !important; color: {text_cor} !important; border-radius: 8px !important; }}
+        div[data-testid="stExpander"] summary p, div[data-testid="stExpander"] summary span, div[data-testid="stExpander"] summary svg {{ color: {text_cor} !important; fill: {text_cor} !important; font-weight: 700 !important; }}
+        div[data-baseweb="input"], div[data-baseweb="select"] > div {{ background-color: {input_bg} !important; color: {input_text} !important; border: 1px solid {border_cor} !important; border-radius: 6px !important; }}
+        div[data-baseweb="input"] input, div[data-baseweb="select"] span {{ color: {input_text} !important; }}
+        .stForm, div[data-testid="stForm"] {{ background-color: {form_bg} !important; border: 2px solid {border_cor} !important; border-radius: 12px !important; padding: 20px !important; }}
+        .stForm label, p, h1, h2, h3, h4, h5, h6, span, label {{ color: {text_cor} !important; }}
+        div[data-testid="stColumn"] button[kind="secondary"], div[data-testid="stElementContainer"] button[kind="secondary"] {{ background-color: {sec_bg} !important; border: 1px solid {sec_border} !important; opacity: 1 !important; }}
+        div[data-testid="stColumn"] button[kind="secondary"] p, div[data-testid="stElementContainer"] button[kind="secondary"] p, div[data-testid="stColumn"] button[kind="secondary"] div, div[data-testid="stElementContainer"] button[kind="secondary"] div {{ color: {sec_text} !important; font-weight: 700 !important; }}
+        div[data-testid="stColumn"] button[kind="primary"], div[data-testid="stElementContainer"] button[kind="primary"], .stFormSubmitButton > button {{ background-color: {pri_bg} !important; border: 2px solid {pri_border} !important; box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.15) !important; opacity: 1 !important; }}
+        div[data-testid="stColumn"] button[kind="primary"] p, div[data-testid="stElementContainer"] button[kind="primary"] p, div[data-testid="stColumn"] button[kind="primary"] div, div[data-testid="stElementContainer"] button[kind="primary"] div, .stFormSubmitButton > button p, .stFormSubmitButton > button div {{ color: {pri_text} !important; font-weight: 800 !important; }}
+        div[data-testid="stColumn"] button[kind="primary"]:hover, div[data-testid="stElementContainer"] button[kind="primary"]:hover, .stFormSubmitButton > button:hover {{ background-color: {sec_bg} !important; }}
+        div[data-testid="stColumn"] button[kind="primary"]:hover p, div[data-testid="stElementContainer"] button[kind="primary"]:hover p {{ color: {sec_text} !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -234,7 +119,6 @@ def gerar_hash_senha(senha: str) -> str:
 # =========================================================================
 
 def registrar_audit_log(operador_pm, alvo_pm, tipo_acao, descricao):
-    """Grava histórico de auditoria no Supabase sem travar a aplicação em caso de exceção."""
     if supabase:
         try:
             supabase.table("historico_auditoria").insert({
@@ -247,7 +131,6 @@ def registrar_audit_log(operador_pm, alvo_pm, tipo_acao, descricao):
             pass
 
 def bloquear_usuario_supabase(num_pm: str):
-    """Bloqueia a conta do usuário no Supabase por excesso de erros"""
     if supabase:
         pm_bruto = str(num_pm).strip()
         pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
@@ -483,10 +366,6 @@ def gerar_pdf_pmmg_oficial(unidade, subunidade, mes_ano, militares, equipes, aju
     buffer.seek(0)
     return buffer
 
-# =========================================================================
-# 📄 GERADOR DE PARTE INFORMATIVA (PDF E TXT)
-# =========================================================================
-
 def gerar_txt_parte_informativa(num_parte="12.4/2026", responsavel_nome="FELIPE OLIVEIRA ALVES", responsavel_posto="CAP QOPM"):
     texto = f"""POLÍCIA MILITAR DE MINAS GERAIS
 21º BATALHÃO DE POLÍCIA MILITAR – 35ª CIA PM
@@ -633,7 +512,6 @@ def carregar_planilha_universal(arquivo_upload):
 
     raise Exception("Formato de arquivo não reconhecido.")
 
-# --- CÁLCULO DE JORNADA COM REDUÇÃO NOTURNA ---
 def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
     try:
         h_ini_h, h_ini_m = map(int, h_inicio.split(':'))
@@ -658,9 +536,8 @@ def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
 
     return round(total_minutos_equivalentes / 60.0, 2)
 
-# --- INÍCIO DA FUNÇÃO UNIVERSAL DE SALVAMENTO ---
 def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
-    """Atualiza o banco no Supabase buscando dinamicamente por número com/sem hífen e variações de coluna"""
+    """Atualiza o banco no Supabase buscando por usuario_login ou usuario"""
     if not supabase:
         return False
         
@@ -677,14 +554,12 @@ def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
                 pass
 
     return False
-# --- FIM DA FUNÇÃO UNIVERSAL DE SALVAMENTO ---
 
 # =========================================================================
 # 🔐 5. AUTENTICAÇÃO MILITAR, SESSÃO ÚNICA (DISPOSITIVO ÚNICO) E 2FA
 # =========================================================================
 
 def validar_senha_forte(senha: str) -> tuple[bool, str]:
-    """Validação institucional de senha forte exigida pelo Comando"""
     if len(senha) < 8:
         return False, "A senha deve ter no mínimo 8 caracteres."
     if not re.search(r"[A-Z]", senha):
@@ -724,7 +599,6 @@ def registrar_log_login(num_pm: str):
         except Exception:
             pass
 
-# Inicialização do estado global de sessão e controle de erros
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 if "usuario_dados" not in st.session_state:
@@ -745,7 +619,6 @@ if "pin_recuperacao_temp" not in st.session_state:
 if "pin_2fa_canal_temp" not in st.session_state:
     st.session_state["pin_2fa_canal_temp"] = None
 
-# 🛑 TRAVA DE SESSÃO ÚNICA (SINGLE DEVICE ENFORCEMENT) & TIMEOUT
 MINUTOS_TIMEOUT = 30
 if st.session_state["autenticado"]:
     tempo_inativo = (datetime.datetime.now() - st.session_state["ultima_atividade"]).total_seconds() / 60.0
@@ -758,7 +631,7 @@ if st.session_state["autenticado"]:
     else:
         st.session_state["ultima_atividade"] = datetime.datetime.now()
 
-    usr_login_verif = st.session_state["usuario_dados"]["usuario"]
+    usr_login_verif = st.session_state["usuario_dados"].get("usuario", "1337468")
     token_atual_sessao = st.session_state.get("token_sessao_dispositivo")
 
     if supabase and token_atual_sessao and usr_login_verif != "1337468":
@@ -776,7 +649,6 @@ if st.session_state["autenticado"]:
         except Exception:
             pass
 
-# TELA DE LOGIN INSTITUCIONAL (COM BLOQUEIO PERSISTENTE NO BANCO E REDIRECIONAMENTO OBRIGATÓRIO DE 2FA)
 def exibir_tela_login():
     col_l1, col_l2, col_l3 = st.columns([1, 1.8, 1])
     with col_l2:
@@ -840,9 +712,17 @@ def exibir_tela_login():
 
                             if usuario_db:
                                 senha_banco = usuario_db.get("senha_hash") or usuario_db.get("senha")
-                                if (senha_banco and (senha_banco == senha_hash_digitada or senha_banco == pwd_input)) or pwd_input == senha_padrao:
-                                    usuario_valido = usuario_db
+                                eh_primeiro_acesso_banco = usuario_db.get("primeiro_acesso", True)
 
+                                # 🔒 SEGURANÇA: Se já FEZ primeiro acesso, a senha padrão (numeropm) NUNCA mais é aceita
+                                if eh_primeiro_acesso_banco:
+                                    if (senha_banco and (senha_banco == senha_hash_digitada or senha_banco == pwd_input)) or pwd_input == senha_padrao:
+                                        usuario_valido = usuario_db
+                                else:
+                                    if senha_banco and (senha_banco == senha_hash_digitada or senha_banco == pwd_input):
+                                        usuario_valido = usuario_db
+
+                            # Programador Master Fixo
                             if not usuario_valido and pm_limpo == "1337468":
                                 if pwd_input == "1337468pm":
                                     usuario_valido = {
@@ -864,10 +744,9 @@ def exibir_tela_login():
                                 salvar_usuario_universal_supabase(pm_limpo, {"tentativas_erradas": 0})
                                 st.session_state["login_temp_dados"] = usuario_valido
                                 
-                                eh_primeiro = usuario_valido.get("primeiro_acesso", True) or (pwd_input == senha_padrao)
+                                eh_primeiro = usuario_valido.get("primeiro_acesso", True)
                                 
-                                # Redirecionamento correto para trocar senha, configurar 2FA ou validar 2FA
-                                if eh_primeiro and pwd_input == senha_padrao:
+                                if eh_primeiro:
                                     st.session_state["etapa_login"] = "TROCAR_SENHA"
                                     st.rerun()
                                 elif not usuario_valido.get("mfa_secret"):
@@ -1007,19 +886,21 @@ def exibir_tela_login():
                     elif nova_senha == senha_inicial_proibida:
                         st.error(f"⚠️ A nova senha não pode ser a senha padrão inicial (`{senha_inicial_proibida}`).")
                     else:
+                        # ✅ GRAVAÇÃO RÍGIDA NO SUPABASE: Desativa o primeiro acesso no banco de dados
                         salvar_usuario_universal_supabase(num_pm_c, {
                             "senha_hash": hash_nova_senha,
                             "primeiro_acesso": False
                         })
 
                         st.session_state["login_temp_dados"]["primeiro_acesso"] = False
+                        st.session_state["login_temp_dados"]["senha_hash"] = hash_nova_senha
                         
                         if not usr_temp.get("mfa_secret"):
                             st.session_state["etapa_login"] = "CONFIGURAR_2FA"
                         else:
                             st.session_state["etapa_login"] = "VALIDAR_2FA"
 
-                        st.success("✅ Nova senha cadastrada com sucesso!")
+                        st.success("✅ Nova senha salva com sucesso no banco de dados!")
                         st.rerun()
 
         # 5. CONFIGURAÇÃO DE 2FA (PRIMEIRO ACESSO)
@@ -1385,7 +1266,7 @@ usr = st.session_state["usuario_dados"]
 
 with st.sidebar:
     st.markdown("### 🛡️ SIOP Gestão")
-    st.info(f"👤 **{usr['nome_guerra']}**\n\n🔰 **Cargo:** {usr['cargo_funcao']}")
+    st.info(f"👤 **{usr.get('nome_guerra', 'Militar')}**\n\n🔰 **Cargo:** {usr.get('cargo_funcao', 'Operador')}")
     st.divider()
 
     st.markdown("**📌 Módulos Operacionais:**")
@@ -1428,7 +1309,6 @@ with st.sidebar:
         st.session_state["modulo_ativo"] = "MEU_PERFIL"
         st.rerun()
 
-    # 🎨 ALTERNADOR VISUAL DE TEMA
     st.divider()
     st.markdown("**🎨 Visualização da Interface:**")
     
@@ -1439,7 +1319,6 @@ with st.sidebar:
         st.session_state["tema_visual"] = "LIGHT" if tema_atual == "DARK" else "DARK"
         st.rerun()
 
-    # 🚪 BOTÃO DE LOGOUT
     st.divider()
     if st.button("🚪 Encerrar Sessão (Logout)", type="primary", use_container_width=True):
         if st.session_state.get("usuario_dados"):
@@ -1464,7 +1343,6 @@ if modulo == "ESCALAS":
 
     passo_visivel = st.session_state["passo_escala_ativo"]
 
-    # PASSO 1
     if passo_visivel in ["VISUALIZAR TODOS", "PASSO 1: Unidade & Equipes"]:
         exp1 = st.expander("📌 PASSO 1: Configuração da Unidade, Homologador e Gestão de Equipes", expanded=True)
         with exp1:
@@ -1500,7 +1378,7 @@ if modulo == "ESCALAS":
                         except Exception as e:
                             st.warning(f"Salvo na sessão local (Aviso BD: {e})")
 
-            st.info(f"✍️ **Responsável pela Elaboração (Automático do Login):** `{usr['nome_guerra']}` ({usr['cargo_funcao']})")
+            st.info(f"✍️ **Responsável pela Elaboração:** `{usr.get('nome_guerra', 'Militar')}` ({usr.get('cargo_funcao', 'Operador')})")
             st.divider()
 
             st.markdown("#### 🛡️ Gestão de Equipes e Portfólios")
@@ -1552,7 +1430,6 @@ if modulo == "ESCALAS":
                             st.success("Equipe removida!")
                             st.rerun()
 
-    # PASSO 2
     if passo_visivel in ["VISUALIZAR TODOS", "PASSO 2: Turno & Horários"]:
         exp2 = st.expander("📌 PASSO 2: Período de Apuração, Modalidade do Turno e Pré-Turno", expanded=True)
         with exp2:
@@ -1589,7 +1466,6 @@ if modulo == "ESCALAS":
                         st.session_state["dias_escalados_p4"] = []
                         st.rerun()
 
-    # PASSO 3
     if passo_visivel in ["VISUALIZAR TODOS", "PASSO 3: Efetivo & Ausências"]:
         exp3 = st.expander("📌 PASSO 3: Gestão do Efetivo e Lançamento de Ausências / Afastamentos", expanded=True)
         with exp3:
@@ -1673,7 +1549,6 @@ if modulo == "ESCALAS":
             if st.session_state["temp_importacao_lista"]:
                 abrir_modal_conferencia_efetivo()
 
-    # PASSO 4, 5 e 6
     if passo_visivel in ["VISUALIZAR TODOS", "PASSO 4: Matriz Mensal"]:
         exp4 = st.expander("📌 PASSO 4: Matriz Mensal da Escala e Marcação de Dias Trabalhados", expanded=True)
         with exp4:
@@ -1689,10 +1564,10 @@ if modulo == "ESCALAS":
         with exp6:
             st.markdown("### 🔄 Central de Permutas e Comunicação do Militar")
             
-            usr_id_logado = st.session_state["usuario_dados"].get("usuario", "1337468")
-            usr_nome_logado = st.session_state["usuario_dados"].get("nome_guerra", "MILITAR LOGADO")
-            usr_cargo_logado = st.session_state["usuario_dados"].get("cargo_funcao", "OPERADOR")
-            usr_nivel = st.session_state["usuario_dados"].get("nivel_acesso", "TROPA")
+            usr_id_logado = usr.get("usuario", "1337468")
+            usr_nome_logado = usr.get("nome_guerra", "MILITAR LOGADO")
+            usr_cargo_logado = usr.get("cargo_funcao", "OPERADOR")
+            usr_nivel = usr.get("nivel_acesso", "TROPA")
             eh_gestor = usr_nivel in ["PROGRAMADOR", "GESTOR", "COMANDANTE_CIA", "P1", "SARGENTEANTE"]
 
             militares_p6 = st.session_state.get("lista_militares", [])
@@ -1707,7 +1582,7 @@ if modulo == "ESCALAS":
                 st.markdown("##### 🤝 Solicitação de Permuta Direta (Requer Aceite do Substituto)")
                 st.caption("🔒 **Regra de Segurança:** Permutas são restritas a militares pertencentes à mesma Companhia/Subunidade e Município.")
                 
-                usr_cia_logado = st.session_state["usuario_dados"].get("unidade", st.session_state.get("cfg_subunidade", "35ª CIA PM"))
+                usr_cia_logado = usr.get("unidade", st.session_state.get("cfg_subunidade", "35ª CIA PM"))
 
                 militares_elegiveis_permuta = [
                     m for m in militares_p6
@@ -1895,8 +1770,8 @@ elif modulo == "GESTOES_USUARIOS":
     st.caption("Gerencie atribuições funcionais, permissões por fração e ações de comando sobre as contas do efetivo.")
     st.divider()
 
-    usr_atual_nivel = st.session_state["usuario_dados"].get("nivel_acesso", "TROPA")
-    usr_id_operador = st.session_state["usuario_dados"].get("usuario", "1337468")
+    usr_atual_nivel = usr.get("nivel_acesso", "TROPA")
+    usr_id_operador = usr.get("usuario", "1337468")
 
     if usr_atual_nivel not in ["PROGRAMADOR", "GESTOR", "COMANDANTE_CIA", "P1", "SARGENTEANTE"]:
         st.error("⛔ **Acesso Negado:** Você não possui permissão para gerenciar níveis de acesso.")
@@ -2138,23 +2013,23 @@ elif modulo == "MEU_PERFIL":
     st.caption("Gerencie seus contatos de recuperação, atualize sua senha e acompanhe o histórico de acessos da sua conta.")
     st.divider()
 
-    usr = st.session_state["usuario_dados"]
+    usr = st.session_state["usuario_dados"] or {}
 
     aba_p1, aba_p2, aba_p3 = st.tabs([
         "🛡️ Minhas Permissões & Dados",
         "⚙️ Alterar Contatos & Senha",
         "📜 Histórico de Logins Recentes"
     ])
+
     with aba_p1:
         c_pf1, c_pf2 = st.columns(2)
         with c_pf1:
-            st.info(f"👤 **Militar:** {usr['nome_guerra']}\n\n🆔 **Nº de Polícia / Login:** {usr['usuario']}\n\n🔰 **Cargo / Função:** {usr['cargo_funcao']}")
-        # --- INÍCIO DO BLOCO: EXIBIÇÃO DE PERFIL SEGURA ---
+            st.info(f"👤 **Militar:** {usr.get('nome_guerra', 'Militar')}\n\n🆔 **Nº de Polícia / Login:** {usr.get('usuario', 'N/I')}\n\n🔰 **Cargo / Função:** {usr.get('cargo_funcao', 'Operador')}")
         with c_pf2:
             unidade_exibicao = usr.get('unidade') or st.session_state.get('cfg_subunidade', '35ª CIA PM')
             nivel_exibicao = usr.get('nivel_acesso', 'TROPA')
             st.success(f"🔐 **Nível de Permissão:** {nivel_exibicao}\n\n🏛️ **Unidade Vinculada:** {unidade_exibicao}\n\n📲 **Fator Autenticador (2FA):** Ativo (TOTP)")
-# --- FIM DO BLOCO: EXIBIÇÃO DE PERFIL SEGURA ---
+
         st.markdown("##### 📌 O que meu nível de permissão permite fazer?")
         perm_desc = {
             "PROGRAMADOR": "Acesso total e irrestrito a todas as configurações do sistema, criação de tabelas, gestão multi-tenant e depuração.",
@@ -2165,7 +2040,7 @@ elif modulo == "MEU_PERFIL":
             "CMT_FRACAO": "Cria e gerencia a escala da sua fração e área de lotação.",
             "TROPA": "Visualização de escalas publicadas da sua fração, extrato pessoal de horas e pedidos de permuta."
         }
-        st.write(perm_desc.get(usr['nivel_acesso'], "Visualização de escalas e solicitação de permutas de serviço."))
+        st.write(perm_desc.get(nivel_exibicao, "Visualização de escalas e solicitação de permutas de serviço."))
 
         st.divider()
         st.markdown("##### 📄 Exportação do Plano de Segurança e Compliance (Ofício/Parte)")
@@ -2204,7 +2079,6 @@ elif modulo == "MEU_PERFIL":
     with aba_p2:
         st.markdown("##### ⚙️ Atualização de Contatos Corporativos")
         
-        # FORMULÁRIO 1: EXCLUSIVO PARA E-MAIL E CELULAR
         with st.form("form_atualizar_contatos_usuario"):
             novo_email = st.text_input("E-mail Institucional de Recuperação:", value=usr.get("email_recuperacao", ""))
             novo_celular = st.text_input("Celular Corporativo (com DDD):", value=usr.get("celular_recuperacao", ""))
@@ -2219,8 +2093,8 @@ elif modulo == "MEU_PERFIL":
                     "celular_recuperacao": novo_celular
                 }
                 
-                if salvar_usuario_universal_supabase(usr['usuario'], payload_contatos):
-                    registrar_audit_log(usr['usuario'], usr['usuario'], "ATUALIZAR_CONTATOS", f"E-mail ({novo_email}) e Celular atualizados no Supabase.")
+                if salvar_usuario_universal_supabase(usr.get('usuario', '1337468'), payload_contatos):
+                    registrar_audit_log(usr.get('usuario', '1337468'), usr.get('usuario', '1337468'), "ATUALIZAR_CONTATOS", f"E-mail ({novo_email}) e Celular atualizados no Supabase.")
                     st.success("✅ Contatos corporativos salvos com sucesso no Supabase!")
                     st.rerun()
                 else:
@@ -2229,7 +2103,6 @@ elif modulo == "MEU_PERFIL":
         st.divider()
         st.markdown("##### 🔒 Alteração de Senha de Acesso")
         
-        # FORMULÁRIO 2: EXCLUSIVO PARA SENHA
         with st.form("form_atualizar_senha_usuario"):
             senha_atual = st.text_input("Senha Atual para Confirmação:", type="password", placeholder="Digite sua senha atual")
             nova_senha_p = st.text_input("Nova Senha Forte:", type="password", placeholder="Digite a nova senha")
@@ -2249,8 +2122,8 @@ elif modulo == "MEU_PERFIL":
                         hash_nova_p = gerar_hash_senha(nova_senha_p)
                         payload_senha = {"senha_hash": hash_nova_p}
                         
-                        if salvar_usuario_universal_supabase(usr['usuario'], payload_senha):
-                            registrar_audit_log(usr['usuario'], usr['usuario'], "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário no Perfil.")
+                        if salvar_usuario_universal_supabase(usr.get('usuario', '1337468'), payload_senha):
+                            registrar_audit_log(usr.get('usuario', '1337468'), usr.get('usuario', '1337468'), "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário no Perfil.")
                             st.success("✅ Senha atualizada no banco de dados com sucesso!")
                             st.rerun()
                         else:
