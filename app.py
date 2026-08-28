@@ -12,7 +12,6 @@ import pyotp
 import qrcode
 import random
 import hashlib
-import json
 from supabase import create_client, Client
 
 # IMPORTS DO OPENPYXL (EXCEL)
@@ -46,35 +45,15 @@ if "tema_visual" not in st.session_state:
     st.session_state["tema_visual"] = "DARK"
 
 if st.session_state["tema_visual"] == "DARK":
-    bg_cor = "#0f172a"
-    form_bg = "#1e293b"
-    text_cor = "#f8fafc"
-    border_cor = "#4E442A"
-    sec_bg = "#9D8B5C"
-    sec_text = "#000000"
-    sec_border = "#4E442A"
-    pri_bg = "#4E442A"
-    pri_text = "#ffffff"
-    pri_border = "#9D8B5C"
-    expander_bg = "#1e293b"
-    input_bg = "#0f172a"
-    input_text = "#f8fafc"
-    sidebar_bg = "#1e293b"
+    bg_cor, form_bg, text_cor, border_cor = "#0f172a", "#1e293b", "#f8fafc", "#4E442A"
+    sec_bg, sec_text, sec_border = "#9D8B5C", "#000000", "#4E442A"
+    pri_bg, pri_text, pri_border = "#4E442A", "#ffffff", "#9D8B5C"
+    expander_bg, input_bg, input_text, sidebar_bg = "#1e293b", "#0f172a", "#f8fafc", "#1e293b"
 else:
-    bg_cor = "#f1f5f9"
-    form_bg = "#ffffff"
-    text_cor = "#0f172a"
-    border_cor = "#cbd5e1"
-    sec_bg = "#e2e8f0"
-    sec_text = "#1e293b"
-    sec_border = "#94a3b8"
-    pri_bg = "#1e293b"
-    pri_text = "#ffffff"
-    pri_border = "#0f172a"
-    expander_bg = "#e2e8f0"
-    input_bg = "#ffffff"
-    input_text = "#0f172a"
-    sidebar_bg = "#ffffff"
+    bg_cor, form_bg, text_cor, border_cor = "#f1f5f9", "#ffffff", "#0f172a", "#cbd5e1"
+    sec_bg, sec_text, sec_border = "#e2e8f0", "#1e293b", "#94a3b8"
+    pri_bg, pri_text, pri_border = "#1e293b", "#ffffff", "#0f172a"
+    expander_bg, input_bg, input_text, sidebar_bg = "#e2e8f0", "#ffffff", "#0f172a", "#ffffff"
 
 st.markdown(f"""
     <style>
@@ -116,8 +95,51 @@ def gerar_hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
 # =========================================================================
-# 🛢️ FUNÇÕES DE INTEGRAÇÃO DE BANCO DE DADOS (SUPABASE - CRUD & AUDITORIA)
+# 🛢️ FUNÇÃO BLINDADA DE PERSISTÊNCIA SUPABASE (NOVA ABORDAGEM)
 # =========================================================================
+
+def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
+    """Atualiza o banco filtrando valores None para proibir a sobrescrita por NULL"""
+    if not supabase:
+        return False
+        
+    pm_bruto = str(num_pm).strip()
+    pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
+
+    # 🛑 REGRA DE OURO: Remove chaves que estejam como None do payload para não apagar colunas do banco
+    payload_limpo = {k: v for k, v in payload.items() if v is not None}
+    
+    if "senha_hash" in payload_limpo:
+        payload_limpo["senha"] = payload_limpo["senha_hash"]
+
+    if not payload_limpo:
+        return True
+
+    valores_busca = [pm_bruto, pm_limpo]
+    if pm_limpo.isdigit():
+        valores_busca.append(int(pm_limpo))
+
+    # Tenta atualização por UUID se o ID estiver carregado
+    usr_temp = st.session_state.get("login_temp_dados") or st.session_state.get("usuario_dados")
+    if usr_temp and usr_temp.get("id") and len(str(usr_temp.get("id"))) == 36:
+        try:
+            res_id = supabase.table("usuarios").update(payload_limpo).eq("id", usr_temp["id"]).execute()
+            if res_id.data and len(res_id.data) > 0:
+                return True
+        except Exception:
+            pass
+
+    # Tenta atualização pelas colunas de login
+    for col in ["usuario_login", "usuario"]:
+        for val in valores_busca:
+            try:
+                res = supabase.table("usuarios").update(payload_limpo).eq(col, val).execute()
+                if res.data and len(res.data) > 0:
+                    return True
+            except Exception:
+                pass
+
+    return False
 
 def registrar_audit_log(operador_pm, alvo_pm, tipo_acao, descricao):
     if supabase:
@@ -264,14 +286,10 @@ def salvar_mensagem_p1_supabase(remetente_id, remetente_nome, assunto, mensagem)
         st.error(f"Erro ao enviar mensagem no Supabase: {e}")
         return False
 
-# --- GERADOR DE PDF OFICIAL PMMG (REPORTLAB) ---
+# --- GERADOR DE PDF OFICIAL PMMG ---
 def gerar_pdf_pmmg_oficial(unidade, subunidade, mes_ano, militares, equipes, ajustes_mapa, horas_dia, meta_h, resp_txt, homolog_txt, homolog_funcao):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=landscape(letter),
-        rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), rightMargin=15, leftMargin=15, topMargin=15, bottomMargin=15)
     elements = []
     styles = getSampleStyleSheet()
 
@@ -415,11 +433,7 @@ Programador / Gestor do SIOP
 
 def gerar_pdf_parte_informativa(num_parte="12.4/2026", responsavel_nome="FELIPE OLIVEIRA ALVES", responsavel_posto="CAP QOPM"):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
     elements = []
     styles = getSampleStyleSheet()
 
@@ -448,7 +462,7 @@ def gerar_pdf_parte_informativa(num_parte="12.4/2026", responsavel_nome="FELIPE 
     elements.append(Paragraph("<b>d. Proteção de Banco de Dados:</b> Criptografia HTTPS/TLS em trânsito e políticas de Row Level Security (RLS) no PostgreSQL/Supabase.", style_item))
 
     elements.append(Paragraph("4. Por fim, informo que o sistema encontra-se munido de plano de contingência para exportação do Quadro Geral em formatos .PDF e .XLSX.", style_body))
-    elements.append(Paragraph("5. Respeitosamente, submeto o presente documento à apreciação de Vossa Senhoria para fins de ciência e arquivamento.", style_body))
+    elements.append(Paragraph("5. Respeitosamente, submeto o presente documento à appreciation de Vossa Senhoria para fins de ciência e arquivamento.", style_body))
 
     elements.append(Spacer(1, 20))
     elements.append(Paragraph(f"__________________________________________<br/><b>{responsavel_nome}, {responsavel_posto}</b><br/>Programador / Gestor do SIOP", style_ass))
@@ -457,7 +471,6 @@ def gerar_pdf_parte_informativa(num_parte="12.4/2026", responsavel_nome="FELIPE 
     buffer.seek(0)
     return buffer
 
-# --- LEITOR UNIVERSAL DE PLANILHAS ---
 def carregar_planilha_universal(arquivo_upload):
     bytes_data = arquivo_upload.read()
     arquivo_upload.seek(0)
@@ -536,48 +549,6 @@ def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
             total_minutos_equivalentes += 1.0
 
     return round(total_minutos_equivalentes / 60.0, 2)
-
-# --- FUNÇÃO UNIVERSAL DE SALVAMENTO BLINDADA E MULTI-COLUNAS ---
-def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
-    if not supabase:
-        return False
-        
-    pm_bruto = str(num_pm).strip()
-    pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
-
-    payload_mapeado = payload.copy()
-    
-    # Tratamento para serialização segura da lista historico_senhas
-    if "historico_senhas" in payload_mapeado and isinstance(payload_mapeado["historico_senhas"], list):
-        payload_mapeado["historico_senhas"] = payload_mapeado["historico_senhas"]
-
-    if "senha_hash" in payload_mapeado:
-        payload_mapeado["senha"] = payload_mapeado["senha_hash"]
-
-    # Tentativa de busca por UUID caso exista id válido de 36 caracteres
-    usr_temp = st.session_state.get("login_temp_dados") or st.session_state.get("usuario_dados")
-    if usr_temp and usr_temp.get("id") and len(str(usr_temp.get("id"))) == 36:
-        try:
-            res_id = supabase.table("usuarios").update(payload_mapeado).eq("id", usr_temp["id"]).execute()
-            if res_id.data and len(res_id.data) > 0:
-                return True
-        except Exception:
-            pass
-
-    valores_busca = [pm_bruto, pm_limpo]
-    if pm_limpo.isdigit():
-        valores_busca.append(int(pm_limpo))
-
-    for col in ["usuario_login", "usuario"]:
-        for val in valores_busca:
-            try:
-                res = supabase.table("usuarios").update(payload_mapeado).eq(col, val).execute()
-                if res.data and len(res.data) > 0:
-                    return True
-            except Exception:
-                pass
-
-    return False
 
 # =========================================================================
 # 🔐 5. AUTENTICAÇÃO MILITAR, SESSÃO ÚNICA (DISPOSITIVO ÚNICO) E 2FA
@@ -748,7 +719,6 @@ def exibir_tela_login():
                             if not usuario_valido and pm_limpo == "1337468":
                                 if pwd_input == "1337468pm":
                                     usuario_valido = {
-                                        "id": "u_master_1337468",
                                         "usuario_login": "1337468",
                                         "usuario": "1337468",
                                         "nome_guerra": "OLIVEIRA ALVES",
@@ -835,7 +805,6 @@ def exibir_tela_login():
 
                         if not usuario_reset and pm_limpo == "1337468":
                             usuario_reset = {
-                                "id": "u_master_1337468",
                                 "usuario_login": "1337468",
                                 "usuario": "1337468",
                                 "nome_guerra": "OLIVEIRA ALVES",
@@ -912,6 +881,7 @@ def exibir_tela_login():
                         novo_historico = ([hash_nova_senha] + historico_atual)[:3]
                         token_novo = secrets.token_hex(16)
 
+                        # ✅ PERSISTÊNCIA COMPLETA DE SENHA E TOKEN NO BANCO
                         salvar_usuario_universal_supabase(num_pm_c, {
                             "senha": hash_nova_senha,
                             "senha_hash": hash_nova_senha,
@@ -972,7 +942,7 @@ def exibir_tela_login():
                         novo_token_sessao = secrets.token_hex(16)
                         usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
 
-                        # ✅ PERSISTÊNCIA COMPLETA NO BANCO
+                        # ✅ PERSISTÊNCIA COMPLETA DE CONTATOS E TOTP NO SUPABASE
                         salvar_usuario_universal_supabase(usr_login_final, {
                             "mfa_habilitado": True,
                             "mfa_secret": secret_totp,
@@ -1062,11 +1032,10 @@ def exibir_tela_login():
                     if codigo_valido:
                         novo_token_sessao = secrets.token_hex(16)
 
-                        # ✅ PERSISTÊNCIA COMPLETA DE SESSÃO E 2FA NO SUPABASE NO LOGIN
+                        # ✅ PERSISTÊNCIA COMPLETA DE SESSÃO E DADOS DE CONTATO NO LOGIN
                         salvar_usuario_universal_supabase(usr_login_final, {
                             "token_sessao_ativa": novo_token_sessao,
                             "mfa_habilitado": True,
-                            "mfa_secret": usr_temp.get("mfa_secret"),
                             "email_recuperacao": usr_temp.get("email_recuperacao"),
                             "celular_recuperacao": usr_temp.get("celular_recuperacao")
                         })
@@ -2133,8 +2102,6 @@ elif modulo == "MEU_PERFIL":
                     registrar_audit_log(usr.get('usuario', '1337468'), usr.get('usuario', '1337468'), "ATUALIZAR_CONTATOS", f"E-mail ({novo_email}) e Celular atualizados no Supabase.")
                     st.success("✅ Contatos corporativos salvos com sucesso no Supabase!")
                     st.rerun()
-                else:
-                    st.warning("⚠️ Contatos atualizados temporariamente na sessão.")
 
         st.divider()
         st.markdown("##### 🔒 Alteração de Senha de Acesso")
@@ -2170,8 +2137,6 @@ elif modulo == "MEU_PERFIL":
                             registrar_audit_log(usr.get('usuario', '1337468'), usr.get('usuario', '1337468'), "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário no Perfil.")
                             st.success("✅ Senha e histórico de senhas atualizados no banco de dados com sucesso!")
                             st.rerun()
-                        else:
-                            st.error("⚠️ Falha ao salvar a nova senha no banco de dados.")
 
     with aba_p3:
         st.markdown("##### 📜 Registro Auditável de Logins e Operações")
@@ -2210,4 +2175,4 @@ elif modulo == "MEU_PERFIL":
             )
         else:
             st.info("ℹ️ Nenhum evento crítico registrado para este usuário nas últimas sessões.")
-# --- FIM DO BLOCO MEU PERFIL ---7
+# --- FIM DO BLOCO MEU PERFIL ---
