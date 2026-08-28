@@ -662,13 +662,11 @@ def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
 def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
     """Atualiza o banco no Supabase buscando dinamicamente por número com/sem hífen e variações de coluna"""
     if not supabase:
-        st.error("❌ Conexão com o Supabase não estabelecida (Verifique os Secrets na Nuvem).")
         return False
         
     pm_bruto = str(num_pm).strip()
     pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
 
-    # Tenta atualização individualmente em todas as colunas/variações
     for col in ["usuario_login", "usuario"]:
         for identificador in [pm_bruto, pm_limpo]:
             try:
