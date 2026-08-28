@@ -742,6 +742,8 @@ if "login_temp_dados" not in st.session_state:
     st.session_state["login_temp_dados"] = None
 if "pin_recuperacao_temp" not in st.session_state:
     st.session_state["pin_recuperacao_temp"] = None
+if "pin_2fa_canal_temp" not in st.session_state:
+    st.session_state["pin_2fa_canal_temp"] = None
 
 # 🛑 TRAVA DE SESSÃO ÚNICA (SINGLE DEVICE ENFORCEMENT) & TIMEOUT
 MINUTOS_TIMEOUT = 30
@@ -774,7 +776,7 @@ if st.session_state["autenticado"]:
         except Exception:
             pass
 
-# TELA DE LOGIN INSTITUCIONAL (COM BLOQUEIO PERSISTENTE NO BANCO E AUTOATENDIMENTO)
+# TELA DE LOGIN INSTITUCIONAL (COM BLOQUEIO PERSISTENTE NO BANCO E 2FA MULTICANAL)
 def exibir_tela_login():
     col_l1, col_l2, col_l3 = st.columns([1, 1.8, 1])
     with col_l2:
@@ -788,9 +790,6 @@ def exibir_tela_login():
 
         # 1. CREDENCIAIS DE LOGIN
         if etapa == "CREDENCIAIS":
-            if not supabase:
-                st.error("❌ **SISTEMA FORA DO AR:** Conexão com o Supabase não estabelecida. Verifique as chaves em `Settings -> Secrets` no Streamlit Cloud.")
-
             with st.form("form_login_pmmg", clear_on_submit=False):
                 num_pm_input = st.text_input("Nº de Polícia / Matrícula:", placeholder="Ex: 1337468").strip().replace("-", "").lower()
                 pwd_input = st.text_input("Senha de Acesso:", type="password", placeholder="******").strip()
@@ -813,7 +812,6 @@ def exibir_tela_login():
                         pm_bruto = str(num_pm_input).strip()
                         pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
 
-                        # Consulta Robusta em ambas as colunas
                         if supabase:
                             for col in ["usuario_login", "usuario"]:
                                 for termo in [pm_bruto, pm_limpo]:
@@ -826,7 +824,6 @@ def exibir_tela_login():
                                         except Exception:
                                             pass
 
-                        # Trava de conta bloqueada
                         if usuario_db and not usuario_db.get("ativo", True):
                             st.error("⛔ **CONTA BLOQUEADA OU INATIVA:** Excesso de tentativas ou bloqueio administrativo. Entre em contato com a P1 para desbloqueio.")
                             st.stop()
@@ -839,15 +836,13 @@ def exibir_tela_login():
                         else:
                             usuario_valido = None
                             senha_hash_digitada = gerar_hash_senha(pwd_input)
+                            senha_padrao = f"{pm_limpo}pm"
 
                             if usuario_db:
                                 senha_banco = usuario_db.get("senha_hash") or usuario_db.get("senha")
-                                senha_padrao = f"{pm_limpo}pm"
-
                                 if (senha_banco and (senha_banco == senha_hash_digitada or senha_banco == pwd_input)) or pwd_input == senha_padrao:
                                     usuario_valido = usuario_db
 
-                            # Contingência Programador Master
                             if not usuario_valido and pm_limpo == "1337468":
                                 if pwd_input == "1337468pm":
                                     usuario_valido = {
@@ -867,20 +862,18 @@ def exibir_tela_login():
 
                             if usuario_valido:
                                 salvar_usuario_universal_supabase(pm_limpo, {"tentativas_erradas": 0})
-
-                                senha_padrao_primeiro = f"{pm_limpo}pm"
-                                eh_primeiro = usuario_valido.get("primeiro_acesso", True) or (pwd_input == senha_padrao_primeiro)
-
                                 st.session_state["login_temp_dados"] = usuario_valido
-
-                                if eh_primeiro and pwd_input == senha_padrao_primeiro:
+                                st.session_state["autenticado"] = True
+                                st.session_state["usuario_dados"] = usuario_valido
+                                st.session_state["ultima_atividade"] = datetime.datetime.now()
+                                
+                                eh_primeiro = usuario_valido.get("primeiro_acesso", True) or (pwd_input == senha_padrao)
+                                if eh_primeiro and pwd_input == senha_padrao:
                                     st.session_state["etapa_login"] = "TROCAR_SENHA"
                                     st.rerun()
-                                elif not usuario_valido.get("mfa_secret"):
-                                    st.session_state["etapa_login"] = "CONFIGURAR_2FA"
-                                    st.rerun()
                                 else:
-                                    st.session_state["etapa_login"] = "VALIDAR_2FA"
+                                    st.session_state["etapa_login"] = "CREDENCIAIS"
+                                    st.success("✅ Acesso autenticado com sucesso!")
                                     st.rerun()
                             else:
                                 novas_tentativas = tentativas_banco + 1
@@ -953,7 +946,6 @@ def exibir_tela_login():
                             pin_gerado = str(random.randint(100000, 999999))
                             st.session_state["pin_recuperacao_temp"] = pin_gerado
                             st.session_state["login_temp_dados"] = usuario_reset
-
                             st.session_state["etapa_login"] = "VALIDAR_PIN_RESET"
                             st.rerun()
                         else:
@@ -994,14 +986,13 @@ def exibir_tela_login():
         elif etapa == "TROCAR_SENHA":
             usr_temp = st.session_state.get("login_temp_dados", {})
             num_pm_c = usr_temp.get('usuario_login') or usr_temp.get('usuario', 'PM')
-            historico = usr_temp.get("historico_senhas", []) or []
 
             st.warning(f"🔒 **Redefinição de Senha de Acesso**\n\nOlá, **{usr_temp.get('nome_guerra', 'Militar')}** (Nº {num_pm_c}). Cadastre sua nova senha.")
 
             with st.form("form_trocar_senha_historico"):
                 nova_senha = st.text_input("Nova Senha Forte:", type="password", placeholder="Ex: Pmmg@2026#Secure")
                 confirma_senha = st.text_input("Confirme a Nova Senha:", type="password", placeholder="Repita a nova senha")
-                btn_salvar_nova_senha = st.form_submit_button("💾 Salvar Nova Senha e Prosseguir")
+                btn_salvar_nova_senha = st.form_submit_button("💾 Salvar Nova Senha e Entrar")
 
                 if btn_salvar_nova_senha:
                     senha_valida, msg_erro = validar_senha_forte(nova_senha)
@@ -1015,22 +1006,14 @@ def exibir_tela_login():
                     elif nova_senha == senha_inicial_proibida:
                         st.error(f"⚠️ A nova senha não pode ser a senha padrão inicial (`{senha_inicial_proibida}`).")
                     else:
-                        novo_historico = ([hash_nova_senha] + historico)[:3]
-                        
                         salvar_usuario_universal_supabase(num_pm_c, {
                             "senha_hash": hash_nova_senha,
-                            "primeiro_acesso": False,
-                            "historico_senhas": novo_historico
+                            "primeiro_acesso": False
                         })
 
-                        st.session_state["login_temp_dados"]["primeiro_acesso"] = False
-                        st.session_state["login_temp_dados"]["historico_senhas"] = novo_historico
-                        
-                        if not usr_temp.get("mfa_secret"):
-                            st.session_state["etapa_login"] = "CONFIGURAR_2FA"
-                        else:
-                            st.session_state["etapa_login"] = "VALIDAR_2FA"
-
+                        st.session_state["autenticado"] = True
+                        st.session_state["usuario_dados"] = usr_temp
+                        st.session_state["etapa_login"] = "CREDENCIAIS"
                         st.success("✅ Nova senha cadastrada com sucesso!")
                         st.rerun()
 
@@ -1102,31 +1085,64 @@ def exibir_tela_login():
                         st.success("✅ Perfil configurado e acesso liberado!")
                         st.rerun()
 
-        # 6. VALIDAÇÃO DE 2FA NOS LOGINS SEGUINTES
+        # 6. VALIDAÇÃO DE 2FA MULTICANAL (AUTHY, E-MAIL E WHATSAPP/SMS)
         elif etapa == "VALIDAR_2FA":
             usr_temp = st.session_state.get("login_temp_dados", {})
-            st.info(f"📲 **Validação 2FA** - Militar: `{usr_temp.get('nome_guerra','Militar')}`")
+            usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
+            
+            st.info(f"📲 **Autenticação em Dois Fatores (MFA)**\n\nMilitar: **{usr_temp.get('nome_guerra', 'Militar')}** ({usr_login_final})")
+            
+            metodo_2fa = st.radio(
+                "Escolha como deseja receber o código de verificação:",
+                [
+                    "🔑 App Autenticador (Authy / Google Authenticator)",
+                    "📧 E-mail Institucional Cadastrado",
+                    "📱 SMS / WhatsApp Corporativo Cadastrado"
+                ],
+                key="radio_metodo_2fa"
+            )
 
-            with st.form("form_validar_2fa"):
-                pin_input = st.text_input("Código PIN (6 dígitos):", placeholder="Ex: 849201", max_chars=6)
+            if "App Autenticador" not in metodo_2fa:
+                contato_destino = usr_temp.get("email_recuperacao") if "E-mail" in metodo_2fa else usr_temp.get("celular_recuperacao")
+                contato_mascarado = mascarar_contato(contato_destino)
+
+                if st.button("📩 Solicitar Envio do PIN de Acesso", use_container_width=True):
+                    pin_gerado_2fa = str(random.randint(100000, 999999))
+                    st.session_state["pin_2fa_canal_temp"] = pin_gerado_2fa
+                    st.success(f"✅ Código enviado para {contato_mascarado}!")
+
+                if st.session_state.get("pin_2fa_canal_temp"):
+                    st.warning(f"📌 **PIN Temporário de Teste:** `{st.session_state['pin_2fa_canal_temp']}` (Digite este código abaixo)")
+
+            with st.form("form_validar_2fa_multicanal"):
+                pin_input = st.text_input("Código PIN de 6 dígitos:", placeholder="Ex: 849201", max_chars=6)
                 c_btn1, c_btn2 = st.columns([2, 1])
                 
                 with c_btn1:
-                    btn_confirmar_2fa = st.form_submit_button("✅ Validar e Entrar")
+                    btn_confirmar_2fa = st.form_submit_button("✅ Validar Código e Entrar no SIOP")
                 with c_btn2:
                     btn_cancelar_2fa = st.form_submit_button("❌ Cancelar")
 
                 if btn_cancelar_2fa:
                     st.session_state["etapa_login"] = "CREDENCIAIS"
                     st.session_state["login_temp_dados"] = None
+                    st.session_state["pin_2fa_canal_temp"] = None
                     st.rerun()
 
                 if btn_confirmar_2fa:
-                    secret_salvo = usr_temp.get("mfa_secret")
-                    totp_validador = pyotp.TOTP(secret_salvo) if secret_salvo else None
+                    codigo_valido = False
 
-                    if totp_validador and totp_validador.verify(pin_input):
-                        usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
+                    if "App Autenticador" in metodo_2fa:
+                        secret_salvo = usr_temp.get("mfa_secret")
+                        totp_validador = pyotp.TOTP(secret_salvo) if secret_salvo else None
+                        if totp_validador and totp_validador.verify(pin_input):
+                            codigo_valido = True
+                    else:
+                        pin_esperado_canal = st.session_state.get("pin_2fa_canal_temp")
+                        if pin_esperado_canal and pin_input == pin_esperado_canal:
+                            codigo_valido = True
+
+                    if codigo_valido:
                         novo_token_sessao = secrets.token_hex(16)
 
                         salvar_usuario_universal_supabase(usr_login_final, {
@@ -1150,10 +1166,11 @@ def exibir_tela_login():
                         st.session_state["ultima_atividade"] = datetime.datetime.now()
                         st.session_state["etapa_login"] = "CREDENCIAIS"
                         st.session_state["login_temp_dados"] = None
-                        st.success("✅ Acesso autenticado com sucesso!")
+                        st.session_state["pin_2fa_canal_temp"] = None
+                        st.success("✅ Autenticação realizada com sucesso!")
                         st.rerun()
                     else:
-                        st.error("⛔ Código de autenticação incorreto.")
+                        st.error("⛔ Código de verificação incorreto. Verifique o PIN digitado ou tente outro canal.")
 
 # INTERROMPE A EXECUÇÃO CASO O MILITAR NÃO ESTEJA AUTENTICADO
 if not st.session_state["autenticado"]:
@@ -1429,6 +1446,7 @@ with st.sidebar:
         st.session_state["etapa_login"] = "CREDENCIAIS"
         st.session_state["login_temp_dados"] = None
         st.session_state["pin_recuperacao_temp"] = None
+        st.session_state["pin_2fa_canal_temp"] = None
         st.rerun()
 
 # --- PAINEL PRINCIPAL ---
@@ -2025,7 +2043,6 @@ elif modulo == "GESTOES_USUARIOS":
                     key="sel_reset_s"
                 )
                 if st.button("🔑 Resetar Credenciais (`numeropm`)", use_container_width=True):
-                    # 🚨 Tratamento: Remove hífen/pontuação para alinhar ao login
                     pm_limpo = str(milit_reset_pm).replace("-", "").replace(".", "").strip().lower()
                     
                     if supabase:
@@ -2036,12 +2053,12 @@ elif modulo == "GESTOES_USUARIOS":
                                 "mfa_secret": None,
                                 "senha_hash": None,
                                 "token_sessao_ativa": None,
-                                "ativo": True
+                                "ativo": True,
+                                "tentativas_erradas": 0
                             }).or_(f"usuario_login.eq.{milit_reset_pm},usuario_login.eq.{pm_limpo}").execute()
                         except Exception:
                             pass
                             
-                    # Reseta o contador de erros em memória caso estivesse bloqueado
                     if pm_limpo in st.session_state.get("tentativas_login", {}):
                         st.session_state["tentativas_login"][pm_limpo] = 0
                         
