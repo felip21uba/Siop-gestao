@@ -34,11 +34,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. LISTA GLOBAL DE MESES E BRASÃO PADRÃO
+# 2. LISTA GLOBAL DE MESES E CAMINHO DO BRASÃO LOCAL
 lista_meses = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ]
+CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 
 # 3. Estilização Visual PMMG / SIOP e Gerenciamento de Tema
@@ -669,12 +670,17 @@ def exibir_tela_login():
     col_l1, col_l2, col_l3 = st.columns([1, 1.8, 1])
     with col_l2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        img_url = st.session_state.get("cfg_brasao_url") or URL_BRASAO_PADRAO
-        st.image(img_url, width=95)
+        
+        # Tenta carregar a imagem da pasta assets/brasao.png primeiro
+        import os
+        if os.path.exists(CAMINHO_BRASAO_LOCAL):
+            st.image(CAMINHO_BRASAO_LOCAL, width=95)
+        else:
+            img_url = st.session_state.get("cfg_brasao_url") or URL_BRASAO_PADRAO
+            st.image(img_url, width=95)
+
         st.markdown("## 🛡️ SIOP - Acesso Restrito")
         st.caption("Sistema Integrado de Operações - Polícia Militar de Minas Gerais")
-
-        etapa = st.session_state["etapa_login"]
 
         # 1. CREDENCIAIS DE LOGIN
         if etapa == "CREDENCIAIS":
