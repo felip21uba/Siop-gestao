@@ -536,18 +536,39 @@ def calcular_horas_jornada(h_inicio="07:00", h_fim="19:00", pre_turno_min=0):
 
     return round(total_minutos_equivalentes / 60.0, 2)
 
+# --- FUNÇÃO UNIVERSAL DE SALVAMENTO COM TRATAMENTO DE TIPOS E ID ---
 def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
-    """Atualiza o banco no Supabase buscando por usuario_login ou usuario"""
+    """Garante a atualização no Supabase tratando textos, inteiros e busca por ID"""
     if not supabase:
         return False
         
     pm_bruto = str(num_pm).strip()
     pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
 
+    # Mapeia tanto 'senha' quanto 'senha_hash' para cobrir o esquema da tabela
+    payload_mapeado = payload.copy()
+    if "senha_hash" in payload_mapeado:
+        payload_mapeado["senha"] = payload_mapeado["senha_hash"]
+
+    # Tentativa 1: Atualização direta pelo ID do usuário na sessão (se disponível)
+    usr_temp = st.session_state.get("login_temp_dados") or st.session_state.get("usuario_dados")
+    if usr_temp and usr_temp.get("id"):
+        try:
+            res_id = supabase.table("usuarios").update(payload_mapeado).eq("id", usr_temp["id"]).execute()
+            if res_id.data and len(res_id.data) > 0:
+                return True
+        except Exception:
+            pass
+
+    # Tentativa 2: Busca por colunas usando Texto e Inteiro
+    valores_busca = [pm_bruto, pm_limpo]
+    if pm_limpo.isdigit():
+        valores_busca.append(int(pm_limpo))
+
     for col in ["usuario_login", "usuario"]:
-        for identificador in [pm_bruto, pm_limpo]:
+        for val in valores_busca:
             try:
-                res = supabase.table("usuarios").update(payload).eq(col, identificador).execute()
+                res = supabase.table("usuarios").update(payload_mapeado).eq(col, val).execute()
                 if res.data and len(res.data) > 0:
                     return True
             except Exception:
