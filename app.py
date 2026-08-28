@@ -95,7 +95,7 @@ def gerar_hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
 # =========================================================================
-# 🛢️ PERSISTÊNCIA DIRETA E ATUALIZAÇÃO BLINDADA DO SUPABASE
+# 🛢️ FUNÇÃO DE PERSISTÊNCIA UNIVERSAL E DUPLA MAPEADA PARA O SUPABASE
 # =========================================================================
 
 def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
@@ -106,8 +106,13 @@ def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
     pm_limpo = pm_bruto.replace("-", "").replace(".", "").strip().lower()
 
     payload_limpo = {k: v for k, v in payload.items() if v is not None}
+    
+    # Mapeamento duplo para garantir compatibilidade com qualquer variação de nome de coluna no banco
     if "senha_hash" in payload_limpo:
         payload_limpo["senha"] = payload_limpo["senha_hash"]
+        
+    if "token_sessao_ativa" in payload_limpo:
+        payload_limpo["token_recuperacao"] = payload_limpo["token_sessao_ativa"]
 
     if not payload_limpo:
         return True
@@ -595,7 +600,6 @@ if "pin_recuperacao_temp" not in st.session_state:
 if "pin_2fa_canal_temp" not in st.session_state:
     st.session_state["pin_2fa_canal_temp"] = None
 
-# TIMEOUT DINÂMICO DE SESSÃO
 MINUTOS_TIMEOUT = st.session_state.get("timeout_minutos_sessao", 30)
 if st.session_state["autenticado"]:
     tempo_inativo = (datetime.datetime.now() - st.session_state["ultima_atividade"]).total_seconds() / 60.0
@@ -642,7 +646,6 @@ def exibir_tela_login():
             with st.form("form_login_pmmg", clear_on_submit=False):
                 num_pm_input = st.text_input("Nº de Polícia / Matrícula:", placeholder="Ex: 1337468").strip().replace("-", "").lower()
                 pwd_input = st.text_input("Senha de Acesso:", type="password", placeholder="******").strip()
-                
                 lembrar_dispositivo = st.checkbox("📌 Permanecer conectado neste dispositivo por 30 dias")
                 
                 c_login1, c_login2 = st.columns([2, 1])
@@ -718,10 +721,14 @@ def exibir_tela_login():
 
                             if usuario_valido:
                                 token_sessao_login = secrets.token_hex(16)
+                                
+                                # ✅ GERA E PERSISTE O TOKEN DE SESSÃO / RECUPERAÇÃO EM AMBAS AS COLUNAS NO SUPABASE
                                 salvar_usuario_universal_supabase(pm_limpo, {
                                     "tentativas_erradas": 0,
-                                    "token_sessao_ativa": token_sessao_login
+                                    "token_sessao_ativa": token_sessao_login,
+                                    "token_recuperacao": token_sessao_login
                                 })
+                                
                                 st.session_state["token_sessao_dispositivo"] = token_sessao_login
                                 st.session_state["login_temp_dados"] = usuario_valido
                                 
@@ -733,14 +740,15 @@ def exibir_tela_login():
                                 eh_primeiro = usuario_valido.get("primeiro_acesso", False)
                                 secret_mfa = usuario_valido.get("mfa_secret")
                                 
+                                # 🛑 TRAVA DE REDIRECIONAMENTO: Se mfa_secret existe, NUNCA exibe QR Code novamente
                                 if eh_primeiro:
                                     st.session_state["etapa_login"] = "TROCAR_SENHA"
                                     st.rerun()
-                                elif not secret_mfa:
-                                    st.session_state["etapa_login"] = "CONFIGURAR_2FA"
+                                elif secret_mfa and str(secret_mfa).strip() != "":
+                                    st.session_state["etapa_login"] = "VALIDAR_2FA"
                                     st.rerun()
                                 else:
-                                    st.session_state["etapa_login"] = "VALIDAR_2FA"
+                                    st.session_state["etapa_login"] = "CONFIGURAR_2FA"
                                     st.rerun()
                             else:
                                 novas_tentativas = tentativas_banco + 1
@@ -878,6 +886,7 @@ def exibir_tela_login():
                             "senha_hash": hash_nova_senha,
                             "primeiro_acesso": False,
                             "token_sessao_ativa": token_novo,
+                            "token_recuperacao": token_novo,
                             "historico_senhas": novo_historico
                         })
 
@@ -894,7 +903,7 @@ def exibir_tela_login():
                         st.success("✅ Nova senha cadastrada e persistida no Supabase!")
                         st.rerun()
 
-        # 5. CONFIGURAÇÃO DE 2FA (EXIBIDO APENAS NO PRIMEIRO CADASTRO DO AUTHY)
+        # 5. CONFIGURAÇÃO DE 2FA (EXIBIDO APENAS UMA ÚNICA VEZ NO PRIMEIRO SETUP)
         elif etapa == "CONFIGURAR_2FA":
             usr_temp = st.session_state.get("login_temp_dados", {})
             num_pm_c = usr_temp.get('usuario_login') or usr_temp.get('usuario', '1337468')
@@ -930,13 +939,14 @@ def exibir_tela_login():
                         novo_token_sessao = secrets.token_hex(16)
                         usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
 
-                        # ✅ PERSISTÊNCIA DEFINITIVA DO MFA_SECRET NO BANCO DE DADOS
+                        # ✅ GRAVAÇÃO RÍGIDA DO MFA_SECRET, CONTATOS E TOKENS NO SUPABASE
                         salvar_usuario_universal_supabase(usr_login_final, {
                             "mfa_habilitado": True,
                             "mfa_secret": secret_totp,
                             "email_recuperacao": email_input,
                             "celular_recuperacao": celular_input,
                             "token_sessao_ativa": novo_token_sessao,
+                            "token_recuperacao": novo_token_sessao,
                             "primeiro_acesso": False
                         })
 
@@ -961,14 +971,13 @@ def exibir_tela_login():
                         st.success("✅ Perfil e 2FA salvos no Supabase com sucesso!")
                         st.rerun()
 
-        # 6. VALIDAÇÃO DE 2FA MULTICANAL (ESCOLHA ENTRE AUTHY, E-MAIL E WHATSAPP)
+        # 6. VALIDAÇÃO DE 2FA MULTICANAL (EXIBIDA NOS LOGINS FUTUROS)
         elif etapa == "VALIDAR_2FA":
             usr_temp = st.session_state.get("login_temp_dados", {})
             usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
             
             st.info(f"📲 **Autenticação em Dois Fatores (MFA)**\n\nMilitar: **{usr_temp.get('nome_guerra', 'Militar')}** ({usr_login_final})")
             
-            # 🔘 SELETOR MULTICANAL
             metodo_2fa = st.radio(
                 "Escolha o canal para validação do seu acesso:",
                 [
@@ -990,7 +999,7 @@ def exibir_tela_login():
                     st.success(f"✅ Código PIN enviado para {contato_mascarado}!")
 
                 if st.session_state.get("pin_2fa_canal_temp"):
-                    st.warning(f"📌 **PIN Temporário do Teste:** `{st.session_state['pin_2fa_canal_temp']}` (Digite este código no formulário abaixo)")
+                    st.warning(f"📌 **PIN Temporário do Teste:** `{st.session_state['pin_2fa_canal_temp']}` (Digite este código abaixo)")
 
             with st.form("form_validar_2fa_multicanal"):
                 pin_input = st.text_input("Código PIN de 6 dígitos:", placeholder="Ex: 849201", max_chars=6)
@@ -1025,6 +1034,7 @@ def exibir_tela_login():
 
                         salvar_usuario_universal_supabase(usr_login_final, {
                             "token_sessao_ativa": novo_token_sessao,
+                            "token_recuperacao": novo_token_sessao,
                             "mfa_habilitado": True
                         })
 
@@ -1927,6 +1937,7 @@ elif modulo == "GESTOES_USUARIOS":
                                 "mfa_secret": None,
                                 "senha_hash": None,
                                 "token_sessao_ativa": None,
+                                "token_recuperacao": None,
                                 "ativo": True,
                                 "tentativas_erradas": 0
                             }).or_(f"usuario_login.eq.{milit_reset_pm},usuario_login.eq.{pm_limpo}").execute()
