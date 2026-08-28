@@ -95,10 +95,10 @@ def gerar_hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
 # =========================================================================
-# 🛢️ FUNÇÃO DE PERSISTÊNCIA COMPLETA PARA TOKEN_RECUPERACAO E SUPABASE
+# 🛢️ FUNÇÕES DE PERSISTÊNCIA COMPLETA PARA SUPABASE
 # =========================================================================
 
-def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
+def salvar_usuario_universal_supabase(num_pm: str, payload: dict) -> bool:
     if not supabase:
         return False
         
@@ -107,7 +107,6 @@ def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
 
     payload_limpo = {k: v for k, v in payload.items() if v is not None}
     
-    # Mapeamento explícito para a coluna token_recuperacao
     if "senha_hash" in payload_limpo:
         payload_limpo["senha"] = payload_limpo["senha_hash"]
         
@@ -119,24 +118,19 @@ def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
     if not payload_limpo:
         return True
 
-    variantes_matricula = [pm_bruto, pm_limpo]
-    if pm_limpo.isdigit():
-        variantes_matricula.append(int(pm_limpo))
-
-    sucesso = False
-    for col_m in ["usuario_login", "usuario"]:
-        for val_m in variantes_matricula:
-            try:
-                res = supabase.table("usuarios").update(payload_limpo).eq(col_m, val_m).execute()
-                if res.data and len(res.data) > 0:
-                    sucesso = True
-                    break
-            except Exception:
-                pass
-        if sucesso:
-            break
-
-    return sucesso
+    try:
+        res = supabase.table("usuarios").update(payload_limpo).eq("usuario_login", pm_limpo).execute()
+        if res.data and len(res.data) > 0:
+            return True
+            
+        res_legacy = supabase.table("usuarios").update(payload_limpo).eq("usuario", pm_limpo).execute()
+        if res_legacy.data and len(res_legacy.data) > 0:
+            return True
+            
+        res_bruto = supabase.table("usuarios").update(payload_limpo).eq("usuario_login", pm_bruto).execute()
+        return bool(res_bruto.data)
+    except Exception:
+        return False
 
 def registrar_audit_log(operador_pm, alvo_pm, tipo_acao, descricao):
     if supabase:
@@ -410,7 +404,7 @@ Data: {datetime.date.today().strftime("%d de %B de %Y")}
 
 4. Por fim, informo que o sistema encontra-se munido de plano de contingência para exportação física e digital do Quadro Geral em formatos .PDF e .XLSX.
 
-5. Respeitosamente, submeto o presente documento à appreciation de Vossa Senhoria para fins de ciência e arquivamento junto à Seção de Planejamento e P/1.
+5. Respeitosamente, submeto o presente documento à apreciação de Vossa Senhoria para fins de ciência e arquivamento junto à Seção de Planejamento e P/1.
 
 
 __________________________________________
@@ -450,7 +444,7 @@ def gerar_pdf_parte_informativa(num_parte="12.4/2026", responsavel_nome="FELIPE 
     elements.append(Paragraph("<b>d. Proteção de Banco de Dados:</b> Criptografia HTTPS/TLS em trânsito e políticas de Row Level Security (RLS) no PostgreSQL/Supabase.", style_item))
 
     elements.append(Paragraph("4. Por fim, informo que o sistema encontra-se munido de plano de contingência para exportação do Quadro Geral em formatos .PDF e .XLSX.", style_body))
-    elements.append(Paragraph("5. Respeitosamente, submeto o presente documento à apreciação de Vossa Senhoria para fins de ciência e arquivamento.", style_body))
+    elements.append(Paragraph("5. Respeitosamente, submeto o presente documento à appreciation de Vossa Senhoria para fins de ciência e arquivamento.", style_body))
 
     elements.append(Spacer(1, 20))
     elements.append(Paragraph(f"__________________________________________<br/><b>{responsavel_nome}, {responsavel_posto}</b><br/>Programador / Gestor do SIOP", style_ass))
@@ -717,6 +711,7 @@ def exibir_tela_login():
                                         "unidade": st.session_state.get("cfg_unidade", "21º BPM"),
                                         "primeiro_acesso": False,
                                         "mfa_secret": "JBSWY3DPEHPK3PXP",
+                                        "mfa_habilitado": True,
                                         "email_recuperacao": "felip21uba@gmail.com",
                                         "celular_recuperacao": "32 988042901",
                                         "historico_senhas": ["1337468pm"]
@@ -725,7 +720,6 @@ def exibir_tela_login():
                             if usuario_valido:
                                 token_sessao_login = secrets.token_hex(16)
                                 
-                                # ✅ GERA E PERSISTE O TOKEN DE SESSÃO / RECUPERAÇÃO EM AMBAS AS COLUNAS NO SUPABASE
                                 salvar_usuario_universal_supabase(pm_limpo, {
                                     "tentativas_erradas": 0,
                                     "token_sessao_ativa": token_sessao_login,
@@ -742,17 +736,16 @@ def exibir_tela_login():
 
                                 eh_primeiro = usuario_valido.get("primeiro_acesso", False)
                                 secret_mfa = usuario_valido.get("mfa_secret")
+                                mfa_habilitado = usuario_valido.get("mfa_habilitado", False)
                                 
-                                # 🔒 LÓGICA DE REDIRECIONAMENTO RIGIDA E CORRIGIDA:
+                                # 🔒 LÓGICA DE REDIRECIONAMENTO CORRIGIDA
                                 if eh_primeiro:
                                     st.session_state["etapa_login"] = "TROCAR_SENHA"
                                     st.rerun()
-                                elif secret_mfa and str(secret_mfa).strip() != "":
-                                    # ✅ SE O 2FA JÁ FOI CADASTRADO NO PASSADO, VAI DIRETO PARA A VALIDAÇÃO DO CÓDIGO
+                                elif mfa_habilitado or (secret_mfa and str(secret_mfa).strip() != ""):
                                     st.session_state["etapa_login"] = "VALIDAR_2FA"
                                     st.rerun()
                                 else:
-                                    # Se NUNCA cadastrou 2FA, exibe a tela inicial de QR Code
                                     st.session_state["etapa_login"] = "CONFIGURAR_2FA"
                                     st.rerun()
                             else:
@@ -900,7 +893,8 @@ def exibir_tela_login():
                         st.session_state["login_temp_dados"]["historico_senhas"] = novo_historico
                         st.session_state["token_sessao_dispositivo"] = token_novo
                         
-                        if not usr_temp.get("mfa_secret"):
+                        secret_existente = usr_temp.get("mfa_secret")
+                        if not secret_existente or str(secret_existente).strip() == "":
                             st.session_state["etapa_login"] = "CONFIGURAR_2FA"
                         else:
                             st.session_state["etapa_login"] = "VALIDAR_2FA"
@@ -908,7 +902,7 @@ def exibir_tela_login():
                         st.success("✅ Nova senha cadastrada e persistida no Supabase!")
                         st.rerun()
 
-        # 5. CONFIGURAÇÃO DE 2FA (EXIBIDO APENAS NO PRIMEIRO CADASTRO)
+        # 5. CONFIGURAÇÃO DE 2FA (Apenas para primeiro acesso)
         elif etapa == "CONFIGURAR_2FA":
             usr_temp = st.session_state.get("login_temp_dados", {})
             num_pm_c = usr_temp.get('usuario_login') or usr_temp.get('usuario', '1337468')
@@ -920,7 +914,7 @@ def exibir_tela_login():
             provisioning_uri = totp.provisioning_uri(name=f"Nº {num_pm_c}", issuer_name="SIOP PMMG")
             qr_bytes = gerar_qrcode_base64(provisioning_uri)
 
-            st.info("📲 **Configuração Inicial do Autenticador e Contatos de Segurança**")
+            st.info("📲 **1º ACESSO: Configuração do Autenticador e Contatos**")
             c_qr1, c_qr2, c_qr3 = st.columns([1, 1.8, 1])
             with c_qr2:
                 st.image(qr_bytes, width=200, caption="Escaneie este QR Code no Authy ou Google Authenticator")
@@ -944,7 +938,6 @@ def exibir_tela_login():
                         novo_token_sessao = secrets.token_hex(16)
                         usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
 
-                        # ✅ GRAVAÇÃO RÍGIDA DO MFA_SECRET, CONTATOS E TOKENS NO SUPABASE
                         salvar_usuario_universal_supabase(usr_login_final, {
                             "mfa_habilitado": True,
                             "mfa_secret": secret_totp,
@@ -965,7 +958,8 @@ def exibir_tela_login():
                             "unidade": usr_temp.get("unidade", "21º BPM"),
                             "email_recuperacao": email_input,
                             "celular_recuperacao": celular_input,
-                            "mfa_secret": secret_totp
+                            "mfa_secret": secret_totp,
+                            "mfa_habilitado": True
                         }
                         
                         registrar_log_login(usr_login_final)
@@ -976,12 +970,12 @@ def exibir_tela_login():
                         st.success("✅ Perfil e 2FA salvos no Supabase com sucesso!")
                         st.rerun()
 
-        # 6. VALIDAÇÃO DE 2FA MULTICANAL (EXIBIDA NOS LOGINS FUTUROS)
+        # 6. VALIDAÇÃO DE 2FA MULTICANAL (Exibida a partir do 2º Acesso)
         elif etapa == "VALIDAR_2FA":
             usr_temp = st.session_state.get("login_temp_dados", {})
             usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
             
-            st.info(f"📲 **Autenticação em Dois Fatores (MFA)**\n\nMilitar: **{usr_temp.get('nome_guerra', 'Militar')}** ({usr_login_final})")
+            st.info(f"📲 **2º ACESSO EM DIANTE: Validação de Segurança (2FA)**\n\nMilitar: **{usr_temp.get('nome_guerra', 'Militar')}** ({usr_login_final})")
             
             metodo_2fa = st.radio(
                 "Escolha o canal para validação do seu acesso:",
@@ -1588,7 +1582,7 @@ if modulo == "ESCALAS":
             ])
 
             with aba_troca_direta:
-                st.markdown("##### 🤝 Solicitation de Permuta Direta (Requer Aceite do Substituto)")
+                st.markdown("##### 🤝 Solicitação de Permuta Direta (Requer Aceite do Substituto)")
                 st.caption("🔒 **Regra de Segurança:** Permutas são restritas a militares pertencentes à mesma Companhia/Subunidade e Município.")
                 
                 usr_cia_logado = usr.get("unidade", st.session_state.get("cfg_subunidade", "35ª CIA PM"))
@@ -2181,3 +2175,41 @@ elif modulo == "MEU_PERFIL":
         else:
             st.info("ℹ️ Nenhum evento crítico registrado para este usuário nas últimas sessões.")
 # --- FIM DO BLOCO MEU PERFIL ---
+
+# =========================================================================
+# 📦 ENCERRAMENTO DO PACOTE SIOP, PERSISTÊNCIA DE ESTADO E RODAPÉ
+# =========================================================================
+
+def finalizar_sessao_siop():
+    if st.session_state.get("autenticado") and st.session_state.get("usuario_dados"):
+        usr_militar = st.session_state["usuario_dados"].get("usuario")
+        st.session_state["ultima_atividade"] = datetime.datetime.now()
+        
+        token_dispositivo = st.session_state.get("token_sessao_dispositivo")
+        if token_dispositivo and usr_militar:
+            salvar_usuario_universal_supabase(usr_militar, {
+                "token_sessao_ativa": token_dispositivo
+            })
+
+def renderizar_rodape_corporativo():
+    st.markdown("<br><hr>", unsafe_allow_html=True)
+    col_f1, col_f2, col_f3 = st.columns([1.5, 2, 1.5])
+    
+    with col_f1:
+        unidade_txt = st.session_state.get("cfg_unidade", "21º BPM")
+        subunidade_txt = st.session_state.get("cfg_subunidade", "35ª CIA PM")
+        st.caption(f"🏛️ **{unidade_txt}** | {subunidade_txt}")
+        st.caption("PMMG - Polícia Militar de Minas Gerais")
+        
+    with col_f2:
+        st.caption("🛡️ **SIOP - Sistema Integrado de Operações** v2.4")
+        st.caption("Segurança da Informação, Compliance e Protocolos LGPD/PMMG")
+        
+    with col_f3:
+        if st.session_state.get("autenticado"):
+            usr_sessao = st.session_state["usuario_dados"].get("nome_guerra", "Operador")
+            st.caption(f"🟢 **Sessão Ativa:** {usr_sessao}")
+            st.caption(f"⏱️ **Acesso:** {datetime.datetime.now().strftime('%H:%M:%S')}")
+
+finalizar_sessao_siop()
+renderizar_rodape_corporativo()
