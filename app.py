@@ -907,21 +907,30 @@ def exibir_tela_login():
                     elif nova_senha == senha_inicial_proibida:
                         st.error(f"⚠️ A nova senha não pode ser a senha padrão inicial (`{senha_inicial_proibida}`).")
                     else:
-                        # ✅ GRAVAÇÃO RÍGIDA NO SUPABASE: Desativa o primeiro acesso no banco de dados
-                        salvar_usuario_universal_supabase(num_pm_c, {
+                        historico_atual = usr_temp.get("historico_senhas", []) or []
+                        novo_historico = ([hash_nova_senha] + historico_atual)[:3]
+                        token_novo = secrets.token_hex(16)
+
+                        # ✅ GRAVAÇÃO COMPLETA: Salva a hash, histórico e gera o token no banco
+                        sucesso_gravar = salvar_usuario_universal_supabase(num_pm_c, {
+                            "senha": hash_nova_senha,
                             "senha_hash": hash_nova_senha,
-                            "primeiro_acesso": False
+                            "primeiro_acesso": False,
+                            "token_sessao_ativa": token_novo,
+                            "historico_senhas": novo_historico
                         })
 
                         st.session_state["login_temp_dados"]["primeiro_acesso"] = False
                         st.session_state["login_temp_dados"]["senha_hash"] = hash_nova_senha
+                        st.session_state["login_temp_dados"]["historico_senhas"] = novo_historico
+                        st.session_state["token_sessao_dispositivo"] = token_novo
                         
                         if not usr_temp.get("mfa_secret"):
                             st.session_state["etapa_login"] = "CONFIGURAR_2FA"
                         else:
                             st.session_state["etapa_login"] = "VALIDAR_2FA"
 
-                        st.success("✅ Nova senha salva com sucesso no banco de dados!")
+                        st.success("✅ Nova senha e token gravados no banco de dados!")
                         st.rerun()
 
         # 5. CONFIGURAÇÃO DE 2FA (PRIMEIRO ACESSO)
@@ -2124,6 +2133,7 @@ elif modulo == "MEU_PERFIL":
         st.divider()
         st.markdown("##### 🔒 Alteração de Senha de Acesso")
         
+        # FORMULÁRIO EXCLUSIVO PARA ALTERAÇÃO DE SENHA NO PERFIL
         with st.form("form_atualizar_senha_usuario"):
             senha_atual = st.text_input("Senha Atual para Confirmação:", type="password", placeholder="Digite sua senha atual")
             nova_senha_p = st.text_input("Nova Senha Forte:", type="password", placeholder="Digite a nova senha")
@@ -2141,11 +2151,19 @@ elif modulo == "MEU_PERFIL":
                         st.error(f"⛔ **Requisito Não Atendido:** {msg_s}")
                     else:
                         hash_nova_p = gerar_hash_senha(nova_senha_p)
-                        payload_senha = {"senha_hash": hash_nova_p}
+                        historico_p = usr.get("historico_senhas", []) or []
+                        novo_hist_p = ([hash_nova_p] + historico_p)[:3]
+                        
+                        payload_senha = {
+                            "senha": hash_nova_p,
+                            "senha_hash": hash_nova_p,
+                            "historico_senhas": novo_hist_p
+                        }
                         
                         if salvar_usuario_universal_supabase(usr.get('usuario', '1337468'), payload_senha):
+                            usr["historico_senhas"] = novo_hist_p
                             registrar_audit_log(usr.get('usuario', '1337468'), usr.get('usuario', '1337468'), "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário no Perfil.")
-                            st.success("✅ Senha atualizada no banco de dados com sucesso!")
+                            st.success("✅ Senha e histórico de senhas atualizados no banco de dados com sucesso!")
                             st.rerun()
                         else:
                             st.error("⚠️ Falha ao salvar a nova senha no banco de dados.")
