@@ -68,9 +68,9 @@ st.markdown(f"""
         .stForm, div[data-testid="stForm"] {{ background-color: {form_bg} !important; border: 2px solid {border_cor} !important; border-radius: 12px !important; padding: 20px !important; }}
         .stForm label, p, h1, h2, h3, h4, h5, h6, span, label {{ color: {text_cor} !important; }}
         div[data-testid="stColumn"] button[kind="secondary"], div[data-testid="stElementContainer"] button[kind="secondary"] {{ background-color: {sec_bg} !important; border: 1px solid {sec_border} !important; opacity: 1 !important; }}
-        div[data-testid="stColumn"] button[kind="secondary"] p, div[data-testid="stElementContainer"] button[kind="secondary"] p, div[data-testid="stColumn"] button[kind="secondary"] div, div[data-testid="stElementContainer"] button[kind="secondary"] div {{ color: {sec_text} !important; font-weight: 700 !important; }}
+        div[data-testid="stColumn"] button[kind="secondary"] p, div[data-testid="stElementContainer"] button[kind="secondary"] p, div[data-testid="stElementContainer"] button[kind="secondary"] div, div[data-testid="stElementContainer"] button[kind="secondary"] div {{ color: {sec_text} !important; font-weight: 700 !important; }}
         div[data-testid="stColumn"] button[kind="primary"], div[data-testid="stElementContainer"] button[kind="primary"], .stFormSubmitButton > button {{ background-color: {pri_bg} !important; border: 2px solid {pri_border} !important; box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.15) !important; opacity: 1 !important; }}
-        div[data-testid="stColumn"] button[kind="primary"] p, div[data-testid="stElementContainer"] button[kind="primary"] p, div[data-testid="stElementContainer"] button[kind="primary"] div, div[data-testid="stElementContainer"] button[kind="primary"] div, .stFormSubmitButton > button p, .stFormSubmitButton > button div {{ color: {pri_text} !important; font-weight: 800 !important; }}
+        div[data-testid="stColumn"] button[kind="primary"] p, div[data-testid="stElementContainer"] button[kind="primary"] p, div[data-testid="stColumn"] button[kind="primary"] div, div[data-testid="stElementContainer"] button[kind="primary"] div, .stFormSubmitButton > button p, .stFormSubmitButton > button div {{ color: {pri_text} !important; font-weight: 800 !important; }}
         div[data-testid="stColumn"] button[kind="primary"]:hover, div[data-testid="stElementContainer"] button[kind="primary"]:hover, .stFormSubmitButton > button:hover {{ background-color: {sec_bg} !important; }}
         div[data-testid="stColumn"] button[kind="primary"]:hover p, div[data-testid="stElementContainer"] button[kind="primary"]:hover p {{ color: {sec_text} !important; }}
     </style>
@@ -95,7 +95,7 @@ def gerar_hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
 # =========================================================================
-# 🛢️ FUNÇÃO DE PERSISTÊNCIA UNIVERSAL E DUPLA MAPEADA PARA O SUPABASE
+# 🛢️ FUNÇÃO DE PERSISTÊNCIA COMPLETA PARA TOKEN_RECUPERACAO E SUPABASE
 # =========================================================================
 
 def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
@@ -107,12 +107,14 @@ def salvar_usuario_universal_supabase(num_pm: str, payload: dict):
 
     payload_limpo = {k: v for k, v in payload.items() if v is not None}
     
-    # Mapeamento duplo para garantir compatibilidade com qualquer variação de nome de coluna no banco
+    # Mapeamento explícito para a coluna token_recuperacao
     if "senha_hash" in payload_limpo:
         payload_limpo["senha"] = payload_limpo["senha_hash"]
         
-    if "token_sessao_ativa" in payload_limpo:
-        payload_limpo["token_recuperacao"] = payload_limpo["token_sessao_ativa"]
+    token_val = payload_limpo.get("token_sessao_ativa") or payload_limpo.get("token_recuperacao")
+    if token_val:
+        payload_limpo["token_sessao_ativa"] = token_val
+        payload_limpo["token_recuperacao"] = token_val
 
     if not payload_limpo:
         return True
@@ -600,6 +602,7 @@ if "pin_recuperacao_temp" not in st.session_state:
 if "pin_2fa_canal_temp" not in st.session_state:
     st.session_state["pin_2fa_canal_temp"] = None
 
+# TIMEOUT DINÂMICO DE SESSÃO
 MINUTOS_TIMEOUT = st.session_state.get("timeout_minutos_sessao", 30)
 if st.session_state["autenticado"]:
     tempo_inativo = (datetime.datetime.now() - st.session_state["ultima_atividade"]).total_seconds() / 60.0
@@ -740,14 +743,16 @@ def exibir_tela_login():
                                 eh_primeiro = usuario_valido.get("primeiro_acesso", False)
                                 secret_mfa = usuario_valido.get("mfa_secret")
                                 
-                                # 🛑 TRAVA DE REDIRECIONAMENTO: Se mfa_secret existe, NUNCA exibe QR Code novamente
+                                # 🔒 LÓGICA DE REDIRECIONAMENTO RIGIDA E CORRIGIDA:
                                 if eh_primeiro:
                                     st.session_state["etapa_login"] = "TROCAR_SENHA"
                                     st.rerun()
                                 elif secret_mfa and str(secret_mfa).strip() != "":
+                                    # ✅ SE O 2FA JÁ FOI CADASTRADO NO PASSADO, VAI DIRETO PARA A VALIDAÇÃO DO CÓDIGO
                                     st.session_state["etapa_login"] = "VALIDAR_2FA"
                                     st.rerun()
                                 else:
+                                    # Se NUNCA cadastrou 2FA, exibe a tela inicial de QR Code
                                     st.session_state["etapa_login"] = "CONFIGURAR_2FA"
                                     st.rerun()
                             else:
@@ -903,7 +908,7 @@ def exibir_tela_login():
                         st.success("✅ Nova senha cadastrada e persistida no Supabase!")
                         st.rerun()
 
-        # 5. CONFIGURAÇÃO DE 2FA (EXIBIDO APENAS UMA ÚNICA VEZ NO PRIMEIRO SETUP)
+        # 5. CONFIGURAÇÃO DE 2FA (EXIBIDO APENAS NO PRIMEIRO CADASTRO)
         elif etapa == "CONFIGURAR_2FA":
             usr_temp = st.session_state.get("login_temp_dados", {})
             num_pm_c = usr_temp.get('usuario_login') or usr_temp.get('usuario', '1337468')
@@ -1583,7 +1588,7 @@ if modulo == "ESCALAS":
             ])
 
             with aba_troca_direta:
-                st.markdown("##### 🤝 Solicitação de Permuta Direta (Requer Aceite do Substituto)")
+                st.markdown("##### 🤝 Solicitation de Permuta Direta (Requer Aceite do Substituto)")
                 st.caption("🔒 **Regra de Segurança:** Permutas são restritas a militares pertencentes à mesma Companhia/Subunidade e Município.")
                 
                 usr_cia_logado = usr.get("unidade", st.session_state.get("cfg_subunidade", "35ª CIA PM"))
@@ -1907,7 +1912,7 @@ elif modulo == "GESTOES_USUARIOS":
                 if st.button("🚫 Desconectar Dispositivo", use_container_width=True):
                     if supabase:
                         try:
-                            supabase.table("usuarios").update({"token_sessao_ativa": "REVOGADO"}).eq("usuario_login", milit_derrubar_pm).execute()
+                            supabase.table("usuarios").update({"token_sessao_ativa": "REVOGADO", "token_recuperacao": "REVOGADO"}).eq("usuario_login", milit_derrubar_pm).execute()
                         except Exception:
                             pass
                     registrar_audit_log(
