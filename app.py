@@ -776,7 +776,7 @@ if st.session_state["autenticado"]:
         except Exception:
             pass
 
-# TELA DE LOGIN INSTITUCIONAL (COM BLOQUEIO PERSISTENTE NO BANCO E 2FA MULTICANAL)
+# TELA DE LOGIN INSTITUCIONAL (COM BLOQUEIO PERSISTENTE NO BANCO E REDIRECIONAMENTO OBRIGATÓRIO DE 2FA)
 def exibir_tela_login():
     col_l1, col_l2, col_l3 = st.columns([1, 1.8, 1])
     with col_l2:
@@ -863,17 +863,18 @@ def exibir_tela_login():
                             if usuario_valido:
                                 salvar_usuario_universal_supabase(pm_limpo, {"tentativas_erradas": 0})
                                 st.session_state["login_temp_dados"] = usuario_valido
-                                st.session_state["autenticado"] = True
-                                st.session_state["usuario_dados"] = usuario_valido
-                                st.session_state["ultima_atividade"] = datetime.datetime.now()
                                 
                                 eh_primeiro = usuario_valido.get("primeiro_acesso", True) or (pwd_input == senha_padrao)
+                                
+                                # Redirecionamento correto para trocar senha, configurar 2FA ou validar 2FA
                                 if eh_primeiro and pwd_input == senha_padrao:
                                     st.session_state["etapa_login"] = "TROCAR_SENHA"
                                     st.rerun()
+                                elif not usuario_valido.get("mfa_secret"):
+                                    st.session_state["etapa_login"] = "CONFIGURAR_2FA"
+                                    st.rerun()
                                 else:
-                                    st.session_state["etapa_login"] = "CREDENCIAIS"
-                                    st.success("✅ Acesso autenticado com sucesso!")
+                                    st.session_state["etapa_login"] = "VALIDAR_2FA"
                                     st.rerun()
                             else:
                                 novas_tentativas = tentativas_banco + 1
@@ -992,7 +993,7 @@ def exibir_tela_login():
             with st.form("form_trocar_senha_historico"):
                 nova_senha = st.text_input("Nova Senha Forte:", type="password", placeholder="Ex: Pmmg@2026#Secure")
                 confirma_senha = st.text_input("Confirme a Nova Senha:", type="password", placeholder="Repita a nova senha")
-                btn_salvar_nova_senha = st.form_submit_button("💾 Salvar Nova Senha e Entrar")
+                btn_salvar_nova_senha = st.form_submit_button("💾 Salvar Nova Senha e Prosseguir")
 
                 if btn_salvar_nova_senha:
                     senha_valida, msg_erro = validar_senha_forte(nova_senha)
@@ -1011,9 +1012,13 @@ def exibir_tela_login():
                             "primeiro_acesso": False
                         })
 
-                        st.session_state["autenticado"] = True
-                        st.session_state["usuario_dados"] = usr_temp
-                        st.session_state["etapa_login"] = "CREDENCIAIS"
+                        st.session_state["login_temp_dados"]["primeiro_acesso"] = False
+                        
+                        if not usr_temp.get("mfa_secret"):
+                            st.session_state["etapa_login"] = "CONFIGURAR_2FA"
+                        else:
+                            st.session_state["etapa_login"] = "VALIDAR_2FA"
+
                         st.success("✅ Nova senha cadastrada com sucesso!")
                         st.rerun()
 
@@ -2140,7 +2145,6 @@ elif modulo == "MEU_PERFIL":
         "⚙️ Alterar Contatos & Senha",
         "📜 Histórico de Logins Recentes"
     ])
-
     with aba_p1:
         c_pf1, c_pf2 = st.columns(2)
         with c_pf1:
