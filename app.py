@@ -12,6 +12,7 @@ import pyotp
 import qrcode
 import random
 import hashlib
+import requests
 from supabase import create_client, Client
 
 # IMPORTS DO OPENPYXL (EXCEL)
@@ -61,18 +62,16 @@ st.markdown(f"""
         section[data-testid="stSidebar"] {{ background-color: {sidebar_bg} !important; border-right: 1px solid {border_cor} !important; }}
         section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3, section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] div {{ color: {text_cor} !important; }}
         div[data-testid="stExpander"] {{ background-color: {form_bg} !important; border: 1px solid {border_cor} !important; border-radius: 8px !important; }}
-        div[data-testid="stExpander"] summary, div[data-testid="stExpander"] details summary, div[data-testid="stExpander"] header {{ background-color: {expander_bg} !important; color: {text_cor} !important; border-radius: 8px !important; }}
-        div[data-testid="stExpander"] summary p, div[data-testid="stExpander"] summary span, div[data-testid="stExpander"] summary svg {{ color: {text_cor} !important; fill: {text_cor} !important; font-weight: 700 !important; }}
+        div[data-testid="stExpander"] summary, div[data-testid="stExpander"] details summary, div[data-testid="stExpander"] header {{ background-color: {expander_bg} !important; color: {text_cor} !important; }}
         div[data-baseweb="input"], div[data-baseweb="select"] > div {{ background-color: {input_bg} !important; color: {input_text} !important; border: 1px solid {border_cor} !important; border-radius: 6px !important; }}
         div[data-baseweb="input"] input, div[data-baseweb="select"] span {{ color: {input_text} !important; }}
         .stForm, div[data-testid="stForm"] {{ background-color: {form_bg} !important; border: 2px solid {border_cor} !important; border-radius: 12px !important; padding: 20px !important; }}
         .stForm label, p, h1, h2, h3, h4, h5, h6, span, label {{ color: {text_cor} !important; }}
         div[data-testid="stColumn"] button[kind="secondary"], div[data-testid="stElementContainer"] button[kind="secondary"] {{ background-color: {sec_bg} !important; border: 1px solid {sec_border} !important; opacity: 1 !important; }}
-        div[data-testid="stColumn"] button[kind="secondary"] p, div[data-testid="stElementContainer"] button[kind="secondary"] p, div[data-testid="stElementContainer"] button[kind="secondary"] div, div[data-testid="stElementContainer"] button[kind="secondary"] div {{ color: {sec_text} !important; font-weight: 700 !important; }}
+        div[data-testid="stColumn"] button[kind="secondary"] p, div[data-testid="stElementContainer"] button[kind="secondary"] p {{ color: {sec_text} !important; font-weight: 700 !important; }}
         div[data-testid="stColumn"] button[kind="primary"], div[data-testid="stElementContainer"] button[kind="primary"], .stFormSubmitButton > button {{ background-color: {pri_bg} !important; border: 2px solid {pri_border} !important; box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.15) !important; opacity: 1 !important; }}
-        div[data-testid="stColumn"] button[kind="primary"] p, div[data-testid="stElementContainer"] button[kind="primary"] p, div[data-testid="stColumn"] button[kind="primary"] div, div[data-testid="stElementContainer"] button[kind="primary"] div, .stFormSubmitButton > button p, .stFormSubmitButton > button div {{ color: {pri_text} !important; font-weight: 800 !important; }}
-        div[data-testid="stColumn"] button[kind="primary"]:hover, div[data-testid="stElementContainer"] button[kind="primary"]:hover, .stFormSubmitButton > button:hover {{ background-color: {sec_bg} !important; }}
-        div[data-testid="stColumn"] button[kind="primary"]:hover p, div[data-testid="stElementContainer"] button[kind="primary"]:hover p {{ color: {sec_text} !important; }}
+        div[data-testid="stColumn"] button[kind="primary"] p, div[data-testid="stElementContainer"] button[kind="primary"] p, .stFormSubmitButton > button p {{ color: {pri_text} !important; font-weight: 800 !important; }}
+        div[data-testid="stColumn"] button[kind="primary"]:hover, .stFormSubmitButton > button:hover {{ background-color: {sec_bg} !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -93,6 +92,40 @@ supabase = conectar_supabase()
 
 def gerar_hash_senha(senha: str) -> str:
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
+
+# =========================================================================
+# 📱 FUNÇÃO DE DISPARO REAL DE WHATSAPP VIA API
+# =========================================================================
+
+def enviar_whatsapp_api_real(celular_destino: str, codigo_pin: str) -> bool:
+    """Dispara a mensagem de texto real com o PIN de verificação via API de WhatsApp"""
+    api_url = st.secrets.get("WHATSAPP_API_URL")
+    api_key = st.secrets.get("WHATSAPP_API_KEY")
+
+    if not api_url or not api_key:
+        return False
+
+    num_limpo = re.sub(r"\D", "", str(celular_destino or ""))
+    if len(num_limpo) == 10 or len(num_limpo) == 11:
+        num_limpo = f"55{num_limpo}"
+
+    headers = {
+        "Content-Type": "application/json",
+        "apikey": api_key,
+        "Client-Token": api_key
+    }
+
+    payload = {
+        "number": num_limpo,
+        "text": f"🛡️ *SIOP - PMMG*\n\nSeu código de verificação para acesso ao sistema é: *{codigo_pin}*\n\n_Válido para este acesso. Não compartilhe com ninguém._"
+    }
+
+    try:
+        response = requests.post(api_url, json=payload, headers=headers, timeout=10)
+        return response.status_code in [200, 201]
+    except Exception as e:
+        print(f"Erro no envio do WhatsApp: {e}")
+        return False
 
 # =========================================================================
 # 🛢️ FUNÇÕES DE PERSISTÊNCIA COMPLETA PARA SUPABASE
@@ -118,19 +151,24 @@ def salvar_usuario_universal_supabase(num_pm: str, payload: dict) -> bool:
     if not payload_limpo:
         return True
 
-    try:
-        res = supabase.table("usuarios").update(payload_limpo).eq("usuario_login", pm_limpo).execute()
-        if res.data and len(res.data) > 0:
-            return True
-            
-        res_legacy = supabase.table("usuarios").update(payload_limpo).eq("usuario", pm_limpo).execute()
-        if res_legacy.data and len(res_legacy.data) > 0:
-            return True
-            
-        res_bruto = supabase.table("usuarios").update(payload_limpo).eq("usuario_login", pm_bruto).execute()
-        return bool(res_bruto.data)
-    except Exception:
-        return False
+    variantes = [pm_limpo, pm_bruto]
+    if pm_limpo.isdigit():
+        variantes.append(int(pm_limpo))
+
+    sucesso = False
+    for col in ["usuario_login", "usuario"]:
+        for val in variantes:
+            try:
+                res = supabase.table("usuarios").update(payload_limpo).eq(col, val).execute()
+                if res.data and len(res.data) > 0:
+                    sucesso = True
+                    break
+            except Exception:
+                pass
+        if sucesso:
+            break
+
+    return sucesso
 
 def registrar_audit_log(operador_pm, alvo_pm, tipo_acao, descricao):
     if supabase:
@@ -404,7 +442,7 @@ Data: {datetime.date.today().strftime("%d de %B de %Y")}
 
 4. Por fim, informo que o sistema encontra-se munido de plano de contingência para exportação física e digital do Quadro Geral em formatos .PDF e .XLSX.
 
-5. Respeitosamente, submeto o presente documento à apreciação de Vossa Senhoria para fins de ciência e arquivamento junto à Seção de Planejamento e P/1.
+5. Respeitosamente, submeto o presente documento à appreciation de Vossa Senhoria para fins de ciência e arquivamento junto à Seção de Planejamento e P/1.
 
 
 __________________________________________
@@ -738,7 +776,6 @@ def exibir_tela_login():
                                 secret_mfa = usuario_valido.get("mfa_secret")
                                 mfa_habilitado = usuario_valido.get("mfa_habilitado", False)
                                 
-                                # 🔒 LÓGICA DE REDIRECIONAMENTO CORRIGIDA
                                 if eh_primeiro:
                                     st.session_state["etapa_login"] = "TROCAR_SENHA"
                                     st.rerun()
@@ -975,7 +1012,7 @@ def exibir_tela_login():
             usr_temp = st.session_state.get("login_temp_dados", {})
             usr_login_final = usr_temp.get("usuario_login") or usr_temp.get("usuario", "1337468")
             
-            st.info(f"📲 **2º ACESSO EM DIANTE: Validação de Segurança (2FA)**\n\nMilitar: **{usr_temp.get('nome_guerra', 'Militar')}** ({usr_login_final})")
+            st.info(f"📲 **Validação de Segurança (2FA)**\n\nMilitar: **{usr_temp.get('nome_guerra', 'Militar')}** ({usr_login_final})")
             
             metodo_2fa = st.radio(
                 "Escolha o canal para validação do seu acesso:",
@@ -995,10 +1032,20 @@ def exibir_tela_login():
                 if st.button("📩 Enviar Código de Acesso", use_container_width=True):
                     pin_gerado_2fa = str(random.randint(100000, 999999))
                     st.session_state["pin_2fa_canal_temp"] = pin_gerado_2fa
-                    st.success(f"✅ Código PIN enviado para {contato_mascarado}!")
+                    
+                    # 🟢 ENVIO REAL VIA API WHATSAPP QUANDO DISPONÍVEL
+                    if "WhatsApp" in metodo_2fa or "SMS" in metodo_2fa:
+                        enviado_real = enviar_whatsapp_api_real(contato_destino, pin_gerado_2fa)
+                        if enviado_real:
+                            st.success(f"✅ Código PIN enviado com sucesso para o WhatsApp {contato_mascarado}!")
+                        else:
+                            st.warning(f"⚠️ API WhatsApp não configurada nos secrets. Modo contingência ativo.")
+                    else:
+                        st.success(f"✅ Código enviado para {contato_mascarado}!")
 
-                if st.session_state.get("pin_2fa_canal_temp"):
-                    st.warning(f"📌 **PIN Temporário do Teste:** `{st.session_state['pin_2fa_canal_temp']}` (Digite este código abaixo)")
+                # Exibe aviso estático do PIN temporário apenas se a API do WhatsApp não estiver configurada
+                if st.session_state.get("pin_2fa_canal_temp") and not st.secrets.get("WHATSAPP_API_URL"):
+                    st.warning(f"📌 **PIN Temporário do Teste:** `{st.session_state['pin_2fa_canal_temp']}` (Digite este código no formulário abaixo)")
 
             with st.form("form_validar_2fa_multicanal"):
                 pin_input = st.text_input("Código PIN de 6 dígitos:", placeholder="Ex: 849201", max_chars=6)
@@ -2177,19 +2224,8 @@ elif modulo == "MEU_PERFIL":
 # --- FIM DO BLOCO MEU PERFIL ---
 
 # =========================================================================
-# 📦 ENCERRAMENTO DO PACOTE SIOP, PERSISTÊNCIA DE ESTADO E RODAPÉ
+# 📦 RODAPÉ CORPORATIVO E FINALIZAÇÃO
 # =========================================================================
-
-def finalizar_sessao_siop():
-    if st.session_state.get("autenticado") and st.session_state.get("usuario_dados"):
-        usr_militar = st.session_state["usuario_dados"].get("usuario")
-        st.session_state["ultima_atividade"] = datetime.datetime.now()
-        
-        token_dispositivo = st.session_state.get("token_sessao_dispositivo")
-        if token_dispositivo and usr_militar:
-            salvar_usuario_universal_supabase(usr_militar, {
-                "token_sessao_ativa": token_dispositivo
-            })
 
 def renderizar_rodape_corporativo():
     st.markdown("<br><hr>", unsafe_allow_html=True)
@@ -2211,5 +2247,4 @@ def renderizar_rodape_corporativo():
             st.caption(f"🟢 **Sessão Ativa:** {usr_sessao}")
             st.caption(f"⏱️ **Acesso:** {datetime.datetime.now().strftime('%H:%M:%S')}")
 
-finalizar_sessao_siop()
 renderizar_rodape_corporativo()
