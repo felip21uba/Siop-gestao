@@ -2145,9 +2145,12 @@ elif modulo == "MEU_PERFIL":
         c_pf1, c_pf2 = st.columns(2)
         with c_pf1:
             st.info(f"👤 **Militar:** {usr['nome_guerra']}\n\n🆔 **Nº de Polícia / Login:** {usr['usuario']}\n\n🔰 **Cargo / Função:** {usr['cargo_funcao']}")
+        # --- INÍCIO DO BLOCO: EXIBIÇÃO DE PERFIL SEGURA ---
         with c_pf2:
-            st.success(f"🔐 **Nível de Permissão:** {usr['nivel_acesso']}\n\n🏛️ **Unidade Vinculada:** {usr['unidade']}\n\n📲 **Fator Autenticador (2FA):** Ativo (TOTP)")
-
+            unidade_exibicao = usr.get('unidade') or st.session_state.get('cfg_subunidade', '35ª CIA PM')
+            nivel_exibicao = usr.get('nivel_acesso', 'TROPA')
+            st.success(f"🔐 **Nível de Permissão:** {nivel_exibicao}\n\n🏛️ **Unidade Vinculada:** {unidade_exibicao}\n\n📲 **Fator Autenticador (2FA):** Ativo (TOTP)")
+# --- FIM DO BLOCO: EXIBIÇÃO DE PERFIL SEGURA ---
         st.markdown("##### 📌 O que meu nível de permissão permite fazer?")
         perm_desc = {
             "PROGRAMADOR": "Acesso total e irrestrito a todas as configurações do sistema, criação de tabelas, gestão multi-tenant e depuração.",
