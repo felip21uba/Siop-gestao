@@ -1,7 +1,10 @@
 streamlit
-pandas
 supabase
-reportlab
-openpyxl
 pyotp
 qrcode
+Pillow
+pandas
+openpyxl
+xlrd
+reportlab
+extra-streamlit-components
