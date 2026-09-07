@@ -25,6 +25,10 @@ def validar_requisitos_senha(senha):
         return False, "A senha deve conter ao menos um símbolo/caractere especial (@, #, $, !)."
     return True, "Senha válida!"
 
+def validar_senha_forte(senha):
+    """Alias de compatibilidade para módulos externos (ex: modules/perfil.py)."""
+    return validar_requisitos_senha(senha)
+
 def verificar_senha(senha_input, senha_db_texto, senha_db_hash):
     """Compara a senha digitada com Texto Puro e Hash SHA-256."""
     if not senha_input:

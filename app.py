@@ -1,6 +1,7 @@
 import streamlit as st
 import datetime
 import os
+import pyotp
 import urllib.parse
 import random
 import hashlib
@@ -209,11 +210,9 @@ if not st.session_state.get("autenticado", False):
             st.markdown("Cadastre uma **nova senha pessoal** e escaneie o QR Code no seu aplicativo **Google Authenticator ou Authy**.")
 
             if "temp_mfa_secret" not in st.session_state:
-                import pyotp
                 st.session_state["temp_mfa_secret"] = pyotp.random_base32()
             
             secret = st.session_state["temp_mfa_secret"]
-            import pyotp
             uri = pyotp.totp.TOTP(secret).provisioning_uri(
                 name=str(usr_temp.get('usuario_login', usr_temp.get('usuario', 'Militar'))), 
                 issuer_name="SIOP PMMG"
