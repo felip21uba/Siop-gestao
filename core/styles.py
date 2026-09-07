@@ -91,5 +91,28 @@ def aplicar_estilo_visual():
                 margin-top: 3px !important;
                 display: block !important;
             }}
+
+            /* ----------------------------------------------------------------- */
+            /* 🎯 AJUSTE DE TAMANHO DOS BOTÕES DE DROPDOWN (MULTISELECT/SELECT)  */
+            /* ----------------------------------------------------------------- */
+            div[data-baseweb="select"] div[role="button"],
+            div[data-baseweb="select"] [data-testid="stBaseButton-secondary"],
+            div[data-baseweb="select"] button {{
+                background-color: transparent !important;
+                border: none !important;
+                height: auto !important;
+                min-height: unset !important;
+                max-height: 38px !important;
+                padding: 0 8px !important;
+                margin: 0 !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+            }}
+
+            div[data-baseweb="select"] svg {{
+                width: 16px !important;
+                height: 16px !important;
+                fill: #c5a059 !important;
+            }}
         </style>
     """, unsafe_allow_html=True)
