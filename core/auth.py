@@ -26,7 +26,7 @@ def validar_requisitos_senha(senha):
     return True, "Senha válida!"
 
 def validar_senha_forte(senha):
-    """Alias de compatibilidade para módulos externos (ex: modules/perfil.py)."""
+    """Alias exigido pelo modules/perfil.py e módulos de gestão."""
     return validar_requisitos_senha(senha)
 
 def verificar_senha(senha_input, senha_db_texto, senha_db_hash):
@@ -60,8 +60,6 @@ def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
         return False
     try:
         payload = dados_usuario.copy()
-        
-        # Gera o hash da senha caso tenha sido alterada em texto puro
         if "senha" in payload and payload["senha"] and not payload.get("senha_hash"):
             payload["senha_hash"] = hashlib.sha256(str(payload["senha"]).encode('utf-8')).hexdigest()
 
