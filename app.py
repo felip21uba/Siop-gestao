@@ -1,10 +1,10 @@
-import streamlit as st
 import datetime
-import os
-import pyotp
-import urllib.parse
-import random
 import hashlib
+import os
+import random
+import urllib.parse
+import pyotp
+import streamlit as st
 
 from core.styles import aplicar_estilo_visual
 from core.database import (
@@ -16,7 +16,8 @@ from core.auth import (
     validar_codigo_authy,
     validar_requisitos_senha,
     verificar_senha,
-    buscar_usuario_para_login
+    buscar_usuario_para_login,
+    enviar_email_codigo
 )
 
 # IMPORTE DOS MÓDULOS OPERACIONAIS
@@ -134,13 +135,24 @@ if not st.session_state.get("autenticado", False):
                         if not identificador:
                             st.error("⚠️ Digite o Nº de Polícia ou E-mail.")
                         else:
-                            codigo_gerado = str(random.randint(100000, 999999))
-                            st.session_state["reset_token_dados"] = {
-                                "codigo_enviado": codigo_gerado,
-                                "usuario_id": identificador
-                            }
-                            st.toast("Código de redefinição processado pelo sistema.", icon="📩")
-                            st.rerun()
+                            usr_obj = buscar_usuario_para_login(identificador)
+                            email_alvo = usr_obj.get("email_recuperacao") if usr_obj else (identificador if "@" in identificador else None)
+
+                            if not email_alvo:
+                                st.error("❌ Nenhum e-mail de recuperação cadastrado para este usuário.")
+                            else:
+                                codigo_gerado = str(random.randint(100000, 999999))
+                                sucesso_envio, msg_envio = enviar_email_codigo(email_alvo, codigo_gerado)
+                                
+                                if sucesso_envio:
+                                    st.session_state["reset_token_dados"] = {
+                                        "codigo_enviado": codigo_gerado,
+                                        "usuario_id": identificador
+                                    }
+                                    st.toast(f"Código enviado para {email_alvo}!", icon="📩")
+                                    st.rerun()
+                                else:
+                                    st.error(f"🚨 {msg_envio}")
 
             else:
                 cod_correto = st.session_state["reset_token_dados"]["codigo_enviado"]
@@ -318,8 +330,17 @@ if not st.session_state.get("autenticado", False):
                 btn_cancelar_mfa = st.form_submit_button("❌ Voltar ao Login", use_container_width=True)
 
                 if btn_enviar_email:
-                    email_user = usr_temp.get("email_recuperacao", "seu e-mail cadastrado")
-                    st.success(f"📩 Código enviado para: {email_user}")
+                    email_user = usr_temp.get("email_recuperacao")
+                    if not email_user:
+                        st.error("⚠️ Nenhum e-mail de recuperação cadastrado.")
+                    else:
+                        cod_mfa_email = str(random.randint(100000, 999999))
+                        usr_temp["mfa_secret_temp_email"] = cod_mfa_email
+                        sucesso_mfa_e, msg_mfa_e = enviar_email_codigo(email_user, cod_mfa_email)
+                        if sucesso_mfa_e:
+                            st.success(f"📩 Código enviado para: {email_user}")
+                        else:
+                            st.error(f"🚨 {msg_mfa_e}")
 
                 if btn_cancelar_mfa:
                     st.session_state["mfa_pendente"] = False
@@ -328,7 +349,12 @@ if not st.session_state.get("autenticado", False):
 
                 if btn_validar_mfa:
                     secret = usr_temp.get("mfa_secret", "")
-                    if validar_codigo_authy(secret, codigo_authy):
+                    codigo_temp_email = usr_temp.get("mfa_secret_temp_email")
+                    
+                    valido_authy = validar_codigo_authy(secret, codigo_authy)
+                    valido_email = (codigo_temp_email and str(codigo_authy).strip() == str(codigo_temp_email).strip())
+
+                    if valido_authy or valido_email:
                         st.session_state["usuario_dados"] = usr_temp
                         st.session_state["autenticado"] = True
                         st.session_state["usuario_autenticado"] = True
@@ -337,7 +363,7 @@ if not st.session_state.get("autenticado", False):
                         st.toast(f"Acesso liberado! Bem-vindo, {usr_temp.get('nome_guerra')}!", icon="🟢")
                         st.rerun()
                     else:
-                        st.error("🚨 Token Authy incorreto ou expirado. Verifique seu app.")
+                        st.error("🚨 Token Authy/E-mail incorreto ou expirado. Verifique seu app ou caixa de entrada.")
 
         # ----------------------------------------------------------------------
         # FLUXO 4: TELA PRINCIPAL DE LOGIN (USUÁRIO E SENHA)
