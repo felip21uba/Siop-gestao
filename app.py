@@ -127,7 +127,7 @@ if not st.session_state.get("autenticado", False):
         # ----------------------------------------------------------------------
         if st.session_state.get("recuperar_senha_modo", False):
             st.subheader("🔑 Autoreset de Senha via E-mail")
-            st.info("Informe seu e-mail cadastrado. O sistema gerará um código de verificação para redefinir sua senha diretamente.")
+            st.info("Informe seu Nº de Polícia ou e-mail cadastrado para redefinir sua senha.")
 
             if "codigo_enviado" not in st.session_state["reset_token_dados"]:
                 with st.form("form_solicitar_codigo_email"):
@@ -135,7 +135,7 @@ if not st.session_state.get("autenticado", False):
                     
                     c_rec1, c_rec2 = st.columns(2)
                     with c_rec1:
-                        btn_gerar_codigo = st.form_submit_button("📩 Gerar Código de Reset", type="primary", use_container_width=True)
+                        btn_gerar_codigo = st.form_submit_button("📩 Solicitar Código de Reset", type="primary", use_container_width=True)
                     with c_rec2:
                         btn_voltar_rec = st.form_submit_button("⬅️ Voltar ao Login", use_container_width=True)
 
@@ -153,14 +153,14 @@ if not st.session_state.get("autenticado", False):
                                 "codigo_enviado": codigo_gerado,
                                 "usuario_id": identificador
                             }
-                            st.toast(f"Código de segurança gerado: {codigo_gerado}", icon="📩")
+                            st.toast("Código de redefinição processado pelo sistema.", icon="📩")
                             st.rerun()
 
             else:
                 cod_correto = st.session_state["reset_token_dados"]["codigo_enviado"]
                 usr_id = st.session_state["reset_token_dados"]["usuario_id"]
 
-                st.success(f"📧 **Código de verificação enviado!** (Para testes no VS Code, use o token: `{cod_correto}`)")
+                st.success("📧 **Instruções enviadas!** Insira o código de verificação de 6 dígitos recebido e cadastre sua nova senha:")
 
                 with st.form("form_confirmar_reset_email"):
                     cod_digitado = st.text_input("🔑 Digite o Código de 6 dígitos recebido:", max_chars=6).strip()
@@ -192,25 +192,20 @@ if not st.session_state.get("autenticado", False):
                                     st.session_state["tentativas_login"][usr_id] = 0
                                 st.session_state["bloqueados_temp"].discard(usr_id)
 
+                                # Atualiza diretamente no Supabase
                                 if supabase:
                                     try:
                                         supabase.table("usuarios").update({
                                             "senha": nova_senha, "ativo": True
-                                        }).or_(f"num_policia.eq.{usr_id},email.eq.{usr_id}").execute()
-                                    except Exception:
-                                        pass
+                                        }).or_(f"usuario_login.eq.{usr_id},email_recuperacao.eq.{usr_id}").execute()
+                                    except Exception as ex:
+                                        st.warning(f"Erro ao salvar no banco de dados: {ex}")
 
+                                # Atualiza no cache de sessão
                                 if "usuarios_teste_db" in st.session_state:
                                     if usr_id in st.session_state["usuarios_teste_db"]:
                                         st.session_state["usuarios_teste_db"][usr_id]["senha"] = nova_senha
                                         st.session_state["usuarios_teste_db"][usr_id]["ativo"] = True
-                                    else:
-                                        st.session_state["usuarios_teste_db"][usr_id] = {
-                                            "id": "1", "usuario": usr_id, "senha": nova_senha,
-                                            "nome_guerra": "DESENVOLVEDOR", "num_policia": usr_id,
-                                            "cargo_funcao": "CAP PM", "nivel_acesso": "PROGRAMADOR",
-                                            "unidade": "21º BPM", "mfa_habilitado": True, "ativo": True
-                                        }
 
                                 st.success("🎉 Senha redefinida e conta desbloqueada! Realize o login com a nova senha.")
                                 st.session_state["recuperar_senha_modo"] = False
@@ -230,7 +225,7 @@ if not st.session_state.get("autenticado", False):
             
             secret = st.session_state["temp_mfa_secret"]
             uri = pyotp.totp.TOTP(secret).provisioning_uri(
-                name=str(usr_temp.get('num_policia', 'Militar')), 
+                name=str(usr_temp.get('usuario_login', usr_temp.get('usuario', 'Militar'))), 
                 issuer_name="SIOP PMMG"
             )
             qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={urllib.parse.quote(uri)}"
@@ -249,8 +244,8 @@ if not st.session_state.get("autenticado", False):
                 st.caption("⚙️ **Regras:** Mínimo 6 caracteres (1 maiúscula, 1 minúscula e 1 símbolo).")
 
                 st.markdown("##### 📱 2. Dados de Contato & Validação 2FA:")
-                email_input = st.text_input("E-mail Funcional/Pessoal:", value=usr_temp.get("email", ""), placeholder="militar@gmail.com").strip()
-                celular_input = st.text_input("Celular / WhatsApp:", value=usr_temp.get("celular", ""), placeholder="(32) 90000-0000").strip()
+                email_input = st.text_input("E-mail Funcional/Pessoal:", value=usr_temp.get("email_recuperacao", ""), placeholder="militar@gmail.com").strip()
+                celular_input = st.text_input("Celular / WhatsApp:", value=usr_temp.get("celular_recuperacao", ""), placeholder="(32) 90000-0000").strip()
                 codigo_setup = st.text_input("🔑 Token de 6 dígitos gerado no App:", max_chars=6, placeholder="000000").strip()
 
                 col_s1, col_s2 = st.columns(2)
@@ -278,24 +273,24 @@ if not st.session_state.get("autenticado", False):
                         elif not validar_codigo_authy(secret, codigo_setup):
                             st.error("🚨 Código do aplicativo incorreto ou expirado.")
                         else:
-                            num_pol_str = str(usr_temp.get("num_policia", ""))
+                            num_pol_str = str(usr_temp.get("usuario_login", usr_temp.get("usuario", "")))
                             if supabase:
                                 try:
                                     supabase.table("usuarios").update({
                                         "senha": nova_senha, 
                                         "mfa_secret": secret, 
                                         "mfa_habilitado": True,
-                                        "email": email_input, 
-                                        "celular": celular_input
-                                    }).eq("num_policia", num_pol_str).execute()
+                                        "email_recuperacao": email_input, 
+                                        "celular_recuperacao": celular_input
+                                    }).eq("usuario_login", num_pol_str).execute()
                                 except Exception as ex:
-                                    pass
+                                    st.warning(f"Aviso ao salvar no banco: {ex}")
                             
                             usr_temp["senha"] = nova_senha
                             usr_temp["mfa_secret"] = secret
                             usr_temp["mfa_habilitado"] = True
-                            usr_temp["email"] = email_input
-                            usr_temp["celular"] = celular_input
+                            usr_temp["email_recuperacao"] = email_input
+                            usr_temp["celular_recuperacao"] = celular_input
 
                             st.session_state["usuarios_teste_db"][num_pol_str] = usr_temp
                             st.session_state["usuario_dados"] = usr_temp
@@ -331,7 +326,7 @@ if not st.session_state.get("autenticado", False):
                 btn_cancelar_mfa = st.form_submit_button("❌ Voltar ao Login", use_container_width=True)
 
                 if btn_enviar_email:
-                    email_user = usr_temp.get("email", "seu e-mail cadastrado")
+                    email_user = usr_temp.get("email_recuperacao", "seu e-mail cadastrado")
                     st.success(f"📩 Código enviado para: {email_user}")
 
                 if btn_cancelar_mfa:
@@ -373,33 +368,38 @@ if not st.session_state.get("autenticado", False):
                         usuario_encontrado = None
                         num_pol_key = str(usuario_input).strip()
 
-                        db_teste = st.session_state.get("usuarios_teste_db", {})
-                        if num_pol_key in db_teste:
-                            usuario_encontrado = db_teste[num_pol_key]
-                        elif supabase:
+                        # 1. Consulta no Supabase (Colunas reais: usuario_login, usuario, email_recuperacao)
+                        if supabase:
                             try:
                                 res = supabase.table("usuarios").select("*").or_(
-                                    f"usuario_login.eq.{usuario_input},usuario.eq.{usuario_input},email.eq.{usuario_input},num_policia.eq.{usuario_input}"
+                                    f"usuario_login.eq.{usuario_input},usuario.eq.{usuario_input},email_recuperacao.eq.{usuario_input}"
                                 ).execute()
                                 if res and res.data:
                                     usuario_encontrado = res.data[0]
                             except Exception:
                                 pass
 
+                        # 2. Consulta no Cache de Sessão
+                        if not usuario_encontrado:
+                            db_teste = st.session_state.get("usuarios_teste_db", {})
+                            if num_pol_key in db_teste:
+                                usuario_encontrado = db_teste[num_pol_key]
+
+                        # 3. Fallback de Contingência Local para Primeiro Teste
                         if not usuario_encontrado and usuario_input in ["1337468", "123456", "ADMIN", "PROGRAMADOR"]:
                             usuario_encontrado = {
                                 "id": "1",
                                 "usuario": usuario_input,
+                                "usuario_login": usuario_input,
                                 "senha": "1337469pm",
                                 "nome_guerra": "DESENVOLVEDOR",
-                                "num_policia": usuario_input,
                                 "cargo_funcao": "CAP PM",
                                 "nivel_acesso": "PROGRAMADOR",
                                 "unidade": "21º BPM",
                                 "mfa_habilitado": False,
                                 "mfa_secret": None,
-                                "email": "desenvolvedor@pmmg.mg.gov.br",
-                                "celular": "(32) 99999-9999",
+                                "email_recuperacao": "desenvolvedor@pmmg.mg.gov.br",
+                                "celular_recuperacao": "(32) 99999-9999",
                                 "ativo": True
                             }
                             st.session_state["usuarios_teste_db"][num_pol_key] = usuario_encontrado
@@ -416,7 +416,7 @@ if not st.session_state.get("autenticado", False):
                                 st.session_state["bloqueados_temp"].add(usuario_input)
                                 if supabase and usuario_encontrado.get("id") != "1":
                                     try:
-                                        supabase.table("usuarios").update({"ativo": False}).eq("num_policia", num_pol_key).execute()
+                                        supabase.table("usuarios").update({"ativo": False}).eq("usuario_login", num_pol_key).execute()
                                     except Exception:
                                         pass
                                 st.error("🚨 **Senha Incorreta! Tentativa 3 de 3.** Sua conta foi BLOQUEADA por segurança! Clique em 'Esqueci a Senha' abaixo para redefinir via e-mail.")
@@ -579,7 +579,7 @@ if modulo == "MINHA_ESCALA" and not eh_gestor_ou_admin:
     aba_escala, aba_mural = st.tabs(["📅 Minha Escala Individual", "🗣️ Mural & Trocas de Serviço"])
     
     with aba_escala:
-        num_policia_user = usr.get("num_policia", "")
+        num_policia_user = usr.get("usuario_login", usr.get("usuario", ""))
         nome_user = usr.get("nome_guerra", "Militar")
         st.info(f"👮‍♂️ Exibindo turnos e banco de horas cadastrados para **{nome_user} ({num_policia_user})**.")
         
