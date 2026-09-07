@@ -3,7 +3,7 @@ import hashlib
 from core.database import supabase
 
 def validar_codigo_authy(mfa_secret, codigo):
-    """Valida o token do Authy/Google Authenticator com tolerância de fuso/relógio."""
+    """Valida o token do Authy/Google Authenticator com janela de tolerância."""
     if not mfa_secret or not codigo:
         return False
     try:
@@ -14,7 +14,7 @@ def validar_codigo_authy(mfa_secret, codigo):
         return False
 
 def validar_requisitos_senha(senha):
-    """Aplica as regras corporativas de complexidade de senha."""
+    """Valida regras de complexidade de senha."""
     if len(senha) < 6:
         return False, "A senha deve ter no mínimo 6 caracteres."
     if not any(c.isupper() for c in senha):
@@ -26,7 +26,7 @@ def validar_requisitos_senha(senha):
     return True, "Senha válida!"
 
 def verificar_senha(senha_input, senha_db_texto, senha_db_hash):
-    """Valida a senha digitada comparando com Texto Puro e Hash SHA-256."""
+    """Compara a senha digitada com Texto Puro e Hash SHA-256."""
     if not senha_input:
         return False
     senha_hash_input = hashlib.sha256(senha_input.encode('utf-8')).hexdigest()
