@@ -1,6 +1,21 @@
+# Byte-compiled / unoptimized / DLL files
 __pycache__/
 *.py[cod]
+*$py.class
+
+# Environments
 .venv/
 venv/
+ENV/
+env/
+
+# Streamlit Local Secrets and Configuration
 .streamlit/secrets.toml
+
+# Environment Variables
 .env
+
+# Exported PDFs and Excel files
+*.pdf
+*.xlsx
+*.csv
