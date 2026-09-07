@@ -12,6 +12,14 @@ MESES_MAP = {
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 
+# Siglas de afastamento institucional que abatem os dias úteis/efetivos do mês
+SIGLAS_DIAS_NEUTROS = [
+    "FER", "FERIAS", "FÉRIAS", "FE",
+    "LTSP", "LM", "DISP", "DISPENSA", "DIS",
+    "CURSO", "ATEST", "ATESTADO",
+    "LUTO", "NUPCIAS", "NÚPCIAS", "DN", "DNT"
+]
+
 def registrar_log_auditoria_local(acao, detalhe):
     """Função local para registrar ações no histórico."""
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -201,7 +209,7 @@ def renderizar_passo7():
                 column_config={
                     "Nº PM": st.column_config.TextColumn("Nº PM", disabled=True),
                     "MILITAR": st.column_config.TextColumn("MILITAR", disabled=True),
-                    "Carga Reduzida (80h)": st.column_config.CheckboxColumn("Carga Reduzida (80h)", help="Altera meta para 80h"),
+                    "Carga Reduzida (80h)": st.column_config.CheckboxColumn("Carga Reduzida (80h)", help="Altera meta base para 80h"),
                     "Saldo Anterior (h)": st.column_config.NumberColumn("Saldo Anterior (h)", step=1.0, format="%.1f h")
                 },
                 hide_index=True,
@@ -279,37 +287,50 @@ def renderizar_passo7():
                             except:
                                 pass
                                 
-                    meta_base_acumulada = (80.0 if eh_reduzida else 160.0) * qtd_meses
                     total_trabalhado_escala = 0.0
+                    meta_efetiva_acumulada = 0.0
                     dias_neutros_total = 0
                     
                     for mes_calc in meses_selecionados_num:
-                        for d in range(1, calendar.monthrange(m_ano, mes_calc)[1] + 1):
+                        dias_no_mes = calendar.monthrange(m_ano, mes_calc)[1]
+                        carga_base_mes = 80.0 if eh_reduzida else 160.0
+                        taxa_diaria = carga_base_mes / float(dias_no_mes)
+                        
+                        dias_neutros_mes = 0
+                        
+                        for d in range(1, dias_no_mes + 1):
                             teve_dn = False
                             horas_no_dia = 0.0
                             
                             for eq in equipes_por_militar.get(m_id, []):
                                 val = grade.get(f"{m_id}_{eq}_{m_ano}_{mes_calc:02d}_{d:02d}", "F")
+                                val_str = str(val).upper().strip() if val else ""
                                 
-                                if val in ["DN", "DNT"] or "(DNT)" in str(val): 
+                                # Identifica se o dia possui afastamento neutro (Férias, Licenças, Atestado, Curso, Dispensa)
+                                if any(neutro in val_str for neutro in SIGLAS_DIAS_NEUTROS):
                                     teve_dn = True
-                                    
-                                if val and val not in ["", "F", "D", "X", "FE", "LM", "DIS", "DN"]: 
+                                
+                                # Soma as horas trabalhadas (desconsidera folgas 'F', descansos 'D' e dias neutros)
+                                if val_str and val_str not in ["", "F", "D", "X"] and not any(neutro in val_str for neutro in SIGLAS_DIAS_NEUTROS):
                                     horas_no_dia += 12.0
                                     
-                            if teve_dn: 
-                                dias_neutros_total += 1
+                            if teve_dn:
+                                dias_neutros_mes += 1
                                 
                             total_trabalhado_escala += horas_no_dia
+                        
+                        # Cálculo oficial: (Dias do Mês - Dias Neutros) * Taxa Diária
+                        dias_efetivos_mes = dias_no_mes - dias_neutros_mes
+                        meta_efetiva_acumulada += (dias_efetivos_mes * taxa_diaria)
+                        dias_neutros_total += dias_neutros_mes
                     
-                    meta_efetiva = max(0.0, meta_base_acumulada - (dias_neutros_total * (4.0 if eh_reduzida else 8.0)))
-                    saldo_periodo = (total_trabalhado_escala + horas_avulsas_totais) - meta_efetiva
+                    saldo_periodo = (total_trabalhado_escala + horas_avulsas_totais) - meta_efetiva_acumulada
                     
                     extrato_dados.append({
                         "Nº PM": m.get("num_policia", ""), 
                         "MILITAR": nome_formatado, 
                         "CARGA/MÊS": "80h" if eh_reduzida else "160h", 
-                        "META APURADA": f"{meta_efetiva:.0f}h", 
+                        "META APURADA": f"{meta_efetiva_acumulada:.1f}h", 
                         "ESCALA (P5)": f"{total_trabalhado_escala:.0f}h", 
                         "AVULSAS": f"{horas_avulsas_totais:.1f}h", 
                         "SALDO PERÍODO": f"{saldo_periodo:+.1f}h", 

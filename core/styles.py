@@ -32,5 +32,64 @@ def aplicar_estilo_visual():
             div[data-testid="stColumn"] button[kind="primary"], div[data-testid="stElementContainer"] button[kind="primary"], .stFormSubmitButton > button {{ background-color: {pri_bg} !important; border: 2px solid {pri_border} !important; box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.15) !important; opacity: 1 !important; }}
             div[data-testid="stColumn"] button[kind="primary"] p, div[data-testid="stElementContainer"] button[kind="primary"] p, .stFormSubmitButton > button p {{ color: {pri_text} !important; font-weight: 800 !important; }}
             div[data-testid="stColumn"] button[kind="primary"]:hover, .stFormSubmitButton > button:hover {{ background-color: {sec_bg} !important; }}
+
+            /* ----------------------------------------------------------------- */
+            /* 🪖 CORREÇÃO VISUAL DOS CARDS DE MILITARES (PASSO 3 E SELEÇÕES)    */
+            /* ----------------------------------------------------------------- */
+            .grid-efetivo {{
+                display: grid !important;
+                grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+                gap: 10px !important;
+                margin-top: 10px !important;
+                margin-bottom: 15px !important;
+            }}
+
+            .card-militar-item, div[data-testid="stColumn"] button {{
+                background-color: #a38f51 !important;
+                color: #0f172a !important;
+                padding: 8px 10px !important;
+                border-radius: 8px !important;
+                text-align: center !important;
+                font-weight: 700 !important;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25) !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: center !important;
+                align-items: center !important;
+                min-height: 58px !important;
+                height: auto !important;
+                white-space: normal !important;
+                word-break: break-word !important;
+                overflow: visible !important;
+            }}
+
+            /* Força a quebra de linha dos textos de botões/cards sem truncar com '...' */
+            div[data-testid="stColumn"] button p, 
+            div[data-testid="stElementContainer"] button p,
+            .card-militar-item p,
+            .card-militar-item span {{
+                white-space: normal !important;
+                word-break: break-word !important;
+                text-overflow: unset !important;
+                overflow: visible !important;
+                line-height: 1.25 !important;
+                font-size: 0.82rem !important;
+            }}
+
+            .card-militar-item .grad-nome {{
+                font-size: 0.82rem !important;
+                line-height: 1.15 !important;
+                text-transform: uppercase !important;
+                color: #0f172a !important;
+                word-wrap: break-word !important;
+            }}
+
+            .card-militar-item .num-pm {{
+                font-size: 0.72rem !important;
+                font-weight: 600 !important;
+                color: #1e293b !important;
+                margin-top: 3px !important;
+                display: block !important;
+            }}
         </style>
     """, unsafe_allow_html=True)

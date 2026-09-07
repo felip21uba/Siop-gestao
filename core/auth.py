@@ -49,3 +49,20 @@ def buscar_usuario_para_login(usuario_input):
     except Exception:
         pass
     return None
+
+def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
+    """Salva ou atualiza os dados de um usuário na tabela 'usuarios' do Supabase."""
+    if not supabase or not dados_usuario:
+        return False
+    try:
+        payload = dados_usuario.copy()
+        
+        # Gera o hash da senha caso tenha sido alterada em texto puro
+        if "senha" in payload and payload["senha"] and not payload.get("senha_hash"):
+            payload["senha_hash"] = hashlib.sha256(str(payload["senha"]).encode('utf-8')).hexdigest()
+
+        supabase.table("usuarios").upsert(payload).execute()
+        return True
+    except Exception as e:
+        print(f"Erro ao salvar usuário no Supabase: {e}")
+        return False
