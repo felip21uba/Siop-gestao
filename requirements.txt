@@ -1,7 +1,11 @@
-streamlit
-supabase
-pyotp
-pypdf
-pandas
-qrcode
-pillow
+tco requerimentostreamlit>=1.31.0
+supabase>=2.3.0
+pyotp>=2.9.0
+qrcode>=7.4.2
+Pillow>=10.2.0
+pandas>=2.1.4
+openpyxl>=3.1.2
+xlrd>=2.0.1
+reportlab>=4.0.9
+extra-streamlit-components>=0.1.70
+xlsxwriter>=3.1.9
