@@ -1,5 +1,8 @@
 import pyotp
 import hashlib
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import streamlit as st
 from core.database import supabase
 
@@ -107,3 +110,44 @@ def atualizar_senha_usuario(usuario_id: str, nova_senha: str) -> bool:
 def obter_usuario_logado():
     """Retorna os dados do usuário atualmente autenticado na sessão."""
     return st.session_state.get("usuario_dados", {})
+
+# =========================================================================
+# 4. DISPARO DE E-MAIL REAL (SMTP)
+# =========================================================================
+def enviar_email_codigo(email_destino: str, codigo: str) -> tuple[bool, str]:
+    """Envia o código de verificação/redefinição via servidor SMTP."""
+    try:
+        smtp_server = st.secrets.get("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = int(st.secrets.get("SMTP_PORT", 587))
+        smtp_user = st.secrets.get("SMTP_USER")
+        smtp_password = st.secrets.get("SMTP_PASSWORD")
+
+        if not smtp_user or not smtp_password:
+            return False, "Credenciais SMTP não configuradas no secrets.toml / Secrets da Nuvem."
+
+        msg = MIMEMultipart()
+        msg['From'] = f"SIOP PMMG <{smtp_user}>"
+        msg['To'] = email_destino
+        msg['Subject'] = f"🔑 Código de Acesso SIOP: {codigo}"
+
+        corpo = f"""
+        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #cbd5e1; border-radius: 8px;">
+            <h2 style="color: #1e3a8a;">🛡️ SIOP - Sistema Integrado de Operações</h2>
+            <p>Seu código de verificação / redefinição de senha é:</p>
+            <div style="font-size: 26px; font-weight: bold; letter-spacing: 5px; color: #0f172a; background: #f1f5f9; padding: 12px; width: fit-content; border-radius: 6px; margin: 15px 0;">
+                {codigo}
+            </div>
+            <p style="font-size: 12px; color: #64748b;">Se você não solicitou esta alteração, ignore este e-mail.</p>
+        </div>
+        """
+        msg.attach(MIMEText(corpo, 'html'))
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.send_message(msg)
+        server.quit()
+
+        return True, "E-mail enviado com sucesso!"
+    except Exception as e:
+        return False, f"Erro no envio de e-mail: {str(e)}"
