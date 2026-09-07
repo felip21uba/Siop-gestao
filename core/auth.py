@@ -112,18 +112,21 @@ def obter_usuario_logado():
     return st.session_state.get("usuario_dados", {})
 
 # =========================================================================
-# 4. DISPARO DE E-MAIL REAL (SMTP)
+# 4. DISPARO DE E-MAIL REAL (SMTP COM LEITURA FLEXÍVEL DE SECRETS)
 # =========================================================================
 def enviar_email_codigo(email_destino: str, codigo: str) -> tuple[bool, str]:
     """Envia o código de verificação/redefinição via servidor SMTP."""
     try:
-        smtp_server = st.secrets.get("SMTP_SERVER", "smtp.gmail.com")
-        smtp_port = int(st.secrets.get("SMTP_PORT", 587))
-        smtp_user = st.secrets.get("SMTP_USER")
-        smtp_password = st.secrets.get("SMTP_PASSWORD")
+        # Tenta ler do bloco [email] do secrets.toml ou do nível raiz
+        email_cfg = st.secrets.get("email", {})
+        
+        smtp_server = email_cfg.get("smtp_server") or st.secrets.get("SMTP_SERVER", "smtp.gmail.com")
+        smtp_port = int(email_cfg.get("smtp_port") or st.secrets.get("SMTP_PORT", 587))
+        smtp_user = email_cfg.get("email_remetente") or st.secrets.get("SMTP_USER") or st.secrets.get("EMAIL_REMETENTE")
+        smtp_password = email_cfg.get("email_senha") or st.secrets.get("SMTP_PASSWORD") or st.secrets.get("EMAIL_SENHA")
 
         if not smtp_user or not smtp_password:
-            return False, "Credenciais SMTP não configuradas no secrets.toml / Secrets da Nuvem."
+            return False, "Credenciais de e-mail não encontradas no secrets.toml."
 
         msg = MIMEMultipart()
         msg['From'] = f"SIOP PMMG <{smtp_user}>"
