@@ -1,7 +1,7 @@
-supabase==2.3.0
-pyotp==2.9.0
-pypdf==4.0.0
-pandas==2.2.0
-qrcode==7.4.2
-pillow==10.2.0
-reportlab==4.1.0
+supabase
+pyotp
+pypdf
+pandas
+qrcode
+pillow
+reportlab
