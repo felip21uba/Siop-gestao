@@ -1,7 +1,6 @@
 import streamlit as st
 import datetime
 import os
-import pyotp
 import urllib.parse
 import random
 import hashlib
@@ -11,6 +10,12 @@ from core.database import (
     supabase, 
     carregar_militares_supabase, 
     registrar_audit_log
+)
+from core.auth import (
+    validar_codigo_authy,
+    validar_requisitos_senha,
+    verificar_senha,
+    buscar_usuario_para_login
 )
 
 # IMPORTE DOS MÓDULOS OPERACIONAIS
@@ -52,7 +57,6 @@ if "reset_token_dados" not in st.session_state:
 if "usuarios_teste_db" not in st.session_state:
     st.session_state["usuarios_teste_db"] = {}
 
-
 # CONSTANTES VISUAIS INSTITUCIONAIS
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
@@ -61,26 +65,6 @@ def obter_imagem_brasao():
     if os.path.exists(CAMINHO_BRASAO_LOCAL):
         return CAMINHO_BRASAO_LOCAL
     return URL_BRASAO_PADRAO
-
-def validar_codigo_authy(mfa_secret, codigo):
-    if not mfa_secret or not codigo:
-        return False
-    try:
-        totp = pyotp.TOTP(mfa_secret)
-        return totp.verify(str(codigo).strip())
-    except Exception:
-        return False
-
-def validar_requisitos_senha(senha):
-    if len(senha) < 6:
-        return False, "A senha deve ter no mínimo 6 caracteres."
-    if not any(c.isupper() for c in senha):
-        return False, "A senha deve conter ao menos uma letra maiúscula (A-Z)."
-    if not any(c.islower() for c in senha):
-        return False, "A senha deve conter ao menos uma letra minúscula (a-z)."
-    if not any(not c.isalnum() for c in senha):
-        return False, "A senha deve conter ao menos um símbolo/caractere especial (@, #, $, !)."
-    return True, "Senha válida!"
 
 # ==============================================================================
 # ⏱️ TRAVA DE INATIVIDADE (EXPIRAR SESSÃO APÓS 3 MINUTOS)
@@ -225,9 +209,11 @@ if not st.session_state.get("autenticado", False):
             st.markdown("Cadastre uma **nova senha pessoal** e escaneie o QR Code no seu aplicativo **Google Authenticator ou Authy**.")
 
             if "temp_mfa_secret" not in st.session_state:
+                import pyotp
                 st.session_state["temp_mfa_secret"] = pyotp.random_base32()
             
             secret = st.session_state["temp_mfa_secret"]
+            import pyotp
             uri = pyotp.totp.TOTP(secret).provisioning_uri(
                 name=str(usr_temp.get('usuario_login', usr_temp.get('usuario', 'Militar'))), 
                 issuer_name="SIOP PMMG"
@@ -370,27 +356,15 @@ if not st.session_state.get("autenticado", False):
                     elif usuario_input in st.session_state["bloqueados_temp"]:
                         st.error("🔒 **Conta Bloqueada por Excesso de Tentativas Incorretas (3/3).** Use a redefinição de senha via e-mail abaixo.")
                     else:
-                        usuario_encontrado = None
                         num_pol_key = str(usuario_input).strip()
+                        usuario_encontrado = buscar_usuario_para_login(usuario_input)
 
-                        # 1. Consulta no Supabase
-                        if supabase:
-                            try:
-                                res = supabase.table("usuarios").select("*").or_(
-                                    f"usuario_login.eq.{usuario_input},usuario.eq.{usuario_input},email_recuperacao.eq.{usuario_input}"
-                                ).execute()
-                                if res and res.data:
-                                    usuario_encontrado = res.data[0]
-                            except Exception:
-                                pass
-
-                        # 2. Consulta no Cache de Sessão
+                        # Cache ou Fallback Local
                         if not usuario_encontrado:
                             db_teste = st.session_state.get("usuarios_teste_db", {})
                             if num_pol_key in db_teste:
                                 usuario_encontrado = db_teste[num_pol_key]
 
-                        # 3. Fallback Local
                         if not usuario_encontrado and usuario_input in ["1337468", "123456", "ADMIN", "PROGRAMADOR"]:
                             usuario_encontrado = {
                                 "id": "1",
@@ -414,18 +388,10 @@ if not st.session_state.get("autenticado", False):
                         elif not usuario_encontrado.get("ativo", True):
                             st.error("🔒 Sua conta está bloqueada no banco de dados. Utilize o reset por e-mail abaixo.")
                         else:
-                            # Validação híbrida (Texto Puro ou Hash SHA-256)
-                            senha_hash_input = hashlib.sha256(senha_input.encode('utf-8')).hexdigest()
                             senha_db_texto = usuario_encontrado.get("senha")
                             senha_db_hash = usuario_encontrado.get("senha_hash")
 
-                            senha_correta = (
-                                senha_input == senha_db_texto or
-                                senha_hash_input == senha_db_hash or
-                                senha_hash_input == senha_db_texto
-                            )
-
-                            if not senha_correta:
+                            if not verificar_senha(senha_input, senha_db_texto, senha_db_hash):
                                 erros_atuais = st.session_state["tentativas_login"].get(usuario_input, 0) + 1
                                 st.session_state["tentativas_login"][usuario_input] = erros_atuais
 
