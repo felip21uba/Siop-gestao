@@ -1,19 +1,29 @@
 import pyotp
 import hashlib
+import streamlit as st
 from core.database import supabase
 
-def validar_codigo_authy(mfa_secret, codigo):
-    """Valida o token do Authy/Google Authenticator com janela de tolerância."""
-    if not mfa_secret or not codigo:
-        return False
-    try:
-        codigo_limpo = str(codigo).replace(" ", "").strip()
-        totp = pyotp.TOTP(mfa_secret)
-        return totp.verify(codigo_limpo, valid_window=1)
-    except Exception:
-        return False
+# =========================================================================
+# 1. HASHING E VERIFICAÇÃO DE SENHAS
+# =========================================================================
+def gerar_hash_senha(senha: str) -> str:
+    """Gera o hash SHA-256 de uma senha em texto puro."""
+    if not senha:
+        return ""
+    return hashlib.sha256(str(senha).encode('utf-8')).hexdigest()
 
-def validar_requisitos_senha(senha):
+def verificar_senha(senha_input, senha_db_texto, senha_db_hash):
+    """Compara a senha digitada com Texto Puro e Hash SHA-256."""
+    if not senha_input:
+        return False
+    senha_hash_input = gerar_hash_senha(senha_input)
+    return (
+        senha_input == senha_db_texto or
+        senha_hash_input == senha_db_hash or
+        senha_hash_input == senha_db_texto
+    )
+
+def validar_requisitos_senha(senha: str):
     """Valida regras de complexidade de senha."""
     if len(senha) < 6:
         return False, "A senha deve ter no mínimo 6 caracteres."
@@ -25,24 +35,34 @@ def validar_requisitos_senha(senha):
         return False, "A senha deve conter ao menos um símbolo/caractere especial (@, #, $, !)."
     return True, "Senha válida!"
 
-def validar_senha_forte(senha):
-    """Alias exigido pelo modules/perfil.py e módulos de gestão."""
+def validar_senha_forte(senha: str):
+    """Alias de compatibilidade para módulos de perfil e gestão."""
     return validar_requisitos_senha(senha)
 
-def verificar_senha(senha_input, senha_db_texto, senha_db_hash):
-    """Compara a senha digitada com Texto Puro e Hash SHA-256."""
-    if not senha_input:
+# =========================================================================
+# 2. MFA / AUTHY / TOTP
+# =========================================================================
+def validar_codigo_authy(mfa_secret: str, codigo: str) -> bool:
+    """Valida o token do Authy/Google Authenticator com janela de tolerância."""
+    if not mfa_secret or not codigo:
         return False
-    senha_hash_input = hashlib.sha256(senha_input.encode('utf-8')).hexdigest()
-    return (
-        senha_input == senha_db_texto or
-        senha_hash_input == senha_db_hash or
-        senha_hash_input == senha_db_texto
-    )
+    try:
+        codigo_limpo = str(codigo).replace(" ", "").strip()
+        totp = pyotp.TOTP(mfa_secret)
+        return totp.verify(codigo_limpo, valid_window=1)
+    except Exception:
+        return False
 
-def buscar_usuario_para_login(usuario_input):
+def gerar_secret_mfa() -> str:
+    """Gera uma nova chave base32 para MFA."""
+    return pyotp.random_base32()
+
+# =========================================================================
+# 3. BANCO DE DADOS & GESTÃO DE USUÁRIOS
+# =========================================================================
+def buscar_usuario_para_login(usuario_input: str):
     """Consulta o registro do usuário pelas colunas usuario_login, usuario ou email_recuperacao."""
-    if not supabase:
+    if not supabase or not usuario_input:
         return None
     try:
         res = supabase.table("usuarios").select("*").or_(
@@ -61,10 +81,29 @@ def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
     try:
         payload = dados_usuario.copy()
         if "senha" in payload and payload["senha"] and not payload.get("senha_hash"):
-            payload["senha_hash"] = hashlib.sha256(str(payload["senha"]).encode('utf-8')).hexdigest()
+            payload["senha_hash"] = gerar_hash_senha(payload["senha"])
 
         supabase.table("usuarios").upsert(payload).execute()
         return True
     except Exception as e:
         print(f"Erro ao salvar usuário no Supabase: {e}")
         return False
+
+def atualizar_senha_usuario(usuario_id: str, nova_senha: str) -> bool:
+    """Atualiza a senha e o hash de um usuário específico."""
+    if not supabase or not usuario_id or not nova_senha:
+        return False
+    try:
+        hash_nova = gerar_hash_senha(nova_senha)
+        supabase.table("usuarios").update({
+            "senha": nova_senha,
+            "senha_hash": hash_nova
+        }).or_(f"usuario_login.eq.{usuario_id},id.eq.{usuario_id}").execute()
+        return True
+    except Exception as e:
+        print(f"Erro ao atualizar senha: {e}")
+        return False
+
+def obter_usuario_logado():
+    """Retorna os dados do usuário atualmente autenticado na sessão."""
+    return st.session_state.get("usuario_dados", {})
