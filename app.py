@@ -4,6 +4,7 @@ import os
 import pyotp
 import urllib.parse
 import random
+import hashlib
 
 from core.styles import aplicar_estilo_visual
 from core.database import (
@@ -192,19 +193,22 @@ if not st.session_state.get("autenticado", False):
                                     st.session_state["tentativas_login"][usr_id] = 0
                                 st.session_state["bloqueados_temp"].discard(usr_id)
 
-                                # Atualiza diretamente no Supabase
+                                hash_nova = hashlib.sha256(nova_senha.encode('utf-8')).hexdigest()
+
                                 if supabase:
                                     try:
                                         supabase.table("usuarios").update({
-                                            "senha": nova_senha, "ativo": True
+                                            "senha": nova_senha,
+                                            "senha_hash": hash_nova,
+                                            "ativo": True
                                         }).or_(f"usuario_login.eq.{usr_id},email_recuperacao.eq.{usr_id}").execute()
                                     except Exception as ex:
                                         st.warning(f"Erro ao salvar no banco de dados: {ex}")
 
-                                # Atualiza no cache de sessão
                                 if "usuarios_teste_db" in st.session_state:
                                     if usr_id in st.session_state["usuarios_teste_db"]:
                                         st.session_state["usuarios_teste_db"][usr_id]["senha"] = nova_senha
+                                        st.session_state["usuarios_teste_db"][usr_id]["senha_hash"] = hash_nova
                                         st.session_state["usuarios_teste_db"][usr_id]["ativo"] = True
 
                                 st.success("🎉 Senha redefinida e conta desbloqueada! Realize o login com a nova senha.")
@@ -274,10 +278,12 @@ if not st.session_state.get("autenticado", False):
                             st.error("🚨 Código do aplicativo incorreto ou expirado.")
                         else:
                             num_pol_str = str(usr_temp.get("usuario_login", usr_temp.get("usuario", "")))
+                            hash_nova = hashlib.sha256(nova_senha.encode('utf-8')).hexdigest()
                             if supabase:
                                 try:
                                     supabase.table("usuarios").update({
                                         "senha": nova_senha, 
+                                        "senha_hash": hash_nova,
                                         "mfa_secret": secret, 
                                         "mfa_habilitado": True,
                                         "email_recuperacao": email_input, 
@@ -287,6 +293,7 @@ if not st.session_state.get("autenticado", False):
                                     st.warning(f"Aviso ao salvar no banco: {ex}")
                             
                             usr_temp["senha"] = nova_senha
+                            usr_temp["senha_hash"] = hash_nova
                             usr_temp["mfa_secret"] = secret
                             usr_temp["mfa_habilitado"] = True
                             usr_temp["email_recuperacao"] = email_input
@@ -355,8 +362,6 @@ if not st.session_state.get("autenticado", False):
                 usuario_input = st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1337468").strip()
                 senha_input = st.text_input("Senha de Acesso:", type="password", placeholder="••••••••").strip()
                 
-                chk_manter_logado = st.checkbox("📌 Manter-me conectado neste dispositivo (Pular 2FA se a senha estiver correta)")
-                
                 btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", use_container_width=True)
 
                 if btn_entrar:
@@ -368,7 +373,7 @@ if not st.session_state.get("autenticado", False):
                         usuario_encontrado = None
                         num_pol_key = str(usuario_input).strip()
 
-                        # 1. Consulta no Supabase (Colunas reais: usuario_login, usuario, email_recuperacao)
+                        # 1. Consulta no Supabase
                         if supabase:
                             try:
                                 res = supabase.table("usuarios").select("*").or_(
@@ -385,7 +390,7 @@ if not st.session_state.get("autenticado", False):
                             if num_pol_key in db_teste:
                                 usuario_encontrado = db_teste[num_pol_key]
 
-                        # 3. Fallback de Contingência Local para Primeiro Teste
+                        # 3. Fallback Local
                         if not usuario_encontrado and usuario_input in ["1337468", "123456", "ADMIN", "PROGRAMADOR"]:
                             usuario_encontrado = {
                                 "id": "1",
@@ -408,38 +413,42 @@ if not st.session_state.get("autenticado", False):
                             st.error("❌ Usuário não localizado no sistema.")
                         elif not usuario_encontrado.get("ativo", True):
                             st.error("🔒 Sua conta está bloqueada no banco de dados. Utilize o reset por e-mail abaixo.")
-                        elif usuario_encontrado.get("senha") != senha_input:
-                            erros_atuais = st.session_state["tentativas_login"].get(usuario_input, 0) + 1
-                            st.session_state["tentativas_login"][usuario_input] = erros_atuais
-
-                            if erros_atuais >= 3:
-                                st.session_state["bloqueados_temp"].add(usuario_input)
-                                if supabase and usuario_encontrado.get("id") != "1":
-                                    try:
-                                        supabase.table("usuarios").update({"ativo": False}).eq("usuario_login", num_pol_key).execute()
-                                    except Exception:
-                                        pass
-                                st.error("🚨 **Senha Incorreta! Tentativa 3 de 3.** Sua conta foi BLOQUEADA por segurança! Clique em 'Esqueci a Senha' abaixo para redefinir via e-mail.")
-                            else:
-                                restantes = 3 - erros_atuais
-                                st.error(f"🚨 **Senha Incorreta!** Tentativa **{erros_atuais} de 3**. Você tem mais **{restantes}** tentativa(s) antes do bloqueio.")
                         else:
-                            st.session_state["tentativas_login"][usuario_input] = 0
-                            st.session_state["temp_user_data"] = usuario_encontrado
+                            # Validação híbrida (Texto Puro ou Hash SHA-256)
+                            senha_hash_input = hashlib.sha256(senha_input.encode('utf-8')).hexdigest()
+                            senha_db_texto = usuario_encontrado.get("senha")
+                            senha_db_hash = usuario_encontrado.get("senha_hash")
 
-                            if chk_manter_logado:
-                                st.session_state["usuario_dados"] = usuario_encontrado
-                                st.session_state["autenticado"] = True
-                                st.session_state["usuario_autenticado"] = True
-                                st.session_state["ultima_atividade"] = datetime.datetime.now()
-                                st.toast(f"Sessão iniciada! Bem-vindo, {usuario_encontrado.get('nome_guerra')}.", icon="🟢")
-                                st.rerun()
+                            senha_correta = (
+                                senha_input == senha_db_texto or
+                                senha_hash_input == senha_db_hash or
+                                senha_hash_input == senha_db_texto
+                            )
 
-                            elif usuario_encontrado.get("mfa_habilitado", False) and usuario_encontrado.get("mfa_secret"):
-                                st.session_state["mfa_pendente"] = True
+                            if not senha_correta:
+                                erros_atuais = st.session_state["tentativas_login"].get(usuario_input, 0) + 1
+                                st.session_state["tentativas_login"][usuario_input] = erros_atuais
+
+                                if erros_atuais >= 3:
+                                    st.session_state["bloqueados_temp"].add(usuario_input)
+                                    if supabase and usuario_encontrado.get("id") != "1":
+                                        try:
+                                            supabase.table("usuarios").update({"ativo": False}).eq("usuario_login", num_pol_key).execute()
+                                        except Exception:
+                                            pass
+                                    st.error("🚨 **Senha Incorreta! Tentativa 3 de 3.** Sua conta foi BLOQUEADA por segurança! Clique em 'Esqueci a Senha' abaixo para redefinir via e-mail.")
+                                else:
+                                    restantes = 3 - erros_atuais
+                                    st.error(f"🚨 **Senha Incorreta!** Tentativa **{erros_atuais} de 3**. Você tem mais **{restantes}** tentativa(s) antes do bloqueio.")
                             else:
-                                st.session_state["mfa_setup_mode"] = True
-                            st.rerun()
+                                st.session_state["tentativas_login"][usuario_input] = 0
+                                st.session_state["temp_user_data"] = usuario_encontrado
+
+                                if usuario_encontrado.get("mfa_habilitado", False) and usuario_encontrado.get("mfa_secret"):
+                                    st.session_state["mfa_pendente"] = True
+                                else:
+                                    st.session_state["mfa_setup_mode"] = True
+                                st.rerun()
 
             col_b1, col_b2 = st.columns([1, 1])
             with col_b1:
