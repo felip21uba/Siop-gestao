@@ -1,3 +1,4 @@
+streamlit
 supabase
 pyotp
 pypdf
@@ -5,3 +6,5 @@ pandas
 qrcode
 pillow
 reportlab
+xlsxwriter
+openpyxl
