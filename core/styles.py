@@ -38,69 +38,107 @@ def aplicar_estilo_visual():
             .stForm label, p, h1, h2, h3, h4, h5, h6, span, label {{ color: {text_cor} !important; }}
 
             /* ----------------------------------------------------------------- */
-            /* 🎯 PADRONIZAÇÃO DE BOTÕES (SEM CORTAR TEXTO E SEM VERMELHO)        */
+            /* 🪖 CORREÇÃO DEFINITIVA DOS CARDS DE MILITARES (FUNDO BEGE)        */
             /* ----------------------------------------------------------------- */
-            .stButton > button {{
-                min-height: 42px !important;
-                height: auto !important; /* Permite que o botão cresça para caber 2 linhas */
-                padding: 8px 10px !important;
+            .card-militar-item,
+            div[data-testid="stColumn"] button,
+            div[data-testid="stColumn"] button[kind="secondary"],
+            div[data-testid="stColumn"] button[data-testid="stBaseButton-secondary"] {{
+                background-color: {sec_bg} !important;
+                color: {sec_text} !important;
+                border: 2px solid {sec_border} !important;
                 border-radius: 8px !important;
-                display: inline-flex !important;
-                align-items: center !important;
+                padding: 8px 10px !important;
+                text-align: center !important;
+                display: flex !important;
+                flex-direction: column !important;
                 justify-content: center !important;
+                align-items: center !important;
+                min-height: 58px !important;
+                height: auto !important;
                 box-sizing: border-box !important;
-                margin: 0 !important;
-                transition: all 0.2s ease !important;
+                position: relative !important;
+                cursor: pointer !important;
+                transition: background-color 0.2s ease, border-color 0.2s ease !important;
             }}
 
-            .stButton > button p {{
-                font-size: 0.92rem !important;
+            /* Força o texto interno dos cards a ser preto e quebrar linha em 2 linhas */
+            .card-militar-item p,
+            .card-militar-item span,
+            div[data-testid="stColumn"] button p,
+            div[data-testid="stColumn"] button span {{
+                color: {sec_text} !important;
                 font-weight: 700 !important;
-                line-height: 1.2 !important;
-                margin: 0 !important;
-                white-space: normal !important; /* Permite quebrar linha (remove reticências) */
+                white-space: normal !important;
                 word-break: break-word !important;
+                line-height: 1.25 !important;
+                font-size: 0.85rem !important;
+                margin: 0 !important;
                 text-align: center !important;
             }}
 
-            /* Estado Padrão (Secundário / Desmarcado) - Bege */
-            .stButton > button[kind="secondary"] {{
-                background-color: {sec_bg} !important;
-                border: 2px solid {sec_border} !important;
-                color: {sec_text} !important;
+            .card-militar-item .num-pm {{
+                font-size: 0.75rem !important;
+                opacity: 0.8 !important;
+                margin-top: 3px !important;
+                display: block !important;
             }}
-            .stButton > button[kind="secondary"] p {{ color: {sec_text} !important; }}
 
-            /* Estado Selecionado (Primário / Marcado) - Marrom Escuro (ELIMINA O VERMELHO) */
-            .stButton > button[kind="primary"], 
-            .stButton > button[data-testid="stBaseButton-primary"],
-            .stFormSubmitButton > button {{
-                background-color: {pri_bg} !important;
-                border: 2px solid {pri_border} !important;
-                color: {pri_text} !important;
-                box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.2) !important;
-            }}
-            .stButton > button[kind="primary"] p, 
-            .stButton > button[data-testid="stBaseButton-primary"] p,
-            .stFormSubmitButton > button p {{ color: {pri_text} !important; }}
-
-            /* Efeitos de Hover */
-            .stButton > button[kind="secondary"]:hover {{
+            /* Card Selecionado / Pressionado (Alterna para Marrom Escuro) */
+            .card-militar-item.selecionado,
+            div[data-testid="stColumn"] button[kind="primary"],
+            div[data-testid="stColumn"] button[data-testid="stBaseButton-primary"] {{
                 background-color: {pri_bg} !important;
                 border-color: {pri_border} !important;
             }}
-            .stButton > button[kind="secondary"]:hover p {{ color: {pri_text} !important; }}
-
-            .stButton > button[kind="primary"]:hover,
-            .stButton > button[data-testid="stBaseButton-primary"]:hover {{
-                background-color: {sec_bg} !important;
-                border-color: {sec_border} !important;
+            .card-militar-item.selecionado p,
+            div[data-testid="stColumn"] button[kind="primary"] p {{
+                color: {pri_text} !important;
             }}
-            .stButton > button[kind="primary"]:hover p,
-            .stButton > button[data-testid="stBaseButton-primary"]:hover p {{ color: {sec_text} !important; }}
 
             /* ----------------------------------------------------------------- */
-            /* MULTISELECT, DROPDOWNS E TOGGLES (SEM COR VERMELHA)               */
+            /* ⏱️ TOOLTIP DOS CARDS: AGUARDA EXATOS 3 SEGUNDOS DE HOVER         */
+            /* ----------------------------------------------------------------- */
+            .card-militar-item[data-nome]::after {{
+                content: attr(data-nome);
+                position: absolute;
+                bottom: 108%;
+                left: 50%;
+                transform: translateX(-50%);
+                background-color: #0f172a;
+                color: #f8fafc;
+                padding: 6px 12px;
+                border-radius: 6px;
+                font-size: 0.80rem;
+                font-weight: 600;
+                white-space: nowrap;
+                box-shadow: 0px 4px 12px rgba(0,0,0,0.5);
+                border: 1px solid {sec_bg};
+                z-index: 9999;
+                pointer-events: none;
+                opacity: 0;
+                visibility: hidden;
+                transition: opacity 0.2s ease 0s, visibility 0.2s ease 0s; 
+            }}
+
+            .card-militar-item[data-nome]:hover::after {{
+                opacity: 1;
+                visibility: visible;
+                transition: opacity 0.3s ease 3s, visibility 0.3s ease 3s; 
+            }}
+
+            /* ----------------------------------------------------------------- */
+            /* BOTÕES DE FORMULÁRIO E AÇÕES DIVERSAS                              */
+            /* ----------------------------------------------------------------- */
+            .stButton > button {{
+                min-height: 42px !important;
+                height: auto !important;
+                padding: 8px 18px !important;
+                border-radius: 8px !important;
+            }}
+
+            /* ----------------------------------------------------------------- */
+            /* DROPDOWNS E MULTISELECT (SEM BLOCOS VERMELHOS E SEM VAZAMENTOS)   */
             /* ----------------------------------------------------------------- */
             div[data-baseweb="select"] button,
             div[data-baseweb="select"] [role="button"],
@@ -137,84 +175,8 @@ def aplicar_estilo_visual():
             div[data-baseweb="tag"] [role="presentation"] {{ background-color: transparent !important; }}
             div[data-baseweb="tag"] svg {{ fill: {pri_text} !important; }}
 
-            /* Toggle Switch (Chavezinha) */
             div[data-testid="stToggle"] span[aria-checked="true"] {{
                 background-color: {sec_bg} !important;
-            }}
-
-            /* ----------------------------------------------------------------- */
-            /* CARDS DO PASSO 3 (HTML CUSTOMIZADO)                               */
-            /* ----------------------------------------------------------------- */
-            .card-militar-item {{
-                background-color: {sec_bg} !important; /* Retorna à cor Bege original */
-                color: {sec_text} !important;
-                border: 2px solid {sec_border} !important;
-                padding: 8px 10px !important;
-                border-radius: 8px !important;
-                text-align: center !important;
-                display: flex !important;
-                flex-direction: column !important;
-                justify-content: center !important;
-                align-items: center !important;
-                min-height: 58px !important;
-                height: auto !important;
-                position: relative !important;
-                cursor: pointer !important;
-                box-sizing: border-box !important;
-                transition: all 0.2s ease !important;
-            }}
-
-            .card-militar-item.selecionado,
-            .card-militar-item[data-selected="true"] {{
-                background-color: {pri_bg} !important;
-                border-color: {pri_border} !important;
-                color: {pri_text} !important;
-            }}
-
-            .card-militar-item .grad-nome {{
-                font-size: 0.88rem !important;
-                line-height: 1.15 !important;
-                text-transform: uppercase !important;
-                font-weight: 700 !important;
-                color: inherit !important;
-                white-space: normal !important;
-                word-break: break-word !important;
-            }}
-
-            .card-militar-item .num-pm {{
-                font-size: 0.75rem !important;
-                font-weight: 600 !important;
-                opacity: 0.8 !important;
-                margin-top: 3px !important;
-                display: block !important;
-            }}
-
-            /* Tooltip de 3 segundos */
-            .card-militar-item[data-nome]:hover::after {{
-                content: attr(data-nome);
-                position: absolute;
-                bottom: 108%;
-                left: 50%;
-                transform: translateX(-50%);
-                background-color: #0f172a;
-                color: #f8fafc;
-                padding: 6px 12px;
-                border-radius: 6px;
-                font-size: 0.80rem;
-                font-weight: 600;
-                white-space: nowrap;
-                box-shadow: 0px 4px 12px rgba(0,0,0,0.5);
-                border: 1px solid {sec_bg};
-                z-index: 9999;
-                pointer-events: none;
-                opacity: 0;
-                visibility: hidden;
-                transition: opacity 0.3s ease 3s, visibility 0.3s ease 3s; 
-            }}
-
-            .card-militar-item[data-nome]:hover::after {{
-                opacity: 1;
-                visibility: visible;
             }}
         </style>
     """, unsafe_allow_html=True)
