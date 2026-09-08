@@ -39,7 +39,7 @@ def aplicar_estilo_visual():
             .stForm label, p, h1, h2, h3, h4, h5, h6, span, label {{ color: {text_cor} !important; }}
 
             /* ----------------------------------------------------------------- */
-            /* CORREÇÃO DA RAIZ: APLICAR ESTILO APENAS A BOTÕES NORMAIS          */
+            /* BOTÕES GERAIS DO SISTEMA                                          */
             /* ----------------------------------------------------------------- */
             .stButton > button[kind="secondary"] {{ background-color: {sec_bg} !important; border: 1px solid {sec_border} !important; opacity: 1 !important; }}
             .stButton > button[kind="secondary"] p {{ color: {sec_text} !important; font-weight: 700 !important; }}
@@ -50,33 +50,28 @@ def aplicar_estilo_visual():
             .stButton > button[kind="primary"]:hover, .stFormSubmitButton > button:hover {{ background-color: {sec_bg} !important; }}
 
             /* ----------------------------------------------------------------- */
-            /* 1. CAIXAS DE SELEÇÃO: DROPDOWNS DO MESMO TAMANHO DA CAIXA         */
+            /* 1. ISOLAMENTO DAS CAIXAS DE SELEÇÃO E DROPDOWNS (NÃO AFETADOS)    */
             /* ----------------------------------------------------------------- */
-            /* Remove os blocos e ajusta para ficarem transparentes dentro da caixa */
             div[data-baseweb="select"] button,
             div[data-baseweb="select"] [role="button"],
             div[data-baseweb="select"] div[data-testid="stBaseButton-secondary"] {{
                 background-color: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
-                height: 100% !important; /* Estica para ficar no mesmo tamanho da caixa */
+                height: 100% !important;
                 min-height: unset !important;
                 padding: 0 6px !important;
                 margin: 0 !important;
                 border-radius: 0 !important;
             }}
             
-            /* Ajusta a cor das setinhas para combinar visualmente (dourado) */
             div[data-baseweb="select"] svg {{
                 width: 18px !important;
                 height: 18px !important;
                 fill: {sec_bg} !important; 
             }}
 
-            /* ----------------------------------------------------------------- */
-            /* 2. TAGS DO MULTISELECT: REMOVER O BLOCO MARROM DO "X"             */
-            /* ----------------------------------------------------------------- */
-            /* Fundo principal vermelho da Tag */
+            /* TAGS DO MULTISELECT */
             div[data-baseweb="tag"] {{
                 background-color: #ef4444 !important; 
                 border: none !important;
@@ -84,25 +79,19 @@ def aplicar_estilo_visual():
                 padding: 2px 4px !important;
                 margin: 2px 4px 2px 0 !important;
             }}
-            
-            /* Remove o bloco marrom do texto da Tag */
             div[data-baseweb="tag"] span {{
                 color: white !important;
                 background-color: transparent !important;
                 font-weight: 600 !important;
             }}
-
-            /* Remove o bloco marrom do botão "X" e pinta o ícone de branco */
             div[data-baseweb="tag"] [role="presentation"] {{
                 background-color: transparent !important; 
                 border-radius: 0 !important;
             }}
-            div[data-baseweb="tag"] svg {{
-                fill: white !important; 
-            }}
+            div[data-baseweb="tag"] svg {{ fill: white !important; }}
 
             /* ----------------------------------------------------------------- */
-            /* 3. CARDS DE MILITARES & TOOLTIP (AGUARDA 3 SEGUNDOS)              */
+            /* 2. CARDS DO PASSO 3 (MILITARES) - MARROM PADRÃO E QUEBRA DE LINHA */
             /* ----------------------------------------------------------------- */
             .grid-efetivo {{
                 display: grid !important;
@@ -112,23 +101,62 @@ def aplicar_estilo_visual():
                 margin-bottom: 15px !important;
             }}
 
-            .card-militar-item {{
-                background-color: #a38f51 !important;
-                color: #0f172a !important;
+            /* Formata os botões dentro de colunas (Passo 3) e o HTML dos cards */
+            .card-militar-item, 
+            div[data-testid="stColumn"] button[kind="secondary"] {{
+                background-color: {sec_bg} !important;
+                color: {sec_text} !important;
+                border: 1px solid {sec_border} !important;
                 padding: 8px 10px !important;
                 border-radius: 8px !important;
                 text-align: center !important;
-                font-weight: 700 !important;
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25) !important;
                 display: flex !important;
                 flex-direction: column !important;
                 justify-content: center !important;
                 align-items: center !important;
                 min-height: 58px !important;
+                height: auto !important;
                 position: relative !important;
                 cursor: pointer !important;
             }}
 
+            /* Força o texto (Graduação + Nome \n Número) a quebrar linha e centralizar */
+            .card-militar-item p,
+            div[data-testid="stColumn"] button[kind="secondary"] p {{
+                white-space: normal !important;
+                word-break: break-word !important;
+                line-height: 1.25 !important;
+                font-size: 0.82rem !important;
+                color: {sec_text} !important;
+                font-weight: 700 !important;
+                margin: 0 !important;
+            }}
+
+            /* Estilos específicos para quando o card é montado em HTML */
+            .card-militar-item .grad-nome {{
+                font-size: 0.82rem !important;
+                line-height: 1.15 !important;
+                text-transform: uppercase !important;
+                color: {sec_text} !important;
+                font-weight: 700 !important;
+            }}
+
+            .card-militar-item .num-pm {{
+                font-size: 0.72rem !important;
+                font-weight: 600 !important;
+                color: rgba(0,0,0,0.7) !important; /* Tom um pouco mais escuro para diferenciar o número */
+                margin-top: 3px !important;
+                display: block !important;
+            }}
+
+            /* Efeito Hover Escurecido */
+            .card-militar-item:hover,
+            div[data-testid="stColumn"] button[kind="secondary"]:hover {{
+                background-color: #8a7a51 !important; 
+            }}
+
+            /* Tooltip de 3 segundos (Aparece ao repousar o mouse) */
             .card-militar-item[data-nome]:hover::after {{
                 content: attr(data-nome);
                 position: absolute;
@@ -143,7 +171,7 @@ def aplicar_estilo_visual():
                 font-weight: 600;
                 white-space: nowrap;
                 box-shadow: 0px 4px 12px rgba(0,0,0,0.5);
-                border: 1px solid #9D8B5C;
+                border: 1px solid {sec_bg};
                 z-index: 9999;
                 pointer-events: none;
                 opacity: 0;
@@ -154,21 +182,6 @@ def aplicar_estilo_visual():
             .card-militar-item[data-nome]:hover::after {{
                 opacity: 1;
                 visibility: visible;
-            }}
-
-            .card-militar-item .grad-nome {{
-                font-size: 0.82rem !important;
-                line-height: 1.15 !important;
-                text-transform: uppercase !important;
-                color: #0f172a !important;
-            }}
-
-            .card-militar-item .num-pm {{
-                font-size: 0.72rem !important;
-                font-weight: 600 !important;
-                color: #1e293b !important;
-                margin-top: 3px !important;
-                display: block !important;
             }}
         </style>
     """, unsafe_allow_html=True)
