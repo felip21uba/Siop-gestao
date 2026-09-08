@@ -26,7 +26,6 @@ def aplicar_estilo_visual():
             div[data-testid="stExpander"] {{ background-color: {form_bg} !important; border: 1px solid {border_cor} !important; border-radius: 8px !important; }}
             div[data-testid="stExpander"] summary, div[data-testid="stExpander"] details summary, div[data-testid="stExpander"] header {{ background-color: {expander_bg} !important; color: {text_cor} !important; }}
             
-            /* CAIXAS DE ENTRADA (INPUTS E DROPDOWNS) */
             div[data-baseweb="input"], div[data-baseweb="select"] > div {{ 
                 background-color: {input_bg} !important; 
                 color: {input_text} !important; 
@@ -39,31 +38,32 @@ def aplicar_estilo_visual():
             .stForm label, p, h1, h2, h3, h4, h5, h6, span, label {{ color: {text_cor} !important; }}
 
             /* ----------------------------------------------------------------- */
-            /* 🎯 PADRONIZAÇÃO RÍGIDA DE TAMANHO, FONTE E CORES DOS BOTÕES        */
+            /* 🎯 PADRONIZAÇÃO DE BOTÕES (SEM CORTAR TEXTO E SEM VERMELHO)        */
             /* ----------------------------------------------------------------- */
             .stButton > button {{
                 min-height: 42px !important;
-                height: 42px !important;
-                padding: 0px 18px !important;
+                height: auto !important; /* Permite que o botão cresça para caber 2 linhas */
+                padding: 8px 10px !important;
                 border-radius: 8px !important;
                 display: inline-flex !important;
                 align-items: center !important;
                 justify-content: center !important;
                 box-sizing: border-box !important;
                 margin: 0 !important;
-                transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease !important;
+                transition: all 0.2s ease !important;
             }}
 
-            /* Fonte interna maior e mais harmônica */
             .stButton > button p {{
                 font-size: 0.92rem !important;
                 font-weight: 700 !important;
-                line-height: 1 !important;
+                line-height: 1.2 !important;
                 margin: 0 !important;
-                white-space: nowrap !important;
+                white-space: normal !important; /* Permite quebrar linha (remove reticências) */
+                word-break: break-word !important;
+                text-align: center !important;
             }}
 
-            /* Estado Padrão (Secundário) - Bege com texto preto */
+            /* Estado Padrão (Secundário / Desmarcado) - Bege */
             .stButton > button[kind="secondary"] {{
                 background-color: {sec_bg} !important;
                 border: 2px solid {sec_border} !important;
@@ -71,31 +71,33 @@ def aplicar_estilo_visual():
             }}
             .stButton > button[kind="secondary"] p {{ color: {sec_text} !important; }}
 
-            /* Estado Selecionado / Primário - Marrom escuro com texto branco (SEM VERMELHO) */
-            .stButton > button[kind="primary"], .stFormSubmitButton > button {{
+            /* Estado Selecionado (Primário / Marcado) - Marrom Escuro (ELIMINA O VERMELHO) */
+            .stButton > button[kind="primary"], 
+            .stButton > button[data-testid="stBaseButton-primary"],
+            .stFormSubmitButton > button {{
                 background-color: {pri_bg} !important;
                 border: 2px solid {pri_border} !important;
                 color: {pri_text} !important;
                 box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.2) !important;
             }}
-            .stButton > button[kind="primary"] p, .stFormSubmitButton > button p {{ color: {pri_text} !important; }}
+            .stButton > button[kind="primary"] p, 
+            .stButton > button[data-testid="stBaseButton-primary"] p,
+            .stFormSubmitButton > button p {{ color: {pri_text} !important; }}
 
-            /* Alternância de cores em Hover / Foco (Mantém exatamente as dimensões) */
-            .stButton > button[kind="secondary"]:hover,
-            .stButton > button[kind="secondary"]:active,
-            .stButton > button[kind="secondary"]:focus {{
+            /* Efeitos de Hover */
+            .stButton > button[kind="secondary"]:hover {{
                 background-color: {pri_bg} !important;
                 border-color: {pri_border} !important;
             }}
             .stButton > button[kind="secondary"]:hover p {{ color: {pri_text} !important; }}
 
             .stButton > button[kind="primary"]:hover,
-            .stButton > button[kind="primary"]:active,
-            .stButton > button[kind="primary"]:focus {{
+            .stButton > button[data-testid="stBaseButton-primary"]:hover {{
                 background-color: {sec_bg} !important;
                 border-color: {sec_border} !important;
             }}
-            .stButton > button[kind="primary"]:hover p {{ color: {sec_text} !important; }}
+            .stButton > button[kind="primary"]:hover p,
+            .stButton > button[data-testid="stBaseButton-primary"]:hover p {{ color: {sec_text} !important; }}
 
             /* ----------------------------------------------------------------- */
             /* MULTISELECT, DROPDOWNS E TOGGLES (SEM COR VERMELHA)               */
@@ -119,7 +121,6 @@ def aplicar_estilo_visual():
                 fill: {sec_bg} !important; 
             }}
 
-            /* Tags do Multiselect - Marrom escuro quando selecionadas (Sem vermelho) */
             div[data-baseweb="tag"] {{
                 background-color: {pri_bg} !important; 
                 border: 1px solid {pri_border} !important;
@@ -133,29 +134,19 @@ def aplicar_estilo_visual():
                 font-weight: 700 !important;
                 font-size: 0.85rem !important;
             }}
-            div[data-baseweb="tag"] [role="presentation"] {{
-                background-color: transparent !important; 
-            }}
+            div[data-baseweb="tag"] [role="presentation"] {{ background-color: transparent !important; }}
             div[data-baseweb="tag"] svg {{ fill: {pri_text} !important; }}
 
-            /* Toggle Switch - Substitui a chave vermelha pela cor Bege corporativa */
+            /* Toggle Switch (Chavezinha) */
             div[data-testid="stToggle"] span[aria-checked="true"] {{
                 background-color: {sec_bg} !important;
             }}
 
             /* ----------------------------------------------------------------- */
-            /* CARDS DO PASSO 3 (MILITARES) - DIMENSÃO FIXA E SEM ALTERAÇÃO      */
+            /* CARDS DO PASSO 3 (HTML CUSTOMIZADO)                               */
             /* ----------------------------------------------------------------- */
-            .grid-efetivo {{
-                display: grid !important;
-                grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
-                gap: 10px !important;
-                margin-top: 10px !important;
-                margin-bottom: 15px !important;
-            }}
-
             .card-militar-item {{
-                background-color: {sec_bg} !important;
+                background-color: {sec_bg} !important; /* Retorna à cor Bege original */
                 color: {sec_text} !important;
                 border: 2px solid {sec_border} !important;
                 padding: 8px 10px !important;
@@ -166,22 +157,17 @@ def aplicar_estilo_visual():
                 justify-content: center !important;
                 align-items: center !important;
                 min-height: 58px !important;
-                height: 58px !important;
+                height: auto !important;
                 position: relative !important;
                 cursor: pointer !important;
                 box-sizing: border-box !important;
-                transition: background-color 0.2s ease, border-color 0.2s ease !important;
+                transition: all 0.2s ease !important;
             }}
 
-            /* Card Selecionado: Alterna cor para Marrom Escuro sem mudar o tamanho */
             .card-militar-item.selecionado,
             .card-militar-item[data-selected="true"] {{
                 background-color: {pri_bg} !important;
                 border-color: {pri_border} !important;
-                color: {pri_text} !important;
-            }}
-            .card-militar-item.selecionado .grad-nome,
-            .card-militar-item.selecionado .num-pm {{
                 color: {pri_text} !important;
             }}
 
@@ -190,18 +176,20 @@ def aplicar_estilo_visual():
                 line-height: 1.15 !important;
                 text-transform: uppercase !important;
                 font-weight: 700 !important;
-                color: {sec_text} !important;
+                color: inherit !important;
+                white-space: normal !important;
+                word-break: break-word !important;
             }}
 
             .card-militar-item .num-pm {{
                 font-size: 0.75rem !important;
                 font-weight: 600 !important;
-                color: rgba(0,0,0,0.75) !important;
+                opacity: 0.8 !important;
                 margin-top: 3px !important;
                 display: block !important;
             }}
 
-            /* Tooltip de 3 segundos no hover */
+            /* Tooltip de 3 segundos */
             .card-militar-item[data-nome]:hover::after {{
                 content: attr(data-nome);
                 position: absolute;
