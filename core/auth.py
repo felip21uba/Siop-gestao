@@ -13,17 +13,23 @@ def gerar_hash_senha(senha: str) -> str:
     """Gera o hash SHA-256 de uma senha em texto puro."""
     if not senha:
         return ""
-    return hashlib.sha256(str(senha).encode('utf-8')).hexdigest()
+    return hashlib.sha256(str(senha).encode('utf-8')).hexdigest().lower()
 
 def verificar_senha(senha_input, senha_db_texto, senha_db_hash):
     """Compara a senha digitada com Texto Puro e Hash SHA-256."""
     if not senha_input:
         return False
-    senha_hash_input = gerar_hash_senha(senha_input)
+    
+    s_input = str(senha_input).strip()
+    hash_input = gerar_hash_senha(s_input)
+    
+    s_txt = str(senha_db_texto).strip() if senha_db_texto is not None else ""
+    s_hash = str(senha_db_hash).strip().lower() if senha_db_hash is not None else ""
+    
     return (
-        senha_input == senha_db_texto or
-        senha_hash_input == senha_db_hash or
-        senha_hash_input == senha_db_texto
+        (s_txt != "" and s_input == s_txt) or
+        (s_hash != "" and hash_input == s_hash) or
+        (s_txt != "" and hash_input == s_txt.lower())
     )
 
 def validar_requisitos_senha(senha: str):
@@ -64,23 +70,19 @@ def gerar_secret_mfa() -> str:
 # 3. BANCO DE DADOS & GESTÃO DE USUÁRIOS
 # =========================================================================
 def buscar_usuario_para_login(usuario_input: str):
-    """Consulta o registro do usuário por num_policia, usuario_login, usuario, id ou email_recuperacao."""
+    """Consulta o registro do usuário apenas nas colunas válidas da tabela usuarios."""
     if not supabase or not usuario_input:
         return None
+    
+    u_clean = str(usuario_input).strip()
     try:
-        user_clean = str(usuario_input).strip()
-        condicao_or = (
-            f"num_policia.eq.{user_clean},"
-            f"usuario_login.eq.{user_clean},"
-            f"usuario.eq.{user_clean},"
-            f"email_recuperacao.eq.{user_clean},"
-            f"id.eq.{user_clean}"
-        )
-        res = supabase.table("usuarios").select("*").or_(condicao_or).execute()
-        if res and res.data:
+        res = supabase.table("usuarios").select("*").or_(
+            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},email_recuperacao.eq.{u_clean}"
+        ).execute()
+        if res and res.data and len(res.data) > 0:
             return res.data[0]
     except Exception as e:
-        print(f"Erro ao buscar usuário para login no Supabase: {e}")
+        print(f"Erro ao buscar usuário para login: {e}")
     return None
 
 def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
@@ -93,50 +95,34 @@ def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
             payload["senha_hash"] = gerar_hash_senha(payload["senha"])
 
         supabase.table("usuarios").upsert(payload).execute()
-        st.cache_data.clear()
         return True
     except Exception as e:
         print(f"Erro ao salvar usuário no Supabase: {e}")
         return False
 
 def atualizar_senha_usuario(usuario_id: str, nova_senha: str) -> bool:
-    """Atualiza a senha, o hash e o status de primeiro acesso do usuário no Supabase."""
+    """Atualiza a senha e o hash de um usuário específico."""
     if not supabase or not usuario_id or not nova_senha:
         return False
     try:
-        user_clean = str(usuario_id).strip()
+        u_clean = str(usuario_id).strip()
         hash_nova = gerar_hash_senha(nova_senha)
-        
-        condicao_or = (
-            f"num_policia.eq.{user_clean},"
-            f"usuario_login.eq.{user_clean},"
-            f"usuario.eq.{user_clean},"
-            f"email_recuperacao.eq.{user_clean},"
-            f"id.eq.{user_clean}"
-        )
-        
-        payload = {
+        supabase.table("usuarios").update({
             "senha": nova_senha,
             "senha_hash": hash_nova,
-            "primeiro_acesso": False
-        }
-        
-        res = supabase.table("usuarios").update(payload).or_(condicao_or).execute()
-        
-        if res.data and len(res.data) > 0:
-            st.cache_data.clear()
-            return True
-        return False
+            "ativo": True
+        }).or_(f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},id.eq.{u_clean}").execute()
+        return True
     except Exception as e:
-        print(f"Erro ao atualizar senha no Supabase: {e}")
+        print(f"Erro ao atualizar senha: {e}")
         return False
 
 def obter_usuario_logado():
     """Retorna os dados do usuário atualmente autenticado na sessão."""
-    return st.session_state.get("usuario_dados", {}) or st.session_state.get("usuario_logado", {})
+    return st.session_state.get("usuario_dados", {})
 
 # =========================================================================
-# 4. DISPARO DE E-MAIL REAL (SMTP COM LEITURA FLEXÍVEL DE SECRETS)
+# 4. DISPARO DE E-MAIL REAL (SMTP)
 # =========================================================================
 def enviar_email_codigo(email_destino: str, codigo: str) -> tuple[bool, str]:
     """Envia o código de verificação/redefinição via servidor SMTP."""

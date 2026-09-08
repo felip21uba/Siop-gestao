@@ -10,14 +10,16 @@ from core.styles import aplicar_estilo_visual
 from core.database import (
     supabase, 
     carregar_militares_supabase, 
-    registrar_audit_log
+    registrar_audit_log,
+    atualizar_usuario_supabase
 )
 from core.auth import (
     validar_codigo_authy,
     validar_requisitos_senha,
     verificar_senha,
     buscar_usuario_para_login,
-    enviar_email_codigo
+    enviar_email_codigo,
+    gerar_hash_senha
 )
 
 # IMPORTE DOS MÓDULOS OPERACIONAIS
@@ -58,6 +60,10 @@ if "reset_token_dados" not in st.session_state:
     st.session_state["reset_token_dados"] = {}
 if "usuarios_teste_db" not in st.session_state:
     st.session_state["usuarios_teste_db"] = {}
+
+# Prevenção contra KeyError
+if "modules.passos.passo2_turno" not in st.session_state:
+    st.session_state["modules.passos.passo2_turno"] = {}
 
 # CONSTANTES VISUAIS INSTITUCIONAIS
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
@@ -190,17 +196,14 @@ if not st.session_state.get("autenticado", False):
                                     st.session_state["tentativas_login"][usr_id] = 0
                                 st.session_state["bloqueados_temp"].discard(usr_id)
 
-                                hash_nova = hashlib.sha256(nova_senha.encode('utf-8')).hexdigest()
+                                hash_nova = gerar_hash_senha(nova_senha)
 
                                 if supabase:
-                                    try:
-                                        supabase.table("usuarios").update({
-                                            "senha": nova_senha,
-                                            "senha_hash": hash_nova,
-                                            "ativo": True
-                                        }).or_(f"usuario_login.eq.{usr_id},email_recuperacao.eq.{usr_id}").execute()
-                                    except Exception as ex:
-                                        st.warning(f"Erro ao salvar no banco de dados: {ex}")
+                                    atualizar_usuario_supabase(usr_id, {
+                                        "senha": nova_senha,
+                                        "senha_hash": hash_nova,
+                                        "ativo": True
+                                    })
 
                                 if "usuarios_teste_db" in st.session_state:
                                     if usr_id in st.session_state["usuarios_teste_db"]:
@@ -275,19 +278,17 @@ if not st.session_state.get("autenticado", False):
                             st.error("🚨 Código do aplicativo incorreto ou expirado.")
                         else:
                             num_pol_str = str(usr_temp.get("usuario_login", usr_temp.get("usuario", "")))
-                            hash_nova = hashlib.sha256(nova_senha.encode('utf-8')).hexdigest()
+                            hash_nova = gerar_hash_senha(nova_senha)
+                            
                             if supabase:
-                                try:
-                                    supabase.table("usuarios").update({
-                                        "senha": nova_senha, 
-                                        "senha_hash": hash_nova,
-                                        "mfa_secret": secret, 
-                                        "mfa_habilitado": True,
-                                        "email_recuperacao": email_input, 
-                                        "celular_recuperacao": celular_input
-                                    }).eq("usuario_login", num_pol_str).execute()
-                                except Exception as ex:
-                                    st.warning(f"Aviso ao salvar no banco: {ex}")
+                                atualizar_usuario_supabase(num_pol_str, {
+                                    "senha": nova_senha, 
+                                    "senha_hash": hash_nova,
+                                    "mfa_secret": secret, 
+                                    "mfa_habilitado": True,
+                                    "email_recuperacao": email_input, 
+                                    "celular_recuperacao": celular_input
+                                })
                             
                             usr_temp["senha"] = nova_senha
                             usr_temp["senha_hash"] = hash_nova
@@ -423,10 +424,7 @@ if not st.session_state.get("autenticado", False):
                                 if erros_atuais >= 3:
                                     st.session_state["bloqueados_temp"].add(usuario_input)
                                     if supabase and usuario_encontrado.get("id") != "1":
-                                        try:
-                                            supabase.table("usuarios").update({"ativo": False}).eq("usuario_login", num_pol_key).execute()
-                                        except Exception:
-                                            pass
+                                        atualizar_usuario_supabase(num_pol_key, {"ativo": False})
                                     st.error("🚨 **Senha Incorreta! Tentativa 3 de 3.** Sua conta foi BLOQUEADA por segurança! Clique em 'Esqueci a Senha' abaixo para redefinir via e-mail.")
                                 else:
                                     restantes = 3 - erros_atuais

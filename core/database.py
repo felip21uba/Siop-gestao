@@ -2,7 +2,7 @@ import streamlit as st
 from supabase import create_client, Client
 
 # =========================================================================
-# CONEXÃO COM O SUPABASE (com cache para não recriar conexão em todo rerun)
+# CONEXÃO COM O SUPABASE
 # =========================================================================
 @st.cache_resource
 def conectar_supabase() -> Client | None:
@@ -18,6 +18,27 @@ def conectar_supabase() -> Client | None:
         return None
 
 supabase = conectar_supabase()
+
+# =========================================================================
+# GESTÃO E ATUALIZAÇÃO DE USUÁRIOS
+# =========================================================================
+def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
+    """Atualiza dados do usuário no Supabase por login, usuario ou e-mail"""
+    if not supabase:
+        return False
+    try:
+        u_clean = str(identificador).strip()
+        res = supabase.table("usuarios").update(dados).or_(
+            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},email_recuperacao.eq.{u_clean}"
+        ).execute()
+        
+        if res.data and len(res.data) > 0:
+            st.cache_data.clear()
+            return True
+        return False
+    except Exception as e:
+        st.error(f"Erro ao atualizar usuário no Supabase: {e}")
+        return False
 
 # =========================================================================
 # LEITURA E GRAVAÇÃO DO EFETIVO DE MILITARES
@@ -67,7 +88,7 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
                 "nivel_acesso": m.get("nivel_acesso", "TROPA")
             })
         supabase.table("militares").upsert(dados_salvar).execute()
-        st.cache_data.clear()  # Força atualização da leitura no próximo acesso
+        st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"Erro ao salvar militares no Supabase: {e}")

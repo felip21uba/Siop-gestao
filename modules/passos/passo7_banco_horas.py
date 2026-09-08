@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import datetime
 import calendar
-import io
-import streamlit.components.v1 as components
 from modules.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 
 MESES_MAP = {
@@ -306,12 +304,13 @@ def renderizar_passo7():
                                 val = grade.get(f"{m_id}_{eq}_{m_ano}_{mes_calc:02d}_{d:02d}", "F")
                                 val_str = str(val).upper().strip() if val else ""
                                 
-                                # Identifica se o dia possui afastamento neutro (Férias, Licenças, Atestado, Curso, Dispensa)
-                                if any(neutro in val_str for neutro in SIGLAS_DIAS_NEUTROS):
+                                # Verificação precisa por palavra inteira
+                                tokens_dia = set(val_str.replace("/", " ").split())
+                                if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
                                     teve_dn = True
                                 
-                                # Soma as horas trabalhadas (desconsidera folgas 'F', descansos 'D' e dias neutros)
-                                if val_str and val_str not in ["", "F", "D", "X"] and not any(neutro in val_str for neutro in SIGLAS_DIAS_NEUTROS):
+                                # Soma horas trabalhadas
+                                if val_str and val_str not in ["", "F", "D", "X"] and not any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
                                     horas_no_dia += 12.0
                                     
                             if teve_dn:
@@ -319,7 +318,7 @@ def renderizar_passo7():
                                 
                             total_trabalhado_escala += horas_no_dia
                         
-                        # Cálculo oficial: (Dias do Mês - Dias Neutros) * Taxa Diária
+                        # Cálculo: (Dias do Mês - Dias Neutros) * Taxa Diária
                         dias_efetivos_mes = dias_no_mes - dias_neutros_mes
                         meta_efetiva_acumulada += (dias_efetivos_mes * taxa_diaria)
                         dias_neutros_total += dias_neutros_mes
@@ -388,7 +387,7 @@ def renderizar_passo7():
                     st.download_button("📥 Exportar Extrato (CSV)", data=df_extrato.to_csv(index=False).encode('utf-8'), file_name=f"Banco_Horas_{m_ano}.csv", mime="text/csv", use_container_width=True)
                 with c_btn2: 
                     if st.button("🖨️ Imprimir / PDF Oficial", use_container_width=True):
-                        components.html(html_extrato_pdf + "<script>window.print();</script>", height=0, width=0)
+                        st.html(f"{html_extrato_pdf}<script>window.print();</script>")
                 with c_btn3: 
                     if st.button("💾 Fechar Período e Salvar", type="primary", use_container_width=True): 
                         registrar_log_auditoria_local("Banco de Horas", "Gestor salvou o fechamento da apuração do banco de horas.")
