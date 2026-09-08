@@ -18,23 +18,91 @@ def aplicar_estilo_visual():
 
     st.markdown(f"""
         <style>
+            /* ESTILOS GERAIS */
             .stApp {{ background-color: {bg_cor} !important; color: {text_cor} !important; }}
             section[data-testid="stSidebar"] {{ background-color: {sidebar_bg} !important; border-right: 1px solid {border_cor} !important; }}
             section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3, section[data-testid="stSidebar"] span, section[data-testid="stSidebar"] div {{ color: {text_cor} !important; }}
+            
             div[data-testid="stExpander"] {{ background-color: {form_bg} !important; border: 1px solid {border_cor} !important; border-radius: 8px !important; }}
             div[data-testid="stExpander"] summary, div[data-testid="stExpander"] details summary, div[data-testid="stExpander"] header {{ background-color: {expander_bg} !important; color: {text_cor} !important; }}
-            div[data-baseweb="input"], div[data-baseweb="select"] > div {{ background-color: {input_bg} !important; color: {input_text} !important; border: 1px solid {border_cor} !important; border-radius: 6px !important; }}
+            
+            /* CAIXAS DE ENTRADA (INPUT) */
+            div[data-baseweb="input"], div[data-baseweb="select"] > div {{ 
+                background-color: {input_bg} !important; 
+                color: {input_text} !important; 
+                border: 1px solid {border_cor} !important; 
+                border-radius: 6px !important; 
+            }}
             div[data-baseweb="input"] input, div[data-baseweb="select"] span {{ color: {input_text} !important; }}
+            
             .stForm, div[data-testid="stForm"] {{ background-color: {form_bg} !important; border: 2px solid {border_cor} !important; border-radius: 12px !important; padding: 20px !important; }}
             .stForm label, p, h1, h2, h3, h4, h5, h6, span, label {{ color: {text_cor} !important; }}
-            div[data-testid="stColumn"] button[kind="secondary"], div[data-testid="stElementContainer"] button[kind="secondary"] {{ background-color: {sec_bg} !important; border: 1px solid {sec_border} !important; opacity: 1 !important; }}
-            div[data-testid="stColumn"] button[kind="secondary"] p, div[data-testid="stElementContainer"] button[kind="secondary"] p {{ color: {sec_text} !important; font-weight: 700 !important; }}
-            div[data-testid="stColumn"] button[kind="primary"], div[data-testid="stElementContainer"] button[kind="primary"], .stFormSubmitButton > button {{ background-color: {pri_bg} !important; border: 2px solid {pri_border} !important; box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.15) !important; opacity: 1 !important; }}
-            div[data-testid="stColumn"] button[kind="primary"] p, div[data-testid="stElementContainer"] button[kind="primary"] p, .stFormSubmitButton > button p {{ color: {pri_text} !important; font-weight: 800 !important; }}
-            div[data-testid="stColumn"] button[kind="primary"]:hover, .stFormSubmitButton > button:hover {{ background-color: {sec_bg} !important; }}
 
             /* ----------------------------------------------------------------- */
-            /* 🪖 CORREÇÃO VISUAL DOS CARDS DE MILITARES (PASSO 3 E SELEÇÕES)    */
+            /* CORREÇÃO DA RAIZ: APLICAR ESTILO APENAS A BOTÕES NORMAIS          */
+            /* ----------------------------------------------------------------- */
+            .stButton > button[kind="secondary"] {{ background-color: {sec_bg} !important; border: 1px solid {sec_border} !important; opacity: 1 !important; }}
+            .stButton > button[kind="secondary"] p {{ color: {sec_text} !important; font-weight: 700 !important; }}
+            
+            .stButton > button[kind="primary"], .stFormSubmitButton > button {{ background-color: {pri_bg} !important; border: 2px solid {pri_border} !important; box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.15) !important; opacity: 1 !important; }}
+            .stButton > button[kind="primary"] p, .stFormSubmitButton > button p {{ color: {pri_text} !important; font-weight: 800 !important; }}
+            
+            .stButton > button[kind="primary"]:hover, .stFormSubmitButton > button:hover {{ background-color: {sec_bg} !important; }}
+
+            /* ----------------------------------------------------------------- */
+            /* 1. CAIXAS DE SELEÇÃO: DROPDOWNS DO MESMO TAMANHO DA CAIXA         */
+            /* ----------------------------------------------------------------- */
+            /* Remove os blocos e ajusta para ficarem transparentes dentro da caixa */
+            div[data-baseweb="select"] button,
+            div[data-baseweb="select"] [role="button"],
+            div[data-baseweb="select"] div[data-testid="stBaseButton-secondary"] {{
+                background-color: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                height: 100% !important; /* Estica para ficar no mesmo tamanho da caixa */
+                min-height: unset !important;
+                padding: 0 6px !important;
+                margin: 0 !important;
+                border-radius: 0 !important;
+            }}
+            
+            /* Ajusta a cor das setinhas para combinar visualmente (dourado) */
+            div[data-baseweb="select"] svg {{
+                width: 18px !important;
+                height: 18px !important;
+                fill: {sec_bg} !important; 
+            }}
+
+            /* ----------------------------------------------------------------- */
+            /* 2. TAGS DO MULTISELECT: REMOVER O BLOCO MARROM DO "X"             */
+            /* ----------------------------------------------------------------- */
+            /* Fundo principal vermelho da Tag */
+            div[data-baseweb="tag"] {{
+                background-color: #ef4444 !important; 
+                border: none !important;
+                border-radius: 4px !important;
+                padding: 2px 4px !important;
+                margin: 2px 4px 2px 0 !important;
+            }}
+            
+            /* Remove o bloco marrom do texto da Tag */
+            div[data-baseweb="tag"] span {{
+                color: white !important;
+                background-color: transparent !important;
+                font-weight: 600 !important;
+            }}
+
+            /* Remove o bloco marrom do botão "X" e pinta o ícone de branco */
+            div[data-baseweb="tag"] [role="presentation"] {{
+                background-color: transparent !important; 
+                border-radius: 0 !important;
+            }}
+            div[data-baseweb="tag"] svg {{
+                fill: white !important; 
+            }}
+
+            /* ----------------------------------------------------------------- */
+            /* 3. CARDS DE MILITARES & TOOLTIP (AGUARDA 3 SEGUNDOS)              */
             /* ----------------------------------------------------------------- */
             .grid-efetivo {{
                 display: grid !important;
@@ -44,7 +112,7 @@ def aplicar_estilo_visual():
                 margin-bottom: 15px !important;
             }}
 
-            .card-militar-item, div[data-testid="stColumn"] button {{
+            .card-militar-item {{
                 background-color: #a38f51 !important;
                 color: #0f172a !important;
                 padding: 8px 10px !important;
@@ -57,23 +125,35 @@ def aplicar_estilo_visual():
                 justify-content: center !important;
                 align-items: center !important;
                 min-height: 58px !important;
-                height: auto !important;
-                white-space: normal !important;
-                word-break: break-word !important;
-                overflow: visible !important;
+                position: relative !important;
+                cursor: pointer !important;
             }}
 
-            /* Força a quebra de linha dos textos de botões/cards sem truncar com '...' */
-            div[data-testid="stColumn"] button p, 
-            div[data-testid="stElementContainer"] button p,
-            .card-militar-item p,
-            .card-militar-item span {{
-                white-space: normal !important;
-                word-break: break-word !important;
-                text-overflow: unset !important;
-                overflow: visible !important;
-                line-height: 1.25 !important;
-                font-size: 0.82rem !important;
+            .card-militar-item[data-nome]:hover::after {{
+                content: attr(data-nome);
+                position: absolute;
+                bottom: 108%;
+                left: 50%;
+                transform: translateX(-50%);
+                background-color: #0f172a;
+                color: #f8fafc;
+                padding: 6px 12px;
+                border-radius: 6px;
+                font-size: 0.78rem;
+                font-weight: 600;
+                white-space: nowrap;
+                box-shadow: 0px 4px 12px rgba(0,0,0,0.5);
+                border: 1px solid #9D8B5C;
+                z-index: 9999;
+                pointer-events: none;
+                opacity: 0;
+                visibility: hidden;
+                transition: opacity 0.3s ease 3s, visibility 0.3s ease 3s; 
+            }}
+
+            .card-militar-item[data-nome]:hover::after {{
+                opacity: 1;
+                visibility: visible;
             }}
 
             .card-militar-item .grad-nome {{
@@ -81,7 +161,6 @@ def aplicar_estilo_visual():
                 line-height: 1.15 !important;
                 text-transform: uppercase !important;
                 color: #0f172a !important;
-                word-wrap: break-word !important;
             }}
 
             .card-militar-item .num-pm {{
@@ -90,29 +169,6 @@ def aplicar_estilo_visual():
                 color: #1e293b !important;
                 margin-top: 3px !important;
                 display: block !important;
-            }}
-
-            /* ----------------------------------------------------------------- */
-            /* 🎯 AJUSTE DE TAMANHO DOS BOTÕES DE DROPDOWN (MULTISELECT/SELECT)  */
-            /* ----------------------------------------------------------------- */
-            div[data-baseweb="select"] div[role="button"],
-            div[data-baseweb="select"] [data-testid="stBaseButton-secondary"],
-            div[data-baseweb="select"] button {{
-                background-color: transparent !important;
-                border: none !important;
-                height: auto !important;
-                min-height: unset !important;
-                max-height: 38px !important;
-                padding: 0 8px !important;
-                margin: 0 !important;
-                box-shadow: none !important;
-                border-radius: 0 !important;
-            }}
-
-            div[data-baseweb="select"] svg {{
-                width: 16px !important;
-                height: 16px !important;
-                fill: #c5a059 !important;
             }}
         </style>
     """, unsafe_allow_html=True)
