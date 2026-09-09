@@ -7,6 +7,14 @@ import streamlit.components.v1 as components
 from modules.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from modules.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 
+# Siglas de afastamento institucional que abatem a meta proporcional do mês (sem CURSO e sem DISP/DIS)
+SIGLAS_DIAS_NEUTROS = [
+    "FER", "FERIAS", "FÉRIAS", "FE",
+    "LTSP", "LM",
+    "ATEST", "ATESTADO", "ATE",
+    "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT"
+]
+
 lista_meses = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
@@ -63,7 +71,6 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
 
         linha_excel += 1
         
-        # INSERE A LEGENDA NO EXCEL CASO ESTEJA ATIVADA
         if texto_legenda:
             worksheet.merge_range(linha_excel, 0, linha_excel, num_cols-1, texto_legenda, fmt_legenda)
             linha_excel += 2
@@ -131,9 +138,7 @@ def renderizar_passo6():
         obs_escala = st.text_area("📝 Observações e Diretrizes P1:", placeholder="Digite mensagens...", key="p6_obs_texto")
         st.divider()
 
-        # ---------------------------------------------------------
-        # NOVO: DETECÇÃO DE TURNOS E SUBSTITUIÇÃO POR LEGENDA
-        # ---------------------------------------------------------
+        # DETECÇÃO DE TURNOS E SUBSTITUIÇÃO POR LEGENDA
         turnos_encontrados = set()
         for d in range(1, num_dias_mes + 1):
             for pair in chaves_quadro:
@@ -230,16 +235,17 @@ def renderizar_passo6():
 
                 for d in range(1, num_dias_mes + 1):
                     val = grade_lancamentos.get(f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}", "F")
+                    val_str = str(val).upper().strip() if val else ""
+                    tokens_dia = set(val_str.replace("/", " ").split())
                     
-                    if val in ["DN", "DNT"] or "(DNT)" in str(val):
+                    if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
                         dias_neutros_cnt += 1
                         
-                    if val and val not in ["", "F", "D", "X", "FE", "LM", "DIS", "DN"]:
+                    if val_str and val_str not in ["", "F", "D", "X"] and not any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
                         total_horas += 12.0
                         
                     cell_content = ""
                     if val not in ["F", "D", "X", "", None]:
-                        # APLICAÇÃO DA LEGENDA
                         if usar_legendas and val in mapa_legendas:
                             val_display = mapa_legendas[val]
                             cell_content = f'<div class="shift-badge">{val_display}</div>'
@@ -256,29 +262,30 @@ def renderizar_passo6():
                         
                     row_html += f'<td class="td-day">{cell_content}</td>'
 
+                # CÁLCULO PROPORCIONAL DA META EFETIVA (SINCRONIZADO)
                 cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
                 eh_reduzida = cfg_bh.get("reduzida", False)
-                meta_base = 80.0 if eh_reduzida else 160.0
-                desconto_dn = 4.0 if eh_reduzida else 8.0
-
-                meta_efetiva = max(0.0, meta_base - (dias_neutros_cnt * desconto_dn))
+                carga_base_mes = 80.0 if eh_reduzida else 160.0
+                
+                taxa_diaria = carga_base_mes / float(num_dias_mes)
+                dias_efetivos = num_dias_mes - dias_neutros_cnt
+                meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
                 saldo_horas = total_horas - meta_efetiva
                 
                 row_html += f"""
                     <td class="td-horas">
-                        <div class="h-main">{total_horas:.0f}h / {meta_efetiva:.0f}h</div>
+                        <div class="h-main">{total_horas:.0f}h / {meta_efetiva:.1f}h</div>
                         <div class="h-sub">{saldo_horas:+.1f}h</div>
                     </td>
                 </tr>
                 """
                 tbody_html += row_html
-                linha_xls.append(f"{total_horas:.0f}h / {meta_efetiva:.0f}h\n({saldo_horas:+.1f}h)")
+                linha_xls.append(f"{total_horas:.0f}h / {meta_efetiva:.1f}h\n({saldo_horas:+.1f}h)")
                 linhas_excel_data.append(linha_xls)
 
         df_excel_export = pd.DataFrame(linhas_excel_data, columns=cols_excel_names)
         mes_ano_str = f"{m_mes:02d}/{m_ano}"
         
-        # INSERÇÃO DA LEGENDA NO HTML DO PDF
         bloco_legenda_html = ""
         if texto_legenda_final:
             bloco_legenda_html = f"""

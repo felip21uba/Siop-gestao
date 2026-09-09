@@ -5,13 +5,18 @@ import pandas as pd
 import copy
 from modules.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
 from modules.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
+from utils.excel_escala_importer import (
+    processar_upload_escala_excel, 
+    escanear_legendas_unicas_excel, 
+    MAPA_CONVERSAO_LEGENDAS
+)
 
-# Siglas de afastamento institucional que abatem os dias úteis/efetivos do mês (sem DISP/DIS)
+# Siglas de afastamento institucional que abatem a meta proporcional do mês (sem CURSO e sem DISP/DIS)
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
     "LTSP", "LM",
-    "CURSO", "ATEST", "ATESTADO",
-    "LUTO", "NUPCIAS", "NÚPCIAS", "DN", "DNT"
+    "ATEST", "ATESTADO", "ATE",
+    "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT"
 ]
 
 # -----------------------------------------------------------------------------
@@ -30,7 +35,6 @@ def salvar_estado_undo():
     
     st.session_state["pilha_undo"].append(snapshot)
     
-    # Mantém apenas as últimas 10 ações registradas
     if len(st.session_state["pilha_undo"]) > 10:
         st.session_state["pilha_undo"].pop(0)
 
@@ -49,7 +53,7 @@ def desfazer_ultima_acao():
     return False
 
 # -----------------------------------------------------------------------------
-# FUNÇÕES DE LOGS E PADRONIZAÇÃO
+# FUNÇÕES DE LOGS, AUDITORIA E PADRONIZAÇÃO
 # -----------------------------------------------------------------------------
 def registrar_log_auditoria(acao, detalhe):
     """Grava ações no histórico de auditoria do sistema."""
@@ -143,6 +147,57 @@ def executar_auto_save_banco():
     st.session_state["exibir_toast_autosave"] = True
 
 # -----------------------------------------------------------------------------
+# MODAL DINÂMICO DE IMPORTAÇÃO REVERSA VIA EXCEL
+# -----------------------------------------------------------------------------
+@st.dialog("📥 Importar Escala Pronta via Excel", width="large")
+def abrir_modal_importar_escala_excel():
+    st.markdown("##### 📁 Envie a planilha Excel para preenchimento automático do Quadro:")
+    st.caption("O leitor identifica automaticamente colunas de MATRÍCULA/MILITAR, EQUIPE e colunas dos dias (1 a 31).")
+    
+    arq_escala = st.file_uploader("Selecione o arquivo XLSX ou XLS:", type=["xlsx", "xls"], key="uploader_escala_excel_modal")
+    
+    m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
+    m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
+
+    if arq_escala is not None:
+        legendas_detectadas = escanear_legendas_unicas_excel(arq_escala, m_ano, m_mes)
+        
+        st.divider()
+        st.markdown("**Mapeamento Dinâmico de Legendas:**")
+        
+        mapa_custom = {}
+        if legendas_detectadas:
+            st.info(f"💡 Foram identificadas `{len(legendas_detectadas)}` legenda(s) de turno na planilha: {legendas_detectadas}")
+            st.caption("Confirme ou digite o horário por extenso equivalente para cada sigla encontrada:")
+            
+            cols = st.columns(2)
+            for idx_leg, leg_code in enumerate(legendas_detectadas):
+                val_padrao = MAPA_CONVERSAO_LEGENDAS.get(leg_code, "07:00 às 19:00")
+                with cols[idx_leg % 2]:
+                    mapa_custom[leg_code] = st.text_input(
+                        f"Sigla '{leg_code}' equivale a:", 
+                        value=val_padrao, 
+                        key=f"inp_leg_dyn_{leg_code}"
+                    )
+        else:
+            st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão aplicados.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🚀 Processar e Carregar no Quadro Mensal", type="primary", use_container_width=True):
+            salvar_estado_undo()
+            sucesso, msg, nao_encontrados = processar_upload_escala_excel(arq_escala, m_ano, m_mes, mapa_custom)
+            
+            if sucesso:
+                st.success(msg)
+                if nao_encontrados:
+                    st.warning(f"⚠️ {len(nao_encontrados)} militar(es) da planilha não foram encontrados no cadastro do sistema: {nao_encontrados}")
+                registrar_log_auditoria("Importação via Excel", f"Escala carregada a partir do arquivo '{arq_escala.name}'.")
+                executar_auto_save_banco()
+                st.rerun()
+            else:
+                st.error(msg)
+
+# -----------------------------------------------------------------------------
 # RENDERIZAÇÃO DO PASSO 5
 # -----------------------------------------------------------------------------
 def renderizar_passo5():
@@ -159,6 +214,8 @@ def renderizar_passo5():
     eh_admin = "PROGRAMADOR" in cargo_str or "TESTADOR" in cargo_str or "ADMIN" in perfil_str or "DESENVOLVEDOR" in cargo_str
     
     escala_fechada = st.session_state.get("escala_fechada_auditoria", False)
+    quadro_travado = st.session_state.get("toggle_trava_quadro", False)
+    
     timezone_br = datetime.timezone(datetime.timedelta(hours=-3))
     hoje = datetime.datetime.now(timezone_br).date()
     
@@ -172,9 +229,12 @@ def renderizar_passo5():
 
         chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
         
-        c_info1, c_info2 = st.columns(2)
-        c_info1.info(f"👮‍♂️ **Linhas de Escala Ativas no Quadro:** `{len(chaves_quadro)}`")
-        c_info2.info("💡 *Legenda `X` indica serviço ativo em outra guarnição.*")
+        c_info1, c_info2 = st.columns([3, 1])
+        with c_info1:
+            st.info(f"👮‍♂️ **Linhas de Escala Ativas no Quadro:** `{len(chaves_quadro)}` | 💡 *Legenda `X` indica serviço ativo em outra guarnição.*")
+        with c_info2:
+            if st.button("📥 Importar Escala (Excel)", type="primary", use_container_width=True):
+                abrir_modal_importar_escala_excel()
 
         num_dias_mes = calendar.monthrange(m_ano, m_mes)[1]
         mils_todos = st.session_state.get("lista_militares", [])
@@ -206,9 +266,11 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
-        # 🗑️ PAINEL DE EXCLUSÃO DIRETA COM AUDITORIA E DESFAZER
+        # 🗑️ PAINEL DE EXCLUSÃO DIRETA
         with st.expander("🗑️ Excluir Militar ou Equipe do Quadro"):
-            if escala_fechada and not eh_admin:
+            if quadro_travado:
+                st.warning("🔒 **QUADRO TRAVADO:** Desative a chave 'Travar Quadro' abaixo para permitir exclusões de linhas ou equipes.")
+            elif escala_fechada and not eh_admin:
                 st.error("🔒 **Bloqueado:** Não é possível excluir linhas ou equipes inteiras com a escala homologada para não perder o histórico retroativo.")
             else:
                 col_ex1, col_ex2 = st.columns(2)
@@ -252,9 +314,11 @@ def renderizar_passo5():
                             executar_auto_save_banco()
                             st.rerun()
 
-        # ⚡ PAINEL DE AJUSTE RÁPIDO COM AUDITORIA E DESFAZER
+        # ⚡ PAINEL DE AJUSTE RÁPIDO
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Força e Precedência de Sobrescrita)", expanded=False):
-            if mils_escala_ord:
+            if quadro_travado:
+                st.warning("🔒 **QUADRO TRAVADO:** Desative a chave 'Travar Quadro' abaixo para efetuar lançamentos diretos.")
+            elif mils_escala_ord:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_escala_ord}
                 
                 c_f1, c_f2, c_f3 = st.columns([2.5, 2, 2])
@@ -351,13 +415,13 @@ def renderizar_passo5():
 
         st.divider()
 
-        # 📊 RENDERIZAÇÃO DO QUADRO E CABEÇALHO DE AÇÕES COM BOTÃO DESFAZER
+        # 📊 RENDERIZAÇÃO DO QUADRO E CABEÇALHO DE AÇÕES
         col_t1, col_t2, col_t3, col_t4 = st.columns([1.5, 1, 1, 1.5])
         with col_t1: 
             st.markdown("#### 📊 Quadro Mensal")
         with col_t2:
             qtd_undo = len(st.session_state.get("pilha_undo", []))
-            pode_desfazer = qtd_undo > 0
+            pode_desfazer = (qtd_undo > 0) and not quadro_travado
             if st.button(f"↩️ Desfazer ({qtd_undo})", disabled=not pode_desfazer, use_container_width=True):
                 if desfazer_ultima_acao():
                     st.toast("↩️ Alteração desfeita com sucesso!", icon="🔄")
@@ -366,7 +430,9 @@ def renderizar_passo5():
             if st.button("🔄 Atualizar", use_container_width=True, type="primary"):
                 st.rerun()
         with col_t4: 
-            quadro_travado = st.toggle("🔒 Travar Quadro", value=True, key="toggle_trava_quadro")
+            quadro_travado_toggle = st.toggle("🔒 Travar Quadro", value=quadro_travado, key="toggle_trava_quadro")
+            if quadro_travado_toggle != quadro_travado:
+                st.rerun()
 
         colunas_dias_nomes = []
         for d in range(1, num_dias_mes + 1):
@@ -410,7 +476,6 @@ def renderizar_passo5():
 
                 linha[col_nome] = val_atual
                 
-                # Identificação rigorosa por tokens de palavras
                 val_str = str(val_atual).upper().strip() if val_atual else ""
                 tokens_dia = set(val_str.replace("/", " ").split())
                 
@@ -424,7 +489,6 @@ def renderizar_passo5():
             eh_reduzida = cfg_bh.get("reduzida", False)
             carga_base_mes = 80.0 if eh_reduzida else 160.0
             
-            # Sincronia Proporcional com Passo 7
             taxa_diaria = carga_base_mes / float(num_dias_mes)
             dias_efetivos = num_dias_mes - dias_neutros_cnt
             meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
@@ -440,7 +504,7 @@ def renderizar_passo5():
         df_escala = pd.DataFrame(matriz_dados)
         st.session_state["df_escala_consolidada"] = df_escala
 
-        # MÉTRICA DE EFETIVO MÍNIMO DIÁRIO
+        # 👥 MÉTRICA DE EFETIVO MÍNIMO DIÁRIO (GRÁFICO)
         if not df_escala.empty:
             with st.expander("👥 Gráfico de Efetivo Diário (Prevenção de Desfalque)", expanded=False):
                 st.caption("Visão operacional: quantidade de militares escalados (trabalhando) por dia.")
@@ -546,7 +610,7 @@ def renderizar_passo5():
         st.markdown("<br>", unsafe_allow_html=True)
         col_act1, col_act2 = st.columns([1, 1])
         with col_act1:
-            if not escala_fechada or eh_admin:
+            if not quadro_travado and (not escala_fechada or eh_admin):
                 if st.button("🧹 Limpar Todo o Quadro", use_container_width=True):
                     salvar_estado_undo()
                     st.session_state["grade_escala_lancamentos"] = {}
@@ -557,7 +621,7 @@ def renderizar_passo5():
                     executar_auto_save_banco()
                     st.rerun()
             else:
-                st.button("🧹 Limpar Todo o Quadro", use_container_width=True, disabled=True, help="Bloqueado: Escala Fechada.")
+                st.button("🧹 Limpar Todo o Quadro", use_container_width=True, disabled=True, help="Bloqueado: Quadro Travado ou Escala Fechada.")
                 
         with col_act2:
             if st.button("💾 Salvar Rascunho no Banco de Dados", type="primary", use_container_width=True):
