@@ -124,7 +124,7 @@ if not st.session_state.get("autenticado", False):
 
             if "codigo_enviado" not in st.session_state["reset_token_dados"]:
                 with st.form("form_solicitar_codigo_email"):
-                    identificador = st.text_input("Nº de Polícia ou E-mail Cadastrado:", placeholder="Ex: 1337468 ou militar@pmmg.mg.gov.br").strip()
+                    identificador = (st.text_input("Nº de Polícia ou E-mail Cadastrado:", placeholder="Ex: 1337468 ou militar@pmmg.mg.gov.br") or "").strip()
                     
                     c_rec1, c_rec2 = st.columns(2)
                     with c_rec1:
@@ -167,9 +167,9 @@ if not st.session_state.get("autenticado", False):
                 st.success("📧 **Instruções enviadas!** Insira o código de verificação de 6 dígitos recebido e cadastre sua nova senha:")
 
                 with st.form("form_confirmar_reset_email"):
-                    cod_digitado = st.text_input("🔑 Digite o Código de 6 dígitos recebido:", max_chars=6).strip()
-                    nova_senha = st.text_input("Nova Senha:", type="password", placeholder="Ex: Pmmg@2026").strip()
-                    confirma_senha = st.text_input("Confirme a Nova Senha:", type="password").strip()
+                    cod_digitado = (st.text_input("🔑 Digite o Código de 6 dígitos recebido:", max_chars=6) or "").strip()
+                    nova_senha = (st.text_input("Nova Senha:", type="password", placeholder="Ex: Pmmg@2026") or "").strip()
+                    confirma_senha = (st.text_input("Confirme a Nova Senha:", type="password") or "").strip()
 
                     col_res1, col_res2 = st.columns(2)
                     with col_res1:
@@ -243,14 +243,17 @@ if not st.session_state.get("autenticado", False):
             st.markdown("---")
             with st.form("form_mfa_setup"):
                 st.markdown("##### 🔐 1. Cadastre sua Nova Senha Pessoal:")
-                nova_senha = st.text_input("Nova Senha:", type="password", placeholder="Ex: Pmmg@2026").strip()
-                confirma_senha = st.text_input("Confirme a Nova Senha:", type="password", placeholder="Repita a nova senha").strip()
+                nova_senha = (st.text_input("Nova Senha:", type="password", placeholder="Ex: Pmmg@2026") or "").strip()
+                confirma_senha = (st.text_input("Confirme a Nova Senha:", type="password", placeholder="Repita a nova senha") or "").strip()
                 st.caption("⚙️ **Regras:** Mínimo 6 caracteres (1 maiúscula, 1 minúscula e 1 símbolo).")
 
                 st.markdown("##### 📱 2. Dados de Contato & Validação 2FA:")
-                email_input = st.text_input("E-mail Funcional/Pessoal:", value=usr_temp.get("email_recuperacao", ""), placeholder="militar@gmail.com").strip()
-                celular_input = st.text_input("Celular / WhatsApp:", value=usr_temp.get("celular_recuperacao", ""), placeholder="(32) 90000-0000").strip()
-                codigo_setup = st.text_input("🔑 Token de 6 dígitos gerado no App:", max_chars=6, placeholder="000000").strip()
+                email_val_padrao = usr_temp.get("email_recuperacao") or ""
+                celular_val_padrao = usr_temp.get("celular_recuperacao") or ""
+                
+                email_input = (st.text_input("E-mail Funcional/Pessoal:", value=email_val_padrao, placeholder="militar@gmail.com") or "").strip()
+                celular_input = (st.text_input("Celular / WhatsApp:", value=celular_val_padrao, placeholder="(32) 90000-0000") or "").strip()
+                codigo_setup = (st.text_input("🔑 Token de 6 dígitos gerado no App:", max_chars=6, placeholder="000000") or "").strip()
 
                 col_s1, col_s2 = st.columns(2)
                 with col_s1:
@@ -320,7 +323,7 @@ if not st.session_state.get("autenticado", False):
             st.markdown(f"Militar: **{usr_temp.get('cargo_funcao', '')} {usr_temp.get('nome_guerra', 'Operador')}**")
 
             with st.form("form_validar_authy_mfa"):
-                codigo_authy = st.text_input("🔑 Token de Segurança (6 dígitos):", max_chars=6, placeholder="000000").strip()
+                codigo_authy = (st.text_input("🔑 Token de Segurança (6 dígitos):", max_chars=6, placeholder="000000") or "").strip()
                 
                 c_aut1, c_aut2 = st.columns(2)
                 with c_aut1:
@@ -371,8 +374,8 @@ if not st.session_state.get("autenticado", False):
         # ----------------------------------------------------------------------
         else:
             with st.form("form_login_principal"):
-                usuario_input = st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1337468").strip()
-                senha_input = st.text_input("Senha de Acesso:", type="password", placeholder="••••••••").strip()
+                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1337468") or "").strip()
+                senha_input = (st.text_input("Senha de Acesso:", type="password", placeholder="••••••••") or "").strip()
                 
                 btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", use_container_width=True)
 
@@ -571,7 +574,7 @@ if not eh_gestor_ou_admin or perfil_ativo == "TROPA":
         "📩 Mensagens & Requerimentos P1"
     ])
     
-    num_policia_user = str(usr.get("usuario_login", usr.get("usuario", usr.get("num_policia", "")))).strip()
+    num_policia_user = str(usr.get("usuario_login") or usr.get("usuario") or usr.get("num_policia") or "").strip()
     nome_user = usr.get("nome_guerra", "Militar")
 
     with aba_escala:
@@ -598,8 +601,8 @@ if not eh_gestor_ou_admin or perfil_ativo == "TROPA":
         st.caption("Utilize este canal oficial para encaminhar solicitações de permuta, certidões ou requerimentos ao comando.")
         
         with st.form("form_envio_msg_p1_tropa", clear_on_submit=True):
-            assunto_msg = st.text_input("Assunto / Motivo:")
-            texto_msg = st.text_area("Detalhamento da Solicitação:", height=120)
+            assunto_msg = (st.text_input("Assunto / Motivo:") or "").strip()
+            texto_msg = (st.text_area("Detalhamento da Solicitação:", height=120) or "").strip()
             
             btn_enviar_msg = st.form_submit_button("📤 Enviar Mensagem à P1", type="primary", use_container_width=True)
             if btn_enviar_msg:
