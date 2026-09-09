@@ -95,6 +95,7 @@ def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
             payload["senha_hash"] = gerar_hash_senha(payload["senha"])
 
         supabase.table("usuarios").upsert(payload).execute()
+        st.cache_data.clear()
         return True
     except Exception as e:
         print(f"Erro ao salvar usuário no Supabase: {e}")
@@ -112,6 +113,7 @@ def atualizar_senha_usuario(usuario_id: str, nova_senha: str) -> bool:
             "senha_hash": hash_nova,
             "ativo": True
         }).or_(f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},id.eq.{u_clean}").execute()
+        st.cache_data.clear()
         return True
     except Exception as e:
         print(f"Erro ao atualizar senha: {e}")

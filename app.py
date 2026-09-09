@@ -14,7 +14,8 @@ from core.database import (
     supabase, 
     carregar_militares_supabase, 
     registrar_audit_log,
-    atualizar_usuario_supabase
+    atualizar_usuario_supabase,
+    salvar_mensagem_p1_supabase
 )
 from core.auth import (
     validar_codigo_authy,
@@ -53,8 +54,8 @@ if "mfa_setup_mode" not in st.session_state:
     st.session_state["mfa_setup_mode"] = False
 if "recuperar_senha_modo" not in st.session_state:
     st.session_state["recuperar_senha_modo"] = False
-if "perfil_simulado" not in st.session_state:
-    st.session_state["perfil_simulado"] = None
+if "simular_visao_tropa" not in st.session_state:
+    st.session_state["simular_visao_tropa"] = False
 if "tentativas_login" not in st.session_state:
     st.session_state["tentativas_login"] = {}
 if "bloqueados_temp" not in st.session_state:
@@ -455,22 +456,28 @@ with st.sidebar:
         st.markdown("### **SIOP**")
         st.caption("PMMG - 2026")
 
-    if usr_real_perfil == "PROGRAMADOR":
+    # -------------------------------------------------------------------------
+    # 👁️ SIMULADOR DE VISÃO DE TROPA (BOTÃO PARA GESTORES)
+    # -------------------------------------------------------------------------
+    eh_gestor_real = usr_real_perfil in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "GESTOR"]
+    
+    if eh_gestor_real:
         st.markdown("---")
-        st.markdown("🛠️ **Modo Suporte (Programador):**")
+        st.markdown("👁️ **Modo de Visualização:**")
         
-        opcoes_perfis = ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "TROPA"]
-        perfil_atual_simulado = st.session_state.get("perfil_simulado", "PROGRAMADOR")
-        idx_perfil = opcoes_perfis.index(perfil_atual_simulado) if perfil_atual_simulado in opcoes_perfis else 0
+        simular_tropa = st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa")
+        st.session_state["simular_visao_tropa"] = simular_tropa
         
-        perfil_teste = st.selectbox("🧪 Simular Visão do Perfil:", opcoes_perfis, index=idx_perfil)
-        st.session_state["perfil_simulado"] = perfil_teste
-        perfil_ativo = perfil_teste
+        if simular_tropa:
+            perfil_ativo = "TROPA"
+            st.info("💡 **Simulador Ativo:** Exibindo tela restrita da TROPA.")
+        else:
+            perfil_ativo = usr_real_perfil
         st.markdown("---")
     else:
-        perfil_ativo = usr_real_perfil
+        perfil_ativo = "TROPA"
 
-    eh_gestor_ou_admin = perfil_ativo in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "GESTOR"]
+    eh_gestor_ou_admin = (perfil_ativo != "TROPA")
 
     st.info(f"👤 **{usr.get('nome_guerra', 'Militar')}**\n\n🔰 **Perfil Ativo:** `{perfil_ativo}`\n\n🏛️ **Unidade:** {usr.get('unidade', 'PMMG')}")
     st.divider()
@@ -544,7 +551,7 @@ with st.sidebar:
         st.session_state["mfa_pendente"] = False
         st.session_state["mfa_setup_mode"] = False
         st.session_state["recuperar_senha_modo"] = False
-        st.session_state["perfil_simulado"] = None
+        st.session_state["simular_visao_tropa"] = False
         st.session_state["usuario_dados"] = {}
         st.rerun()
 
@@ -553,27 +560,57 @@ with st.sidebar:
 # =========================================================================
 modulo = st.session_state.get("modulo_ativo", "MINHA_ESCALA")
 
-if modulo == "MINHA_ESCALA" and not eh_gestor_ou_admin:
+# -------------------------------------------------------------------------
+# 👮‍♂️ VISÃO RESTRITA DA TROPA
+# -------------------------------------------------------------------------
+if not eh_gestor_ou_admin or perfil_ativo == "TROPA":
     st.title("📅 Central do Policial")
-    aba_escala, aba_mural = st.tabs(["📅 Minha Escala Individual", "🗣️ Mural & Trocas de Serviço"])
+    aba_escala, aba_mural, aba_mensagens = st.tabs([
+        "📅 Minha Escala Individual", 
+        "🗣️ Mural & Trocas de Serviço", 
+        "📩 Mensagens & Requerimentos P1"
+    ])
     
+    num_policia_user = str(usr.get("usuario_login", usr.get("usuario", usr.get("num_policia", "")))).strip()
+    nome_user = usr.get("nome_guerra", "Militar")
+
     with aba_escala:
-        num_policia_user = usr.get("usuario_login", usr.get("usuario", ""))
-        nome_user = usr.get("nome_guerra", "Militar")
-        st.info(f"👮‍♂️ Exibindo turnos e banco de horas cadastrados para **{nome_user} ({num_policia_user})**.")
+        st.info(f"👮‍♂️ Exibindo a linha individual na escala para **{usr.get('cargo_funcao', '')} {nome_user} ({num_policia_user})**.")
         
         df_escala = st.session_state.get("df_escala_consolidada")
         if df_escala is not None and not df_escala.empty:
-            df_individual = df_escala[df_escala["Nº POLÍCIA"].astype(str) == str(num_policia_user)]
+            df_individual = df_escala[
+                df_escala["Nº POLÍCIA"].astype(str).str.contains(num_policia_user, na=False) |
+                df_escala["MILITAR"].astype(str).str.contains(nome_user, na=False)
+            ]
             if not df_individual.empty:
                 st.dataframe(df_individual, use_container_width=True, hide_index=True)
             else:
-                st.warning("Nenhum turno cadastrado para você na escala atual deste mês.")
+                st.warning("Nenhum turno cadastrado para você na escala publicada deste mês.")
         else:
             st.warning("A escala geral deste mês ainda não foi publicada pela P1/P3.")
             
     with aba_mural:
         renderizar_mural()
+
+    with aba_mensagens:
+        st.subheader("📩 Enviar Mensagem ou Solicitação à P1")
+        st.caption("Utilize este canal oficial para encaminhar solicitações de permuta, certidões ou requerimentos ao comando.")
+        
+        with st.form("form_envio_msg_p1_tropa", clear_on_submit=True):
+            assunto_msg = st.text_input("Assunto / Motivo:")
+            texto_msg = st.text_area("Detalhamento da Solicitação:", height=120)
+            
+            btn_enviar_msg = st.form_submit_button("📤 Enviar Mensagem à P1", type="primary", use_container_width=True)
+            if btn_enviar_msg:
+                if not assunto_msg or not texto_msg:
+                    st.error("⚠️ Preencha o assunto e o texto da mensagem.")
+                else:
+                    sucesso = salvar_mensagem_p1_supabase(num_policia_user, nome_user, assunto_msg, texto_msg)
+                    if sucesso:
+                        st.success("✅ Sua mensagem foi gravada no Supabase e enviada para a P1!")
+                    else:
+                        st.error("Erro ao enviar mensagem. Tente novamente.")
 
 elif modulo == "ESCALAS" and eh_gestor_ou_admin:
     if st.session_state.get("passo_escala_ativo") == "🗣️ Mural & Trocas de Serviço":
