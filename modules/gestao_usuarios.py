@@ -228,78 +228,78 @@ def exibir_tela_gestao_usuarios():
 
         st.divider()
 
-        # 1.3 QUADRO GERAL DO EFETIVO COM EDIÇÃO DIRETA
-        col_q1, col_q2 = st.columns([3, 1])
-        with col_q1: 
-            st.markdown("##### 📜 Tabela Geral do Efetivo & Acessos")
-            st.caption("Edite o perfil de acesso e o status de conta diretamente na tabela abaixo:")
-        with col_q2: 
-            if st.button("🔄 Recarregar Tabela", use_container_width=True):
-                st.session_state["gestao_usr_version"] += 1
-                st.rerun()
+        # 1.3 QUADRO GERAL DO EFETIVO COM EDIÇÃO DIRETA (RETRÁTIL)
+        with st.expander("📜 Tabela Geral do Efetivo & Acessos (Clique para expandir/recolher)", expanded=False):
+            col_q1, col_q2 = st.columns([3, 1])
+            with col_q1: 
+                st.caption("Edite o perfil de acesso e o status de conta diretamente na tabela abaixo:")
+            with col_q2: 
+                if st.button("🔄 Recarregar Tabela", use_container_width=True):
+                    st.session_state["gestao_usr_version"] += 1
+                    st.rerun()
 
-        if efetivo_banco:
-            linhas_display = []
-            for m in efetivo_banco:
-                num_pm = str(m.get("num_policia", "N/I")).strip().upper()
-                usr_cad = dict_usuarios_existentes.get(num_pm, {})
-                
-                linhas_display.append({
-                    "MATRÍCULA": num_pm,
-                    "POSTO/GRAD": m.get("posto_grad", "SD PM"),
-                    "MILITAR": m.get("nome_guerra", "MILITAR"),
-                    "UNIDADE / CIA": m.get("unidade", "21º BPM"),
-                    "PERFIL DE ACESSO": usr_cad.get("nivel_acesso", "TROPA"),
-                    "CONTA ATIVA": bool(usr_cad.get("ativo", True if usr_cad else False))
-                })
+            if efetivo_banco:
+                linhas_display = []
+                for m in efetivo_banco:
+                    num_pm = str(m.get("num_policia", "N/I")).strip().upper()
+                    usr_cad = dict_usuarios_existentes.get(num_pm, {})
+                    
+                    linhas_display.append({
+                        "MATRÍCULA": num_pm,
+                        "POSTO/GRAD": m.get("posto_grad", "SD PM"),
+                        "MILITAR": m.get("nome_guerra", "MILITAR"),
+                        "UNIDADE / CIA": m.get("unidade", "21º BPM"),
+                        "PERFIL DE ACESSO": usr_cad.get("nivel_acesso", "TROPA"),
+                        "CONTA ATIVA": bool(usr_cad.get("ativo", True if usr_cad else False))
+                    })
 
-            df_display = pd.DataFrame(linhas_display)
+                df_display = pd.DataFrame(linhas_display)
 
-            config_cols = {
-                "MATRÍCULA": st.column_config.TextColumn("MATRÍCULA", disabled=True),
-                "POSTO/GRAD": st.column_config.TextColumn("POSTO/GRAD", disabled=True),
-                "MILITAR": st.column_config.TextColumn("MILITAR", disabled=True),
-                "UNIDADE / CIA": st.column_config.TextColumn("UNIDADE / CIA", disabled=True),
-                "PERFIL DE ACESSO": st.column_config.SelectboxColumn("PERFIL DE ACESSO", options=["TROPA", "CMT_FRACAO", "SARGENTEANTE", "CMT_PELOTAO", "P1", "COMANDANTE_CIA", "PROGRAMADOR"], required=True),
-                "CONTA ATIVA": st.column_config.CheckboxColumn("CONTA ATIVA")
-            }
+                config_cols = {
+                    "MATRÍCULA": st.column_config.TextColumn("MATRÍCULA", disabled=True),
+                    "POSTO/GRAD": st.column_config.TextColumn("POSTO/GRAD", disabled=True),
+                    "MILITAR": st.column_config.TextColumn("MILITAR", disabled=True),
+                    "UNIDADE / CIA": st.column_config.TextColumn("UNIDADE / CIA", disabled=True),
+                    "PERFIL DE ACESSO": st.column_config.SelectboxColumn("PERFIL DE ACESSO", options=["TROPA", "CMT_FRACAO", "SARGENTEANTE", "CMT_PELOTAO", "P1", "COMANDANTE_CIA", "PROGRAMADOR"], required=True),
+                    "CONTA ATIVA": st.column_config.CheckboxColumn("CONTA ATIVA")
+                }
 
-            chave_editor = f"editor_acessos_v{st.session_state['gestao_usr_version']}"
-            df_editado = st.data_editor(
-                df_display, 
-                column_config=config_cols, 
-                hide_index=True, 
-                use_container_width=True, 
-                key=chave_editor
-            )
+                chave_editor = f"editor_acessos_v{st.session_state['gestao_usr_version']}"
+                df_editado = st.data_editor(
+                    df_display, 
+                    column_config=config_cols, 
+                    hide_index=True, 
+                    use_container_width=True, 
+                    key=chave_editor
+                )
 
-            houve_mudanca = False
-            for idx, row in df_editado.iterrows():
-                matr = str(row["MATRÍCULA"])
-                p_novo = str(row["PERFIL DE ACESSO"])
-                s_novo = bool(row["CONTA ATIVA"])
-                
-                m_orig = next((m for m in efetivo_banco if str(m.get("num_policia")).strip().upper() == matr), {})
-                u_orig = dict_usuarios_existentes.get(matr, {})
-                
-                p_antigo = str(u_orig.get("nivel_acesso", "TROPA"))
-                s_antigo = bool(u_orig.get("ativo", True if u_orig else False))
-                
-                if p_novo != p_antigo or s_novo != s_antigo or not u_orig:
-                    if salvar_permissao_militar(
-                        matricula=matr, 
-                        novo_nivel=p_novo, 
-                        ativo=s_novo,
-                        posto=m_orig.get("posto_grad", "SD PM"),
-                        nome=m_orig.get("nome_guerra", "MILITAR")
-                    ):
-                        registrar_audit_log(usr_id_operador, matr, "ALTERAR_ACESSO_TABELA", f"Perfil configurado para [{p_novo}] e Ativo=[{s_novo}].")
-                        houve_mudanca = True
+                houve_mudanca = False
+                for idx, row in df_editado.iterrows():
+                    matr = str(row["MATRÍCULA"])
+                    p_novo = str(row["PERFIL DE ACESSO"])
+                    s_novo = bool(row["CONTA ATIVA"])
+                    
+                    m_orig = next((m for m in efetivo_banco if str(m.get("num_policia")).strip().upper() == matr), {})
+                    u_orig = dict_usuarios_existentes.get(matr, {})
+                    
+                    p_antigo = str(u_orig.get("nivel_acesso", "TROPA"))
+                    s_antigo = bool(u_orig.get("ativo", True if u_orig else False))
+                    
+                    if p_novo != p_antigo or s_novo != s_antigo or not u_orig:
+                        if salvar_permissao_militar(
+                            matricula=matr, 
+                            novo_nivel=p_novo, 
+                            ativo=s_novo,
+                            posto=m_orig.get("posto_grad", "SD PM"),
+                            nome=m_orig.get("nome_guerra", "MILITAR")
+                        ):
+                            registrar_audit_log(usr_id_operador, matr, "ALTERAR_ACESSO_TABELA", f"Perfil configurado para [{p_novo}] e Ativo=[{s_novo}].")
+                            houve_mudanca = True
 
-            if houve_mudanca:
-                st.session_state["gestao_usr_version"] += 1
-                st.success("✅ Alterações salvas no banco de dados com sucesso!")
-                st.rerun()
+                if houve_mudanca:
+                    st.session_state["gestao_usr_version"] += 1
+                    st.success("✅ Alterações salvas no banco de dados com sucesso!")
+                    st.rerun()
 
         st.divider()
 
