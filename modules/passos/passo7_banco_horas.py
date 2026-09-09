@@ -10,10 +10,10 @@ MESES_MAP = {
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 
-# Siglas de afastamento institucional que abatem os dias úteis/efetivos do mês
+# Siglas de afastamento institucional que abatem os dias úteis/efetivos do mês (sem DISP/DIS)
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
-    "LTSP", "LM", "DISP", "DISPENSA", "DIS",
+    "LTSP", "LM",
     "CURSO", "ATEST", "ATESTADO",
     "LUTO", "NUPCIAS", "NÚPCIAS", "DN", "DNT"
 ]

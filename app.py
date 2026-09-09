@@ -6,6 +6,9 @@ import urllib.parse
 import pyotp
 import streamlit as st
 
+# Pré-carregamento do passo3 no sys.modules para sanar o KeyError no Streamlit Cloud
+import modules.passos.passo3_efetivo
+
 from core.styles import aplicar_estilo_visual
 from core.database import (
     supabase, 
@@ -367,7 +370,7 @@ if not st.session_state.get("autenticado", False):
                         st.error("🚨 Token Authy/E-mail incorreto ou expirado. Verifique seu app ou caixa de entrada.")
 
         # ----------------------------------------------------------------------
-        # FLUXO 4: TELA PRINCIPAL DE LOGIN (USUÁRIO E SENHA)
+        # FLUXO 4: TELA PRINCIPAL DE LOGIN (CONSULTA DIRETA NO SUPABASE)
         # ----------------------------------------------------------------------
         else:
             with st.form("form_login_principal"):
@@ -385,29 +388,11 @@ if not st.session_state.get("autenticado", False):
                         num_pol_key = str(usuario_input).strip()
                         usuario_encontrado = buscar_usuario_para_login(usuario_input)
 
-                        # Cache ou Fallback Local
+                        # Cache Local apenas se o banco falhar
                         if not usuario_encontrado:
                             db_teste = st.session_state.get("usuarios_teste_db", {})
                             if num_pol_key in db_teste:
                                 usuario_encontrado = db_teste[num_pol_key]
-
-                        if not usuario_encontrado and usuario_input in ["1337468", "123456", "ADMIN", "PROGRAMADOR"]:
-                            usuario_encontrado = {
-                                "id": "1",
-                                "usuario": usuario_input,
-                                "usuario_login": usuario_input,
-                                "senha": "1337469pm",
-                                "nome_guerra": "DESENVOLVEDOR",
-                                "cargo_funcao": "CAP PM",
-                                "nivel_acesso": "PROGRAMADOR",
-                                "unidade": "21º BPM",
-                                "mfa_habilitado": False,
-                                "mfa_secret": None,
-                                "email_recuperacao": "desenvolvedor@pmmg.mg.gov.br",
-                                "celular_recuperacao": "(32) 99999-9999",
-                                "ativo": True
-                            }
-                            st.session_state["usuarios_teste_db"][num_pol_key] = usuario_encontrado
 
                         if not usuario_encontrado:
                             st.error("❌ Usuário não localizado no sistema.")
@@ -423,7 +408,7 @@ if not st.session_state.get("autenticado", False):
 
                                 if erros_atuais >= 3:
                                     st.session_state["bloqueados_temp"].add(usuario_input)
-                                    if supabase and usuario_encontrado.get("id") != "1":
+                                    if supabase:
                                         atualizar_usuario_supabase(num_pol_key, {"ativo": False})
                                     st.error("🚨 **Senha Incorreta! Tentativa 3 de 3.** Sua conta foi BLOQUEADA por segurança! Clique em 'Esqueci a Senha' abaixo para redefinir via e-mail.")
                                 else:

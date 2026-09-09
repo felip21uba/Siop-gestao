@@ -244,7 +244,7 @@ def aplicar_estilo_visual():
                 display: block !important;
             }}
 
-            /* Tooltip: Invisível por padrão */
+            /* Tooltip: Invisível por padrão (Transição instantânea ao sair) */
             .card-militar-item[data-nome]::after,
             .card-dia-item[data-nome]::after,
             .card-calendario-item[data-nome]::after {{
@@ -252,7 +252,7 @@ def aplicar_estilo_visual():
                 position: absolute;
                 bottom: 108%;
                 left: 50%;
-                transform: translateX(-50%);
+                transform: translateX(-50%) translateY(4px);
                 background-color: #0f172a;
                 color: #f8fafc;
                 padding: 6px 12px;
@@ -262,20 +262,23 @@ def aplicar_estilo_visual():
                 white-space: nowrap;
                 box-shadow: 0px 4px 12px rgba(0,0,0,0.5);
                 border: 1px solid {sec_bg};
-                z-index: 9999;
+                z-index: 99999;
                 pointer-events: none;
-                opacity: 0;
-                visibility: hidden;
-                transition: opacity 0.2s ease 0s, visibility 0.2s ease 0s; 
+                
+                opacity: 0 !important;
+                visibility: hidden !important;
+                transition: opacity 0.2s ease 0s, visibility 0.2s ease 0s, transform 0.2s ease 0s !important;
             }}
 
-            /* Tooltip: Exibe após atraso no Hover */
+            /* Tooltip: Exibe ESTRITAMENTE APÓS 3 SEGUNDOS de hover continuo */
             .card-militar-item[data-nome]:hover::after,
             .card-dia-item[data-nome]:hover::after,
             .card-calendario-item[data-nome]:hover::after {{
-                opacity: 1;
-                visibility: visible;
-                transition: opacity 0.3s ease 3s, visibility 0.3s ease 3s; 
+                opacity: 1 !important;
+                visibility: visible !important;
+                transform: translateX(-50%) translateY(0px) !important;
+                
+                transition: opacity 0.3s ease 3s, visibility 0.3s ease 3s, transform 0.3s ease 3s !important;
             }}
         </style>
     """, unsafe_allow_html=True)

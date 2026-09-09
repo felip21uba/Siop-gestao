@@ -6,6 +6,14 @@ import copy
 from modules.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
 from modules.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 
+# Siglas de afastamento institucional que abatem os dias úteis/efetivos do mês (sem DISP/DIS)
+SIGLAS_DIAS_NEUTROS = [
+    "FER", "FERIAS", "FÉRIAS", "FE",
+    "LTSP", "LM",
+    "CURSO", "ATEST", "ATESTADO",
+    "LUTO", "NUPCIAS", "NÚPCIAS", "DN", "DNT"
+]
+
 # -----------------------------------------------------------------------------
 # FUNÇÕES DE DESFAZER (UNDO) E HISTÓRICO DE MEMÓRIA
 # -----------------------------------------------------------------------------
@@ -402,23 +410,30 @@ def renderizar_passo5():
 
                 linha[col_nome] = val_atual
                 
-                if val_atual == "DN" or "(DNT)" in val_atual or val_atual == "DNT":
+                # Identificação rigorosa por tokens de palavras
+                val_str = str(val_atual).upper().strip() if val_atual else ""
+                tokens_dia = set(val_str.replace("/", " ").split())
+                
+                if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
                     dias_neutros_cnt += 1
-                if val_atual and val_atual not in ["", "F", "D", "X", "FE", "LM", "DIS", "DN"]:
+                
+                if val_str and val_str not in ["", "F", "D", "X"] and not any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
                     total_horas += 12.0
 
             cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
             eh_reduzida = cfg_bh.get("reduzida", False)
-            meta_base = 80.0 if eh_reduzida else 160.0
-            desconto_dn = 4.0 if eh_reduzida else 8.0
-
-            meta_efetiva = max(0.0, meta_base - (dias_neutros_cnt * desconto_dn))
+            carga_base_mes = 80.0 if eh_reduzida else 160.0
+            
+            # Sincronia Proporcional com Passo 7
+            taxa_diaria = carga_base_mes / float(num_dias_mes)
+            dias_efetivos = num_dias_mes - dias_neutros_cnt
+            meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
             excesso_horas = total_horas - meta_efetiva
 
             if excesso_horas > 0:
-                linha["HORAS / META"] = f"⚠️ {total_horas:.1f}h / {meta_efetiva:.0f}h (+{excesso_horas:.1f}h)"
+                linha["HORAS / META"] = f"⚠️ {total_horas:.1f}h / {meta_efetiva:.1f}h (+{excesso_horas:.1f}h)"
             else:
-                linha["HORAS / META"] = f"{total_horas:.1f}h / {meta_efetiva:.0f}h"
+                linha["HORAS / META"] = f"{total_horas:.1f}h / {meta_efetiva:.1f}h"
                 
             matriz_dados.append(linha)
 
@@ -434,7 +449,8 @@ def renderizar_passo5():
                 for linha in matriz_dados:
                     for d, col_nome in colunas_dias_nomes:
                         val = str(linha.get(col_nome, "")).strip().upper()
-                        if val and val not in ["F", "D", "FE", "LM", "DIS", "X", "DN"]:
+                        tokens_val = set(val.replace("/", " ").split())
+                        if val and val not in ["F", "D", "X"] and not any(sigla in tokens_val for sigla in SIGLAS_DIAS_NEUTROS):
                             contagem_diaria[d] += 1
                 
                 col_chart, col_metric = st.columns([3, 1])
