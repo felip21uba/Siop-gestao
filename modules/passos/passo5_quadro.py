@@ -183,9 +183,12 @@ def abrir_modal_importar_escala_excel():
             st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão aplicados.")
 
         st.markdown("<br>", unsafe_allow_html=True)
+        # CHECKBOX PARA LIMPAR O QUADRO ANTES DE IMPORTAR
+        limpar_antes = st.checkbox("🧹 Limpar o quadro atual antes de importar (Substitui os dados da tela)", value=True)
+
         if st.button("🚀 Processar e Carregar no Quadro Mensal", type="primary", use_container_width=True):
             salvar_estado_undo()
-            sucesso, msg, nao_encontrados = processar_upload_escala_excel(arq_escala, m_ano, m_mes, mapa_custom)
+            sucesso, msg, nao_encontrados = processar_upload_escala_excel(arq_escala, m_ano, m_mes, mapa_custom, limpar_antes)
             
             if sucesso:
                 st.success(msg)
@@ -446,7 +449,7 @@ def renderizar_passo5():
             m_id = item["id"]
             eq_nome = item["equipe"]
             pg = padronizar_graduacao(item["posto_grad"])
-            nome_g = item["nome_guerra"]
+            nome_guerra = item["nome_guerra"]
             num_pol = item["num_policia"]
             ordem_atual = st.session_state["ordem_customizada_map"].get(item["chave_linha"], idx_r + 1)
 
@@ -454,7 +457,7 @@ def renderizar_passo5():
                 "ORDEM": int(ordem_atual),
                 "EQUIPE": eq_nome,
                 "Nº POLÍCIA": num_pol,
-                "MILITAR": f"{pg} {nome_g}"
+                "MILITAR": f"{pg} {nome_guerra}"
             }
 
             total_horas = 0.0
