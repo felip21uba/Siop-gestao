@@ -1,10 +1,21 @@
 import datetime
+from zoneinfo import ZoneInfo
 import hashlib
 import os
 import random
 import urllib.parse
+import uuid
 import pyotp
 import streamlit as st
+
+# ==============================================================================
+# 🌐 CONFIGURAÇÃO DE FUSO HORÁRIO OFICIAL (BRASÍLIA / UTC-3)
+# ==============================================================================
+FUSO_BR = ZoneInfo("America/Sao_Paulo")
+
+def obter_agora():
+    """Retorna a data/hora atual rigorosamente ajustada para o fuso de Brasília."""
+    return datetime.datetime.now(FUSO_BR)
 
 from core.database import init_db
 init_db()
@@ -48,6 +59,8 @@ if "usuario_autenticado" not in st.session_state:
     st.session_state["usuario_autenticado"] = False
 if "usuario_dados" not in st.session_state:
     st.session_state["usuario_dados"] = {}
+if "token_sessao_local" not in st.session_state:
+    st.session_state["token_sessao_local"] = None
 if "mfa_pendente" not in st.session_state:
     st.session_state["mfa_pendente"] = False
 if "mfa_setup_mode" not in st.session_state:
@@ -75,20 +88,46 @@ def obter_imagem_brasao():
     return URL_BRASAO_PADRAO
 
 # ==============================================================================
-# ⏱️ TRAVA DE INATIVIDADE (EXPIRAR SESSÃO APÓS 3 MINUTOS)
+# ⏱️ TRAVA DE INATIVIDADE E SESSÃO ÚNICA CONCORRENTE
 # ==============================================================================
-AGORA = datetime.datetime.now()
+AGORA = obter_agora()
 
 if st.session_state.get("autenticado", False):
+    usr_login = str(st.session_state.get("usuario_dados", {}).get("usuario_login") or st.session_state.get("usuario_dados", {}).get("usuario") or "").strip().upper()
+    token_local = st.session_state.get("token_sessao_local")
+
+    # 1. Trava de Sessão Única Concorrente (Derruba acesso se logado em outro dispositivo)
+    if supabase and usr_login and token_local:
+        try:
+            res = supabase.table("usuarios").select("token_sessao_ativa").or_(f"usuario_login.eq.{usr_login},usuario.eq.{usr_login}").execute()
+            if res.data and len(res.data) > 0:
+                token_banco = res.data[0].get("token_sessao_ativa")
+                if token_banco and token_banco != token_local and token_banco != "REVOGADO":
+                    st.session_state["autenticado"] = False
+                    st.session_state["usuario_autenticado"] = False
+                    st.session_state["mfa_pendente"] = False
+                    st.session_state["mfa_setup_mode"] = False
+                    st.session_state["usuario_dados"] = {}
+                    st.session_state["token_sessao_local"] = None
+                    st.error("🚨 **Sessão Encerrada:** Sua conta foi acessada em outro dispositivo. Por segurança, este acesso foi desconectado.")
+                    st.stop()
+        except Exception:
+            pass
+
+    # 2. Trava de Inatividade (3 Minutos = 180s)
     ultima_atividade = st.session_state.get("ultima_atividade")
     if ultima_atividade:
+        if ultima_atividade.tzinfo is None:
+            ultima_atividade = ultima_atividade.replace(tzinfo=FUSO_BR)
+            
         tempo_inativo = (AGORA - ultima_atividade).total_seconds()
-        if tempo_inativo > 180:  # 3 Minutos = 180 Segundos
+        if tempo_inativo > 180:
             st.session_state["autenticado"] = False
             st.session_state["usuario_autenticado"] = False
             st.session_state["mfa_pendente"] = False
             st.session_state["mfa_setup_mode"] = False
             st.session_state["usuario_dados"] = {}
+            st.session_state["token_sessao_local"] = None
             st.warning("⚠️ **Sessão Expirada:** Você foi desconectado por inatividade (mais de 3 minutos sem uso).")
             st.stop()
 
@@ -282,6 +321,7 @@ if not st.session_state.get("autenticado", False):
                         else:
                             num_pol_str = str(usr_temp.get("usuario_login", usr_temp.get("usuario", "")))
                             hash_nova = gerar_hash_senha(nova_senha)
+                            novo_token = str(uuid.uuid4())
                             
                             if supabase:
                                 atualizar_usuario_supabase(num_pol_str, {
@@ -290,7 +330,8 @@ if not st.session_state.get("autenticado", False):
                                     "mfa_secret": secret, 
                                     "mfa_habilitado": True,
                                     "email_recuperacao": email_input, 
-                                    "celular_recuperacao": celular_input
+                                    "celular_recuperacao": celular_input,
+                                    "token_sessao_ativa": novo_token
                                 })
                             
                             usr_temp["senha"] = nova_senha
@@ -299,13 +340,15 @@ if not st.session_state.get("autenticado", False):
                             usr_temp["mfa_habilitado"] = True
                             usr_temp["email_recuperacao"] = email_input
                             usr_temp["celular_recuperacao"] = celular_input
+                            usr_temp["token_sessao_ativa"] = novo_token
 
+                            st.session_state["token_sessao_local"] = novo_token
                             st.session_state["usuarios_teste_db"][num_pol_str] = usr_temp
                             st.session_state["usuario_dados"] = usr_temp
                             st.session_state["autenticado"] = True
                             st.session_state["usuario_autenticado"] = True
                             st.session_state["mfa_setup_mode"] = False
-                            st.session_state["ultima_atividade"] = datetime.datetime.now()
+                            st.session_state["ultima_atividade"] = obter_agora()
                             
                             if "temp_mfa_secret" in st.session_state:
                                 del st.session_state["temp_mfa_secret"]
@@ -359,11 +402,19 @@ if not st.session_state.get("autenticado", False):
                     valido_email = (codigo_temp_email and str(codigo_authy).strip() == str(codigo_temp_email).strip())
 
                     if valido_authy or valido_email:
+                        novo_token = str(uuid.uuid4())
+                        num_pol_str = str(usr_temp.get("usuario_login") or usr_temp.get("usuario") or "")
+
+                        if supabase and num_pol_str:
+                            atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
+
+                        usr_temp["token_sessao_ativa"] = novo_token
+                        st.session_state["token_sessao_local"] = novo_token
                         st.session_state["usuario_dados"] = usr_temp
                         st.session_state["autenticado"] = True
                         st.session_state["usuario_autenticado"] = True
                         st.session_state["mfa_pendente"] = False
-                        st.session_state["ultima_atividade"] = datetime.datetime.now()
+                        st.session_state["ultima_atividade"] = obter_agora()
                         st.toast(f"Acesso liberado! Bem-vindo, {usr_temp.get('nome_guerra')}!", icon="🟢")
                         st.rerun()
                     else:
@@ -587,6 +638,13 @@ with st.sidebar:
     st.divider()
 
     if st.button("🚪 Sair do Sistema", use_container_width=True):
+        usr_m = str(usr.get("usuario_login") or usr.get("usuario") or "")
+        if supabase and usr_m:
+            try:
+                supabase.table("usuarios").update({"token_sessao_ativa": "REVOGADO"}).or_(f"usuario_login.eq.{usr_m},usuario.eq.{usr_m}").execute()
+            except Exception:
+                pass
+
         st.session_state["autenticado"] = False
         st.session_state["usuario_autenticado"] = False
         st.session_state["mfa_pendente"] = False
@@ -594,6 +652,7 @@ with st.sidebar:
         st.session_state["recuperar_senha_modo"] = False
         st.session_state["simular_visao_tropa"] = False
         st.session_state["usuario_dados"] = {}
+        st.session_state["token_sessao_local"] = None
         st.rerun()
 
 # =========================================================================
@@ -692,6 +751,6 @@ def renderizar_rodape_corporativo():
     with col_f3:
         usr_sessao = st.session_state.get("usuario_dados", {}).get("nome_guerra", "Operador")
         st.caption(f"🟢 **Sessão Ativa:** {usr_sessao}")
-        st.caption(f"⏱️ **Acesso:** {datetime.datetime.now().strftime('%H:%M:%S')}")
+        st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 renderizar_rodape_corporativo()
