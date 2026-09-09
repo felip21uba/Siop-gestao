@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 import calendar
 from modules.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
+from core.database import registrar_log_banco, buscar_logs_banco
 
 MESES_MAP = {
     "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, 
@@ -10,12 +11,12 @@ MESES_MAP = {
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 
-# Siglas de afastamento institucional que abatem os dias úteis/efetivos do mês (sem DISP/DIS)
+# Siglas de afastamento institucional sincronizadas com o Passo 5
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
     "LTSP", "LM",
-    "CURSO", "ATEST", "ATESTADO",
-    "LUTO", "NUPCIAS", "NÚPCIAS", "DN", "DNT"
+    "ATEST", "ATESTADO", "ATE",
+    "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT"
 ]
 
 def registrar_log_auditoria_local(acao, detalhe):
@@ -297,28 +298,26 @@ def renderizar_passo7():
                         dias_neutros_mes = 0
                         
                         for d in range(1, dias_no_mes + 1):
-                            teve_dn = False
+                            dia_neutro = False
                             horas_no_dia = 0.0
                             
+                            # Avalia globalmente o dia para este militar em todas as suas equipes
                             for eq in equipes_por_militar.get(m_id, []):
                                 val = grade.get(f"{m_id}_{eq}_{m_ano}_{mes_calc:02d}_{d:02d}", "F")
                                 val_str = str(val).upper().strip() if val else ""
-                                
-                                # Verificação precisa por palavra inteira
                                 tokens_dia = set(val_str.replace("/", " ").split())
-                                if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
-                                    teve_dn = True
                                 
-                                # Soma horas trabalhadas
-                                if val_str and val_str not in ["", "F", "D", "X"] and not any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
+                                if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
+                                    dia_neutro = True
+                                elif val_str and val_str not in ["", "F", "D", "X"]:
                                     horas_no_dia += 12.0
                                     
-                            if teve_dn:
+                            if dia_neutro:
                                 dias_neutros_mes += 1
                                 
                             total_trabalhado_escala += horas_no_dia
                         
-                        # Cálculo: (Dias do Mês - Dias Neutros) * Taxa Diária
+                        # Cálculo Proporcional: (Dias do Mês - Dias Neutros Unificados) * Taxa Diária
                         dias_efetivos_mes = dias_no_mes - dias_neutros_mes
                         meta_efetiva_acumulada += (dias_efetivos_mes * taxa_diaria)
                         dias_neutros_total += dias_neutros_mes

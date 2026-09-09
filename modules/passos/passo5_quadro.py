@@ -11,7 +11,6 @@ from utils.excel_escala_importer import (
     MAPA_CONVERSAO_LEGENDAS
 )
 
-# Siglas de afastamento institucional que abatem a meta proporcional do mês (sem CURSO e sem DISP/DIS)
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
     "LTSP", "LM",
@@ -23,7 +22,6 @@ SIGLAS_DIAS_NEUTROS = [
 # FUNÇÕES DE DESFAZER (UNDO) E HISTÓRICO DE MEMÓRIA
 # -----------------------------------------------------------------------------
 def salvar_estado_undo():
-    """Salva um 'retrato' do quadro antes de qualquer alteração para permitir desfazer."""
     if "pilha_undo" not in st.session_state:
         st.session_state["pilha_undo"] = []
         
@@ -39,7 +37,6 @@ def salvar_estado_undo():
         st.session_state["pilha_undo"].pop(0)
 
 def desfazer_ultima_acao():
-    """Restaura o quadro para o estado imediatamente anterior."""
     if "pilha_undo" in st.session_state and st.session_state["pilha_undo"]:
         ultimo_snapshot = st.session_state["pilha_undo"].pop()
         
@@ -56,7 +53,6 @@ def desfazer_ultima_acao():
 # FUNÇÕES DE LOGS, AUDITORIA E PADRONIZAÇÃO
 # -----------------------------------------------------------------------------
 def registrar_log_auditoria(acao, detalhe):
-    """Grava ações no histórico de auditoria do sistema."""
     usr_logado = st.session_state.get("usuario_dados", {})
     nome_usuario = usr_logado.get("nome_guerra", usr_logado.get("nome", "OPERADOR"))
     cargo_usuario = usr_logado.get("cargo_funcao", usr_logado.get("perfil", "GESTOR"))
@@ -73,17 +69,13 @@ def registrar_log_auditoria(acao, detalhe):
 
     if "logs_auditoria_lista" not in st.session_state:
         st.session_state["logs_auditoria_lista"] = []
-
     st.session_state["logs_auditoria_lista"].insert(0, log_entry)
 
 def padronizar_entrada_quadro(valor):
-    if valor is None:
-        return "F"
+    if valor is None: return "F"
     v = str(valor).strip().upper()
-    if v in ["OFF", "DESCANSO"]:
-        return "D"
-    elif v in ["FOLGA"]:
-        return "F"
+    if v in ["OFF", "DESCANSO"]: return "D"
+    elif v in ["FOLGA"]: return "F"
     return valor
 
 def extrair_datetime_de_string_turno(ano, mes, dia, str_horario):
@@ -143,11 +135,10 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade):
     return "OK", ""
 
 def executar_auto_save_banco():
-    """Aciona o salvamento automático em background."""
     st.session_state["exibir_toast_autosave"] = True
 
 # -----------------------------------------------------------------------------
-# MODAL DINÂMICO DE IMPORTAÇÃO REVERSA VIA EXCEL
+# MODAL DE IMPORTAÇÃO REVERSA VIA EXCEL
 # -----------------------------------------------------------------------------
 @st.dialog("📥 Importar Escala Pronta via Excel", width="large")
 def abrir_modal_importar_escala_excel():
@@ -183,7 +174,6 @@ def abrir_modal_importar_escala_excel():
             st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão aplicados.")
 
         st.markdown("<br>", unsafe_allow_html=True)
-        # CHECKBOX PARA LIMPAR O QUADRO ANTES DE IMPORTAR
         limpar_antes = st.checkbox("🧹 Limpar o quadro atual antes de importar (Substitui os dados da tela)", value=True)
 
         if st.button("🚀 Processar e Carregar no Quadro Mensal", type="primary", use_container_width=True):
@@ -286,17 +276,13 @@ def renderizar_passo5():
                             salvar_estado_undo()
                             item_del = dict_del_mil[mil_del_sel]
                             par_del = (item_del["id"], item_del["equipe"])
-                            
                             if par_del in st.session_state["militares_no_quadro_chaves"]:
                                 st.session_state["militares_no_quadro_chaves"].remove(par_del)
-                                
                             for d in range(1, num_dias_mes + 1):
                                 st.session_state["grade_escala_lancamentos"].pop(f"{item_del['id']}_{item_del['equipe']}_{m_ano}_{m_mes:02d}_{d:02d}", None)
-                            
                             registrar_log_auditoria("Remoção de Linha", f"Militar {item_del['posto_grad']} {item_del['nome_guerra']} removido da equipe {item_del['equipe']}.")
                             executar_auto_save_banco()
                             st.rerun()
-                            
                 with col_ex2:
                     st.markdown("**Excluir Equipe Inteira:**")
                     equipes_no_quadro = list(set([m["equipe"] for m in mils_escala_ord]))
@@ -318,7 +304,7 @@ def renderizar_passo5():
                             st.rerun()
 
         # ⚡ PAINEL DE AJUSTE RÁPIDO
-        with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Força e Precedência de Sobrescrita)", expanded=False):
+        with st.expander("⚡ Painel de Ajuste Rápido no Quadro", expanded=False):
             if quadro_travado:
                 st.warning("🔒 **QUADRO TRAVADO:** Desative a chave 'Travar Quadro' abaixo para efetuar lançamentos diretos.")
             elif mils_escala_ord:
@@ -353,8 +339,7 @@ def renderizar_passo5():
                 else:
                     with c_h1:
                         st.caption("Legenda/Afastamento selecionado.")
-                    with c_h2:
-                        pass
+                    with c_h2: pass
                     
                     if "D (" in tipo_evento: val_final_p = "D"
                     elif "F (" in tipo_evento: val_final_p = "F"
@@ -372,10 +357,7 @@ def renderizar_passo5():
                             st.warning("Selecione ao menos um dia!")
                         else:
                             salvar_estado_undo()
-                            dias_aplicados = []
-                            dias_bloq_retroativo = []
-                            erros_sobreposicao = []
-                            avisos_descanso = []
+                            dias_aplicados, dias_bloq_retroativo, erros_sobreposicao, avisos_descanso = [], [], [], []
                             
                             for d_a in dias_alvo:
                                 data_alvo = datetime.date(m_ano, m_mes, d_a)
@@ -383,10 +365,7 @@ def renderizar_passo5():
                                     dias_bloq_retroativo.append(d_a)
                                     continue
                                 
-                                status_aud, msg_aud = auditar_escalacao_militar(
-                                    item_sel["id"], m_ano, m_mes, d_a, val_final_p, 
-                                    st.session_state["grade_escala_lancamentos"]
-                                )
+                                status_aud, msg_aud = auditar_escalacao_militar(item_sel["id"], m_ano, m_mes, d_a, val_final_p, st.session_state["grade_escala_lancamentos"])
 
                                 if status_aud == "BLOQUEADO":
                                     erros_sobreposicao.append(f"Dia {d_a:02d}: {msg_aud}")
@@ -398,44 +377,31 @@ def renderizar_passo5():
                                 st.session_state["grade_escala_lancamentos"][chave] = val_final_p
                                 dias_aplicados.append(d_a)
                                 
-                            if dias_bloq_retroativo:
-                                st.error(f"🔒 Dias ignorados (Retroativos bloqueados por auditoria): {dias_bloq_retroativo}")
-                            if erros_sobreposicao:
-                                st.error("🚨 **Lançamentos Negados (Sobreposição):**\n" + "\n".join(erros_sobreposicao))
-                            if avisos_descanso:
-                                st.warning("⚠️ **Aviso de Descanso Interjornada (<8h):**\n" + "\n".join(avisos_descanso))
+                            if dias_bloq_retroativo: st.error(f"🔒 Dias ignorados (Retroativos bloqueados): {dias_bloq_retroativo}")
+                            if erros_sobreposicao: st.error("🚨 **Lançamentos Negados (Sobreposição):**\n" + "\n".join(erros_sobreposicao))
+                            if avisos_descanso: st.warning("⚠️ **Aviso de Descanso Interjornada (<8h):**\n" + "\n".join(avisos_descanso))
                             
                             if dias_aplicados:
-                                registrar_log_auditoria(
-                                    "Ajuste Rápido de Turno", 
-                                    f"Militar {item_sel['posto_grad']} {item_sel['nome_guerra']} dia(s) {dias_aplicados} alterado(s) para '{val_final_p}'."
-                                )
+                                registrar_log_auditoria("Ajuste Rápido de Turno", f"Militar {item_sel['nome_guerra']} dia(s) {dias_aplicados} alterado(s) para '{val_final_p}'.")
                                 st.success(f"✅ Alteração lançada nos dias: {dias_aplicados}")
                                 executar_auto_save_banco()
-                            
-                            if dias_aplicados or erros_sobreposicao:
-                                st.rerun()
+                            if dias_aplicados or erros_sobreposicao: st.rerun()
 
         st.divider()
 
         # 📊 RENDERIZAÇÃO DO QUADRO E CABEÇALHO DE AÇÕES
         col_t1, col_t2, col_t3, col_t4 = st.columns([1.5, 1, 1, 1.5])
-        with col_t1: 
-            st.markdown("#### 📊 Quadro Mensal")
+        with col_t1: st.markdown("#### 📊 Quadro Mensal")
         with col_t2:
             qtd_undo = len(st.session_state.get("pilha_undo", []))
             pode_desfazer = (qtd_undo > 0) and not quadro_travado
             if st.button(f"↩️ Desfazer ({qtd_undo})", disabled=not pode_desfazer, use_container_width=True):
-                if desfazer_ultima_acao():
-                    st.toast("↩️ Alteração desfeita com sucesso!", icon="🔄")
-                    st.rerun()
+                if desfazer_ultima_acao(): st.rerun()
         with col_t3: 
-            if st.button("🔄 Atualizar", use_container_width=True, type="primary"):
-                st.rerun()
+            if st.button("🔄 Atualizar", use_container_width=True, type="primary"): st.rerun()
         with col_t4: 
             quadro_travado_toggle = st.toggle("🔒 Travar Quadro", value=quadro_travado, key="toggle_trava_quadro")
-            if quadro_travado_toggle != quadro_travado:
-                st.rerun()
+            if quadro_travado_toggle != quadro_travado: st.rerun()
 
         colunas_dias_nomes = []
         for d in range(1, num_dias_mes + 1):
@@ -478,7 +444,6 @@ def renderizar_passo5():
                                     break
 
                 linha[col_nome] = val_atual
-                
                 val_str = str(val_atual).upper().strip() if val_atual else ""
                 tokens_dia = set(val_str.replace("/", " ").split())
                 
@@ -491,10 +456,8 @@ def renderizar_passo5():
             cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
             eh_reduzida = cfg_bh.get("reduzida", False)
             carga_base_mes = 80.0 if eh_reduzida else 160.0
-            
             taxa_diaria = carga_base_mes / float(num_dias_mes)
-            dias_efetivos = num_dias_mes - dias_neutros_cnt
-            meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
+            meta_efetiva = max(0.0, (num_dias_mes - dias_neutros_cnt) * taxa_diaria)
             excesso_horas = total_horas - meta_efetiva
 
             if excesso_horas > 0:
@@ -507,34 +470,49 @@ def renderizar_passo5():
         df_escala = pd.DataFrame(matriz_dados)
         st.session_state["df_escala_consolidada"] = df_escala
 
-        # 👥 MÉTRICA DE EFETIVO MÍNIMO DIÁRIO (GRÁFICO)
+        # 👥 MÉTRICA DE EFETIVO MÍNIMO DIÁRIO (GRÁFICO EMPILHADO - NOVO)
         if not df_escala.empty:
-            with st.expander("👥 Gráfico de Efetivo Diário (Prevenção de Desfalque)", expanded=False):
-                st.caption("Visão operacional: quantidade de militares escalados (trabalhando) por dia.")
+            with st.expander("👥 Gráfico de Efetivo Diário Detalhado (Por Equipe e Turno)", expanded=False):
+                st.caption("Visão operacional: quantidade de militares escalados por dia, segmentado por equipe e horário.")
                 
-                contagem_diaria = {d: 0 for d, _ in colunas_dias_nomes}
+                dados_grafico = []
+                contagem_total_diaria = {f"{d:02d}": 0 for d, _ in colunas_dias_nomes}
+                
                 for linha in matriz_dados:
+                    eq_nome = linha.get("EQUIPE", "GERAL")
                     for d, col_nome in colunas_dias_nomes:
+                        dia_str = f"{d:02d}"
                         val = str(linha.get(col_nome, "")).strip().upper()
                         tokens_val = set(val.replace("/", " ").split())
+                        
+                        # Se não for folga/descanso/neutro, é um turno de serviço
                         if val and val not in ["F", "D", "X"] and not any(sigla in tokens_val for sigla in SIGLAS_DIAS_NEUTROS):
-                            contagem_diaria[d] += 1
+                            contagem_total_diaria[dia_str] += 1
+                            dados_grafico.append({
+                                "Dia": dia_str, 
+                                "Equipe/Turno": f"{eq_nome} ({val})"
+                            })
                 
                 col_chart, col_metric = st.columns([3, 1])
                 with col_chart:
-                    df_chart = pd.DataFrame({
-                        "Dia": [f"{d:02d}" for d in contagem_diaria.keys()],
-                        "Policiais na Rua": list(contagem_diaria.values())
-                    }).set_index("Dia")
-                    st.bar_chart(df_chart, height=180)
+                    df_g = pd.DataFrame(dados_grafico)
+                    if not df_g.empty:
+                        # Tabela Pivô para montar as barras empilhadas
+                        df_count = df_g.groupby(["Dia", "Equipe/Turno"]).size().unstack(fill_value=0)
+                        dias_index = [f"{d:02d}" for d, _ in colunas_dias_nomes]
+                        df_count = df_count.reindex(dias_index, fill_value=0)
+                        
+                        st.bar_chart(df_count, height=350)
+                    else:
+                        st.info("Nenhum serviço escalado ainda para gerar o gráfico.")
                 
                 with col_metric:
-                    min_efetivo = st.number_input("Mínimo Aceitável / Dia:", min_value=1, max_value=20, value=2, help="Alerta se o efetivo cair abaixo disso.")
-                    dias_criticos = [d for d, qtd in contagem_diaria.items() if qtd < min_efetivo]
+                    min_efetivo = st.number_input("Mínimo Aceitável (Total/Dia):", min_value=1, max_value=50, value=2, help="Alerta se o efetivo total do dia cair abaixo disso.")
+                    dias_criticos = [d for d, qtd in contagem_total_diaria.items() if qtd < min_efetivo]
                     
                     if dias_criticos:
-                        dias_str = ", ".join([f"{d:02d}" for d in dias_criticos])
-                        st.error(f"🚨 **ALERTA DE DESFALQUE:**\nDias **{dias_str}** possuem menos de {min_efetivo} militar(es) ativo(s)!")
+                        dias_str_alerta = ", ".join(dias_criticos)
+                        st.error(f"🚨 **ALERTA DE DESFALQUE:**\nDias **{dias_str_alerta}** possuem menos de {min_efetivo} militar(es) ativo(s) no total!")
                     else:
                         st.success(f"✅ Escala coberta!\nNenhum dia possui menos de {min_efetivo} militar(es).")
 
@@ -555,7 +533,6 @@ def renderizar_passo5():
                 for idx_r, row in df_editado.iterrows():
                     item = mils_escala_ord[idx_r]
                     nova_ordem = int(row.get("ORDEM", idx_r + 1))
-                    
                     if st.session_state["ordem_customizada_map"].get(item["chave_linha"]) != nova_ordem:
                         salvar_estado_undo()
                         st.session_state["ordem_customizada_map"][item["chave_linha"]] = nova_ordem
@@ -568,32 +545,22 @@ def renderizar_passo5():
                         val_anterior = st.session_state["grade_escala_lancamentos"].get(chave_cel, "")
                         
                         if val_anterior != v_padrao:
-                            try:
-                                data_alvo = datetime.date(m_ano, m_mes, d)
-                            except ValueError:
-                                data_alvo = hoje
+                            try: data_alvo = datetime.date(m_ano, m_mes, d)
+                            except ValueError: data_alvo = hoje
 
                             if escala_fechada and not eh_admin and data_alvo < hoje:
                                 st.error(f"🔒 O dia {d:02d} já passou e não pode ser editado. Altere pelo Banco de Horas.")
                                 houve_alteracao = True
                             else:
-                                status_aud, msg_aud = auditar_escalacao_militar(
-                                    item['id'], m_ano, m_mes, d, v_padrao, st.session_state["grade_escala_lancamentos"]
-                                )
-                                
+                                status_aud, msg_aud = auditar_escalacao_militar(item['id'], m_ano, m_mes, d, v_padrao, st.session_state["grade_escala_lancamentos"])
                                 if status_aud == "BLOQUEADO":
                                     st.error(f"🚨 Não foi possível alterar o militar {item['nome_guerra']} no dia {d:02d}. {msg_aud}")
                                     houve_alteracao = True
                                 else:
                                     salvar_estado_undo()
-                                    if status_aud == "AVISO":
-                                        st.warning(f"⚠️ Atenção ao militar {item['nome_guerra']} (Dia {d:02d}): {msg_aud}")
-                                        
+                                    if status_aud == "AVISO": st.warning(f"⚠️ Atenção ao militar {item['nome_guerra']} (Dia {d:02d}): {msg_aud}")
                                     st.session_state["grade_escala_lancamentos"][chave_cel] = v_padrao
-                                    registrar_log_auditoria(
-                                        "Edição Direta em Tabela", 
-                                        f"Militar {item['nome_guerra']} dia {d:02d} alterado de '{val_anterior}' para '{v_padrao}'."
-                                    )
+                                    registrar_log_auditoria("Edição Direta em Tabela", f"Militar {item['nome_guerra']} dia {d:02d} alterado de '{val_anterior}' para '{v_padrao}'.")
                                     houve_alteracao = True
                             
                 if houve_alteracao:

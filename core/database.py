@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 from supabase import create_client, Client
 
 # =========================================================================
@@ -18,6 +19,10 @@ def conectar_supabase() -> Client | None:
         return None
 
 supabase = conectar_supabase()
+
+def init_db():
+    """Garante compatibilidade de inicialização da conexão com o banco de dados."""
+    pass
 
 # =========================================================================
 # GESTÃO E ATUALIZAÇÃO DE USUÁRIOS
@@ -169,3 +174,39 @@ def registrar_audit_log(operador_pm: str, alvo_pm: str | None, tipo_acao: str, d
             }).execute()
         except Exception as e:
             print(f"Erro ao gravar audit log: {e}")
+
+def registrar_log_banco(usuario_dados, acao, detalhe):
+    """Função de compatibilidade para gravar ações no Supabase via Passo 5 e Passo 7."""
+    if not isinstance(usuario_dados, dict):
+        usuario_dados = {}
+        
+    nome_usuario = usuario_dados.get("nome_guerra", usuario_dados.get("nome", "OPERADOR"))
+    cargo_usuario = usuario_dados.get("cargo_funcao", usuario_dados.get("perfil", "GESTOR"))
+    usuario_formatado = f"{cargo_usuario} {nome_usuario}".strip()
+    
+    registrar_audit_log(
+        operador_pm=usuario_formatado,
+        alvo_pm=None,
+        tipo_acao=acao,
+        descricao=detalhe
+    )
+
+def buscar_logs_banco(limite=500) -> pd.DataFrame:
+    """Busca o histórico de auditoria diretamente da tabela historico_auditoria no Supabase."""
+    if not supabase:
+        return pd.DataFrame(columns=["data_hora", "usuario", "acao", "detalhe"])
+    try:
+        res = supabase.table("historico_auditoria").select("*").order("id", desc=True).limit(limite).execute()
+        if res.data:
+            logs = []
+            for r in res.data:
+                logs.append({
+                    "data_hora": r.get("created_at", r.get("data_hora", "N/I")),
+                    "usuario": r.get("militar_operador", "SISTEMA"),
+                    "acao": r.get("tipo_acao", "AÇÃO"),
+                    "detalhe": r.get("descricao_detalhada", "")
+                })
+            return pd.DataFrame(logs)
+    except Exception as e:
+        print(f"Erro ao buscar histórico de auditoria no Supabase: {e}")
+    return pd.DataFrame(columns=["data_hora", "usuario", "acao", "detalhe"])

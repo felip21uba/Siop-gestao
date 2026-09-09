@@ -5,6 +5,8 @@ import random
 import urllib.parse
 import pyotp
 import streamlit as st
+from core.database import init_db
+init_db()
 
 # Pré-carregamento do passo3 no sys.modules para sanar o KeyError no Streamlit Cloud
 import modules.passos.passo3_efetivo
