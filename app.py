@@ -476,13 +476,51 @@ with st.sidebar:
             st.info("💡 **Simulador Ativo:** Exibindo tela restrita da TROPA.")
         else:
             perfil_ativo = usr_real_perfil
+
+        # -------------------------------------------------------------------------
+        # 🏛️ SELETOR MULTI-TENANT DE UNIDADES (PARA PROGRAMADOR / GESTOR)
+        # -------------------------------------------------------------------------
+        st.markdown("---")
+        st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
+        
+        lista_unis = []
+        if supabase:
+            try:
+                res_u = supabase.table("configuracao_unidade").select("id, unidade_nome, subunidade_nome").execute()
+                lista_unis = res_u.data or []
+            except Exception:
+                lista_unis = []
+
+        if lista_unis:
+            opcoes_uni = [f"{u.get('unidade_nome', '')} / {u.get('subunidade_nome', '')}".strip(" /") for u in lista_unis]
+            
+            idx_sel = 0
+            uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
+            if uni_atual_sessao and uni_atual_sessao in opcoes_uni:
+                idx_sel = opcoes_uni.index(uni_atual_sessao)
+
+            sel_uni_sidebar = st.selectbox(
+                "Unidade em Operação:",
+                opcoes_uni,
+                index=idx_sel,
+                key="sb_multi_tenant_unidade"
+            )
+            st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
+            
+            parts = sel_uni_sidebar.split(" / ")
+            st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
+            st.session_state["cfg_subunidade"] = parts[1] if len(parts) > 1 else ""
+        else:
+            st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
         st.markdown("---")
     else:
         perfil_ativo = "TROPA"
+        st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
 
     eh_gestor_ou_admin = (perfil_ativo != "TROPA")
 
-    st.info(f"👤 **{usr.get('nome_guerra', 'Militar')}**\n\n🔰 **Perfil Ativo:** `{perfil_ativo}`\n\n🏛️ **Unidade:** {usr.get('unidade', 'PMMG')}")
+    unidade_card_exibida = st.session_state.get("unidade_ativa_nome", usr.get("unidade", "PMMG"))
+    st.info(f"👤 **{usr.get('nome_guerra', 'Militar')}**\n\n🔰 **Perfil Ativo:** `{perfil_ativo}`\n\n🏛️ **Unidade Ativa:** {unidade_card_exibida}")
     st.divider()
 
     if "modulo_ativo" not in st.session_state:
@@ -642,8 +680,8 @@ def renderizar_rodape_corporativo():
     col_f1, col_f2, col_f3 = st.columns([1.5, 2, 1.5])
     
     with col_f1:
-        unidade_txt = st.session_state.get("usuario_dados", {}).get("unidade") or st.session_state.get("cfg_unidade", "21º BPM")
-        subunidade_txt = st.session_state.get("cfg_subunidade", "35ª CIA PM")
+        unidade_txt = st.session_state.get("cfg_unidade") or st.session_state.get("usuario_dados", {}).get("unidade") or "21º BPM"
+        subunidade_txt = st.session_state.get("cfg_subunidade") or "35ª CIA PM"
         st.caption(f"🏛️ **{unidade_txt}** | {subunidade_txt}")
         st.caption("PMMG - Polícia Militar de Minas Gerais")
         
