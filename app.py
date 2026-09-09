@@ -5,11 +5,9 @@ import random
 import urllib.parse
 import pyotp
 import streamlit as st
+
 from core.database import init_db
 init_db()
-
-# Pré-carregamento do passo3 no sys.modules para sanar o KeyError no Streamlit Cloud
-import modules.passos.passo3_efetivo
 
 from core.styles import aplicar_estilo_visual
 from core.database import (
@@ -65,10 +63,6 @@ if "reset_token_dados" not in st.session_state:
     st.session_state["reset_token_dados"] = {}
 if "usuarios_teste_db" not in st.session_state:
     st.session_state["usuarios_teste_db"] = {}
-
-# Prevenção contra KeyError
-if "modules.passos.passo2_turno" not in st.session_state:
-    st.session_state["modules.passos.passo2_turno"] = {}
 
 # CONSTANTES VISUAIS INSTITUCIONAIS
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"

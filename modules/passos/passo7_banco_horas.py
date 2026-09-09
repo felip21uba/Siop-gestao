@@ -152,7 +152,7 @@ def renderizar_passo7():
                         "Excluir": st.column_config.CheckboxColumn("🗑️ Remover", default=False)
                     },
                     hide_index=True, 
-                    use_container_width=True, 
+                    width="stretch", 
                     key="editor_del_avulsos_auto"
                 )
                 
@@ -212,7 +212,7 @@ def renderizar_passo7():
                     "Saldo Anterior (h)": st.column_config.NumberColumn("Saldo Anterior (h)", step=1.0, format="%.1f h")
                 },
                 hide_index=True,
-                use_container_width=True, 
+                width="stretch", 
                 key="editor_bh_auto"
             )
             
@@ -351,7 +351,7 @@ def renderizar_passo7():
                         return ''
                         
                 if not df_extrato.empty: 
-                    st.dataframe(df_extrato.style.map(colorir_saldo, subset=['SALDO PERÍODO', 'SALDO ANTERIOR', 'SALDO GERAL FINAL']), hide_index=True, use_container_width=True)
+                    st.dataframe(df_extrato.style.map(colorir_saldo, subset=['SALDO PERÍODO', 'SALDO ANTERIOR', 'SALDO GERAL FINAL']), hide_index=True, width="stretch")
                 
                 # HTML para Impressão do Banco de Horas
                 html_extrato_pdf = f"""
@@ -383,12 +383,12 @@ def renderizar_passo7():
 
                 c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1])
                 with c_btn1: 
-                    st.download_button("📥 Exportar Extrato (CSV)", data=df_extrato.to_csv(index=False).encode('utf-8'), file_name=f"Banco_Horas_{m_ano}.csv", mime="text/csv", use_container_width=True)
+                    st.download_button("📥 Exportar Extrato (CSV)", data=df_extrato.to_csv(index=False).encode('utf-8'), file_name=f"Banco_Horas_{m_ano}.csv", mime="text/csv", width="stretch")
                 with c_btn2: 
-                    if st.button("🖨️ Imprimir / PDF Oficial", use_container_width=True):
+                    if st.button("🖨️ Imprimir / PDF Oficial", width="stretch"):
                         st.html(f"{html_extrato_pdf}<script>window.print();</script>")
                 with c_btn3: 
-                    if st.button("💾 Fechar Período e Salvar", type="primary", use_container_width=True): 
+                    if st.button("💾 Fechar Período e Salvar", type="primary", width="stretch"): 
                         registrar_log_auditoria_local("Banco de Horas", "Gestor salvou o fechamento da apuração do banco de horas.")
                         executar_auto_save_banco_local()
                         st.success("Salvo com sucesso!")

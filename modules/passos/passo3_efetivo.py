@@ -171,7 +171,7 @@ def abrir_modal_excluir_lote():
     
     if not mils_para_excluir:
         st.warning("⚠️ Nenhum militar está presente no Quadro da Direita para ser excluído.")
-        if st.button("Entendido", use_container_width=True):
+        if st.button("Entendido", width="stretch"):
             st.rerun()
         return
 
@@ -187,17 +187,17 @@ def abrir_modal_excluir_lote():
         } 
         for m in mils_para_excluir
     ])
-    st.dataframe(df_exc, use_container_width=True, hide_index=True, height=180)
+    st.dataframe(df_exc, width="stretch", hide_index=True, height=180)
     
     col_d1, col_d2 = st.columns(2)
     with col_d1:
-        if st.button("🚨 Confirmar Exclusão Definitiva", type="primary", use_container_width=True):
+        if st.button("🚨 Confirmar Exclusão Definitiva", type="primary", width="stretch"):
             with st.spinner("Excluindo do banco de dados..."):
                 excluir_lote_banco_e_memoria(mils_para_excluir)
             st.success(f"✅ {len(mils_para_excluir)} militar(es) excluído(s) com sucesso!")
             st.rerun()
     with col_d2:
-        if st.button("❌ Cancelar", use_container_width=True):
+        if st.button("❌ Cancelar", width="stretch"):
             st.rerun()
 
 @st.dialog("📥 Importar Efetivo via Planilha", width="large")
@@ -208,7 +208,7 @@ def abrir_modal_upload_planilha():
     arquivo_planilha = st.file_uploader("Selecione o arquivo XLSX/CSV:", type=["xls", "xlsx", "csv"], key="uploader_efetivo_modal")
     
     if arquivo_planilha is not None:
-        if st.button("📥 Processar e Conferir Dados", type="primary", use_container_width=True):
+        if st.button("📥 Processar e Conferir Dados", type="primary", width="stretch"):
             try:
                 df_imp = carregar_planilha_universal(arquivo_planilha)
                 df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
@@ -252,7 +252,7 @@ def abrir_modal_upload_planilha():
         
         if not novos_para_importar:
             st.info("ℹ️ Todos os militares desta planilha já estão cadastrados no SIOP.")
-            if st.button("❌ Fechar Janela", type="primary", use_container_width=True):
+            if st.button("❌ Fechar Janela", type="primary", width="stretch"):
                 st.session_state["temp_importacao_lista"] = []
                 st.rerun()
             return
@@ -262,7 +262,7 @@ def abrir_modal_upload_planilha():
         df_temp.columns = ["Nº Polícia (com DV)", "Graduação", "Nome Completo", "Nome Funcional", "Unidade", "Cidade / Município"]
         
         df_editado = st.data_editor(
-            df_temp, num_rows="fixed", use_container_width=True, height=250,
+            df_temp, num_rows="fixed", width="stretch", height=250,
             column_config={
                 "Nº Polícia (com DV)": st.column_config.TextColumn(disabled=True), 
                 "Graduação": st.column_config.TextColumn(disabled=True)
@@ -271,7 +271,7 @@ def abrir_modal_upload_planilha():
         
         col_m1, col_m2 = st.columns(2)
         with col_m1:
-            if st.button("✅ Confirmar e Salvar no SIOP & Supabase", type="primary", use_container_width=True):
+            if st.button("✅ Confirmar e Salvar no SIOP & Supabase", type="primary", width="stretch"):
                 novos_salvar = []
                 for idx_r, row_e in df_editado.iterrows():
                     pg = padronizar_graduacao(row_e["Graduação"])
@@ -295,7 +295,7 @@ def abrir_modal_upload_planilha():
                 st.success("✅ Carga gravada no Supabase com sucesso!")
                 st.rerun()
         with col_m2:
-            if st.button("❌ Cancelar Importação", use_container_width=True):
+            if st.button("❌ Cancelar Importação", width="stretch"):
                 st.session_state["temp_importacao_lista"] = []
                 st.rerun()
 
@@ -310,7 +310,7 @@ def abrir_modal_novo_militar():
         cidade_in = st.text_input("Cidade / Fração:", value="UBÁ", placeholder="Ex: UBÁ, VISCONDE DO RIO BRANCO...").strip().upper()
         
         st.markdown("<br>", unsafe_allow_html=True)
-        btn_cad_mil = st.form_submit_button("💾 Salvar Militar", type="primary", use_container_width=True)
+        btn_cad_mil = st.form_submit_button("💾 Salvar Militar", type="primary", width="stretch")
         
         if btn_cad_mil and num_policia_in and nome_guerra_in:
             num_limpo = str(num_policia_in).strip()
@@ -374,7 +374,7 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
             )
 
             with cols[idx_col]:
-                if st.button(label_card, key=f"btn_m_{prefixo_key}_{m_id}", type=tipo_btn, use_container_width=True, help=tooltip_texto):
+                if st.button(label_card, key=f"btn_m_{prefixo_key}_{m_id}", type=tipo_btn, width="stretch", help=tooltip_texto):
                     if modo_exclusao and prefixo_key == "col_sel":
                         excluir_militar_banco_e_memoria(m_id, num_pol)
                         st.rerun()
@@ -447,23 +447,23 @@ def renderizar_fragmento_passo3():
 
     c_m1, c_m2, c_m3 = st.columns([1, 1, 1.2])
     with c_m1:
-        if st.button("✔ Marcar Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
+        if st.button("✔ Marcar Visíveis", width="stretch", key="btn_marcar_todos_frag"):
             st.session_state["militares_selecionados_ids"] = list(set(
                 st.session_state.get("militares_selecionados_ids", []) + [m["id"] for m in st.session_state.get("militares_ativos_render", [])]
             ))
             st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
     with c_m2:
-        if st.button("✖ Limpar Seleção", use_container_width=True, key="btn_desmarcar_todos_frag"):
+        if st.button("✖ Limpar Seleção", width="stretch", key="btn_desmarcar_todos_frag"):
             st.session_state["militares_selecionados_ids"] = []
             st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
     with c_m3:
         if modo_exclusao:
-            if st.button("🗑️ Excluir Selecionados", type="primary", use_container_width=True, key="btn_excluir_lote_frag"):
+            if st.button("🗑️ Excluir Selecionados", type="primary", width="stretch", key="btn_excluir_lote_frag"):
                 abrir_modal_excluir_lote()
         else:
-            if st.button("🗑️ Excluir Selecionados", type="secondary", use_container_width=True, key="btn_excluir_lote_frag_blocked"):
+            if st.button("🗑️ Excluir Selecionados", type="secondary", width="stretch", key="btn_excluir_lote_frag_blocked"):
                 st.toast("🔒 Trava de Exclusão ativada! Habilite-a primeiro na chave acima.", icon="🔒")
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -561,7 +561,7 @@ def renderizar_fragmento_passo3():
 
             obs_afast = st.text_input("Observação / Publicação BG / Nota do Comando:")
 
-            btn_salvar_afast = st.form_submit_button("📥 Creditar Afastamento / Dias Neutros", type="primary", use_container_width=True)
+            btn_salvar_afast = st.form_submit_button("📥 Creditar Afastamento / Dias Neutros", type="primary", width="stretch")
 
             if btn_salvar_afast and mapa_select_mils_afast:
                 if dt_fim < dt_inicio:
@@ -623,7 +623,7 @@ def renderizar_fragmento_passo3():
                     "Excluir": st.column_config.CheckboxColumn("🗑️ Remover", default=False)
                 },
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 key="editor_remover_afastamentos_p3"
             )
 
@@ -651,10 +651,10 @@ def renderizar_passo3():
     with exp3:
         c_b1, c_b2, c_b3 = st.columns([1.5, 1.5, 1])
         with c_b1:
-            if st.button("📥 Carregar Planilha", use_container_width=True):
+            if st.button("📥 Carregar Planilha", width="stretch"):
                 abrir_modal_upload_planilha()
         with c_b2:
-            if st.button("🔄 Recarregar Banco (Supabase)", use_container_width=True):
+            if st.button("🔄 Recarregar Banco (Supabase)", width="stretch"):
                 m_banco = carregar_militares_supabase()
                 if m_banco:
                     m_banco_unico = remover_duplicados_militares(m_banco)
@@ -671,7 +671,7 @@ def renderizar_passo3():
                 else:
                     st.warning("Nenhum registro encontrado no Supabase.")
         with c_b3:
-            if st.button("➕ Militar", type="primary", use_container_width=True):
+            if st.button("➕ Militar", type="primary", width="stretch"):
                 abrir_modal_novo_militar()
 
         st.divider()
