@@ -1,31 +1,35 @@
-import streamlit as st
+import io
 import datetime
+import hashlib
+import streamlit as st
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 from core.database import supabase
 
 TEXTO_TERMO_COMPLIANCE = """
-### TERMO DE COMPROMISSO, CONFIDENCIALIDADE E COMPLIANCE OPERACIONAL
-**SISTEMA INTEGRADO DE OPERAÇÕES POLICIAIS (SIOP) — MÓDULO TCO & CUSTÓDIA DE MATERIAIS (CREDS)**
+<b>TERMO DE COMPROMISSO, CONFIDENCIALIDADE E COMPLIANCE OPERACIONAL</b><br/>
+<b>SISTEMA INTEGRADO DE OPERAÇÕES POLICIAIS (SIOP) — MÓDULO TCO & CUSTÓDIA DE MATERIAIS</b><br/><br/>
 
-Pelo presente instrumento, o Policial Militar/Operador devidamente autenticado declara ciência e concordância integral com as normas de segurança, privacidade e procedimentos legais descritos abaixo:
+<b>1. DA CADEIA DE CUSTÓDIA (ART. 158-A AO 158-F DO CPP):</b><br/>
+1.1. O operador compromete-se a assegurar a rastreabilidade e a inviolabilidade dos elementos probatórios apreendidos, utilizando obrigatoriamente o registro de invólucros/lacres oficiais.<br/>
+1.2. Qualquer divergência observada na conferência física do material (violação de lacre, avaria ou diferença de quantidade) deve ser registrada na função de "Divergência/Recusa" do sistema.<br/><br/>
 
-1. **DA CADEIA DE CUSTÓDIA (ART. 158-A AO 158-F DO CPP):**
-   1.1. O operador compromete-se a assegurar a rastreabilidade e a inviolabilidade dos elementos probatórios apreendidos, utilizando obrigatoriamente o registro de invólucros/lacres oficiais.
-   1.2. Qualquer divergência observada na conferência física do material (violação de lacre, avaria ou diferença de quantidade) deve ser obrigatoriamente registrada na função de "Divergência/Recusa" do sistema.
+<b>2. DA RESPONSABILIDADE SOBRE DADOS E LGPD (LEI Nº 13.709/2018):</b><br/>
+2.1. Todas as informações de qualificação de civis, testemunhas, vítimas e infratores acessadas via REDS/TCO são estritamente confidenciais e de uso exclusivo para instrução de procedimentos oficiais.<br/>
+2.2. É expressamente vedado o compartilhamento, extração não autorizada, captura de tela ou divulgação de dados sensíveis para finalidades alheias ao serviço policial militar.<br/><br/>
 
-2. **DA RESPONSABILIDADE SOBRE DADOS E LGPD (LEI Nº 13.709/2018):**
-   2.1. Todas as informações de qualificação de civis, testemunhas, vítimas e infratores acessadas via REDS/TCO são estritamente confidenciais e de uso exclusivo para instrução de procedimentos oficiais.
-   2.2. É expressamente vedado o compartilhamento, extração não autorizada, captura de tela ou divulgação de dados sensíveis para finalidades alheias ao serviço policial militar.
+<b>3. DA IRRETRATABILIDADE E AUDITORIA DE AÇÕES:</b><br/>
+3.1. O operador declara ciência de que edições de materiais, uploads de mídias, solicitações de tramitação, aceite e rejeição de custódia são gravados com chancela SHA-256 na trilha imutável de auditoria.<br/>
+3.2. As alterações manuais de dados importados do REDS exigem justificativa fundamentada, sujeita à fiscalização da Seção de P1/CREDS e Corregedoria.<br/><br/>
 
-3. **DA IRRETRATABILIDADE E AUDITORIA DE AÇÕES:**
-   3.1. O operador declara ciência de que **todas as edições de materiais, uploads de mídias, solicitações de tramitação, aceite e rejeição de custódia** são gravados com chancela SHA-256 e IP de conexão na trilha imutável de auditoria (`tco_logs`).
-   3.2. As alterações manuais de dados importados do REDS exigem justificativa fundamentada, sujeita à fiscalização da Seção de P1/CREDS e Corregedoria.
-
-4. **DO USO DE CREDENCIAIS PESSOAIS:**
-   4.1. A senha e as chaves de acesso ao SIOP são pessoais e intransferíveis. O militar responde administrativa, civil e penalmente por todos os atos praticados sob sua autenticação.
+<b>4. DO USO DE CREDENCIAIS PESSOAIS:</b><br/>
+4.1. A senha e as chaves de acesso ao SIOP são pessoais e intransferíveis. O militar responde administrativa, civil e penalmente por todos os atos praticados sob sua autenticação.
 """
 
 def verificar_aceite_compliance_supabase(usuario_id):
-    """Verifica no Supabase se o usuário já assinou o Termo de Compliance do TCO."""
+    """Verifica se o usuário já aceitou o termo de compliance no banco de dados."""
     if not supabase or not usuario_id:
         return True
     try:
@@ -35,7 +39,7 @@ def verificar_aceite_compliance_supabase(usuario_id):
         return False
 
 def registrar_aceite_compliance_supabase(usuario_id, nome_militar, cargo_funcao, unidade):
-    """Grava o registro de aceite do Termo de Compliance com carimbo de data/hora no Supabase."""
+    """Grava a aceitação única do militar no Supabase."""
     if not supabase or not usuario_id:
         return False
     try:
@@ -65,31 +69,75 @@ def registrar_aceite_compliance_supabase(usuario_id, nome_militar, cargo_funcao,
         
         return True
     except Exception as e:
-        st.error(f"Erro ao registrar aceite de compliance: {e}")
         return False
 
-def renderizar_modal_termo_compliance():
-    """Exibe o termo para validação obrigatória caso o usuário ainda não tenha assinado."""
-    usr_logado = st.session_state.get("usuario_dados", {})
-    usr_id = str(usr_logado.get("id") or usr_logado.get("usuario_login") or "").strip()
-    nome_m = f"{usr_logado.get('cargo_funcao', 'POLICIAL')} {usr_logado.get('nome_guerra', 'OPERADOR')}".strip()
-    cargo_f = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).strip()
-    unidade_m = str(usr_logado.get("unidade", "35ª CIA PM")).strip()
+def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, usuario_id, data_aceite_str):
+    """Gera o arquivo PDF imprimível do Termo de Compliance assinado pelo operador."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=40,
+        leftMargin=40,
+        topMargin=40,
+        bottomMargin=40
+    )
 
-    if not verificar_aceite_compliance_supabase(usr_id):
-        st.warning("⚠️ **ATENÇÃO: Aceite de Compliance Obrigatório para Uso do TCO / CREDS**")
-        
-        with st.container(border=True):
-            st.markdown(TEXTO_TERMO_COMPLIANCE)
-            st.divider()
-            
-            chk_concordo = st.checkbox("Li, compreendi e concordo integralmente com os termos de segurança, LGPD e procedimentos da Cadeia de Custódia.", key="chk_aceite_compliance_tco")
-            
-            if st.button("🖊️ Assinar Eletronicamente e Liberar Acesso ao TCO", type="primary", use_container_width=True):
-                if not chk_concordo:
-                    st.error("Você precisa marcar a caixa de confirmação antes de prosseguir.")
-                else:
-                    if registrar_aceite_compliance_supabase(usr_id, nome_m, cargo_f, unidade_m):
-                        st.success("✅ Termo de Compliance assinado com sucesso!")
-                        st.rerun()
-        st.stop()
+    styles = getSampleStyleSheet()
+    
+    style_header = ParagraphStyle(
+        'HeaderStyle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=11,
+        leading=13,
+        alignment=1,
+        textColor=colors.HexColor('#1E293B')
+    )
+    
+    style_body = ParagraphStyle(
+        'BodyStyle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=9,
+        leading=13,
+        alignment=4,
+        textColor=colors.HexColor('#334155')
+    )
+
+    elements = []
+
+    header_text = "<b>POLÍCIA MILITAR DE MINAS GERAIS</b><br/>" \
+                  f"<b>{unidade.upper()}</b><br/>" \
+                  "<b>DECLARAÇÃO DE CUMPRIÇÃO E COMPLIANCE OPERACIONAL (TCO/CREDS)</b>"
+    elements.append(Paragraph(header_text, style_header))
+    elements.append(Spacer(1, 10))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=15))
+
+    meta_text = f"<b>OPERADOR:</b> {cargo_funcao} {nome_militar}<br/>" \
+                f"<b>IDENTIFICAÇÃO / POLÍCIA:</b> {usuario_id}<br/>" \
+                f"<b>UNIDADE:</b> {unidade}<br/>" \
+                f"<b>DATA DE ACEITE ELETRÔNICO:</b> {data_aceite_str}"
+    elements.append(Paragraph(meta_text, style_body))
+    elements.append(Spacer(1, 15))
+
+    elements.append(Paragraph(TEXTO_TERMO_COMPLIANCE, style_body))
+    elements.append(Spacer(1, 30))
+
+    ass_text = f"____________________________________________________<br/>" \
+               f"<b>{nome_militar.upper()}</b><br/>" \
+               f"{cargo_funcao} - {unidade}<br/>" \
+               f"Assinado Eletronicamente via SIOP"
+    elements.append(Paragraph(ass_text, ParagraphStyle('AssStyle', parent=style_header, alignment=1)))
+    elements.append(Spacer(1, 20))
+
+    hash_comp = hashlib.sha256(f"{usuario_id}{nome_militar}{data_aceite_str}".encode('utf-8')).hexdigest()
+    rodape_text = f"<b>CHANCELA DIGITAL DE COMPLIANCE:</b> SHA-256: {hash_comp}<br/>" \
+                  "Documento impresso via Sistema SIOP para fins de auditoria e conformidade."
+    
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#CBD5E1'), spaceBefore=10, spaceAfter=8))
+    elements.append(Paragraph(rodape_text, ParagraphStyle('RodapeStyle', parent=styles['Normal'], fontSize=7, alignment=1)))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.getvalue()
