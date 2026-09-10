@@ -3,7 +3,7 @@ import re
 import unicodedata
 from core.database import supabase, salvar_militares_supabase, carregar_militares_supabase
 from modules.escalas.passos.passo3_modais import (
-    abrir_modal_editar_militar,
+    abrir_modal_editar_efetivo_tabela,
     abrir_modal_excluir_lote,
     abrir_modal_upload_planilha,
     abrir_modal_novo_militar
@@ -192,20 +192,15 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
             tooltip_texto = f"🎖️ {nome_comp_str}\n📌 Posto/Grad: {posto_abrev}\n🔢 Matrícula: {num_pol}\n🏢 Unidade: {unidade_str}\n🏙️ Cidade: {cidade_str}"
 
             with cols[idx_col]:
-                c_card1, c_card2 = st.columns([3.2, 1])
-                with c_card1:
-                    if st.button(label_card, key=f"btn_m_{prefixo_key}_{m_id}", type=tipo_btn, use_container_width=True, help=tooltip_texto):
-                        if modo_exclusao and prefixo_key == "col_sel":
-                            excluir_militar_banco_e_memoria(m_id, num_pol)
-                            st.rerun()
-                        else:
-                            if is_sel: st.session_state["militares_selecionados_ids"].remove(m_id)
-                            else: st.session_state["militares_selecionados_ids"].append(m_id)
-                            st.session_state["atualizar_quadro_passo5"] = True
-                            st.rerun()
-                with c_card2:
-                    if st.button("✏️", key=f"btn_edit_m_{prefixo_key}_{m_id}", help="Editar dados do militar"):
-                        abrir_modal_editar_militar(m, padronizar_graduacao, atualizar_militar_banco_e_memoria, PESOS_HIERARQUIA)
+                if st.button(label_card, key=f"btn_m_{prefixo_key}_{m_id}", type=tipo_btn, use_container_width=True, help=tooltip_texto):
+                    if modo_exclusao and prefixo_key == "col_sel":
+                        excluir_militar_banco_e_memoria(m_id, num_pol)
+                        st.rerun()
+                    else:
+                        if is_sel: st.session_state["militares_selecionados_ids"].remove(m_id)
+                        else: st.session_state["militares_selecionados_ids"].append(m_id)
+                        st.session_state["atualizar_quadro_passo5"] = True
+                        st.rerun()
 
 @st.fragment
 def renderizar_fragmento_passo3():
@@ -295,7 +290,7 @@ def renderizar_passo3():
 
     exp3 = st.expander("📌 PASSO 3: Gestão do Efetivo, Inserção e Seleção de Militares", expanded=True)
     with exp3:
-        c_b1, c_b2, c_b3 = st.columns([1.5, 1.5, 1])
+        c_b1, c_b2, c_b3, c_b4 = st.columns([1.2, 1.3, 1.3, 1])
         with c_b1:
             if st.button("📥 Carregar Planilha", use_container_width=True):
                 funcs_dict = {
@@ -309,7 +304,10 @@ def renderizar_passo3():
                 }
                 abrir_modal_upload_planilha(funcs_dict)
         with c_b2:
-            if st.button("🔄 Recarregar Banco (Supabase)", use_container_width=True):
+            if st.button("✏️ Editar em Planilha", type="primary", use_container_width=True):
+                abrir_modal_editar_efetivo_tabela(padronizar_graduacao, PESOS_HIERARQUIA)
+        with c_b3:
+            if st.button("🔄 Recarregar Banco", use_container_width=True):
                 m_banco = carregar_militares_supabase()
                 if m_banco:
                     m_banco_unico = remover_duplicados_militares(m_banco)
@@ -322,9 +320,9 @@ def renderizar_passo3():
                     st.session_state["militares_carregados"] = True
                     st.success(f"✅ {len(m_banco_unico)} militar(es) recarregado(s) do Supabase!")
                     st.rerun()
-        with c_b3:
-            if st.button("➕ Militar", type="primary", use_container_width=True):
+        with c_b4:
+            if st.button("➕ Militar", use_container_width=True):
                 abrir_modal_novo_militar(padronizar_graduacao, remover_duplicados_militares, PESOS_HIERARQUIA)
 
         st.divider()
-        renderizar_fragmento_passo3()
+        renderizar_fragmento_passo3()git add .

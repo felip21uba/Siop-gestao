@@ -4,49 +4,84 @@ import pandas as pd
 from utils.excel_importer import carregar_planilha_universal
 from core.database import salvar_militares_supabase
 
-def abrir_modal_editar_militar(militar, padronizar_graduacao_func, atualizar_func, pesos_dict):
-    @st.dialog("✏️ Editar Dados do Militar", width="medium")
+def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
+    @st.dialog("✏️ Editar Efetivo em Tabela (Estilo Planilha)", width="large")
     def _dialog():
-        st.markdown(f"**Editando:** `{militar.get('posto_grad')} {militar.get('nome_guerra')}` (Nº {militar.get('num_policia')})")
-        
+        st.markdown("##### 📝 Edite graduações, nomes, matrículas e unidades diretamente na planilha:")
+        st.caption("Altere os valores na tabela abaixo e clique em 'Salvar' para atualizar tudo no Supabase.")
+
+        mils = st.session_state.get("lista_militares", [])
+        if not mils:
+            st.info("Nenhum militar cadastrado para editar.")
+            return
+
+        dados_tabela = []
+        for m in mils:
+            dados_tabela.append({
+                "ID_INTERNO": m.get("id"),
+                "Nº Polícia (com DV)": str(m.get("num_policia", "")),
+                "Graduação": padronizar_grad_func(m.get("posto_grad", "SD")),
+                "Nome Funcional": str(m.get("nome_guerra", "")),
+                "Nome Completo": str(m.get("nome_completo", "")),
+                "Unidade": str(m.get("unidade", "")),
+                "Cidade": str(m.get("cidade", ""))
+            })
+
+        df_mils = pd.DataFrame(dados_tabela)
+
         opcoes_grad = ["SD AL", "SD", "CB", "3º SGT", "2º SGT", "1º SGT", "SUB TEN", "2º TEN", "1º TEN", "CAP", "MAJ", "TEN CEL", "CEL"]
-        grad_atual = padronizar_graduacao_func(militar.get("posto_grad", "SD"))
-        idx_grad = opcoes_grad.index(grad_atual) if grad_atual in opcoes_grad else 1
 
-        with st.form("form_editar_militar_dialog", clear_on_submit=False):
-            num_pol_ed = st.text_input("Nº Polícia / Matrícula com DV:", value=str(militar.get("num_policia", ""))).strip()
-            posto_ed = st.selectbox("Graduação / Posto:", opcoes_grad, index=idx_grad)
-            nome_guerra_ed = st.text_input("Nome Funcional / de Guerra:", value=str(militar.get("nome_guerra", ""))).strip().upper()
-            nome_completo_ed = st.text_input("Nome Completo:", value=str(militar.get("nome_completo", ""))).strip().upper()
-            unidade_ed = st.text_input("Unidade / Cia:", value=str(militar.get("unidade", ""))).strip().upper()
-            cidade_ed = st.text_input("Cidade / Município:", value=str(militar.get("cidade", ""))).strip().upper()
+        df_editado = st.data_editor(
+            df_mils,
+            num_rows="fixed",
+            use_container_width=True,
+            height=380,
+            hide_index=True,
+            column_config={
+                "ID_INTERNO": None,
+                "Nº Polícia (com DV)": st.column_config.TextColumn("Nº Polícia (com DV)", required=True),
+                "Graduação": st.column_config.SelectboxColumn("Graduação", options=opcoes_grad, required=True),
+                "Nome Funcional": st.column_config.TextColumn("Nome Funcional", required=True),
+                "Nome Completo": st.column_config.TextColumn("Nome Completo"),
+                "Unidade": st.column_config.TextColumn("Unidade"),
+                "Cidade": st.column_config.TextColumn("Cidade")
+            }
+        )
 
-            col_sav1, col_sav2 = st.columns(2)
-            with col_sav1:
-                btn_salvar = st.form_submit_button("💾 Salvar Alterações", type="primary", use_container_width=True)
-            with col_sav2:
-                btn_cancelar = st.form_submit_button("❌ Cancelar", use_container_width=True)
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            if st.button("💾 Salvar Alterações no SIOP & Supabase", type="primary", use_container_width=True):
+                novos_mils = []
+                mapa_existente = {str(m.get("id")): m for m in mils}
 
-            if btn_salvar:
-                if not num_pol_ed or not nome_guerra_ed:
-                    st.error("⚠️ O Nº de Polícia e o Nome de Guerra são obrigatórios.")
-                else:
-                    pg_final = padronizar_graduacao_func(posto_ed)
-                    militar_atualizado = {
-                        "id": militar["id"],
-                        "num_policia": num_pol_ed,
-                        "posto_grad": pg_final,
-                        "nome_guerra": nome_guerra_ed,
-                        "nome_completo": nome_completo_ed if nome_completo_ed else f"{pg_final} {nome_guerra_ed}",
-                        "cidade": cidade_ed if cidade_ed else "N/I",
-                        "peso": pesos_dict.get(pg_final, 99),
-                        "unidade": unidade_ed if unidade_ed else "UNIDADE N/I"
-                    }
-                    atualizar_func(militar_atualizado)
-                    st.success("✅ Dados do militar atualizados com sucesso!")
-                    st.rerun()
-                    
-            if btn_cancelar:
+                for _, row in df_editado.iterrows():
+                    m_id = str(row["ID_INTERNO"])
+                    pg_f = padronizar_grad_func(row["Graduação"])
+                    num_p = str(row["Nº Polícia (com DV)"]).strip()
+                    nome_g = str(row["Nome Funcional"]).strip().upper()
+                    nome_c = str(row["Nome Completo"]).strip().upper()
+                    uni_val = str(row["Unidade"]).strip().upper()
+                    cid_val = str(row["Cidade"]).strip().upper()
+
+                    obj_m = mapa_existente.get(m_id, {"id": m_id})
+                    obj_m["num_policia"] = num_p
+                    obj_m["posto_grad"] = pg_f
+                    obj_m["nome_guerra"] = nome_g
+                    obj_m["nome_completo"] = nome_c if nome_c else f"{pg_f} {nome_g}"
+                    obj_m["unidade"] = uni_val if uni_val else "UNIDADE N/I"
+                    obj_m["cidade"] = cid_val if cid_val else "N/I"
+                    obj_m["peso"] = pesos_dict.get(pg_f, 99)
+
+                    novos_mils.append(obj_m)
+
+                salvar_militares_supabase(novos_mils)
+                st.session_state["lista_militares"] = novos_mils
+                st.session_state["militares_carregados"] = True
+                st.success("✅ Efetivo atualizado com sucesso!")
+                st.rerun()
+
+        with col_s2:
+            if st.button("❌ Cancelar", use_container_width=True):
                 st.rerun()
     _dialog()
 
