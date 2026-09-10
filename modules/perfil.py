@@ -15,6 +15,7 @@ def exibir_tela_perfil():
     st.divider()
 
     usr = st.session_state.get("usuario_dados") or {}
+    usr_key = str(usr.get('usuario_login') or usr.get('usuario') or usr.get('num_policia') or '').strip().upper()
 
     aba_p1, aba_p2, aba_p3 = st.tabs([
         "🛡️ Minhas Permissões & Travas de Segurança",
@@ -30,12 +31,12 @@ def exibir_tela_perfil():
         with c_pf1:
             st.info(
                 f"👤 **Militar:** {usr.get('nome_guerra', 'Militar')}\n\n"
-                f"🆔 **Nº de Polícia / Login:** {usr.get('usuario', 'N/I')}\n\n"
+                f"🆔 **Nº de Polícia / Login:** {usr_key if usr_key else 'N/I'}\n\n"
                 f"🔰 **Cargo / Função:** {usr.get('cargo_funcao', 'Operador')}"
             )
         with c_pf2:
             unidade_exibicao = usr.get('unidade') or st.session_state.get('cfg_subunidade', '35ª CIA PM')
-            nivel_exibicao = usr.get('nivel_acesso', 'TROPA')
+            nivel_exibicao = str(usr.get('nivel_acesso', 'TROPA')).upper()
             st.success(
                 f"🔐 **Nível de Permissão:** {nivel_exibicao}\n\n"
                 f"🏛️ **Unidade Vinculada:** {unidade_exibicao}\n\n"
@@ -65,11 +66,12 @@ def exibir_tela_perfil():
             * **🔒 Trava de Auditoria Retroativa Diária:** Bloqueio automático de edições e substituições de serviço em datas anteriores ao dia atual (`data < hoje`) para operadores padrão após a homologação da escala.
             * **⚖️ Gestão Cumulativa de Carga e Abatimento:** Cálculo automatizado de metas individuais (160h ou 80h) com abatimento proporcional por Dia Neutro (DN) e Dia Neutro Trabalhado (DNT).
             * **🤝 Trava Antichoques de Guarnição:** Validação em tempo real no Passo 4 para impedir duplicidade de lançamento de um mesmo militar em guarnições ou equipes distintas na mesma data.
+            * **🔑 Controle de Acesso Baseado em Função (RBAC):** Escopo de privilégios dividido em 7 níveis hierárquicos funcionais com isolamento de visões.
             """)
         with c_trv2:
             st.markdown("""
-            * **🔑 Controle de Acesso Baseado em Função (RBAC):** Escopo de privilégios dividido em 7 níveis hierárquicos funcionais com isolamento de visões.
-            * **📲 Autenticação 2FA/TOTP & Sessão Única:** Proteção contra acessos simultâneos com enforçamento de dispositivo único e *timeout* por inatividade.
+            * **📲 Autenticação 2FA/TOTP & Sessão Única:** Proteção contra acessos simultâneos com enforçamento de dispositivo único, revogação de sessão no Supabase e timeout por inatividade (180s).
+            * **🛡️ Sanitização Anti-Injection (XSS/SQLi):** Higienização e escaping de todas as entradas de texto livre enviadas via formulários operacionais.
             * **🛡️ Criptografia & Row Level Security (RLS):** Tráfego criptografado via HTTPS/TLS e isolamento de dados no PostgreSQL/Supabase por unidade.
             """)
 
@@ -110,44 +112,52 @@ def exibir_tela_perfil():
             )
 
     # =========================================================================
-    # ABA 2: ATUALIZAÇÃO DE CONTATOS E TROCA DE SENHA
+    # ABA 2: ATUALIZAÇÃO DE CONTATOS E TROCA DE SENHA (TROPA & GESTORES)
     # =========================================================================
     with aba_p2:
         st.markdown("##### ⚙️ Atualização de Contatos Corporativos")
+        st.caption("Mantenha seu e-mail e celular atualizados para receber códigos de segurança e avisos de escala.")
         
         with st.form("form_atualizar_contatos_usuario"):
             novo_email = st.text_input("E-mail Institucional de Recuperação:", value=usr.get("email_recuperacao", ""))
             novo_celular = st.text_input("Celular Corporativo (com DDD):", value=usr.get("celular_recuperacao", ""))
-            btn_salvar_contatos = st.form_submit_button("📱 Salvar Apenas Contatos")
+            btn_salvar_contatos = st.form_submit_button("📱 Salvar Contatos", type="primary", use_container_width=True)
 
             if btn_salvar_contatos:
-                usr["email_recuperacao"] = novo_email
-                usr["celular_recuperacao"] = novo_celular
-                
-                payload_contatos = {
-                    "email_recuperacao": novo_email,
-                    "celular_recuperacao": novo_celular
-                }
-                
-                if salvar_usuario_universal_supabase(usr.get('usuario', ''), payload_contatos):
-                    registrar_audit_log(usr.get('usuario', ''), usr.get('usuario', ''), "ATUALIZAR_CONTATOS", f"E-mail ({novo_email}) e Celular atualizados no Supabase.")
-                    st.success("✅ Contatos corporativos salvos com sucesso no Supabase!")
-                    st.rerun()
+                if not novo_email or not novo_celular:
+                    st.error("⚠️ Preencha o e-mail e o celular corporativo.")
+                else:
+                    usr["email_recuperacao"] = novo_email
+                    usr["celular_recuperacao"] = novo_celular
+                    st.session_state["usuario_dados"] = usr
+                    
+                    payload_contatos = {
+                        "email_recuperacao": novo_email,
+                        "celular_recuperacao": novo_celular
+                    }
+                    
+                    if salvar_usuario_universal_supabase(usr_key, payload_contatos):
+                        registrar_audit_log(usr_key, "", "ATUALIZAR_CONTATOS", f"E-mail ({novo_email}) e Celular atualizados.")
+                        st.success("✅ Contatos corporativos salvos com sucesso!")
+                        st.rerun()
+                    else:
+                        st.success("✅ Contatos salvos na sessão local!")
 
         st.divider()
         st.markdown("##### 🔒 Alteração de Senha de Acesso")
+        st.caption("A nova senha deve possuir no mínimo 6 caracteres, contendo letra maiúscula, minúscula e símbolo.")
         
         with st.form("form_atualizar_senha_usuario"):
             senha_atual = st.text_input("Senha Atual para Confirmação:", type="password", placeholder="Digite sua senha atual")
-            nova_senha_p = st.text_input("Nova Senha Forte:", type="password", placeholder="Digite a nova senha")
+            nova_senha_p = st.text_input("Nova Senha Forte:", type="password", placeholder="Ex: Pmmg@2026")
             conf_senha_p = st.text_input("Confirme a Nova Senha:", type="password", placeholder="Repita a nova senha")
-            btn_salvar_senha = st.form_submit_button("🔑 Salvar Apenas Nova Senha")
+            btn_salvar_senha = st.form_submit_button("🔑 Alterar Senha de Acesso", type="primary", use_container_width=True)
 
             if btn_salvar_senha:
                 if not senha_atual:
-                    st.error("⚠️ Digite sua senha atual para autorizar a troca de senha.")
+                    st.error("⚠️ Digite sua senha atual para autorizar a alteração.")
                 elif nova_senha_p != conf_senha_p:
-                    st.error("⚠️ A nova senha e a confirmação não coincidem.")
+                    st.error("❌ A nova senha e a confirmação não coincidem.")
                 else:
                     s_valida, msg_s = validar_senha_forte(nova_senha_p)
                     if not s_valida:
@@ -158,32 +168,35 @@ def exibir_tela_perfil():
                         novo_hist_p = ([hash_nova_p] + historico_p)[:3]
                         
                         payload_senha = {
-                            "senha": hash_nova_p,
+                            "senha": nova_senha_p,
                             "senha_hash": hash_nova_p,
                             "historico_senhas": novo_hist_p
                         }
                         
-                        if salvar_usuario_universal_supabase(usr.get('usuario', ''), payload_senha):
+                        if salvar_usuario_universal_supabase(usr_key, payload_senha):
                             usr["historico_senhas"] = novo_hist_p
-                            registrar_audit_log(usr.get('usuario', ''), usr.get('usuario', ''), "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário no Perfil.")
-                            st.success("✅ Senha e histórico de senhas atualizados no banco de dados com sucesso!")
+                            usr["senha"] = nova_senha_p
+                            usr["senha_hash"] = hash_nova_p
+                            st.session_state["usuario_dados"] = usr
+                            registrar_audit_log(usr_key, "", "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário.")
+                            st.success("🎉 Senha alterada com sucesso!")
                             st.rerun()
+                        else:
+                            st.error("Erro ao salvar nova senha no banco. Tente novamente.")
 
     # =========================================================================
     # ABA 3: HISTÓRICO AUDITÁVEL DE ACESSOS E OPERAÇÕES
     # =========================================================================
     with aba_p3:
-        st.markdown("##### 📜 Registro Auditável de Logins e Operações (UTC)")
-        st.caption("Acompanhe o registro auditável e imutável de todas as ações executadas nesta conta para fins de compliance e segurança da informação.")
+        st.markdown("##### 📜 Registro Auditável de Logins e Operações")
+        st.caption("Acompanhe o registro imutável de todas as ações executadas nesta conta para fins de compliance e segurança.")
 
-        usr_pm = usr.get("usuario")
         logs_reais = []
-
-        if supabase and usr_pm:
+        if supabase and usr_key:
             try:
-                res_logs = supabase.table("historico_auditoria")\
-                    .select("data_hora, tipo_acao, descricao_detalhada, ip_origem")\
-                    .or_(f"militar_operador.eq.{usr_pm},militar_alvo.eq.{usr_pm}")\
+                res_logs = supabase.table("log_auditoria")\
+                    .select("data_hora, acao, detalhes, usuario_email")\
+                    .eq("usuario_email", usr_key)\
                     .order("data_hora", desc=True)\
                     .limit(15)\
                     .execute()
@@ -200,9 +213,9 @@ def exibir_tela_perfil():
                 df_logs,
                 column_config={
                     "data_hora": "Data/Hora",
-                    "tipo_acao": "Ação Executada",
-                    "descricao_detalhada": "Detalhamento da Operação",
-                    "ip_origem": "IP de Origem"
+                    "acao": "Ação Executada",
+                    "detalhes": "Detalhamento da Operação",
+                    "usuario_email": "Usuário / Nº Polícia"
                 },
                 use_container_width=True,
                 hide_index=True
