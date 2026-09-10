@@ -1,10 +1,13 @@
+import os
+import sys
 import datetime
 from zoneinfo import ZoneInfo
 import hashlib
-import os
 import random
 import urllib.parse
 import uuid
+import html
+import re
 import pyotp
 import streamlit as st
 
@@ -16,6 +19,16 @@ FUSO_BR = ZoneInfo("America/Sao_Paulo")
 def obter_agora():
     """Retorna a data/hora atual rigorosamente ajustada para o fuso de Brasília."""
     return datetime.datetime.now(FUSO_BR)
+
+def sanitizar_texto(texto: str) -> str:
+    """Limpa e escapa caracteres perigosos em textos recebidos da interface (Prevenção de XSS e SQLi)."""
+    if not texto:
+        return ""
+    texto_limpo = html.escape(str(texto).strip())
+    texto_limpo = re.sub(r'(?i)<script.*?>.*?</script>', '', texto_limpo)
+    texto_limpo = re.sub(r'(?i)javascript:', '', texto_limpo)
+    texto_limpo = re.sub(r'(?i)onerror\s*=', '', texto_limpo)
+    return texto_limpo
 
 from core.database import init_db
 init_db()
@@ -36,8 +49,6 @@ from core.auth import (
     enviar_email_codigo,
     gerar_hash_senha
 )
-# IMPORTA A NOVA BLINDAGEM DE SEGURANÇA:
-from core.security import sanitizar_texto
 
 # IMPORTE DOS MÓDULOS OPERACIONAIS
 from modules.escalas import exibir_modulo_escalas
@@ -102,20 +113,13 @@ if st.session_state.get("autenticado", False):
     # 1. Trava de Sessão Única Concorrente
     if supabase and usr_login and token_local:
         try:
-            # Força busca limpa direto na coluna principal
             res = supabase.table("usuarios").select("token_sessao_ativa").eq("usuario_login", usr_login).execute()
             
-            # Fallback caso use a coluna 'usuario'
             if not res.data or len(res.data) == 0:
                 res = supabase.table("usuarios").select("token_sessao_ativa").eq("usuario", usr_login).execute()
 
             if res.data and len(res.data) > 0:
                 token_banco = res.data[0].get("token_sessao_ativa")
-                
-                # Exibe modo Debug se Gestor
-                eh_prog = str(usr_dados.get("nivel_acesso", "TROPA")).upper() == "PROGRAMADOR"
-                if eh_prog:
-                    st.sidebar.info(f"🕵️ **DEBUG SESSÃO:**\n- Local: `{str(token_local)[:8]}`\n- Banco: `{str(token_banco)[:8]}`")
                 
                 if token_banco and str(token_banco).strip() != str(token_local).strip() and str(token_banco) != "REVOGADO":
                     st.session_state["autenticado"] = False
@@ -126,8 +130,8 @@ if st.session_state.get("autenticado", False):
                     st.session_state["token_sessao_local"] = None
                     st.error("🚨 **Sessão Encerrada:** Sua conta foi acessada em outro dispositivo. Por segurança, este acesso foi desconectado.")
                     st.stop()
-        except Exception as e:
-            st.sidebar.error(f"⚠️ Erro Sync Sessão: {e}")
+        except Exception:
+            pass
 
     # 2. Trava de Inatividade (3 Minutos = 180s)
     ultima_atividade = st.session_state.get("ultima_atividade")
@@ -731,7 +735,6 @@ if not eh_gestor_ou_admin or perfil_ativo == "TROPA":
                 if not assunto_msg or not texto_msg:
                     st.error("⚠️ Preencha o assunto e o texto da mensagem.")
                 else:
-                    # 🛡️ APLICAÇÃO DA SANITIZAÇÃO DE ENTRADA AQUI:
                     assunto_limpo = sanitizar_texto(assunto_msg)
                     texto_limpo = sanitizar_texto(texto_msg)
 
@@ -781,3 +784,5 @@ def renderizar_rodape_corporativo():
         usr_sessao = st.session_state.get("usuario_dados", {}).get("nome_guerra", "Operador")
         st.caption(f"🟢 **Sessão Ativa:** {usr_sessao}")
         st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
+
+renderizar_rodape_corporativo()
