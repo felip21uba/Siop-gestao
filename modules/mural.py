@@ -14,7 +14,6 @@ def buscar_mensagens_p1_supabase():
         try:
             res = supabase.table(nome_tabela).select("*").execute()
             if res and res.data and len(res.data) > 0:
-                # Ordena localmente em Python para evitar erros de nome de coluna no banco
                 dados = res.data
                 dados.sort(
                     key=lambda x: str(x.get("created_at") or x.get("data_hora") or x.get("id") or ""), 
@@ -24,7 +23,6 @@ def buscar_mensagens_p1_supabase():
         except Exception:
             continue
             
-    # Tenta busca simples como último recurso
     try:
         res = supabase.table("mensagens_p1").select("*").execute()
         return res.data or []
@@ -44,87 +42,45 @@ def atualizar_despacho_mensagem_p1(msg_id, novo_status, despacho_texto=""):
     except Exception:
         return False
 
-# ==========================================
-    # ABA 2: REQUERIMENTOS P1 (SUPABASE BANCO DE DADOS)
-    # ==========================================
-    with aba2:
-        st.markdown("### 📩 Caixa de Entrada da P1 — Solicitações da Tropa")
-        st.caption("Mensagens, requerimentos e comunicados encaminhados pelo efetivo via banco de dados do Supabase.")
-        
-        msgs_p1_banco = buscar_mensagens_p1_supabase()
+def renderizar_mural():
+    st.markdown("""<style>div[data-testid="stContainer"] div[data-testid="stColumn"] button {height: auto !important; min-height: 40px !important;}</style>""", unsafe_allow_html=True)
+    
+    st.title("🗣️ Portal do Efetivo e Mural de Avisos")
+    st.caption("Solicitação de trocas de serviço, balcão de voluntários, caixa de entrada da P1 e comunicados oficiais.")
+    st.divider()
 
-        if not msgs_p1_banco:
-            st.info("ℹ️ Nenhum requerimento localizado no banco de dados até o momento.")
-        else:
-            if eh_admin:
-                st.success(f"📊 Total de requerimentos recebidos no Supabase: **{len(msgs_p1_banco)}**")
-                
-                for msg in msgs_p1_banco:
-                    msg_id = msg.get("id")
-                    
-                    # Captura ampla de identificação do militar
-                    num_pol = (
-                        msg.get("num_policia") or 
-                        msg.get("usuario_login") or 
-                        msg.get("matricula") or 
-                        msg.get("num_pm") or 
-                        "N/I"
-                    )
-                    nome_m = (
-                        msg.get("nome_militar") or 
-                        msg.get("militar_nome") or 
-                        msg.get("nome_guerra") or 
-                        msg.get("solicitante") or 
-                        msg.get("nome") or 
-                        "Militar / Operador"
-                    )
-                    assunto = msg.get("assunto") or "Solicitação P1"
-                    texto = msg.get("mensagem") or msg.get("texto") or msg.get("conteudo") or ""
-                    status_atual = msg.get("status") or "Pendente"
-                    despacho_existente = msg.get("despacho") or ""
-                    
-                    # Captura ampla e formatação de data/hora
-                    data_bruta = (
-                        msg.get("created_at") or 
-                        msg.get("data_hora") or 
-                        msg.get("data_envio") or 
-                        msg.get("data") or 
-                        ""
-                    )
-                    
-                    if data_bruta:
-                        try:
-                            data_fmt = pd.to_datetime(data_bruta).strftime("%d/%m/%Y às %H:%M")
-                        except Exception:
-                            data_fmt = str(data_bruta)[:16]
-                    else:
-                        data_fmt = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M")
+    usr_logado = st.session_state.get("usuario_dados", {})
+    cargo_str = str(usr_logado.get("cargo_funcao", "")).upper()
+    nivel_str = str(usr_logado.get("nivel_acesso", usr_logado.get("perfil", ""))).upper()
+    
+    LISTA_ADMIN = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "SARGENTEANTE"]
+    eh_admin = any(p in cargo_str or p in nivel_str for p in LISTA_ADMIN)
+    
+    mils_todos = st.session_state.get("lista_militares", [])
+    if not mils_todos and supabase:
+        mils_todos = carregar_militares_supabase()
+        if mils_todos:
+            st.session_state["lista_militares"] = mils_todos
 
-                    cor_status = "🟡" if status_atual == "Pendente" else ("🟢" if "DEFERIDO" in str(status_atual).upper() or "APROVADO" in str(status_atual).upper() else "🔴")
+    if mils_todos:
+        nomes_mils = [f"{m.get('posto_grad', m.get('graduacao', ''))} {m.get('nome_guerra', m.get('nome', ''))}".strip() for m in mils_todos if m.get('nome_guerra') or m.get('nome')]
+    else:
+        nomes_mils = ["SGT Exemplo", "CB Silva", "SD Oliveira"]
 
-                    with st.container(border=True):
-                        st.markdown(f"#### {cor_status} {assunto}")
-                        st.caption(f"👤 **Militar Solicitante:** {nome_m} (`Nº {num_pol}`) | ⏱️ **Enviado em:** {data_fmt} | **Status:** `{status_atual}`")
-                        st.markdown(f"> {texto}")
+    nome_guerra_usr = usr_logado.get("nome_guerra", "Militar")
+    posto_usr = usr_logado.get("cargo_funcao", usr_logado.get("posto_grad", "Policial"))
+    nome_usuario_atual = f"{posto_usr} {nome_guerra_usr}".strip()
 
-                        if despacho_existente:
-                            st.info(f"💬 **Despacho Registrado:** {despacho_existente}")
+    if "mural_trocas" not in st.session_state:
+        st.session_state["mural_trocas"] = []
+    if "mural_mensagens" not in st.session_state:
+        st.session_state["mural_mensagens"] = []
 
-                        with st.expander(f"✏️ Despachar Solicitação #{msg_id}"):
-                            with st.form(f"form_despacho_{msg_id}"):
-                                novo_st = st.selectbox(
-                                    "Decisão da P1 / Comando:",
-                                    ["Pendente", "DEFERIDO / APROVADO", "INDEFERIDO", "EM ANÁLISE"],
-                                    index=0 if status_atual == "Pendente" else 1
-                                )
-                                txt_despacho = st.text_area("Texto do Despacho / Observações:", value=despacho_existente)
-                                
-                                if st.form_submit_button("💾 Salvar Despacho no Supabase", type="primary", use_container_width=True):
-                                    if atualizar_despacho_mensagem_p1(msg_id, novo_st, txt_despacho):
-                                        st.success("✅ Despacho salvo com sucesso no banco de dados!")
-                                        st.rerun()
-                                    else:
-                                        st.error("Erro ao atualizar mensagem no Supabase.")
+    aba1, aba2, aba3 = st.tabs([
+        "🔄 Trocas de Serviço & Permutas", 
+        "📩 Requerimentos P1 (Caixa de Entrada)",
+        "📢 Correio e Comunicados"
+    ])
 
     # ==========================================
     # ABA 1: TROCAS DE SERVIÇO
@@ -243,27 +199,48 @@ def atualizar_despacho_mensagem_p1(msg_id, novo_status, despacho_texto=""):
                 
                 for msg in msgs_p1_banco:
                     msg_id = msg.get("id")
-                    num_pol = msg.get("num_policia") or msg.get("usuario_login") or "N/I"
-                    nome_m = msg.get("nome_militar") or msg.get("militar_nome") or msg.get("nome_guerra") or "Policial"
+                    
+                    num_pol = (
+                        msg.get("num_policia") or 
+                        msg.get("usuario_login") or 
+                        msg.get("matricula") or 
+                        msg.get("num_pm") or 
+                        "N/I"
+                    )
+                    nome_m = (
+                        msg.get("nome_militar") or 
+                        msg.get("militar_nome") or 
+                        msg.get("nome_guerra") or 
+                        msg.get("solicitante") or 
+                        msg.get("nome") or 
+                        "Militar / Operador"
+                    )
                     assunto = msg.get("assunto") or "Solicitação P1"
                     texto = msg.get("mensagem") or msg.get("texto") or msg.get("conteudo") or ""
                     status_atual = msg.get("status") or "Pendente"
                     despacho_existente = msg.get("despacho") or ""
-                    data_envio = msg.get("created_at") or msg.get("data_hora") or ""
                     
-                    if data_envio:
+                    data_bruta = (
+                        msg.get("created_at") or 
+                        msg.get("data_hora") or 
+                        msg.get("data_envio") or 
+                        msg.get("data") or 
+                        ""
+                    )
+                    
+                    if data_bruta:
                         try:
-                            data_fmt = pd.to_datetime(data_envio).strftime("%d/%m/%Y %H:%M")
+                            data_fmt = pd.to_datetime(data_bruta).strftime("%d/%m/%Y às %H:%M")
                         except Exception:
-                            data_fmt = str(data_envio)[:16]
+                            data_fmt = str(data_bruta)[:16]
                     else:
-                        data_fmt = "Data N/I"
+                        data_fmt = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M")
 
                     cor_status = "🟡" if status_atual == "Pendente" else ("🟢" if "DEFERIDO" in str(status_atual).upper() or "APROVADO" in str(status_atual).upper() else "🔴")
 
                     with st.container(border=True):
                         st.markdown(f"#### {cor_status} {assunto}")
-                        st.caption(f"👤 **Militar:** {nome_m} (`{num_pol}`) | ⏱️ **Enviado em:** {data_fmt} | **Status:** `{status_atual}`")
+                        st.caption(f"👤 **Militar Solicitante:** {nome_m} (`Nº {num_pol}`) | ⏱️ **Enviado em:** {data_fmt} | **Status:** `{status_atual}`")
                         st.markdown(f"> {texto}")
 
                         if despacho_existente:
@@ -381,4 +358,4 @@ def atualizar_despacho_mensagem_p1(msg_id, novo_status, despacho_texto=""):
                             msg["lido_por"][nome_usuario_atual] = datetime.datetime.now().strftime("%d/%m %H:%M")
                             st.rerun()
                     else:
-                        st.success(f"Você tomou ciência deste aviso em: {msg['lido_por'][nome_usuario_atual]}")
+                        st.success(f"Você tomou ciência deste aviso em: {msg['lido_por'][nome_usuario_atual]}")git add modules/mural.py
