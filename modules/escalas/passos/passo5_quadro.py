@@ -3,8 +3,8 @@ import datetime
 import calendar
 import pandas as pd
 import copy
-from modules.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
-from modules.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
+from modules.escalas.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
+from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 from utils.excel_escala_importer import (
     processar_upload_escala_excel, 
     escanear_legendas_unicas_excel, 

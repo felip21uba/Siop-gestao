@@ -4,8 +4,8 @@ import calendar
 import pandas as pd
 import io
 import streamlit.components.v1 as components
-from modules.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
-from modules.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
+from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
+from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 
 # Siglas de afastamento institucional que abatem a meta proporcional do mês (sem CURSO e sem DISP/DIS)
 SIGLAS_DIAS_NEUTROS = [

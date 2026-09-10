@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import calendar
-from modules.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
+from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from core.database import registrar_log_banco, buscar_logs_banco
 
 MESES_MAP = {
