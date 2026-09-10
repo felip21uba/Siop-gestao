@@ -16,7 +16,7 @@ def buscar_mensagens_p1_supabase():
             if res and res.data and len(res.data) > 0:
                 dados = res.data
                 dados.sort(
-                    key=lambda x: str(x.get("created_at") or x.get("data_hora") or x.get("id") or ""), 
+                    key=lambda x: str(x.get("criado_em") or x.get("created_at") or x.get("data_hora") or x.get("id") or ""), 
                     reverse=True
                 )
                 return dados
@@ -30,12 +30,13 @@ def buscar_mensagens_p1_supabase():
         return []
 
 def buscar_mapa_usuarios_supabase():
-    """Busca todos os usuários ativos no banco para mapear Nº de Polícia -> Cargo + Nome de Guerra."""
+    """Busca todos os usuários ativos no banco para mapear remetente_id -> Cargo + Nome de Guerra."""
     if not supabase:
-        return {}
+        return {}, []
     try:
         res = supabase.table("usuarios").select("usuario_login, usuario, cargo_funcao, nome_guerra").execute()
         mapa = {}
+        lista_completa = []
         if res.data:
             for u in res.data:
                 key_login = str(u.get("usuario_login") or u.get("usuario") or "").strip().upper()
@@ -44,9 +45,10 @@ def buscar_mapa_usuarios_supabase():
                 nome_completo = f"{cargo} {nome_guerra}".strip()
                 if key_login and nome_completo:
                     mapa[key_login] = nome_completo
-        return mapa
+                    lista_completa.append({"login": key_login, "label": f"{nome_completo} ({key_login})"})
+        return mapa, lista_completa
     except Exception:
-        return {}
+        return {}, []
 
 def atualizar_despacho_mensagem_p1(msg_id, novo_status, despacho_texto=""):
     """Atualiza o status e o texto de despacho de um requerimento no Supabase."""
@@ -57,6 +59,29 @@ def atualizar_despacho_mensagem_p1(msg_id, novo_status, despacho_texto=""):
             "status": novo_status,
             "despacho": despacho_texto
         }).eq("id", msg_id).execute()
+        return True
+    except Exception:
+        return False
+
+def atualizar_remetente_mensagem_p1(msg_id, novo_remetente_id):
+    """Atualiza o militar solicitante do requerimento no Supabase."""
+    if not supabase or not msg_id or not novo_remetente_id:
+        return False
+    try:
+        supabase.table("mensagens_p1").update({
+            "remetente_id": novo_remetente_id,
+            "num_policia": novo_remetente_id
+        }).eq("id", msg_id).execute()
+        return True
+    except Exception:
+        return False
+
+def excluir_mensagem_p1_supabase(msg_id):
+    """Exclui permanentemente um requerimento da caixa de entrada no Supabase."""
+    if not supabase or not msg_id:
+        return False
+    try:
+        supabase.table("mensagens_p1").delete().eq("id", msg_id).execute()
         return True
     except Exception:
         return False
@@ -209,39 +234,70 @@ def renderizar_mural():
         st.caption("Mensagens, requerimentos e comunicados encaminhados pelo efetivo via banco de dados do Supabase.")
         
         msgs_p1_banco = buscar_mensagens_p1_supabase()
-        mapa_usuarios = buscar_mapa_usuarios_supabase()
+        mapa_usuarios, lista_usuarios_mils = buscar_mapa_usuarios_supabase()
 
         if not msgs_p1_banco:
             st.info("ℹ️ Nenhum requerimento localizado no banco de dados até o momento.")
         else:
             if eh_admin:
-                st.success(f"📊 Total de requerimentos recebidos no Supabase: **{len(msgs_p1_banco)}**")
-                
+                # 🔍 FILTROS DE BUSCA (DATA, MILITAR SOLICITANTE E STATUS)
+                with st.expander("🔍 **Filtros de Busca e Consulta da P1**", expanded=True):
+                    col_f1, col_f2, col_f3 = st.columns([1, 1.2, 1])
+                    with col_f1:
+                        filtro_data_p1 = st.date_input("Filtrar por Data de Envio:", value=None, key="filtro_dt_p1")
+                    with col_f2:
+                        opcoes_filtro_militar = ["TODOS OS MILITARES"] + sorted(list(set(mapa_usuarios.values())))
+                        filtro_militar_p1 = st.selectbox("Filtrar por Militar Solicitante:", opcoes_filtro_militar, key="filtro_mil_p1")
+                    with col_f3:
+                        filtro_status_p1 = st.selectbox("Filtrar por Status:", ["TODOS OS STATUS", "Pendente / RECEBIDA", "DEFERIDO / APROVADO", "INDEFERIDO", "EM ANÁLISE"], key="filtro_st_p1")
+
+                # APLICAÇÃO DOS FILTROS
+                msgs_exibição = []
                 for msg in msgs_p1_banco:
-                    msg_id = msg.get("id")
-                    
                     num_pol = str(
+                        msg.get("remetente_id") or 
                         msg.get("num_policia") or 
                         msg.get("usuario_login") or 
-                        msg.get("matricula") or 
                         msg.get("usuario") or 
                         ""
                     ).strip().upper()
 
-                    # Cruzamento direto com a tabela 'usuarios' usando usuario_login
-                    nome_m = mapa_usuarios.get(num_pol) or msg.get("nome_militar") or msg.get("militar_nome") or msg.get("nome_guerra") or "Policial Militar"
+                    nome_m = mapa_usuarios.get(num_pol) or msg.get("nome_militar") or msg.get("militar_nome") or "Policial Militar"
+                    status_atual = msg.get("status") or "Pendente"
                     
+                    data_bruta = msg.get("criado_em") or msg.get("created_at") or msg.get("data_hora") or ""
+                    dt_obj = None
+                    if data_bruta:
+                        try:
+                            dt_obj = pd.to_datetime(data_bruta).date()
+                        except Exception:
+                            dt_obj = None
+
+                    # Valida filtro por data
+                    if filtro_data_p1 and dt_obj and dt_obj != filtro_data_p1:
+                        continue
+                    
+                    # Valida filtro por militar
+                    if filtro_militar_p1 != "TODOS OS MILITARES" and filtro_militar_p1.upper() not in nome_m.upper():
+                        continue
+
+                    # Valida filtro por status
+                    if filtro_status_p1 != "TODOS OS STATUS":
+                        termo_st = "PENDENTE" if "PENDENTE" in filtro_status_p1.upper() or "RECEBIDA" in filtro_status_p1.upper() else filtro_status_p1.upper()
+                        if termo_st not in status_atual.upper() and status_atual.upper() not in termo_st:
+                            if not ("RECEBIDA" in status_atual.upper() and "PENDENTE" in filtro_status_p1.upper()):
+                                continue
+
+                    msgs_exibição.append((msg, num_pol, nome_m, data_bruta))
+
+                st.success(f"📊 Exibindo **{len(msgs_exibição)}** de **{len(msgs_p1_banco)}** requerimentos localizados.")
+                
+                for msg, num_pol, nome_m, data_bruta in msgs_exibição:
+                    msg_id = msg.get("id")
                     assunto = msg.get("assunto") or "Solicitação P1"
                     texto = msg.get("mensagem") or msg.get("texto") or msg.get("conteudo") or ""
                     status_atual = msg.get("status") or "Pendente"
                     despacho_existente = msg.get("despacho") or ""
-                    
-                    data_bruta = (
-                        msg.get("created_at") or 
-                        msg.get("data_hora") or 
-                        msg.get("data_envio") or 
-                        ""
-                    )
                     
                     if data_bruta:
                         try:
@@ -251,7 +307,7 @@ def renderizar_mural():
                     else:
                         data_fmt = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M")
 
-                    cor_status = "🟡" if status_atual == "Pendente" else ("🟢" if "DEFERIDO" in str(status_atual).upper() or "APROVADO" in str(status_atual).upper() else "🔴")
+                    cor_status = "🟡" if "PENDENTE" in status_atual.upper() or "RECEBIDA" in status_atual.upper() else ("🟢" if "DEFERIDO" in status_atual.upper() or "APROVADO" in status_atual.upper() else "🔴")
 
                     with st.container(border=True):
                         st.markdown(f"#### {cor_status} {assunto}")
@@ -261,24 +317,63 @@ def renderizar_mural():
                         if despacho_existente:
                             st.info(f"💬 **Despacho Registrado:** {despacho_existente}")
 
-                        with st.expander(f"✏️ Despachar Solicitação #{msg_id}"):
-                            with st.form(f"form_despacho_{msg_id}"):
-                                novo_st = st.selectbox(
-                                    "Decisão da P1 / Comando:",
-                                    ["Pendente", "DEFERIDO / APROVADO", "INDEFERIDO", "EM ANÁLISE"],
-                                    index=0 if status_atual == "Pendente" else 1
-                                )
-                                txt_despacho = st.text_area("Texto do Despacho / Observações:", value=despacho_existente)
-                                
-                                if st.form_submit_button("💾 Salvar Despacho no Supabase", type="primary", use_container_width=True):
-                                    if atualizar_despacho_mensagem_p1(msg_id, novo_st, txt_despacho):
-                                        st.success("✅ Despacho salvo com sucesso no banco de dados!")
-                                        st.rerun()
-                                    else:
-                                        st.error("Erro ao atualizar mensagem no Supabase.")
+                        # AÇÕES DO GESTOR DA P1
+                        col_act1, col_act2, col_act3 = st.columns([1.5, 1.5, 1])
+
+                        # 1. FORMULÁRIO DE DESPACHO
+                        with col_act1:
+                            with st.expander(f"✏️ Despachar #{msg_id}"):
+                                with st.form(f"form_despacho_{msg_id}"):
+                                    novo_st = st.selectbox(
+                                        "Decisão da P1 / Comando:",
+                                        ["Pendente", "DEFERIDO / APROVADO", "INDEFERIDO", "EM ANÁLISE"],
+                                        index=0 if "PENDENTE" in status_atual.upper() or "RECEBIDA" in status_atual.upper() else 1
+                                    )
+                                    txt_despacho = st.text_area("Texto do Despacho:", value=despacho_existente)
+                                    
+                                    if st.form_submit_button("💾 Salvar Despacho", type="primary", use_container_width=True):
+                                        if atualizar_despacho_mensagem_p1(msg_id, novo_st, txt_despacho):
+                                            st.toast("✅ Despacho salvo com sucesso!", icon="🟢")
+                                            st.rerun()
+                                        else:
+                                            st.error("Erro ao atualizar mensagem.")
+
+                        # 2. ALTERAR MILITAR SOLICITANTE
+                        with col_act2:
+                            with st.expander(f"👤 Reatribuir Solicitante"):
+                                if lista_usuarios_mils:
+                                    with st.form(f"form_reatribuir_{msg_id}"):
+                                        labels_opt = [item["label"] for item in lista_usuarios_mils]
+                                        novo_mil_sel = st.selectbox("Selecione o Novo Militar Solicitante:", labels_opt)
+                                        
+                                        if st.form_submit_button("🔄 Salvar Novo Solicitante", use_container_width=True):
+                                            novo_login = next((item["login"] for item in lista_usuarios_mils if item["label"] == novo_mil_sel), None)
+                                            if novo_login and atualizar_remetente_mensagem_p1(msg_id, novo_login):
+                                                st.toast("✅ Solicitante atualizado!", icon="🟢")
+                                                st.rerun()
+                                            else:
+                                                st.error("Erro ao alterar militar.")
+                                else:
+                                    st.caption("Nenhum usuário cadastrado para reatribuição.")
+
+                        # 3. EXCLUIR MENSAGEM
+                        with col_act3:
+                            with st.expander(f"🗑️ Excluir"):
+                                with st.form(f"form_excluir_{msg_id}"):
+                                    st.warning("Tem certeza?")
+                                    confirma_exc = st.checkbox("Confirmar exclusão", key=f"chk_exc_{msg_id}")
+                                    if st.form_submit_button("🔥 Excluir", type="primary", use_container_width=True):
+                                        if not confirma_exc:
+                                            st.error("Marque o checkbox.")
+                                        else:
+                                            if excluir_mensagem_p1_supabase(msg_id):
+                                                st.toast("🗑️ Mensagem excluída!", icon="🟢")
+                                                st.rerun()
+                                            else:
+                                                st.error("Erro ao excluir mensagem.")
             else:
                 num_pol_usr = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
-                minhas_msgs = [m for m in msgs_p1_banco if str(m.get("num_policia") or m.get("usuario_login") or m.get("usuario")).strip().upper() == num_pol_usr]
+                minhas_msgs = [m for m in msgs_p1_banco if str(m.get("remetente_id") or m.get("num_policia") or m.get("usuario_login")).strip().upper() == num_pol_usr]
 
                 if not minhas_msgs:
                     st.info("Você ainda não possui requerimentos gravados no banco de dados.")
