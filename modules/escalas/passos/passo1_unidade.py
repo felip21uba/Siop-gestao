@@ -1,19 +1,6 @@
 import streamlit as st
 from core.database import supabase
 
-def buscar_autoridades_homologadoras():
-    if supabase:
-        try:
-            res = supabase.table("autoridades_homologadoras").select("*").eq("ativo", True).execute()
-            if res.data and len(res.data) > 0:
-                return res.data
-        except Exception:
-            pass
-    return [
-        {"id": "h1", "posto_grad": "CAP QOPM", "nome_guerra": "ARRIGHI", "cargo_funcao": "COMANDANTE DA 35ª CIA PM"},
-        {"id": "h2", "posto_grad": "TEN CEL PM", "nome_guerra": "ERICK", "cargo_funcao": "COMANDANTE DO 21º BPM"}
-    ]
-
 @st.dialog("🗑️ Gerenciar e Excluir Equipes", width="medium")
 def abrir_modal_excluir_equipes():
     st.markdown("##### ⚠️ Clique na lixeira ao lado da equipe para removê-la:")
@@ -30,28 +17,24 @@ def abrir_modal_excluir_equipes():
         with c_btn:
             if st.button("🗑️ Excluir", key=f"btn_del_eq_modal_{eq}", use_container_width=True):
                 st.session_state["lista_equipes"].remove(eq)
-                # Reajusta a equipe ativa caso a excluída estivesse selecionada
                 if st.session_state.get("equipe_ativa") == eq:
                     st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
                 st.success(f"Equipe '{eq}' removida com sucesso!")
                 st.rerun()
 
 def renderizar_passo1():
-    exp1 = st.expander("📌 PASSO 1: Configuração da Unidade, Homologador e Gestão de Equipes", expanded=True)
+    exp1 = st.expander("📌 PASSO 1: Configuração da Unidade, Brasão e Gestão de Equipes", expanded=True)
     with exp1:
-        st.markdown("#### 🏛️ Dados da Unidade Operacional e Autoridade Homologadora")
-        lista_homologadores_db = buscar_autoridades_homologadoras()
-        col_u1, col_u2, col_u3 = st.columns(3)
+        st.markdown("#### 🏛️ Dados da Unidade Operacional")
+        col_u1, col_u2, col_u3 = st.columns([2, 2, 1.2])
         with col_u1:
             st.session_state["cfg_unidade"] = st.text_input("Unidade Operacional:", value=st.session_state.get("cfg_unidade", "21º BPM / 4ª RPM")).strip().upper()
             st.session_state["cfg_subunidade"] = st.text_input("Subunidade / Cia:", value=st.session_state.get("cfg_subunidade", "35ª CIA PM / UBÁ")).strip().upper()
         with col_u2:
-            opcoes_homolog = [f"{h['posto_grad']} {h['nome_guerra']} - {h['cargo_funcao']}" for h in lista_homologadores_db]
-            st.selectbox("Selecione a Autoridade Homologadora:", opcoes_homolog, index=0)
-        with col_u3:
             st.session_state["cfg_brasao_url"] = st.text_input("URL do Brasão / Logo:", value=st.session_state.get("cfg_brasao_url", "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png")).strip()
+        with col_u3:
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("💾 Salvar Dados da Unidade no Supabase", use_container_width=True):
+            if st.button("💾 Salvar Dados da Unidade", use_container_width=True, type="primary"):
                 st.success("✅ Configurações salvas!")
 
         st.divider()
@@ -61,7 +44,6 @@ def renderizar_passo1():
             st.markdown("**Selecione a equipe ativa para os lançamentos:**")
             equipes = st.session_state.get("lista_equipes", ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP"])
             
-            # Grade com limite máximo de 5 cards por linha
             max_colunas = 5
             for i in range(0, len(equipes), max_colunas):
                 grupo_equipes = equipes[i:i + max_colunas]

@@ -55,6 +55,10 @@ from core.auth import (
     enviar_email_codigo,
     gerar_hash_senha
 )
+from core.session_manager import (
+    gerenciar_timeout_sessao, 
+    restaurar_rascunho_escala_supabase
+)
 
 # IMPORTE DOS MÓDULOS OPERACIONAIS
 from modules.escalas import exibir_modulo_escalas
@@ -107,13 +111,12 @@ def obter_imagem_brasao():
     return URL_BRASAO_PADRAO
 
 # ==============================================================================
-# ⏱️ TRAVA DE INATIVIDADE E SESSÃO ÚNICA CONCORRENTE
+# ⏱️ GERENCIAMENTO DE TIMEOUT (20 MIN) E SESSÃO ÚNICA CONCORRENTE
 # ==============================================================================
-AGORA = obter_agora()
-
 if st.session_state.get("autenticado", False):
     usr_dados = st.session_state.get("usuario_dados", {})
     usr_login = str(usr_dados.get("usuario_login") or usr_dados.get("usuario") or "").strip().upper()
+    usr_id = str(usr_dados.get("id") or usr_login or "").strip()
     token_local = st.session_state.get("token_sessao_local")
 
     # 1. Trava de Sessão Única Concorrente
@@ -139,24 +142,12 @@ if st.session_state.get("autenticado", False):
         except Exception:
             pass
 
-    # 2. Trava de Inatividade (3 Minutos = 180s)
-    ultima_atividade = st.session_state.get("ultima_atividade")
-    if ultima_atividade:
-        if ultima_atividade.tzinfo is None:
-            ultima_atividade = ultima_atividade.replace(tzinfo=FUSO_BR)
-            
-        tempo_inativo = (AGORA - ultima_atividade).total_seconds()
-        if tempo_inativo > 180:
-            st.session_state["autenticado"] = False
-            st.session_state["usuario_autenticado"] = False
-            st.session_state["mfa_pendente"] = False
-            st.session_state["mfa_setup_mode"] = False
-            st.session_state["usuario_dados"] = {}
-            st.session_state["token_sessao_local"] = None
-            st.warning("⚠️ **Sessão Expirada:** Você foi desconectado por inatividade (mais de 3 minutos sem uso).")
-            st.stop()
+    # 2. Restauração Automática do Rascunho da Escala ao Iniciar
+    if usr_id:
+        restaurar_rascunho_escala_supabase(usr_id)
 
-    st.session_state["ultima_atividade"] = AGORA
+    # 3. Gerenciamento do Timeout por Inatividade (20 Minutos)
+    gerenciar_timeout_sessao()
 
 # ==============================================================================
 # 🔒 TELA DE LOGIN INSTITUCIONAL 
@@ -376,7 +367,7 @@ if not st.session_state.get("autenticado", False):
                             st.session_state["autenticado"] = True
                             st.session_state["usuario_autenticado"] = True
                             st.session_state["mfa_setup_mode"] = False
-                            st.session_state["ultima_atividade"] = obter_agora()
+                            st.session_state["ultima_atividade_time"] = datetime.datetime.now()
                             
                             if "temp_mfa_secret" in st.session_state:
                                 del st.session_state["temp_mfa_secret"]
@@ -446,7 +437,7 @@ if not st.session_state.get("autenticado", False):
                         st.session_state["autenticado"] = True
                         st.session_state["usuario_autenticado"] = True
                         st.session_state["mfa_pendente"] = False
-                        st.session_state["ultima_atividade"] = obter_agora()
+                        st.session_state["ultima_atividade_time"] = datetime.datetime.now()
                         
                         registrar_audit_log(num_pol_str, "", "LOGIN_SUCESSO", "Login com 2FA concluído.")
                         st.toast(f"Acesso liberado! Bem-vindo, {usr_temp.get('nome_guerra')}!", icon="🟢")
@@ -473,7 +464,6 @@ if not st.session_state.get("autenticado", False):
                         num_pol_key = str(usuario_input).strip()
                         usuario_encontrado = buscar_usuario_para_login(usuario_input)
 
-                        # Cache Local apenas se o banco falhar
                         if not usuario_encontrado:
                             db_teste = st.session_state.get("usuarios_teste_db", {})
                             if num_pol_key in db_teste:
@@ -534,7 +524,6 @@ if not st.session_state.get("autenticado", False):
 aplicar_estilo_visual()
 
 usr = st.session_state.get("usuario_dados", {})
-# IDENTIFICAÇÃO AMPLIFADA DE PERFIL PARA PREVENIR TRAVAS DE NIVEL DE ACESSO
 usr_real_perfil = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("cargo_funcao") or "TROPA").upper()
 
 with st.sidebar:
@@ -687,16 +676,14 @@ with st.sidebar:
         st.session_state["simular_visao_tropa"] = False
         st.session_state["usuario_dados"] = {}
         st.session_state["token_sessao_local"] = None
+        st.session_state["escala_restaurada"] = False
         st.rerun()
 
 # =========================================================================
-# 🚀 ROUTER CENTRAL DE TELAS INTELIGENTE (PREVINE BLOQUEIOS INDEVIDOS)
+# 🚀 ROUTER CENTRAL DE TELAS INTELIGENTE
 # =========================================================================
 modulo = st.session_state.get("modulo_ativo", "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA")
 
-# -------------------------------------------------------------------------
-# 👮‍♂️ VISÃO DA TROPA / CENTRAL DO POLICIAL (LIBERADO TAMBÉM EM SIMULAÇÃO)
-# -------------------------------------------------------------------------
 if modulo == "MINHA_ESCALA" or not eh_gestor_ou_admin or perfil_ativo == "TROPA":
     st.title("📅 Central do Policial")
     aba_escala, aba_mural, aba_mensagens = st.tabs([
@@ -769,7 +756,6 @@ elif modulo == "MEU_PERFIL":
     exibir_tela_perfil()
 
 else:
-    # Se ocorrer qualquer inconformidade no estado, redireciona suavemente
     st.session_state["modulo_ativo"] = "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA"
     st.rerun()
 
