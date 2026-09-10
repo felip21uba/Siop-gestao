@@ -1,4 +1,4 @@
-import datetime
+ import datetime
 from zoneinfo import ZoneInfo
 import hashlib
 import os
@@ -369,7 +369,8 @@ if not st.session_state.get("autenticado", False):
                             if "temp_mfa_secret" in st.session_state:
                                 del st.session_state["temp_mfa_secret"]
 
-                            registrar_audit_log(num_pol_str, "PRIMEIRO_ACESSO", "Senha e 2FA configurados.")
+                            # Ajustado para enviar os 4 argumentos:
+                            registrar_audit_log(num_pol_str, "", "PRIMEIRO_ACESSO", "Senha e 2FA configurados.")
                             st.toast("✅ Nova senha e 2FA salvos com sucesso!", icon="🎉")
                             st.rerun()
 
@@ -436,7 +437,8 @@ if not st.session_state.get("autenticado", False):
                         st.session_state["mfa_pendente"] = False
                         st.session_state["ultima_atividade"] = obter_agora()
                         
-                        registrar_audit_log(num_pol_str, "LOGIN_SUCESSO", "Login com 2FA concluído.")
+                        # Ajustado para enviar os 4 argumentos:
+                        registrar_audit_log(num_pol_str, "", "LOGIN_SUCESSO", "Login com 2FA concluído.")
                         st.toast(f"Acesso liberado! Bem-vindo, {usr_temp.get('nome_guerra')}!", icon="🟢")
                         st.rerun()
                     else:
@@ -667,7 +669,8 @@ with st.sidebar:
             except Exception:
                 pass
 
-        registrar_audit_log(usr_m, "LOGOUT", "Sessão encerrada ativamente pelo usuário.")
+        # Ajustado para enviar os 4 argumentos:
+        registrar_audit_log(usr_m, "", "LOGOUT", "Sessão encerrada ativamente pelo usuário.")
         st.session_state["autenticado"] = False
         st.session_state["usuario_autenticado"] = False
         st.session_state["mfa_pendente"] = False
