@@ -2,13 +2,13 @@ import streamlit as st
 import re
 import unicodedata
 from core.database import supabase, salvar_militares_supabase, carregar_militares_supabase
-from modules.escalas.passo3_modais import (
+from modules.escalas.passos.passo3_modais import (
     abrir_modal_editar_militar,
     abrir_modal_excluir_lote,
     abrir_modal_upload_planilha,
     abrir_modal_novo_militar
 )
-from modules.escalas.passo3_afastamentos import renderizar_painel_afastamentos
+from modules.escalas.passos.passo3_afastamentos import renderizar_painel_afastamentos
 
 PESOS_HIERARQUIA = {
     "CEL": 1, "TEN CEL": 2, "MAJ": 3, "CAP": 4, "1º TEN": 5, "2º TEN": 6, "ASP": 7,

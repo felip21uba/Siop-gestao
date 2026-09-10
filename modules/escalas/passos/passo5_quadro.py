@@ -18,9 +18,6 @@ SIGLAS_DIAS_NEUTROS = [
     "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT"
 ]
 
-# -----------------------------------------------------------------------------
-# FUNÇÕES DE DESFAZER (UNDO) E HISTÓRICO DE MEMÓRIA
-# -----------------------------------------------------------------------------
 def salvar_estado_undo():
     if "pilha_undo" not in st.session_state:
         st.session_state["pilha_undo"] = []
@@ -49,9 +46,6 @@ def desfazer_ultima_acao():
         return True
     return False
 
-# -----------------------------------------------------------------------------
-# FUNÇÕES DE LOGS, AUDITORIA E PADRONIZAÇÃO
-# -----------------------------------------------------------------------------
 def registrar_log_auditoria(acao, detalhe):
     usr_logado = st.session_state.get("usuario_dados", {})
     nome_usuario = usr_logado.get("nome_guerra", usr_logado.get("nome", "OPERADOR"))
@@ -137,9 +131,6 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade):
 def executar_auto_save_banco():
     st.session_state["exibir_toast_autosave"] = True
 
-# -----------------------------------------------------------------------------
-# MODAL DE IMPORTAÇÃO REVERSA VIA EXCEL
-# -----------------------------------------------------------------------------
 @st.dialog("📥 Importar Escala Pronta via Excel", width="large")
 def abrir_modal_importar_escala_excel():
     st.markdown("##### 📁 Envie a planilha Excel para preenchimento automático do Quadro:")
@@ -190,9 +181,6 @@ def abrir_modal_importar_escala_excel():
             else:
                 st.error(msg)
 
-# -----------------------------------------------------------------------------
-# RENDERIZAÇÃO DO PASSO 5
-# -----------------------------------------------------------------------------
 def renderizar_passo5():
     if st.session_state.get("exibir_toast_autosave", False):
         st.toast("☁️ Rascunho salvo na nuvem com sucesso (Auto-Save)!", icon="✅")
@@ -259,7 +247,6 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
-        # 🗑️ PAINEL DE EXCLUSÃO DIRETA
         with st.expander("🗑️ Excluir Militar ou Equipe do Quadro"):
             if quadro_travado:
                 st.warning("🔒 **QUADRO TRAVADO:** Desative a chave 'Travar Quadro' abaixo para permitir exclusões de linhas ou equipes.")
@@ -303,7 +290,6 @@ def renderizar_passo5():
                             executar_auto_save_banco()
                             st.rerun()
 
-        # ⚡ PAINEL DE AJUSTE RÁPIDO
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro", expanded=False):
             if quadro_travado:
                 st.warning("🔒 **QUADRO TRAVADO:** Desative a chave 'Travar Quadro' abaixo para efetuar lançamentos diretos.")
@@ -389,7 +375,6 @@ def renderizar_passo5():
 
         st.divider()
 
-        # 📊 RENDERIZAÇÃO DO QUADRO E CABEÇALHO DE AÇÕES
         col_t1, col_t2, col_t3, col_t4 = st.columns([1.5, 1, 1, 1.5])
         with col_t1: st.markdown("#### 📊 Quadro Mensal")
         with col_t2:
@@ -470,7 +455,6 @@ def renderizar_passo5():
         df_escala = pd.DataFrame(matriz_dados)
         st.session_state["df_escala_consolidada"] = df_escala
 
-        # 👥 MÉTRICA DE EFETIVO MÍNIMO DIÁRIO (GRÁFICO EMPILHADO - NOVO)
         if not df_escala.empty:
             with st.expander("👥 Gráfico de Efetivo Diário Detalhado (Por Equipe e Turno)", expanded=False):
                 st.caption("Visão operacional: quantidade de militares escalados por dia, segmentado por equipe e horário.")
@@ -485,7 +469,6 @@ def renderizar_passo5():
                         val = str(linha.get(col_nome, "")).strip().upper()
                         tokens_val = set(val.replace("/", " ").split())
                         
-                        # Se não for folga/descanso/neutro, é um turno de serviço
                         if val and val not in ["F", "D", "X"] and not any(sigla in tokens_val for sigla in SIGLAS_DIAS_NEUTROS):
                             contagem_total_diaria[dia_str] += 1
                             dados_grafico.append({
@@ -497,7 +480,6 @@ def renderizar_passo5():
                 with col_chart:
                     df_g = pd.DataFrame(dados_grafico)
                     if not df_g.empty:
-                        # Tabela Pivô para montar as barras empilhadas
                         df_count = df_g.groupby(["Dia", "Equipe/Turno"]).size().unstack(fill_value=0)
                         dias_index = [f"{d:02d}" for d, _ in colunas_dias_nomes]
                         df_count = df_count.reindex(dias_index, fill_value=0)
@@ -567,7 +549,6 @@ def renderizar_passo5():
                     executar_auto_save_banco()
                     st.rerun()
 
-        # 🛡️ PAINEL DE CONSULTA DO LOG DE AUDITORIA
         logs_atuais = st.session_state.get("logs_auditoria_lista", [])
         with st.expander(f"🛡️ Histórico de Auditoria e Alterações ({len(logs_atuais)} registros)", expanded=False):
             if logs_atuais:

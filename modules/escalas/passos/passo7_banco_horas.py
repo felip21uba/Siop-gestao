@@ -11,7 +11,6 @@ MESES_MAP = {
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 
-# Siglas de afastamento institucional sincronizadas com o Passo 5
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
     "LTSP", "LM",
@@ -20,7 +19,6 @@ SIGLAS_DIAS_NEUTROS = [
 ]
 
 def registrar_log_auditoria_local(acao, detalhe):
-    """Função local para registrar ações no histórico."""
     usr_logado = st.session_state.get("usuario_dados", {})
     nome_usuario = usr_logado.get("nome_guerra", usr_logado.get("nome", "OPERADOR"))
     cargo_usuario = usr_logado.get("cargo_funcao", usr_logado.get("perfil", "GESTOR"))
@@ -41,7 +39,6 @@ def registrar_log_auditoria_local(acao, detalhe):
     st.session_state["logs_auditoria_lista"].insert(0, log_entry)
 
 def executar_auto_save_banco_local():
-    """Aciona a notificação de auto-save."""
     st.session_state["exibir_toast_autosave"] = True
 
 def renderizar_passo7():
@@ -95,7 +92,6 @@ def renderizar_passo7():
                 if pair[1] not in equipes_por_militar[m_id_str]: 
                     equipes_por_militar[m_id_str].append(pair[1])
 
-        # PAINEL 1: LANÇAMENTOS AVULSOS
         with st.expander("➕ 1. Registrar Serviço Extra / Lançamento Avulso (Fórum, Instrução)", expanded=False):
             mapa_select_mils = {f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')} ({m.get('num_policia', '')})": str(m["id"]) for m in mils_ordenados}
             
@@ -184,7 +180,6 @@ def renderizar_passo7():
                     executar_auto_save_banco_local()
                     st.rerun()
 
-        # PAINEL 2: CONFIGURAÇÃO DE CARGA REDUZIDA E SALDO ANTERIOR
         with st.expander("⚙️ 2. Parâmetros Especiais e Saldo Anterior (Carga Reduzida)", expanded=False):
             dados_input = []
             for m in mils_ordenados:
@@ -232,7 +227,6 @@ def renderizar_passo7():
                 executar_auto_save_banco_local()
                 st.rerun()
 
-        # PAINEL 3: EXTRATO FINAL E APURAÇÃO MÚLTIPLA
         with st.expander("📊 3. Apuração e Extrato Consolidado do Banco de Horas", expanded=True):
             
             c_filtro1, c_filtro2 = st.columns([1, 1])
@@ -301,7 +295,6 @@ def renderizar_passo7():
                             dia_neutro = False
                             horas_no_dia = 0.0
                             
-                            # Avalia globalmente o dia para este militar em todas as suas equipes
                             for eq in equipes_por_militar.get(m_id, []):
                                 val = grade.get(f"{m_id}_{eq}_{m_ano}_{mes_calc:02d}_{d:02d}", "F")
                                 val_str = str(val).upper().strip() if val else ""
@@ -317,7 +310,6 @@ def renderizar_passo7():
                                 
                             total_trabalhado_escala += horas_no_dia
                         
-                        # Cálculo Proporcional: (Dias do Mês - Dias Neutros Unificados) * Taxa Diária
                         dias_efetivos_mes = dias_no_mes - dias_neutros_mes
                         meta_efetiva_acumulada += (dias_efetivos_mes * taxa_diaria)
                         dias_neutros_total += dias_neutros_mes
@@ -353,7 +345,6 @@ def renderizar_passo7():
                 if not df_extrato.empty: 
                     st.dataframe(df_extrato.style.map(colorir_saldo, subset=['SALDO PERÍODO', 'SALDO ANTERIOR', 'SALDO GERAL FINAL']), hide_index=True, width="stretch")
                 
-                # HTML para Impressão do Banco de Horas
                 html_extrato_pdf = f"""
                 <!DOCTYPE html>
                 <html>

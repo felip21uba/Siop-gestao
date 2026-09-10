@@ -7,7 +7,6 @@ import streamlit.components.v1 as components
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 
-# Siglas de afastamento institucional que abatem a meta proporcional do mês (sem CURSO e sem DISP/DIS)
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
     "LTSP", "LM",
@@ -138,7 +137,6 @@ def renderizar_passo6():
         obs_escala = st.text_area("📝 Observações e Diretrizes P1:", placeholder="Digite mensagens...", key="p6_obs_texto")
         st.divider()
 
-        # DETECÇÃO DE TURNOS E SUBSTITUIÇÃO POR LEGENDA
         turnos_encontrados = set()
         for d in range(1, num_dias_mes + 1):
             for pair in chaves_quadro:
@@ -262,7 +260,6 @@ def renderizar_passo6():
                         
                     row_html += f'<td class="td-day">{cell_content}</td>'
 
-                # CÁLCULO PROPORCIONAL DA META EFETIVA (SINCRONIZADO)
                 cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
                 eh_reduzida = cfg_bh.get("reduzida", False)
                 carga_base_mes = 80.0 if eh_reduzida else 160.0
