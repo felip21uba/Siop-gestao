@@ -1,1 +1,0 @@
-# Pacote de passos da escala
