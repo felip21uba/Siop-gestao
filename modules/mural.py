@@ -29,6 +29,25 @@ def buscar_mensagens_p1_supabase():
     except Exception:
         return []
 
+def buscar_mapa_usuarios_supabase():
+    """Busca todos os usuários ativos no banco para mapear Nº de Polícia -> Cargo + Nome de Guerra."""
+    if not supabase:
+        return {}
+    try:
+        res = supabase.table("usuarios").select("usuario_login, usuario, cargo_funcao, nome_guerra").execute()
+        mapa = {}
+        if res.data:
+            for u in res.data:
+                key_login = str(u.get("usuario_login") or u.get("usuario") or "").strip().upper()
+                cargo = u.get("cargo_funcao") or ""
+                nome_guerra = u.get("nome_guerra") or ""
+                nome_completo = f"{cargo} {nome_guerra}".strip()
+                if key_login and nome_completo:
+                    mapa[key_login] = nome_completo
+        return mapa
+    except Exception:
+        return {}
+
 def atualizar_despacho_mensagem_p1(msg_id, novo_status, despacho_texto=""):
     """Atualiza o status e o texto de despacho de um requerimento no Supabase."""
     if not supabase or not msg_id:
@@ -190,6 +209,7 @@ def renderizar_mural():
         st.caption("Mensagens, requerimentos e comunicados encaminhados pelo efetivo via banco de dados do Supabase.")
         
         msgs_p1_banco = buscar_mensagens_p1_supabase()
+        mapa_usuarios = buscar_mapa_usuarios_supabase()
 
         if not msgs_p1_banco:
             st.info("ℹ️ Nenhum requerimento localizado no banco de dados até o momento.")
@@ -200,24 +220,17 @@ def renderizar_mural():
                 for msg in msgs_p1_banco:
                     msg_id = msg.get("id")
                     
-                    # Tentativa extra de buscar o militar por diversas chaves possíveis
-                    num_pol = (
+                    num_pol = str(
                         msg.get("num_policia") or 
                         msg.get("usuario_login") or 
                         msg.get("matricula") or 
-                        msg.get("num_pm") or 
                         msg.get("usuario") or 
-                        "N/I"
-                    )
-                    nome_m = (
-                        msg.get("nome_militar") or 
-                        msg.get("militar_nome") or 
-                        msg.get("nome_guerra") or 
-                        msg.get("solicitante") or 
-                        msg.get("nome") or 
-                        msg.get("remetente") or 
-                        "Militar / Operador"
-                    )
+                        ""
+                    ).strip().upper()
+
+                    # Cruzamento direto com a tabela 'usuarios' usando usuario_login
+                    nome_m = mapa_usuarios.get(num_pol) or msg.get("nome_militar") or msg.get("militar_nome") or msg.get("nome_guerra") or "Policial Militar"
+                    
                     assunto = msg.get("assunto") or "Solicitação P1"
                     texto = msg.get("mensagem") or msg.get("texto") or msg.get("conteudo") or ""
                     status_atual = msg.get("status") or "Pendente"
@@ -227,7 +240,6 @@ def renderizar_mural():
                         msg.get("created_at") or 
                         msg.get("data_hora") or 
                         msg.get("data_envio") or 
-                        msg.get("data") or 
                         ""
                     )
                     
@@ -243,15 +255,11 @@ def renderizar_mural():
 
                     with st.container(border=True):
                         st.markdown(f"#### {cor_status} {assunto}")
-                        st.caption(f"👤 **Militar Solicitante:** {nome_m} (`Nº {num_pol}`) | ⏱️ **Enviado em:** {data_fmt} | **Status:** `{status_atual}`")
+                        st.caption(f"👤 **Militar Solicitante:** {nome_m} (`Nº {num_pol if num_pol else 'N/I'}`) | ⏱️ **Enviado em:** {data_fmt} | **Status:** `{status_atual}`")
                         st.markdown(f"> {texto}")
 
                         if despacho_existente:
                             st.info(f"💬 **Despacho Registrado:** {despacho_existente}")
-
-                        # BOTÃO DE DEBUG EXCLUSIVO PARA O PROGRAMADOR
-                        with st.expander("🔧 Ver Colunas do Banco (Debug)"):
-                            st.json(msg)
 
                         with st.expander(f"✏️ Despachar Solicitação #{msg_id}"):
                             with st.form(f"form_despacho_{msg_id}"):
@@ -269,9 +277,8 @@ def renderizar_mural():
                                     else:
                                         st.error("Erro ao atualizar mensagem no Supabase.")
             else:
-                num_pol_usr = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip()
-                # Verifica num_policia e também se existe 'usuario'
-                minhas_msgs = [m for m in msgs_p1_banco if str(m.get("num_policia") or m.get("usuario_login") or m.get("usuario")).strip() == num_pol_usr]
+                num_pol_usr = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
+                minhas_msgs = [m for m in msgs_p1_banco if str(m.get("num_policia") or m.get("usuario_login") or m.get("usuario")).strip().upper() == num_pol_usr]
 
                 if not minhas_msgs:
                     st.info("Você ainda não possui requerimentos gravados no banco de dados.")
