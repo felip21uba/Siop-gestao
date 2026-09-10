@@ -93,16 +93,29 @@ def obter_imagem_brasao():
 AGORA = obter_agora()
 
 if st.session_state.get("autenticado", False):
-    usr_login = str(st.session_state.get("usuario_dados", {}).get("usuario_login") or st.session_state.get("usuario_dados", {}).get("usuario") or "").strip().upper()
+    usr_dados = st.session_state.get("usuario_dados", {})
+    usr_login = str(usr_dados.get("usuario_login") or usr_dados.get("usuario") or "").strip().upper()
     token_local = st.session_state.get("token_sessao_local")
 
-    # 1. Trava de Sessão Única Concorrente (Derruba acesso se logado em outro dispositivo)
+    # 1. Trava de Sessão Única Concorrente
     if supabase and usr_login and token_local:
         try:
-            res = supabase.table("usuarios").select("token_sessao_ativa").or_(f"usuario_login.eq.{usr_login},usuario.eq.{usr_login}").execute()
+            # Força busca limpa direto na coluna principal
+            res = supabase.table("usuarios").select("token_sessao_ativa").eq("usuario_login", usr_login).execute()
+            
+            # Fallback caso use a coluna 'usuario'
+            if not res.data or len(res.data) == 0:
+                res = supabase.table("usuarios").select("token_sessao_ativa").eq("usuario", usr_login).execute()
+
             if res.data and len(res.data) > 0:
                 token_banco = res.data[0].get("token_sessao_ativa")
-                if token_banco and token_banco != token_local and token_banco != "REVOGADO":
+                
+                # Exibe modo Debug se Gestor
+                eh_prog = str(usr_dados.get("nivel_acesso", "TROPA")).upper() == "PROGRAMADOR"
+                if eh_prog:
+                    st.sidebar.info(f"🕵️ **DEBUG SESSÃO:**\n- Local: `{str(token_local)[:8]}`\n- Banco: `{str(token_banco)[:8]}`")
+                
+                if token_banco and str(token_banco).strip() != str(token_local).strip() and str(token_banco) != "REVOGADO":
                     st.session_state["autenticado"] = False
                     st.session_state["usuario_autenticado"] = False
                     st.session_state["mfa_pendente"] = False
@@ -111,8 +124,8 @@ if st.session_state.get("autenticado", False):
                     st.session_state["token_sessao_local"] = None
                     st.error("🚨 **Sessão Encerrada:** Sua conta foi acessada em outro dispositivo. Por segurança, este acesso foi desconectado.")
                     st.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            st.sidebar.error(f"⚠️ Erro Sync Sessão: {e}")
 
     # 2. Trava de Inatividade (3 Minutos = 180s)
     ultima_atividade = st.session_state.get("ultima_atividade")
@@ -319,20 +332,23 @@ if not st.session_state.get("autenticado", False):
                         elif not validar_codigo_authy(secret, codigo_setup):
                             st.error("🚨 Código do aplicativo incorreto ou expirado.")
                         else:
-                            num_pol_str = str(usr_temp.get("usuario_login", usr_temp.get("usuario", "")))
+                            num_pol_str = str(usr_temp.get("usuario_login", usr_temp.get("usuario", ""))).strip().upper()
                             hash_nova = gerar_hash_senha(nova_senha)
                             novo_token = str(uuid.uuid4())
                             
-                            if supabase:
-                                atualizar_usuario_supabase(num_pol_str, {
-                                    "senha": nova_senha, 
-                                    "senha_hash": hash_nova,
-                                    "mfa_secret": secret, 
-                                    "mfa_habilitado": True,
-                                    "email_recuperacao": email_input, 
-                                    "celular_recuperacao": celular_input,
-                                    "token_sessao_ativa": novo_token
-                                })
+                            if supabase and num_pol_str:
+                                try:
+                                    supabase.table("usuarios").update({
+                                        "senha": nova_senha, 
+                                        "senha_hash": hash_nova,
+                                        "mfa_secret": secret, 
+                                        "mfa_habilitado": True,
+                                        "email_recuperacao": email_input, 
+                                        "celular_recuperacao": celular_input,
+                                        "token_sessao_ativa": novo_token
+                                    }).eq("usuario_login", num_pol_str).execute()
+                                except Exception:
+                                    atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
                             
                             usr_temp["senha"] = nova_senha
                             usr_temp["senha_hash"] = hash_nova
@@ -353,6 +369,7 @@ if not st.session_state.get("autenticado", False):
                             if "temp_mfa_secret" in st.session_state:
                                 del st.session_state["temp_mfa_secret"]
 
+                            registrar_audit_log(num_pol_str, "PRIMEIRO_ACESSO", "Senha e 2FA configurados.")
                             st.toast("✅ Nova senha e 2FA salvos com sucesso!", icon="🎉")
                             st.rerun()
 
@@ -403,10 +420,13 @@ if not st.session_state.get("autenticado", False):
 
                     if valido_authy or valido_email:
                         novo_token = str(uuid.uuid4())
-                        num_pol_str = str(usr_temp.get("usuario_login") or usr_temp.get("usuario") or "")
+                        num_pol_str = str(usr_temp.get("usuario_login") or usr_temp.get("usuario") or "").strip().upper()
 
                         if supabase and num_pol_str:
-                            atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
+                            try:
+                                supabase.table("usuarios").update({"token_sessao_ativa": novo_token}).eq("usuario_login", num_pol_str).execute()
+                            except Exception:
+                                atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
 
                         usr_temp["token_sessao_ativa"] = novo_token
                         st.session_state["token_sessao_local"] = novo_token
@@ -415,6 +435,8 @@ if not st.session_state.get("autenticado", False):
                         st.session_state["usuario_autenticado"] = True
                         st.session_state["mfa_pendente"] = False
                         st.session_state["ultima_atividade"] = obter_agora()
+                        
+                        registrar_audit_log(num_pol_str, "LOGIN_SUCESSO", "Login com 2FA concluído.")
                         st.toast(f"Acesso liberado! Bem-vindo, {usr_temp.get('nome_guerra')}!", icon="🟢")
                         st.rerun()
                     else:
@@ -638,13 +660,14 @@ with st.sidebar:
     st.divider()
 
     if st.button("🚪 Sair do Sistema", use_container_width=True):
-        usr_m = str(usr.get("usuario_login") or usr.get("usuario") or "")
+        usr_m = str(usr.get("usuario_login") or usr.get("usuario") or "").strip().upper()
         if supabase and usr_m:
             try:
-                supabase.table("usuarios").update({"token_sessao_ativa": "REVOGADO"}).or_(f"usuario_login.eq.{usr_m},usuario.eq.{usr_m}").execute()
+                supabase.table("usuarios").update({"token_sessao_ativa": "REVOGADO"}).eq("usuario_login", usr_m).execute()
             except Exception:
                 pass
 
+        registrar_audit_log(usr_m, "LOGOUT", "Sessão encerrada ativamente pelo usuário.")
         st.session_state["autenticado"] = False
         st.session_state["usuario_autenticado"] = False
         st.session_state["mfa_pendente"] = False
