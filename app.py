@@ -1,7 +1,7 @@
 import os
 import sys
 
-# 🌐 REGISTRO DO DIRETÓRIO RAIZ NO SYS.PATH (EVITA KEYERROR NO STREAMLIT CLOUD)
+# 🌐 REGISTRO DO DIRETÓRIO RAIZ NO SYS.PATH (PREVINE KEYERROR NO STREAMLIT CLOUD)
 DIRETORIO_RAIZ = os.path.abspath(os.path.dirname(__file__))
 if DIRETORIO_RAIZ not in sys.path:
     sys.path.insert(0, DIRETORIO_RAIZ)
@@ -188,7 +188,7 @@ if not st.session_state.get("autenticado", False):
 
             if "codigo_enviado" not in st.session_state["reset_token_dados"]:
                 with st.form("form_solicitar_codigo_email"):
-                    identificador = (st.text_input("Nº de Polícia ou E-mail Cadastrado:", placeholder="Ex: 1337468 ou militar@pmmg.mg.gov.br") or "").strip()
+                    identificador = (st.text_input("Nº de Polícia ou E-mail Cadastrado:", placeholder="Ex: 0000000 ou militar@pmmg.mg.gov.br") or "").strip()
                     
                     c_rec1, c_rec2 = st.columns(2)
                     with c_rec1:
@@ -459,7 +459,7 @@ if not st.session_state.get("autenticado", False):
         # ----------------------------------------------------------------------
         else:
             with st.form("form_login_principal"):
-                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1337468") or "").strip()
+                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 0000000") or "").strip()
                 senha_input = (st.text_input("Senha de Acesso:", type="password", placeholder="••••••••") or "").strip()
                 
                 btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", use_container_width=True)
@@ -534,7 +534,8 @@ if not st.session_state.get("autenticado", False):
 aplicar_estilo_visual()
 
 usr = st.session_state.get("usuario_dados", {})
-usr_real_perfil = str(usr.get("nivel_acesso", "TROPA")).upper()
+# IDENTIFICAÇÃO AMPLIFADA DE PERFIL PARA PREVENIR TRAVAS DE NIVEL DE ACESSO
+usr_real_perfil = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("cargo_funcao") or "TROPA").upper()
 
 with st.sidebar:
     c_side_logo, c_side_txt = st.columns([1, 2])
@@ -547,7 +548,8 @@ with st.sidebar:
     # -------------------------------------------------------------------------
     # 👁️ SIMULADOR DE VISÃO DE TROPA (BOTÃO PARA GESTORES)
     # -------------------------------------------------------------------------
-    eh_gestor_real = usr_real_perfil in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "GESTOR"]
+    LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "CMT_FRACAO", "GESTOR"]
+    eh_gestor_real = any(p in usr_real_perfil for p in LISTA_GESTORES)
     
     if eh_gestor_real:
         st.markdown("---")
@@ -638,13 +640,6 @@ with st.sidebar:
             st.session_state["passo_escala_ativo"] = passo_sel
         st.divider()
 
-    if not eh_gestor_ou_admin:
-        if st.button("📅 Minha Escala & Mural", use_container_width=True):
-            st.session_state["modulo_ativo"] = "MINHA_ESCALA"
-            st.rerun()
-        st.divider()
-
-    if eh_gestor_ou_admin:
         if st.button("📋 Módulo de TCO", use_container_width=True):
             st.session_state["modulo_ativo"] = "TCO"
             st.rerun()
@@ -653,11 +648,15 @@ with st.sidebar:
             st.session_state["modulo_ativo"] = "PROCEDIMENTOS"
             st.rerun()
             
-        if perfil_ativo in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1"]:
+        if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR"]):
             if st.button("⚙️ Gestão de Acessos", use_container_width=True):
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
         st.divider()
+
+    if st.button("📅 Minha Escala & Mural", use_container_width=True):
+        st.session_state["modulo_ativo"] = "MINHA_ESCALA"
+        st.rerun()
 
     if st.button("👤 Meu Perfil & Segurança", key="btn_menu_meu_perfil", use_container_width=True):
         st.session_state["modulo_ativo"] = "MEU_PERFIL"
@@ -691,14 +690,14 @@ with st.sidebar:
         st.rerun()
 
 # =========================================================================
-# 🚀 ROUTER CENTRAL DE TELAS
+# 🚀 ROUTER CENTRAL DE TELAS INTELIGENTE (PREVINE BLOQUEIOS INDEVIDOS)
 # =========================================================================
-modulo = st.session_state.get("modulo_ativo", "MINHA_ESCALA")
+modulo = st.session_state.get("modulo_ativo", "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA")
 
 # -------------------------------------------------------------------------
-# 👮‍♂️ VISÃO RESTRITA DA TROPA
+# 👮‍♂️ VISÃO DA TROPA / CENTRAL DO POLICIAL (LIBERADO TAMBÉM EM SIMULAÇÃO)
 # -------------------------------------------------------------------------
-if not eh_gestor_ou_admin or perfil_ativo == "TROPA":
+if modulo == "MINHA_ESCALA" or not eh_gestor_ou_admin or perfil_ativo == "TROPA":
     st.title("📅 Central do Policial")
     aba_escala, aba_mural, aba_mensagens = st.tabs([
         "📅 Minha Escala Individual", 
@@ -750,27 +749,29 @@ if not eh_gestor_ou_admin or perfil_ativo == "TROPA":
                     else:
                         st.error("Erro ao enviar mensagem. Tente novamente.")
 
-elif modulo == "ESCALAS" and eh_gestor_ou_admin:
+elif modulo == "ESCALAS":
     if st.session_state.get("passo_escala_ativo") == "🗣️ Mural & Trocas de Serviço":
         renderizar_mural()
     else:
         exibir_modulo_escalas()
 
-elif modulo == "TCO" and eh_gestor_ou_admin:
+elif modulo == "TCO":
     renderizar_modulo_tco()
 
-elif modulo == "PROCEDIMENTOS" and eh_gestor_ou_admin:
+elif modulo == "PROCEDIMENTOS":
     st.title("📑 Módulo de Procedimentos Administrativos")
     st.info("ℹ️ Módulo em desenvolvimento operacional.")
 
-elif modulo == "GESTOES_USUARIOS" and perfil_ativo in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1"]:
+elif modulo == "GESTOES_USUARIOS":
     exibir_tela_gestao_usuarios()
 
 elif modulo == "MEU_PERFIL":
     exibir_tela_perfil()
 
 else:
-    st.error("🚨 Acesso Não Autorizado: Seu perfil não possui permissão para acessar este módulo.")
+    # Se ocorrer qualquer inconformidade no estado, redireciona suavemente
+    st.session_state["modulo_ativo"] = "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA"
+    st.rerun()
 
 def renderizar_rodape_corporativo():
     st.markdown("<br><hr>", unsafe_allow_html=True)
