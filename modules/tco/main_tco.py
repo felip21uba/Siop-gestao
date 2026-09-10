@@ -1,4 +1,5 @@
 import streamlit as st
+from modules.tco.compliance import renderizar_modal_termo_compliance
 from modules.tco.database import carregar_materiais_supabase, carregar_logs_supabase
 from modules.tco.views import (
     renderizar_aba_ingestao,
@@ -7,11 +8,16 @@ from modules.tco.views import (
     renderizar_aba_creds,
     renderizar_aba_logs
 )
+from modules.tco.pdf_generator import renderizar_aba_gerador_oficios
 
 def renderizar_modulo_tco():
     """Ponto de entrada do Módulo TCO / Custódia no SIOP."""
+    
+    # 🔒 Trava de Segurança e Compliance Obrigatória
+    renderizar_modal_termo_compliance()
+
     st.title("📋 Custódia de Materiais TCO / JECRIM & Cadeia de Custódia")
-    st.caption("Ingestão oficial por recibo JECRIM, rastreabilidade multi-unidades, mídias com SHA-256 e controle do CREDS.")
+    st.caption("Ingestão oficial por recibo JECRIM, rastreabilidade multi-unidades, mídias com SHA-256, gerador de ofícios e controle CREDS.")
     st.divider()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -24,16 +30,17 @@ def renderizar_modulo_tco():
 
     st.markdown(f"👤 **Operador Ativo:** `{nome_militar_atual}` | 🏛️ **Unidade Atual:** `{unidade_militar_atual}`")
 
-    # CARREGAMENTO EM TEMPO REAL DO SUPABASE
+    # Carregamento em tempo real do Supabase
     all_bens_banco = carregar_materiais_supabase()
     all_logs_banco = carregar_logs_supabase()
 
-    aba1, aba2, aba3, aba4, aba5 = st.tabs([
+    aba1, aba2, aba3, aba4, aba5, aba6 = st.tabs([
         "📥 1. Ingestão REDS & Mídias",
         "🎒 2. Meus Materiais em Custódia",
         "🔄 3. Transferência & Aceite Parcial",
-        "🏛️ 4. Painel CREDS-TCO (Gestor)",
-        "📜 5. Trilha de Auditoria Imutável"
+        "📄 4. Gerador de Ofícios (PDF)",
+        "🏛️ 5. Painel CREDS-TCO (Gestor)",
+        "📜 6. Trilha de Auditoria Imutável"
     ])
 
     with aba1:
@@ -46,7 +53,10 @@ def renderizar_modulo_tco():
         renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
     with aba4:
-        renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual)
+        renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
     with aba5:
+        renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual)
+
+    with aba6:
         renderizar_aba_logs(all_logs_banco)
