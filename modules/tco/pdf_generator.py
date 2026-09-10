@@ -10,7 +10,7 @@ from modules.tco.database import registrar_log_supabase, atualizar_material_supa
 
 def gerar_hash_oficio(conteudo_str):
     """Gera assinatura SHA-256 para o documento oficial."""
-    return hashlib.sha256(conteudo_str.encode('utf-8')).hexdigest()
+    return hashlib.sha256(str(conteudo_str).encode('utf-8')).hexdigest()
 
 def gerar_pdf_oficio(num_oficio, destinatario, cargo_destinatario, orgao_destino, num_reds, id_bem, desc_material, qtd_unid, lacre, pa_oficio, corpo_texto, emissor_nome, emissor_cargo, emissor_unidade):
     """Gera o arquivo PDF do Ofício de Encaminhamento com padrões PMMG."""
@@ -76,7 +76,6 @@ def gerar_pdf_oficio(num_oficio, destinatario, cargo_destinatario, orgao_destino
     elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=15))
 
     # Número do Ofício e Data
-    data_extenso = datetime.datetime.now().strftime("%d de %B de %Y")
     meta_text = f"<b>OFÍCIO Nº:</b> {num_oficio}<br/>" \
                 f"<b>REF. P.A. / PROTOCOLO:</b> {pa_oficio if pa_oficio else 'N/A'}<br/>" \
                 f"<b>DATA DE EMISSÃO:</b> {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}"
@@ -96,11 +95,11 @@ def gerar_pdf_oficio(num_oficio, destinatario, cargo_destinatario, orgao_destino
     elements.append(Spacer(1, 6))
 
     dados_tabela = [
-        [Paragraph("<b>Nº REDS</b>", style_meta), Paragraph(num_reds, style_body)],
-        [Paragraph("<b>CÓDIGO BEM</b>", style_meta), Paragraph(id_bem, style_body)],
-        [Paragraph("<b>DESCRIÇÃO</b>", style_meta), Paragraph(desc_material, style_body)],
-        [Paragraph("<b>QUANTIDADE</b>", style_meta), Paragraph(str(qtd_unid), style_body)],
-        [Paragraph("<b>INVÓLUCRO / LACRE</b>", style_meta), Paragraph(lacre, style_body)],
+        [Paragraph("<b>Nº REDS</b>", style_meta), Paragraph(str(num_reds or ""), style_body)],
+        [Paragraph("<b>CÓDIGO BEM</b>", style_meta), Paragraph(str(id_bem or ""), style_body)],
+        [Paragraph("<b>DESCRIÇÃO</b>", style_meta), Paragraph(str(desc_material or ""), style_body)],
+        [Paragraph("<b>QUANTIDADE</b>", style_meta), Paragraph(str(qtd_unid or ""), style_body)],
+        [Paragraph("<b>INVÓLUCRO / LACRE</b>", style_meta), Paragraph(str(lacre or ""), style_body)],
     ]
 
     tabela = Table(dados_tabela, colWidths=[140, 390])
@@ -119,7 +118,7 @@ def gerar_pdf_oficio(num_oficio, destinatario, cargo_destinatario, orgao_destino
     # Corpo do Ofício
     elements.append(Paragraph("<b>TEOR DA SOLICITAÇÃO / HISTÓRICO:</b>", style_title))
     elements.append(Spacer(1, 6))
-    corpo_formatado = corpo_texto.replace('\n', '<br/>')
+    corpo_formatado = str(corpo_texto or "").replace('\n', '<br/>')
     elements.append(Paragraph(corpo_formatado, style_body))
     elements.append(Spacer(1, 25))
 
@@ -153,9 +152,9 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
         st.info("Nenhum material cadastrado no banco para gerar ofício.")
         return
 
-    bens_dict = {f"REDS: {b['num_reds']} | {b['id_bem']} - {b['descricao']} (Lacre: {b.get('involucro_lacre', 'N/I')})": b for b in all_bens_banco}
+    bens_dict = {f"REDS: {b['num_reds']} | {b['id_bem']} - {b['descricao']} (Lacre: {b.get('involucro_lacre') or 'N/I'})": b for b in all_bens_banco}
     
-    with st.form("form_gerador_oficio_v1"):
+    with st.form("form_gerador_oficio_v2"):
         st.markdown("##### 1. Seleção do Material sob Custódia")
         material_sel_label = st.selectbox("Selecione o Material Relacionado:", list(bens_dict.keys()))
         bem_obj = bens_dict[material_sel_label]
@@ -164,10 +163,16 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
         st.markdown("##### 2. Dados do Destinatário / Órgão Externo")
         col_d1, col_d2 = st.columns(2)
         with col_d1:
-            num_oficio = st.text_input("Nº do Ofício:", value=f"OFÍCIO {datetime.datetime.now().strftime('%Y%m%d')}-35CIA").strip().upper()
-            destinatario_nome = st.text_input("Nome do Destinatário / Autoridade:", placeholder="Ex: Dr. Marco Antônio Silva").strip().upper()
+            val_num_oficio = f"OFÍCIO {datetime.datetime.now().strftime('%Y%m%d')}-35CIA"
+            inp_num_oficio = st.text_input("Nº do Ofício:", value=val_num_oficio)
+            num_oficio = str(inp_num_oficio or "").strip().upper()
+
+            inp_destinatario_nome = st.text_input("Nome do Destinatário / Autoridade:", placeholder="Ex: Dr. Marco Antônio Silva")
+            destinatario_nome = str(inp_destinatario_nome or "").strip().upper()
         with col_d2:
-            destinatario_cargo = st.text_input("Cargo da Autoridade:", value="EXCELENTÍSSIMO(A) SENHOR(A) JUIZ(A) DE DIREITO").strip().upper()
+            inp_destinatario_cargo = st.text_input("Cargo da Autoridade:", value="EXCELENTÍSSIMO(A) SENHOR(A) JUIZ(A) DE DIREITO")
+            destinatario_cargo = str(inp_destinatario_cargo or "").strip().upper()
+
             orgao_destino = st.selectbox("Órgão / Destino:", [
                 "JUIZADO ESPECIAL CRIMINAL (JECRIM)",
                 "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
@@ -176,16 +181,19 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                 "PROMOTORIA DE JUSTIÇA / MPMG"
             ])
 
-        pa_oficio = st.text_input("Nº do Processo Administrativo (P.A.) / Protocolo:", value=bem_obj.get("pa_oficio_autorizador", "")).strip().upper()
+        val_pa_existente = str(bem_obj.get("pa_oficio_autorizador") or "")
+        inp_pa_oficio = st.text_input("Nº do Processo Administrativo (P.A.) / Protocolo:", value=val_pa_existente)
+        pa_oficio = str(inp_pa_oficio or "").strip().upper()
 
         st.divider()
         st.markdown("##### 3. Texto do Ofício / Histórico de Encaminhamento")
+        lacre_str = str(bem_obj.get('involucro_lacre') or 'N/I')
         corpo_padrao = (
             f"Cumprimentando-o(a) cordialmente, encaminho a Vossa Excelência/Senhoria o material apreendido "
             f"vinculado ao REDS Nº {bem_obj['num_reds']}, conforme discriminado na tabela acima, para as providências "
             f"de praxe relativas ao processo/procedimento em epígrafe.\n\n"
             f"Ressalta-se que o referido bem encontra-se devidamente acondicionado em invólucro inspecionado "
-            f"e registrado sob o lacre de segurança nº {bem_obj.get('involucro_lacre', 'N/I')}, garantindo a "
+            f"e registrado sob o lacre de segurança nº {lacre_str}, garantindo a "
             f"preservação da Cadeia de Custódia nos termos do Artigo 158-A e seguintes do Código de Processo Penal."
         )
         corpo_texto = st.text_area("Teor do Expediente:", value=corpo_padrao, height=160)
@@ -194,9 +202,11 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
         st.markdown("##### 4. Dados do Emissor / Assinatura")
         col_e1, col_e2 = st.columns(2)
         with col_e1:
-            emissor_nome = st.text_input("Nome Completo do Emissor:", value=nome_militar_atual).strip().upper()
+            inp_emissor_nome = st.text_input("Nome Completo do Emissor:", value=str(nome_militar_atual or ""))
+            emissor_nome = str(inp_emissor_nome or "").strip().upper()
         with col_e2:
-            emissor_cargo = st.text_input("Cargo / Função:", value="RESPONSÁVEL PELA CUSTÓDIA / CREDS").strip().upper()
+            inp_emissor_cargo = st.text_input("Cargo / Função:", value="RESPONSÁVEL PELA CUSTÓDIA / CREDS")
+            emissor_cargo = str(inp_emissor_cargo or "").strip().upper()
 
         btn_gerar = st.form_submit_button("🚀 Gerar e Baixar Ofício (PDF)", type="primary", use_container_width=True)
 
@@ -212,8 +222,8 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                 num_reds=bem_obj['num_reds'],
                 id_bem=bem_obj['id_bem'],
                 desc_material=bem_obj['descricao'],
-                qtd_unid=f"{bem_obj['quantidade']} {bem_obj.get('unidade_medida', 'UN')}",
-                lacre=bem_obj.get('involucro_lacre', 'SEM LACRE'),
+                qtd_unid=f"{bem_obj['quantidade']} {bem_obj.get('unidade_medida') or 'UN'}",
+                lacre=str(bem_obj.get('involucro_lacre') or 'SEM LACRE'),
                 pa_oficio=pa_oficio,
                 corpo_texto=corpo_texto,
                 emissor_nome=emissor_nome,
@@ -221,7 +231,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                 emissor_unidade=unidade_militar_atual
             )
 
-            # Atualiza fase no Supabase e grava log
             now_iso = datetime.datetime.now().isoformat()
             atualizar_material_supabase(bem_obj["id_bem"], {
                 "fase_destinacao": f"Encaminhado ({orgao_destino})",
