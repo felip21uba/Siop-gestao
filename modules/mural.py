@@ -7,15 +7,29 @@ def buscar_mensagens_p1_supabase():
     """Busca todas as solicitações e mensagens enviadas pela Tropa para a P1 no Supabase."""
     if not supabase:
         return []
+    
+    tabelas_para_testar = ["mensagens_p1", "mensagens", "requerimentos_p1"]
+    
+    for nome_tabela in tabelas_para_testar:
+        try:
+            res = supabase.table(nome_tabela).select("*").execute()
+            if res and res.data and len(res.data) > 0:
+                # Ordena localmente em Python para evitar erros de nome de coluna no banco
+                dados = res.data
+                dados.sort(
+                    key=lambda x: str(x.get("created_at") or x.get("data_hora") or x.get("id") or ""), 
+                    reverse=True
+                )
+                return dados
+        except Exception:
+            continue
+            
+    # Tenta busca simples como último recurso
     try:
-        res = supabase.table("mensagens_p1").select("*").order("created_at", desc=True).execute()
+        res = supabase.table("mensagens_p1").select("*").execute()
         return res.data or []
     except Exception:
-        try:
-            res = supabase.table("mensagens_p1").select("*").order("data_hora", desc=True).execute()
-            return res.data or []
-        except Exception:
-            return []
+        return []
 
 def atualizar_despacho_mensagem_p1(msg_id, novo_status, despacho_texto=""):
     """Atualiza o status e o texto de despacho de um requerimento no Supabase."""
@@ -70,7 +84,9 @@ def renderizar_mural():
         "📢 Correio e Comunicados"
     ])
 
+    # ==========================================
     # ABA 1: TROCAS DE SERVIÇO
+    # ==========================================
     with aba1:
         st.markdown("### Gestão de Trocas e Permutas")
         
@@ -168,7 +184,9 @@ def renderizar_mural():
         else:
             st.caption("Nenhum registro de troca de serviço cadastrado nesta sessão.")
 
-    # ABA 2: REQUERIMENTOS P1 (SUPABASE BANCO DE DADOS)
+    # ==========================================
+    # ABA 2: REQUERIMENTOS P1 (SUPABASE)
+    # ==========================================
     with aba2:
         st.markdown("### 📩 Caixa de Entrada da P1 — Solicitações da Tropa")
         st.caption("Mensagens, requerimentos e comunicados encaminhados pelo efetivo via banco de dados do Supabase.")
@@ -176,20 +194,20 @@ def renderizar_mural():
         msgs_p1_banco = buscar_mensagens_p1_supabase()
 
         if not msgs_p1_banco:
-            st.info("ℹ️ Nenhum requerimento gravado na caixa de entrada da P1 até o momento.")
+            st.info("ℹ️ Nenhum requerimento localizado no banco de dados até o momento.")
         else:
             if eh_admin:
                 st.success(f"📊 Total de requerimentos recebidos no Supabase: **{len(msgs_p1_banco)}**")
                 
                 for msg in msgs_p1_banco:
                     msg_id = msg.get("id")
-                    num_pol = msg.get("num_policia", "N/I")
-                    nome_m = msg.get("nome_militar", msg.get("militar_nome", "Policial"))
-                    assunto = msg.get("assunto", "Sem Assunto")
-                    texto = msg.get("mensagem", msg.get("texto", ""))
-                    status_atual = msg.get("status", "Pendente")
-                    despacho_existente = msg.get("despacho", "")
-                    data_envio = msg.get("created_at", msg.get("data_hora", ""))
+                    num_pol = msg.get("num_policia") or msg.get("usuario_login") or "N/I"
+                    nome_m = msg.get("nome_militar") or msg.get("militar_nome") or msg.get("nome_guerra") or "Policial"
+                    assunto = msg.get("assunto") or "Solicitação P1"
+                    texto = msg.get("mensagem") or msg.get("texto") or msg.get("conteudo") or ""
+                    status_atual = msg.get("status") or "Pendente"
+                    despacho_existente = msg.get("despacho") or ""
+                    data_envio = msg.get("created_at") or msg.get("data_hora") or ""
                     
                     if data_envio:
                         try:
@@ -199,7 +217,7 @@ def renderizar_mural():
                     else:
                         data_fmt = "Data N/I"
 
-                    cor_status = "🟡" if status_atual == "Pendente" else ("🟢" if "DEFERIDO" in status_atual.upper() or "APROVADO" in status_atual.upper() else "🔴")
+                    cor_status = "🟡" if status_atual == "Pendente" else ("🟢" if "DEFERIDO" in str(status_atual).upper() or "APROVADO" in str(status_atual).upper() else "🔴")
 
                     with st.container(border=True):
                         st.markdown(f"#### {cor_status} {assunto}")
@@ -226,20 +244,22 @@ def renderizar_mural():
                                         st.error("Erro ao atualizar mensagem no Supabase.")
             else:
                 num_pol_usr = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip()
-                minhas_msgs = [m for m in msgs_p1_banco if str(m.get("num_policia")).strip() == num_pol_usr]
+                minhas_msgs = [m for m in msgs_p1_banco if str(m.get("num_policia") or m.get("usuario_login")).strip() == num_pol_usr]
 
                 if not minhas_msgs:
-                    st.info("Você ainda não possui requerimentos enviados à P1.")
+                    st.info("Você ainda não possui requerimentos gravados no banco de dados.")
                 else:
                     for msg in minhas_msgs:
-                        st.markdown(f"**Assunto:** {msg.get('assunto')}")
+                        st.markdown(f"**Assunto:** {msg.get('assunto') or 'Solicitação'}")
                         st.caption(f"Status: `{msg.get('status', 'Pendente')}`")
-                        st.markdown(f">{msg.get('mensagem')}")
+                        st.markdown(f">{msg.get('mensagem') or msg.get('texto')}")
                         if msg.get("despacho"):
                             st.success(f"**Despacho da P1:** {msg.get('despacho')}")
                         st.divider()
 
+    # ==========================================
     # ABA 3: CORREIO E AVISOS (COM CIENTE)
+    # ==========================================
     with aba3:
         st.markdown("### 📢 Comunicados Oficiais e Caixa de Mensagens")
         
