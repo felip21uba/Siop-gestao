@@ -36,6 +36,8 @@ from core.auth import (
     enviar_email_codigo,
     gerar_hash_senha
 )
+# IMPORTA A NOVA BLINDAGEM DE SEGURANÇA:
+from core.security import sanitizar_texto
 
 # IMPORTE DOS MÓDULOS OPERACIONAIS
 from modules.escalas import exibir_modulo_escalas
@@ -369,7 +371,6 @@ if not st.session_state.get("autenticado", False):
                             if "temp_mfa_secret" in st.session_state:
                                 del st.session_state["temp_mfa_secret"]
 
-                            # Ajustado para enviar os 4 argumentos:
                             registrar_audit_log(num_pol_str, "", "PRIMEIRO_ACESSO", "Senha e 2FA configurados.")
                             st.toast("✅ Nova senha e 2FA salvos com sucesso!", icon="🎉")
                             st.rerun()
@@ -437,7 +438,6 @@ if not st.session_state.get("autenticado", False):
                         st.session_state["mfa_pendente"] = False
                         st.session_state["ultima_atividade"] = obter_agora()
                         
-                        # Ajustado para enviar os 4 argumentos:
                         registrar_audit_log(num_pol_str, "", "LOGIN_SUCESSO", "Login com 2FA concluído.")
                         st.toast(f"Acesso liberado! Bem-vindo, {usr_temp.get('nome_guerra')}!", icon="🟢")
                         st.rerun()
@@ -669,7 +669,6 @@ with st.sidebar:
             except Exception:
                 pass
 
-        # Ajustado para enviar os 4 argumentos:
         registrar_audit_log(usr_m, "", "LOGOUT", "Sessão encerrada ativamente pelo usuário.")
         st.session_state["autenticado"] = False
         st.session_state["usuario_autenticado"] = False
@@ -732,9 +731,13 @@ if not eh_gestor_ou_admin or perfil_ativo == "TROPA":
                 if not assunto_msg or not texto_msg:
                     st.error("⚠️ Preencha o assunto e o texto da mensagem.")
                 else:
-                    sucesso = salvar_mensagem_p1_supabase(num_policia_user, nome_user, assunto_msg, texto_msg)
+                    # 🛡️ APLICAÇÃO DA SANITIZAÇÃO DE ENTRADA AQUI:
+                    assunto_limpo = sanitizar_texto(assunto_msg)
+                    texto_limpo = sanitizar_texto(texto_msg)
+
+                    sucesso = salvar_mensagem_p1_supabase(num_policia_user, nome_user, assunto_limpo, texto_limpo)
                     if sucesso:
-                        st.success("✅ Sua mensagem foi gravada no Supabase e enviada para a P1!")
+                        st.success("✅ Sua mensagem foi gravada no Supabase e enviada com segurança para a P1!")
                     else:
                         st.error("Erro ao enviar mensagem. Tente novamente.")
 
