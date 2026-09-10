@@ -1,6 +1,6 @@
 import streamlit as st
 import datetime
-from modules.tco.parser_reds import gerar_hash_sha256
+from modules.tco.storage import upload_midia_supabase
 from modules.tco.database import atualizar_material_supabase, registrar_log_supabase
 
 @st.dialog("✏️ Editar Dados e Anexar Mídias ao Material")
@@ -14,7 +14,7 @@ def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atu
             f"- **Invólucro/Lacre:** {orig.get('involucro', 'N/A')}\n"
             f"- **Autor:** {orig.get('autores', 'N/A')}")
 
-    with st.form("form_editar_material_custodia_v17", clear_on_submit=False):
+    with st.form("form_editar_material_custodia_v18", clear_on_submit=False):
         novo_autor = st.text_input("Autor Vinculado:", value=bem_obj.get("autores", "")).strip().upper()
         nova_desc = st.text_input("Descrição do Material:", value=bem_obj.get("descricao", "")).strip().upper()
         col_ed1, col_ed2 = st.columns(2)
@@ -26,7 +26,7 @@ def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atu
         novo_inv = st.text_input("Nº do Invólucro / Lacre:", value=bem_obj.get("involucro_lacre", "")).strip().upper()
         motivo_edicao = st.text_input("Motivo / Justificativa da Alteração:", placeholder="Ex: Ajuste na conferência física do lacre").strip()
         
-        uploaded_midias = st.file_uploader("📷 Anexar Foto / Documento de Prova (Opcional):", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
+        uploaded_midias = st.file_uploader("📷 Anexar Foto / Documento de Prova (Upload direto no Supabase Storage):", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
 
         if st.form_submit_button("💾 Salvar e Atualizar Auditoria", type="primary", use_container_width=True):
             if not nova_desc or len(motivo_edicao) < 5:
@@ -39,16 +39,18 @@ def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atu
                 if uploaded_midias:
                     for f in uploaded_midias:
                         f_bytes = f.getvalue()
-                        f_hash = gerar_hash_sha256(f_bytes)
-                        novas_midias_anexadas.append({
-                            "nome_arquivo": f.name,
-                            "tipo": f.type,
-                            "tamanho_bytes": len(f_bytes),
-                            "hash_sha256": f_hash,
-                            "enviado_por": nome_militar_atual,
-                            "unidade": unidade_militar_atual,
-                            "data_envio": now_str
-                        })
+                        resultado_storage = upload_midia_supabase(
+                            file_bytes=f_bytes,
+                            file_name=f.name,
+                            file_type=f.type,
+                            num_reds=bem_obj["num_reds"],
+                            id_bem=bem_obj["id_bem"]
+                        )
+                        if resultado_storage:
+                            resultado_storage["enviado_por"] = nome_militar_atual
+                            resultado_storage["unidade"] = unidade_militar_atual
+                            resultado_storage["data_envio"] = now_str
+                            novas_midias_anexadas.append(resultado_storage)
 
                 midias_existentes = bem_obj.get("midias_anexas") or []
                 midias_existentes.extend(novas_midias_anexadas)
@@ -58,7 +60,7 @@ def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atu
                     f"ALTERAÇÕES: [Desc: '{bem_obj['descricao']}' ➔ '{nova_desc}'] "
                     f"[Qtd: '{bem_obj['quantidade']} {bem_obj.get('unidade_medida')}' ➔ '{nova_qtd} {nova_unid}'] "
                     f"[Lacre: '{bem_obj.get('involucro_lacre')}' ➔ '{novo_inv}'] "
-                    f"[Mídias Novas: {len(novas_midias_anexadas)} arquivo(s)]"
+                    f"[Mídias Salvas Storage: {len(novas_midias_anexadas)} arquivo(s)]"
                 )
                 
                 upd_data = {
@@ -76,14 +78,14 @@ def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atu
                         "data_hora": now_iso,
                         "num_reds": bem_obj["num_reds"],
                         "bem_id": bem_obj["id_bem"],
-                        "acao": "EDIÇÃO E ANEXO DE MÍDIAS",
+                        "acao": "EDIÇÃO E UPLOAD DE MÍDIAS",
                         "origem": nome_militar_atual,
                         "unidade_origem": unidade_militar_atual,
                         "destino": nome_militar_atual,
                         "unidade_destino": unidade_militar_atual,
                         "detalhe": detalhes_alteracao
                     })
-                    st.success("Dados salvos com sucesso no Supabase!")
+                    st.success("Dados salvos e arquivos enviados ao Supabase Storage!")
                     st.rerun()
 
 @st.dialog("🚨 Registrar Divergência / Recusa de Custódia")

@@ -3,11 +3,11 @@ import pandas as pd
 import datetime
 import uuid
 from modules.tco.parser_reds import extrair_dados_reds_pdf, gerar_hash_sha256
+from modules.tco.storage import upload_midia_supabase
 from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase
 from modules.tco.modals import abrir_modal_edicao_material, abrir_modal_divergencia
 
 def badge_destaque(texto, cor="#60A5FA", bg_cor="#1E293B"):
-    """Gera rótulos destacados com fonte ampliada e alto contraste, sem usar letras verdes pequenas."""
     return f"<span style='background-color: {bg_cor}; color: {cor}; font-size: 1.05rem; font-weight: bold; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; margin-right: 6px;'>{texto}</span>"
 
 def calcular_tempo_decorrido(str_data_hora):
@@ -72,10 +72,10 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
     
     with col_ing1:
         st.markdown("#### Importar Ocorrência (BO REDS)")
-        arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v17")
+        arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v18")
 
         if arquivo_pdf is not None:
-            if st.button("⚡ Processar e Ler Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v17"):
+            if st.button("⚡ Processar e Ler Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v18"):
                 with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
                     dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
                     st.session_state["temp_reds_extraido"] = dados_reds
@@ -84,7 +84,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
     with col_ing2:
         st.markdown("#### ➕ Inserção Manual de Material")
         with st.popover("📝 Cadastrar Material Avulso", use_container_width=True):
-            with st.form("form_material_manual_v17", clear_on_submit=True):
+            with st.form("form_material_manual_v18", clear_on_submit=True):
                 man_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-001843571-001").strip()
                 man_autor = st.text_input("Nome do Autor:", placeholder="Ex: MARCIO DE ALMEIDA SOUZA").strip().upper()
                 man_desc = st.text_input("Descrição do Material:", placeholder="Ex: 02 papelotes de cocaína").strip().upper()
@@ -177,12 +177,12 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_materiais_ingestao_v17"
+                key="editor_materiais_ingestao_v18"
             )
 
-            photos_ingestao = st.file_uploader("📷 Anexar Fotos / Documentos do Local ou Lesões:", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True, key="upl_photos_ingestao_v17")
+            photos_ingestao = st.file_uploader("📷 Anexar Fotos / Documentos (Salvos diretamente no Storage):", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True, key="upl_photos_ingestao_v18")
 
-            if st.button("💾 Confirmar Ingestão e Salvar no Supabase", type="primary", key="btn_conf_fiel_dep_v17"):
+            if st.button("💾 Confirmar Ingestão e Salvar no Supabase", type="primary", key="btn_conf_fiel_dep_v18"):
                 now_iso = datetime.datetime.now().isoformat()
                 now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
                 midias_iniciais = []
@@ -190,16 +190,18 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 if photos_ingestao:
                     for p_file in photos_ingestao:
                         p_bytes = p_file.getvalue()
-                        p_hash = gerar_hash_sha256(p_bytes)
-                        midias_iniciais.append({
-                            "nome_arquivo": p_file.name,
-                            "tipo": p_file.type,
-                            "tamanho_bytes": len(p_bytes),
-                            "hash_sha256": p_hash,
-                            "enviado_por": nome_militar_atual,
-                            "unidade": unidade_militar_atual,
-                            "data_envio": now_str
-                        })
+                        resultado_storage = upload_midia_supabase(
+                            file_bytes=p_bytes,
+                            file_name=p_file.name,
+                            file_type=p_file.type,
+                            num_reds=d["num_reds"],
+                            id_bem=f"INGESTAO-{d['num_reds']}"
+                        )
+                        if resultado_storage:
+                            resultado_storage["enviado_por"] = nome_militar_atual
+                            resultado_storage["unidade"] = unidade_militar_atual
+                            resultado_storage["data_envio"] = now_str
+                            midias_iniciais.append(resultado_storage)
                 
                 for idx_row, row in df_editado_ing.iterrows():
                     id_bem_unico = f"BEM-{d['num_reds']}-{row['item_num']}-{uuid.uuid4().hex[:4]}"
@@ -262,7 +264,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                     })
 
                 del st.session_state["temp_reds_extraido"]
-                st.success("Materiais integrados ao Supabase sob a sua custódia!")
+                st.success("Materiais integrados ao Supabase e fotos salvas no Storage!")
                 st.rerun()
 
 def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
@@ -303,9 +305,15 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
                     st.markdown(f"📦 **{item_meu['id_bem']}** - **{item_meu['descricao']}** (Lacre: {badge_destaque(item_meu.get('involucro_lacre'), '#F59E0B')}){lbl_ed}", unsafe_allow_html=True)
                     midias = item_meu.get("midias_anexas") or []
                     if midias:
-                        st.markdown(f"📎 **{len(midias)} Mídia(s) Anexa(s):**")
+                        st.markdown(f"📎 **{len(midias)} Mídia(s) no Storage:**")
                         for m_anexa in midias:
-                            st.text(f"• {m_anexa['nome_arquivo']} | SHA-256: {m_anexa['hash_sha256'][:16]}...")
+                            url = m_anexa.get("url_publica")
+                            nome_f = m_anexa.get("nome_arquivo", "Arquivo")
+                            hash_f = m_anexa.get("hash_sha256", "")[:16]
+                            if url:
+                                st.markdown(f"• [{nome_f}]({url}) | SHA-256: `{hash_f}...`")
+                            else:
+                                st.text(f"• {nome_f} | SHA-256: {hash_f}...")
                     else:
                         st.text("Nenhuma mídia anexa registrada.")
                 with col_m2:
@@ -338,15 +346,15 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
 
     col_tr1, col_tr2 = st.columns(2)
     with col_tr1:
-        with st.form("form_transferir_material_v17"):
+        with st.form("form_transferir_material_v18"):
             st.markdown("**1. Encaminhar Material para Outro Militar ou CREDS**")
             bens_disp = {f"{b['id_bem']} - {b['descricao']} (Lacre: {b.get('involucro_lacre')})": b['id_bem'] for b in meus_bens_filtrados}
             
             if bens_disp:
-                bem_sel_key = st.selectbox("Selecione o Material:", list(bens_disp.keys()), key="sel_material_transf_v17")
-                destinatario_sel = st.selectbox("Selecione o Destinatário:", [n for n in nomes_mils if n != nome_militar_atual], key="sel_destinatario_v17")
-                unidade_dest_sel = st.selectbox("Unidade Destino:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v17")
-                obs_transf = st.text_input("Observações do Lacre / Estado:", key="txt_obs_transf_v17")
+                bem_sel_key = st.selectbox("Selecione o Material:", list(bens_disp.keys()), key="sel_material_transf_v18")
+                destinatario_sel = st.selectbox("Selecione o Destinatário:", [n for n in nomes_mils if n != nome_militar_atual], key="sel_destinatario_v18")
+                unidade_dest_sel = st.selectbox("Unidade Destino:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v18")
+                obs_transf = st.text_input("Observações do Lacre / Estado:", key="txt_obs_transf_v18")
                 
                 if st.form_submit_button("📤 Tramitar Material", type="primary"):
                     id_bem_alvo = bens_disp[bem_sel_key]
