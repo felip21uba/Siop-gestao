@@ -1,5 +1,11 @@
 import os
 import sys
+
+# 🌐 REGISTRO DO DIRETÓRIO RAIZ NO SYS.PATH (EVITA KEYERROR NO STREAMLIT CLOUD)
+DIRETORIO_RAIZ = os.path.abspath(os.path.dirname(__file__))
+if DIRETORIO_RAIZ not in sys.path:
+    sys.path.insert(0, DIRETORIO_RAIZ)
+
 import datetime
 from zoneinfo import ZoneInfo
 import hashlib
