@@ -9,11 +9,9 @@ def gerar_hash_sha256(file_bytes):
     return hashlib.sha256(file_bytes).hexdigest()
 
 def extrair_cabecalho_reds(texto_completo):
-    # N° REDS
     m_reds = re.search(r'N[°º]\s*(\d{4}-\d{9}-\d{3})', texto_completo)
     num_reds = m_reds.group(1).strip() if (m_reds and m_reds.group(1)) else "N/A"
 
-    # DATA DO REGISTRO
     header_block = texto_completo[:2000]
     m_reg = re.search(
         r'(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})[\s\S]{0,50}?DATA\s+DO\s+REGISTRO|DATA\s+DO\s+REGISTRO[\s\S]{0,50}?(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})', 
@@ -24,7 +22,6 @@ def extrair_cabecalho_reds(texto_completo):
     if m_reg:
         data_registro = (m_reg.group(1) or m_reg.group(2) or "Data N/I").strip()
 
-    # DATA DO FATO
     idx_oc = texto_completo.find("DADOS DA OCORRÊNCIA")
     if idx_oc == -1: 
         idx_oc = texto_completo.find("DADOS DA OCORRENCIA")
@@ -36,7 +33,6 @@ def extrair_cabecalho_reds(texto_completo):
     m_fato = re.search(r'\b(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\b', bloco_oc)
     data_fato = m_fato.group(1).strip() if (m_fato and m_fato.group(1)) else data_registro
 
-    # LOCAL DO FATO
     rua = re.search(r'LOCAL \(AV\., RUA, ETC\)\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
     num = re.search(r'(?:NÚMERO|NUMERO)\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
     bairro = re.search(r'BAIRRO/VILA\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
@@ -54,7 +50,6 @@ def extrair_cabecalho_reds(texto_completo):
     
     local_str = f"{r_str} {n_str}, Bairro {b_str}, {m_str}".replace("  ", " ").strip()
 
-    # NATUREZA PRINCIPAL (BUSCA RESILIENTE E MULTIPADRÃO PARA EVITAR CAMPOS EM BRANCO)
     padroes_natureza = [
         r'PROVÁVEL\s+DESCRIÇÃO\s+DA\s+OCORRÊNCIA\s+PRINCIPAL\s*[:\n]?\s*([^\n]+)',
         r'PROVAVEL\s+DESCRICAO\s+DA\s+OCORRENCIA\s+PRINCIPAL\s*[:\n]?\s*([^\n]+)',
@@ -287,7 +282,6 @@ def extrair_dados_reds_pdf(pdf_file_bytes):
     autores_encontrados = list(set([m["autor"] for m in materiais])) if materiais else ["AUTOR NÃO IDENTIFICADO"]
     resumo_fato = texto_historico.strip().replace("\n", " ")[:250] + "..." if texto_historico else "Resumo indisponível."
 
-    # Gera Hash SHA-256 do arquivo original enviado para controle de integridade da prova
     hash_pdf_original = gerar_hash_sha256(pdf_file_bytes.getvalue() if hasattr(pdf_file_bytes, "getvalue") else pdf_file_bytes)
 
     return {
