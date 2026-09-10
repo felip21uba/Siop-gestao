@@ -1,5 +1,12 @@
 import re
 import pypdf
+import hashlib
+
+def gerar_hash_sha256(file_bytes):
+    """Gera a assinatura digital SHA-256 do arquivo para a Cadeia de Custódia (Art. 158-A do CPP)."""
+    if not file_bytes:
+        return None
+    return hashlib.sha256(file_bytes).hexdigest()
 
 def extrair_cabecalho_reds(texto_completo):
     # N° REDS
@@ -29,7 +36,7 @@ def extrair_cabecalho_reds(texto_completo):
     m_fato = re.search(r'\b(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\b', bloco_oc)
     data_fato = m_fato.group(1).strip() if (m_fato and m_fato.group(1)) else data_registro
 
-    # LOCAL
+    # LOCAL DO FATO
     rua = re.search(r'LOCAL \(AV\., RUA, ETC\)\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
     num = re.search(r'(?:NÚMERO|NUMERO)\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
     bairro = re.search(r'BAIRRO/VILA\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
@@ -47,10 +54,27 @@ def extrair_cabecalho_reds(texto_completo):
     
     local_str = f"{r_str} {n_str}, Bairro {b_str}, {m_str}".replace("  ", " ").strip()
 
-    # NATUREZA PRINCIPAL
-    m_nat = re.search(r'PROVÁVEL\s+DESCRIÇÃO\s+DA\s+OCORRÊNCIA\s+PRINCIPAL\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
-    raw_nat = m_nat.group(1).strip() if (m_nat and m_nat.group(1)) else "OCORRÊNCIA POLICIAL"
+    # NATUREZA PRINCIPAL (BUSCA RESILIENTE E MULTIPADRÃO PARA EVITAR CAMPOS EM BRANCO)
+    padroes_natureza = [
+        r'PROVÁVEL\s+DESCRIÇÃO\s+DA\s+OCORRÊNCIA\s+PRINCIPAL\s*[:\n]?\s*([^\n]+)',
+        r'PROVAVEL\s+DESCRICAO\s+DA\s+OCORRENCIA\s+PRINCIPAL\s*[:\n]?\s*([^\n]+)',
+        r'NATUREZA\s+DA\s+OCORRÊNCIA\s*[:\n]?\s*([^\n]+)',
+        r'OCORRÊNCIA\s+PRINCIPAL\s*[:\n]?\s*([^\n]+)',
+        r'([A-Z]\d{6}\s*[-–]\s*[^\n]+)'
+    ]
     
+    raw_nat = None
+    for padrao in padroes_natureza:
+        m_nat = re.search(padrao, texto_completo, re.IGNORECASE)
+        if m_nat and m_nat.group(1) and m_nat.group(1).strip().upper() != "XXXX":
+            cand = m_nat.group(1).strip()
+            if len(cand) > 3:
+                raw_nat = cand
+                break
+                
+    if not raw_nat:
+        raw_nat = "OCORRÊNCIA POLICIAL / TCO"
+
     nat_limpa = re.sub(r'^[A-Z0-9]+\s*[-–]\s*', '', raw_nat, flags=re.IGNORECASE)
     nat_limpa = re.sub(r'\b(XXXX|TENTADO|CONSUMADO)\b', '', nat_limpa, flags=re.IGNORECASE).strip()
 
@@ -58,7 +82,7 @@ def extrair_cabecalho_reds(texto_completo):
         "num_reds": num_reds,
         "data_registro": data_registro,
         "data_fato": data_fato,
-        "natureza": nat_limpa if nat_limpa else "OCORRÊNCIA POLICIAL",
+        "natureza": nat_limpa if nat_limpa else "OCORRÊNCIA POLICIAL / TCO",
         "local": local_str
     }
 
@@ -263,6 +287,9 @@ def extrair_dados_reds_pdf(pdf_file_bytes):
     autores_encontrados = list(set([m["autor"] for m in materiais])) if materiais else ["AUTOR NÃO IDENTIFICADO"]
     resumo_fato = texto_historico.strip().replace("\n", " ")[:250] + "..." if texto_historico else "Resumo indisponível."
 
+    # Gera Hash SHA-256 do arquivo original enviado para controle de integridade da prova
+    hash_pdf_original = gerar_hash_sha256(pdf_file_bytes.getvalue() if hasattr(pdf_file_bytes, "getvalue") else pdf_file_bytes)
+
     return {
         "num_reds": cabecalho["num_reds"],
         "data_registro": cabecalho["data_registro"],
@@ -273,5 +300,6 @@ def extrair_dados_reds_pdf(pdf_file_bytes):
         "unidade_jecrim": unidade_jecrim,
         "autores": autores_encontrados,
         "resumo_fato": resumo_fato,
-        "materiais": materiais
+        "materiais": materiais,
+        "hash_pdf": hash_pdf_original
     }
