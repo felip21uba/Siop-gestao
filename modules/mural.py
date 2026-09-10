@@ -183,7 +183,7 @@ def renderizar_mural():
             st.caption("Nenhum registro de troca de serviço cadastrado nesta sessão.")
 
     # ==========================================
-    # ABA 2: REQUERIMENTOS P1 (SUPABASE)
+    # ABA 2: REQUERIMENTOS P1 (SUPABASE BANCO DE DADOS)
     # ==========================================
     with aba2:
         st.markdown("### 📩 Caixa de Entrada da P1 — Solicitações da Tropa")
@@ -200,11 +200,13 @@ def renderizar_mural():
                 for msg in msgs_p1_banco:
                     msg_id = msg.get("id")
                     
+                    # Tentativa extra de buscar o militar por diversas chaves possíveis
                     num_pol = (
                         msg.get("num_policia") or 
                         msg.get("usuario_login") or 
                         msg.get("matricula") or 
                         msg.get("num_pm") or 
+                        msg.get("usuario") or 
                         "N/I"
                     )
                     nome_m = (
@@ -213,6 +215,7 @@ def renderizar_mural():
                         msg.get("nome_guerra") or 
                         msg.get("solicitante") or 
                         msg.get("nome") or 
+                        msg.get("remetente") or 
                         "Militar / Operador"
                     )
                     assunto = msg.get("assunto") or "Solicitação P1"
@@ -246,6 +249,10 @@ def renderizar_mural():
                         if despacho_existente:
                             st.info(f"💬 **Despacho Registrado:** {despacho_existente}")
 
+                        # BOTÃO DE DEBUG EXCLUSIVO PARA O PROGRAMADOR
+                        with st.expander("🔧 Ver Colunas do Banco (Debug)"):
+                            st.json(msg)
+
                         with st.expander(f"✏️ Despachar Solicitação #{msg_id}"):
                             with st.form(f"form_despacho_{msg_id}"):
                                 novo_st = st.selectbox(
@@ -263,7 +270,8 @@ def renderizar_mural():
                                         st.error("Erro ao atualizar mensagem no Supabase.")
             else:
                 num_pol_usr = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip()
-                minhas_msgs = [m for m in msgs_p1_banco if str(m.get("num_policia") or m.get("usuario_login")).strip() == num_pol_usr]
+                # Verifica num_policia e também se existe 'usuario'
+                minhas_msgs = [m for m in msgs_p1_banco if str(m.get("num_policia") or m.get("usuario_login") or m.get("usuario")).strip() == num_pol_usr]
 
                 if not minhas_msgs:
                     st.info("Você ainda não possui requerimentos gravados no banco de dados.")
