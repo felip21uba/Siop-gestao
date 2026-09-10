@@ -9,9 +9,11 @@ def gerar_hash_sha256(file_bytes):
     return hashlib.sha256(file_bytes).hexdigest()
 
 def extrair_cabecalho_reds(texto_completo):
+    # N° REDS
     m_reds = re.search(r'N[°º]\s*(\d{4}-\d{9}-\d{3})', texto_completo)
     num_reds = m_reds.group(1).strip() if (m_reds and m_reds.group(1)) else "N/A"
 
+    # DATA DO REGISTRO
     header_block = texto_completo[:2000]
     m_reg = re.search(
         r'(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})[\s\S]{0,50}?DATA\s+DO\s+REGISTRO|DATA\s+DO\s+REGISTRO[\s\S]{0,50}?(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})', 
@@ -22,6 +24,7 @@ def extrair_cabecalho_reds(texto_completo):
     if m_reg:
         data_registro = (m_reg.group(1) or m_reg.group(2) or "Data N/I").strip()
 
+    # DATA DO FATO
     idx_oc = texto_completo.find("DADOS DA OCORRÊNCIA")
     if idx_oc == -1: 
         idx_oc = texto_completo.find("DADOS DA OCORRENCIA")
@@ -33,6 +36,7 @@ def extrair_cabecalho_reds(texto_completo):
     m_fato = re.search(r'\b(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})\b', bloco_oc)
     data_fato = m_fato.group(1).strip() if (m_fato and m_fato.group(1)) else data_registro
 
+    # LOCAL DO FATO
     rua = re.search(r'LOCAL \(AV\., RUA, ETC\)\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
     num = re.search(r'(?:NÚMERO|NUMERO)\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
     bairro = re.search(r'BAIRRO/VILA\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
@@ -50,34 +54,48 @@ def extrair_cabecalho_reds(texto_completo):
     
     local_str = f"{r_str} {n_str}, Bairro {b_str}, {m_str}".replace("  ", " ").strip()
 
-    padroes_natureza = [
-        r'PROVÁVEL\s+DESCRIÇÃO\s+DA\s+OCORRÊNCIA\s+PRINCIPAL\s*[:\n]?\s*([^\n]+)',
-        r'PROVAVEL\s+DESCRICAO\s+DA\s+OCORRENCIA\s+PRINCIPAL\s*[:\n]?\s*([^\n]+)',
-        r'NATUREZA\s+DA\s+OCORRÊNCIA\s*[:\n]?\s*([^\n]+)',
-        r'OCORRÊNCIA\s+PRINCIPAL\s*[:\n]?\s*([^\n]+)',
-        r'([A-Z]\d{6}\s*[-–]\s*[^\n]+)'
-    ]
-    
+    # NATUREZA PRINCIPAL (LEITURA PRECISA DO CAMPO 'PROVÁVEL DESCRIÇÃO DA OCORRÊNCIA PRINCIPAL')
     raw_nat = None
-    for padrao in padroes_natureza:
-        m_nat = re.search(padrao, texto_completo, re.IGNORECASE)
-        if m_nat and m_nat.group(1) and m_nat.group(1).strip().upper() != "XXXX":
-            cand = m_nat.group(1).strip()
-            if len(cand) > 3:
-                raw_nat = cand
-                break
-                
+
+    # 1. Padrão direto pelo código de natureza PMMG (ex: I04033 - TRAFICO ILICITO DE DROGAS)
+    m_code = re.search(r'([A-Z]\d{5}\s*[-–]\s*[^\n]+)', texto_completo)
+    if m_code and m_code.group(1).strip() not in ["/", "XXXX"]:
+        raw_nat = m_code.group(1).strip()
+
+    # 2. Padrão por quebra de linha após o título do campo
     if not raw_nat:
+        m_nat = re.search(r'PROV[ÁA]VEL\s+DESCRI[ÇC][ÃA]O\s+DA\s+OCORR[ÊE]NCIA\s+PRINCIPAL\s*\n\s*([^\n]+)', texto_completo, re.IGNORECASE)
+        if m_nat and m_nat.group(1).strip() not in ["/", "XXXX", ""]:
+            raw_nat = m_nat.group(1).strip()
+
+    # 3. Busca sequencial dentro do bloco DADOS DA OCORRÊNCIA / ATIVIDADE
+    if not raw_nat or raw_nat in ["/", "XXXX"]:
+        idx_dados = texto_completo.find("DADOS DA OCORRÊNCIA")
+        if idx_dados == -1: 
+            idx_dados = texto_completo.find("DADOS DA OCORRENCIA")
+        if idx_dados != -1:
+            bloco = texto_completo[idx_dados:idx_dados+1200]
+            lines = [l.strip() for l in bloco.split('\n') if l.strip()]
+            for idx_l, line in enumerate(lines):
+                if "PROVÁVEL" in line.upper() or "PROVAVEL" in line.upper():
+                    if idx_l + 1 < len(lines):
+                        cand = lines[idx_l + 1]
+                        if cand not in ["/", "XXXX", "TENTADO/CONSUMADO", "TENTADO / CONSUMADO"]:
+                            raw_nat = cand
+                            break
+
+    if not raw_nat or raw_nat in ["/", "XXXX"]:
         raw_nat = "OCORRÊNCIA POLICIAL / TCO"
 
-    nat_limpa = re.sub(r'^[A-Z0-9]+\s*[-–]\s*', '', raw_nat, flags=re.IGNORECASE)
-    nat_limpa = re.sub(r'\b(XXXX|TENTADO|CONSUMADO)\b', '', nat_limpa, flags=re.IGNORECASE).strip()
+    nat_limpa = re.sub(r'\b(XXXX|TENTADO|CONSUMADO)\b', '', raw_nat, flags=re.IGNORECASE).strip()
+    if not nat_limpa or nat_limpa == "/":
+        nat_limpa = raw_nat
 
     return {
         "num_reds": num_reds,
         "data_registro": data_registro,
         "data_fato": data_fato,
-        "natureza": nat_limpa if nat_limpa else "OCORRÊNCIA POLICIAL / TCO",
+        "natureza": nat_limpa,
         "local": local_str
     }
 

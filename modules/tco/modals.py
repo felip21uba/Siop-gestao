@@ -5,16 +5,16 @@ from modules.tco.database import atualizar_material_supabase, registrar_log_supa
 
 @st.dialog("✏️ Editar Dados e Anexar Mídias ao Material")
 def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atual):
-    st.markdown(f"**REDS:** `{bem_obj['num_reds']}` | **Código:** `{bem_obj['id_bem']}` | **Unidade:** `{bem_obj.get('unidade_posse_atual', 'N/I')}`")
+    st.markdown(f"**REDS:** <span style='font-size: 1.1rem; color: #60A5FA; font-weight: bold;'>{bem_obj['num_reds']}</span> | **Código:** <span style='font-size: 1.1rem; color: #F59E0B; font-weight: bold;'>{bem_obj['id_bem']}</span>", unsafe_allow_html=True)
     
     orig = bem_obj.get("dados_originais_pdf") or {}
     st.info("🔍 **Dados Originais do PDF:**\n\n"
-            f"- Descrição: {orig.get('descricao', 'N/A')}\n"
-            f"- Quantidade: {orig.get('quantidade', '1.0')} {orig.get('unidade', 'UN')}\n"
-            f"- Invólucro/Lacre: {orig.get('involucro', 'N/A')}\n"
-            f"- Autor: {orig.get('autores', 'N/A')}")
+            f"- **Descrição:** {orig.get('descricao', 'N/A')}\n"
+            f"- **Quantidade:** {orig.get('quantidade', '1.0')} {orig.get('unidade', 'UN')}\n"
+            f"- **Invólucro/Lacre:** {orig.get('involucro', 'N/A')}\n"
+            f"- **Autor:** {orig.get('autores', 'N/A')}")
 
-    with st.form("form_editar_material_custodia_v16", clear_on_submit=False):
+    with st.form("form_editar_material_custodia_v17", clear_on_submit=False):
         novo_autor = st.text_input("Autor Vinculado:", value=bem_obj.get("autores", "")).strip().upper()
         nova_desc = st.text_input("Descrição do Material:", value=bem_obj.get("descricao", "")).strip().upper()
         col_ed1, col_ed2 = st.columns(2)
@@ -28,7 +28,7 @@ def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atu
         
         uploaded_midias = st.file_uploader("📷 Anexar Foto / Documento de Prova (Opcional):", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True)
 
-        if st.form_submit_button("💾 Salvar no Supabase e Atualizar Auditoria", type="primary", use_container_width=True):
+        if st.form_submit_button("💾 Salvar e Atualizar Auditoria", type="primary", use_container_width=True):
             if not nova_desc or len(motivo_edicao) < 5:
                 st.error("A descrição e a justificativa (mínimo 5 caracteres) são obrigatórias.")
             else:
@@ -88,7 +88,7 @@ def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atu
 
 @st.dialog("🚨 Registrar Divergência / Recusa de Custódia")
 def abrir_modal_divergencia(bem_obj, nome_militar_atual, unidade_militar_atual):
-    st.warning(f"Material: **{bem_obj['descricao']}** (REDS: {bem_obj['num_reds']})")
+    st.warning(f"Material: **{bem_obj['descricao']}** (REDS: **{bem_obj['num_reds']}**)")
     
     motivo_sel = st.selectbox(
         "Selecione o Motivo da Divergência:",

@@ -6,6 +6,10 @@ from modules.tco.parser_reds import extrair_dados_reds_pdf, gerar_hash_sha256
 from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase
 from modules.tco.modals import abrir_modal_edicao_material, abrir_modal_divergencia
 
+def badge_destaque(texto, cor="#60A5FA", bg_cor="#1E293B"):
+    """Gera rótulos destacados com fonte ampliada e alto contraste, sem usar letras verdes pequenas."""
+    return f"<span style='background-color: {bg_cor}; color: {cor}; font-size: 1.05rem; font-weight: bold; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; margin-right: 6px;'>{texto}</span>"
+
 def calcular_tempo_decorrido(str_data_hora):
     if not str_data_hora or str_data_hora in ["N/A", "Data N/I", "N/I", "None"]:
         return "N/A"
@@ -68,10 +72,10 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
     
     with col_ing1:
         st.markdown("#### Importar Ocorrência (BO REDS)")
-        arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v16")
+        arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v17")
 
         if arquivo_pdf is not None:
-            if st.button("⚡ Processar e Ler Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v16"):
+            if st.button("⚡ Processar e Ler Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v17"):
                 with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
                     dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
                     st.session_state["temp_reds_extraido"] = dados_reds
@@ -80,7 +84,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
     with col_ing2:
         st.markdown("#### ➕ Inserção Manual de Material")
         with st.popover("📝 Cadastrar Material Avulso", use_container_width=True):
-            with st.form("form_material_manual_v16", clear_on_submit=True):
+            with st.form("form_material_manual_v17", clear_on_submit=True):
                 man_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-001843571-001").strip()
                 man_autor = st.text_input("Nome do Autor:", placeholder="Ex: MARCIO DE ALMEIDA SOUZA").strip().upper()
                 man_desc = st.text_input("Descrição do Material:", placeholder="Ex: 02 papelotes de cocaína").strip().upper()
@@ -139,18 +143,22 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
         
         with st.container(border=True):
             st.markdown(f"### 📄 REDS Nº {d['num_reds']}")
-            c1, c2, c3, c4 = st.columns(4)
-            with c1: st.markdown(f"**📅 Data Registro:** `{d['data_registro']}`")
-            with c2: st.markdown(f"**⏱️ Data/Hora Fato:** `{d['data_fato']}`")
-            with c3: st.markdown(f"**🚨 Natureza:** `{d['natureza']}`")
-            with c4: st.markdown(f"**🏛️ Destino:** `{d['unidade_jecrim']}`")
             
+            col_hdr1, col_hdr2 = st.columns(2)
+            with col_hdr1:
+                st.markdown(f"📅 **Data Registro:** {badge_destaque(d['data_registro'], '#60A5FA')}", unsafe_allow_html=True)
+                st.markdown(f"⏱️ **Data/Hora Fato:** {badge_destaque(d['data_fato'], '#F59E0B')}", unsafe_allow_html=True)
+            with col_hdr2:
+                st.markdown(f"🚨 **Natureza Principal:** {badge_destaque(d['natureza'], '#EF4444')}", unsafe_allow_html=True)
+                st.markdown(f"🏛️ **Unidade Destino:** {badge_destaque(d['unidade_jecrim'], '#3B82F6')}", unsafe_allow_html=True)
+            
+            st.divider()
             autores_str = ", ".join(d["autores"])
-            st.markdown(f"✍️ **Militar Relator:** `{d['redator']}`")
-            st.markdown(f"👤 **Autor(es) no REDS:** `{autores_str}`")
-            st.markdown(f"📍 **Local:** {d['local']}")
+            st.markdown(f"✍️ **Militar Relator:** {badge_destaque(d['redator'], '#10B981')}", unsafe_allow_html=True)
+            st.markdown(f"👤 **Autor(es) no REDS:** {badge_destaque(autores_str, '#EC4899')}", unsafe_allow_html=True)
+            st.markdown(f"📍 **Local:** **{d['local']}**")
             st.markdown(f"📝 **Resumo Fático:** *{d['resumo_fato']}*")
-            st.markdown(f"🔐 **Assinatura Digital PDF (SHA-256):** `{d['hash_pdf']}`")
+            st.markdown(f"🔐 **Assinatura Digital (SHA-256):** **{d['hash_pdf']}**")
 
         st.markdown(f"##### 📦 Materiais Identificados no Recibo ({len(d['materiais'])} item(ns)):")
 
@@ -169,12 +177,12 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_materiais_ingestao_v16"
+                key="editor_materiais_ingestao_v17"
             )
 
-            photos_ingestao = st.file_uploader("📷 Anexar Fotos / Documentos do Local ou Lesões:", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True, key="upl_photos_ingestao_v16")
+            photos_ingestao = st.file_uploader("📷 Anexar Fotos / Documentos do Local ou Lesões:", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True, key="upl_photos_ingestao_v17")
 
-            if st.button("💾 Confirmar Ingestão e Salvar no Supabase", type="primary", key="btn_conf_fiel_dep_v16"):
+            if st.button("💾 Confirmar Ingestão e Salvar no Supabase", type="primary", key="btn_conf_fiel_dep_v17"):
                 now_iso = datetime.datetime.now().isoformat()
                 now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
                 midias_iniciais = []
@@ -258,7 +266,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 st.rerun()
 
 def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    st.markdown(f"#### 🎒 Materiais na Custódia de: `{nome_militar_atual}` ({unidade_militar_atual})")
+    st.markdown(f"#### 🎒 Materiais na Custódia de: **{nome_militar_atual}** ({unidade_militar_atual})")
     meus_bens = [b for b in all_bens_banco if b.get("fiel_depositario_atual") == nome_militar_atual and b.get("status_tramite") == "Em Custódia"]
     
     if meus_bens:
@@ -292,7 +300,7 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
                 col_m1, col_m2 = st.columns([3.5, 1.5])
                 with col_m1:
                     lbl_ed = " [EDITADO]" if item_meu.get("editado_pelo_operador") else ""
-                    st.markdown(f"📦 **{item_meu['id_bem']}** - {item_meu['descricao']} (Lacre: `{item_meu.get('involucro_lacre')}`){lbl_ed}")
+                    st.markdown(f"📦 **{item_meu['id_bem']}** - **{item_meu['descricao']}** (Lacre: {badge_destaque(item_meu.get('involucro_lacre'), '#F59E0B')}){lbl_ed}", unsafe_allow_html=True)
                     midias = item_meu.get("midias_anexas") or []
                     if midias:
                         st.markdown(f"📎 **{len(midias)} Mídia(s) Anexa(s):**")
@@ -330,15 +338,15 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
 
     col_tr1, col_tr2 = st.columns(2)
     with col_tr1:
-        with st.form("form_transferir_material_v16"):
+        with st.form("form_transferir_material_v17"):
             st.markdown("**1. Encaminhar Material para Outro Militar ou CREDS**")
             bens_disp = {f"{b['id_bem']} - {b['descricao']} (Lacre: {b.get('involucro_lacre')})": b['id_bem'] for b in meus_bens_filtrados}
             
             if bens_disp:
-                bem_sel_key = st.selectbox("Selecione o Material:", list(bens_disp.keys()), key="sel_material_transf_v16")
-                destinatario_sel = st.selectbox("Selecione o Destinatário:", [n for n in nomes_mils if n != nome_militar_atual], key="sel_destinatario_v16")
-                unidade_dest_sel = st.selectbox("Unidade Destino:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v16")
-                obs_transf = st.text_input("Observações do Lacre / Estado:", key="txt_obs_transf_v16")
+                bem_sel_key = st.selectbox("Selecione o Material:", list(bens_disp.keys()), key="sel_material_transf_v17")
+                destinatario_sel = st.selectbox("Selecione o Destinatário:", [n for n in nomes_mils if n != nome_militar_atual], key="sel_destinatario_v17")
+                unidade_dest_sel = st.selectbox("Unidade Destino:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v17")
+                obs_transf = st.text_input("Observações do Lacre / Estado:", key="txt_obs_transf_v17")
                 
                 if st.form_submit_button("📤 Tramitar Material", type="primary"):
                     id_bem_alvo = bens_disp[bem_sel_key]
@@ -382,9 +390,9 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             for idx_p, p in enumerate(pendentes_filtrados):
                 tempo_aguardando = calcular_tempo_decorrido(p.get("data_envio_tramite"))
                 with st.container(border=True):
-                    st.markdown(f"**Material:** {p['descricao']}")
-                    st.markdown(f"REDS: `{p['num_reds']}` | **Remetente:** `{p.get('remetente_ultimo')}` ({p.get('unidade_remetente', 'N/I')})")
-                    st.markdown(f"⏱️ **Aguardando há:** `{tempo_aguardando}` | **Lacre:** `{p.get('involucro_lacre')}`")
+                    st.markdown(f"**Material:** **{p['descricao']}**")
+                    st.markdown(f"REDS: **{p['num_reds']}** | **Remetente:** **{p.get('remetente_ultimo')}** ({p.get('unidade_remetente', 'N/I')})")
+                    st.markdown(f"⏱️ **Aguardando há:** **{tempo_aguardando}** | **Lacre:** {badge_destaque(p.get('involucro_lacre'), '#F59E0B')}", unsafe_allow_html=True)
                     
                     c_acc1, c_acc2 = st.columns(2)
                     with c_acc1:
@@ -450,10 +458,10 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             for idx_div, bd in enumerate(bens_divergentes):
                 div = bd.get("dados_divergencia") or {}
                 with st.container(border=True):
-                    st.markdown(f"**DIVERGÊNCIA:** `{bd['id_bem']}` (REDS: `{bd['num_reds']}`)")
+                    st.markdown(f"**DIVERGÊNCIA:** **{bd['id_bem']}** (REDS: **{bd['num_reds']}**)")
                     st.markdown(f"**Material:** {bd['descricao']}")
                     st.markdown(f"**Remetente:** {div.get('remetente_origem')} ({div.get('unidade_remetente', 'N/I')}) ➔ **Recusado por:** {div.get('registrado_por')} ({div.get('unidade', 'N/I')})")
-                    st.markdown(f"**Motivo:** `{div.get('motivo')}` | **Justificativa:** {div.get('justificativa')}")
+                    st.markdown(f"**Motivo:** **{div.get('motivo')}** | **Justificativa:** {div.get('justificativa')}")
                     
                     if st.button("✅ Resolver Divergência e Restaurar Custódia", key=f"btn_res_div_{bd['id_bem']}_{idx_div}"):
                         now_iso = datetime.datetime.now().isoformat()
@@ -498,15 +506,15 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 c_cr1, c_cr2 = st.columns([3, 2])
                 
                 with c_cr1:
-                    st.markdown(f"**Código:** `{bem['id_bem']}` | REDS: `{bem['num_reds']}`")
+                    st.markdown(f"**Código:** **{bem['id_bem']}** | REDS: **{bem['num_reds']}**")
                     st.markdown(f"**Material:** {bem['descricao']}")
                     st.markdown(f"👤 Autor: **{bem['autores']}** | Invólucro/Lacre: **{bem.get('involucro_lacre')}**")
-                    st.markdown(f"🏛️ **Unidade de Custódia:** `{bem.get('unidade_posse_atual', 'N/I')}` | **Fiel Depositário:** `{bem['fiel_depositario_atual']}`")
+                    st.markdown(f"🏛️ **Unidade de Custódia:** **{bem.get('unidade_posse_atual', 'N/I')}** | **Fiel Depositário:** **{bem['fiel_depositario_atual']}**")
                     
                     if bem.get("pa_oficio_autorizador"):
-                        st.markdown(f"📑 **P.A. / Ofício Autorizador:** `{bem['pa_oficio_autorizador']}`")
+                        st.markdown(f"📑 **P.A. / Ofício Autorizador:** {badge_destaque(bem['pa_oficio_autorizador'], '#38BDF8')}", unsafe_allow_html=True)
                         
-                    st.markdown(f"⏱️ **Tempo no Sistema:** `{tempo_no_sistema}` (Desde {str(bem.get('data_ingestao'))[:10]})")
+                    st.markdown(f"⏱️ **Tempo no Sistema:** **{tempo_no_sistema}** (Desde {str(bem.get('data_ingestao'))[:10]})")
                 
                 with c_cr2:
                     index_dest = opcoes_destinacao.index(fase_atual) if fase_atual in opcoes_destinacao else 0
