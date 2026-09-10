@@ -48,21 +48,15 @@ def padronizar_graduacao(texto):
     ):
         return "3º SGT"
 
-    if re.search(r"1\s*SGT", t_clean):
-        return "1º SGT"
-    if re.search(r"2\s*SGT", t_clean):
-        return "2º SGT"
-    if re.search(r"3\s*SGT", t_clean):
-        return "3º SGT"
+    if re.search(r"1\s*SGT", t_clean): return "1º SGT"
+    if re.search(r"2\s*SGT", t_clean): return "2º SGT"
+    if re.search(r"3\s*SGT", t_clean): return "3º SGT"
 
     if ("TEN" in t_clean and "CEL" in t_clean) or ("CORONEL" in t_clean and "TEN" in t_clean) or t_clean == "TC":
         return "TEN CEL"
-    if "CEL" in t_clean or "CORONEL" in t_clean:
-        return "CEL"
-    if "MAJ" in t_clean or "MAJOR" in t_clean:
-        return "MAJ"
-    if "CAP" in t_clean or "CAPITAO" in t_clean:
-        return "CAP"
+    if "CEL" in t_clean or "CORONEL" in t_clean: return "CEL"
+    if "MAJ" in t_clean or "MAJOR" in t_clean: return "MAJ"
+    if "CAP" in t_clean or "CAPITAO" in t_clean: return "CAP"
 
     if "SUB TEN" in t_clean or "SUBTENENTE" in t_clean or t_clean in ("SUB", "ST"):
         return "SUB TEN"
@@ -72,25 +66,18 @@ def padronizar_graduacao(texto):
     if ("2" in t_clean and ("TEN" in t_clean or "TENENTE" in t_clean)) or "SEGUNDO TENENTE" in t_clean:
         return "2º TEN"
     if "TENENTE" in t_clean or re.search(r"(^|\s)TEN(\s|$)", t_clean):
-        if "1" in t_clean or "PRIMEIRO" in t_clean:
-            return "1º TEN"
-        if "2" in t_clean or "SEGUNDO" in t_clean:
-            return "2º TEN"
+        if "1" in t_clean or "PRIMEIRO" in t_clean: return "1º TEN"
+        if "2" in t_clean or "SEGUNDO" in t_clean: return "2º TEN"
         return "2º TEN"
 
-    if "ASP" in t_clean or "ASPIRANTE" in t_clean:
-        return "ASP"
-    if "CAD" in t_clean or "CADETE" in t_clean:
-        return "CAD"
-    if "AL OF" in t_clean or "ALUNO OFICIAL" in t_clean:
-        return "AL OF"
+    if "ASP" in t_clean or "ASPIRANTE" in t_clean: return "ASP"
+    if "CAD" in t_clean or "CADETE" in t_clean: return "CAD"
+    if "AL OF" in t_clean or "ALUNO OFICIAL" in t_clean: return "AL OF"
     if "SD AL" in t_clean or "AL SD" in t_clean or "ALUNO SD" in t_clean or "ALUNO SOLDADO" in t_clean:
         return "SD AL"
 
-    if "CABO" in t_clean or t_clean == "CB" or " CB " in f" {t_clean} ":
-        return "CB"
-    if "SOLDADO" in t_clean or t_clean == "SD" or " SD " in f" {t_clean} ":
-        return "SD"
+    if "CABO" in t_clean or t_clean == "CB" or " CB " in f" {t_clean} ": return "CB"
+    if "SOLDADO" in t_clean or t_clean == "SD" or " SD " in f" {t_clean} ": return "SD"
 
     return t_raw
 
@@ -107,27 +94,34 @@ def extrair_posto_grad_planilha(row):
     return "SD"
 
 def extrair_cidade_planilha(row):
+    # Expansão para aceitar Fração, Destacamento, Localidade e Lotação
     for k, v in row.items():
         k_norm = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
-        if "MUNICIPIO" in k_norm or "CIDADE" in k_norm or "LOCALIDADE" in k_norm:
+        if any(p in k_norm for p in ["MUNICIPIO", "CIDADE", "LOCAL", "FRACAO", "LOTA", "DESTACAMENTO"]):
             if v and str(v).strip().upper() not in ["NONE", "NAN", "NULL", "<NA>", ""]:
                 return str(v).strip().upper()
-    val = row.get("NOME MUNICIPIO", row.get("NOME_MUNICIPIO", row.get("MUNICIPIO", row.get("CIDADE", ""))))
-    val_str = str(val).strip().upper()
-    if val_str and val_str not in ["NONE", "NAN", "NULL", "<NA>", ""]:
-        return val_str
+                
+    for chave in ["NOME MUNICIPIO", "NOME_MUNICIPIO", "MUNICIPIO", "MUNICÍPIO", "CIDADE", "FRACAO", "FRAÇÃO", "LOCALIDADE", "LOTACAO"]:
+        val = row.get(chave)
+        if val is not None:
+            val_str = str(val).strip().upper()
+            if val_str and val_str not in ["NONE", "NAN", "NULL", "<NA>", ""]:
+                return val_str
     return "N/I"
 
 def extrair_unidade_planilha(row):
     for k, v in row.items():
         k_norm = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
-        if "UNIDADE" in k_norm or "SUBUNIDADE" in k_norm or "OM" in k_norm:
+        if any(p in k_norm for p in ["UNIDADE", "SUBUNIDADE", "OM", "BPM", "CIA"]):
             if v and str(v).strip().upper() not in ["NONE", "NAN", "NULL", "<NA>", ""]:
                 return str(v).strip().upper()
-    val = row.get("NOME UNIDADE", row.get("NOME_UNIDADE", row.get("UNIDADE", "")))
-    val_str = str(val).strip().upper()
-    if val_str and val_str not in ["NONE", "NAN", "NULL", "<NA>", ""]:
-        return val_str
+                
+    for chave in ["NOME UNIDADE", "NOME_UNIDADE", "UNIDADE", "SUBUNIDADE", "BPM", "CIA"]:
+        val = row.get(chave)
+        if val is not None:
+            val_str = str(val).strip().upper()
+            if val_str and val_str not in ["NONE", "NAN", "NULL", "<NA>", ""]:
+                return val_str
     return "UNIDADE N/I"
 
 def remover_duplicados_militares(lista):
@@ -254,10 +248,25 @@ def renderizar_fragmento_passo3():
     c_uni, c_cid, c_busca = st.columns([1.5, 1.5, 2])
     with c_uni:
         unidades_unicas = sorted(list(set([str(m.get("unidade", "UNIDADE N/I")).upper() for m in militares if m.get("unidade")])))
-        unidades_sel = st.multiselect("🏢 Filtrar por Unidade(s):", options=unidades_unicas, default=[], key="msel_unidade_filtro_p3_frag")
+        unidades_sel = st.multiselect("🏢 Filtrar por Unidade(s):", options=unidades_unicas, key="msel_unidade_filtro_p3_frag")
+    
     with c_cid:
-        cidades_unicas = sorted(list(set([str(m.get("cidade", "N/I")).upper() for m in militares if m.get("cidade")])))
-        cidades_sel = st.multiselect("🏙️ Filtrar por Cidade(s):", options=cidades_unicas, default=[], key="msel_cidade_filtro_p3_frag")
+        # Filtro de Cidades em Cascata: Só mostra cidades ligadas à(s) unidade(s) escolhida(s)
+        if unidades_sel:
+            militares_para_cidade = [m for m in militares if str(m.get("unidade")).upper() in unidades_sel]
+        else:
+            militares_para_cidade = militares
+            
+        cidades_unicas = sorted(list(set([str(m.get("cidade", "N/I")).upper() for m in militares_para_cidade if m.get("cidade")])))
+        
+        # Limpeza segura do estado para evitar erros do Streamlit
+        cidades_atuais = st.session_state.get("msel_cidade_filtro_p3_frag", [])
+        cidades_validas = [c for c in cidades_atuais if c in cidades_unicas]
+        if cidades_atuais != cidades_validas:
+            st.session_state["msel_cidade_filtro_p3_frag"] = cidades_validas
+            
+        cidades_sel = st.multiselect("🏙️ Filtrar por Cidade(s):", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
+        
     with c_busca:
         termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag").strip().upper()
 
