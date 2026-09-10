@@ -28,7 +28,6 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
             })
 
         df_mils = pd.DataFrame(dados_tabela)
-
         opcoes_grad = ["SD AL", "SD", "CB", "3º SGT", "2º SGT", "1º SGT", "SUB TEN", "2º TEN", "1º TEN", "CAP", "MAJ", "TEN CEL", "CEL"]
 
         df_editado = st.data_editor(
@@ -83,6 +82,7 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
         with col_s2:
             if st.button("❌ Cancelar", use_container_width=True):
                 st.rerun()
+
     _dialog()
 
 def abrir_modal_excluir_lote(excluir_lote_func):
@@ -121,6 +121,7 @@ def abrir_modal_excluir_lote(excluir_lote_func):
         with col_d2:
             if st.button("❌ Cancelar", use_container_width=True):
                 st.rerun()
+
     _dialog()
 
 def abrir_modal_upload_planilha(funcs_extracao):
@@ -251,6 +252,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
                 if st.button("❌ Cancelar Importação", use_container_width=True):
                     st.session_state["temp_importacao_lista"] = []
                     st.rerun()
+
     _dialog()
 
 def abrir_modal_novo_militar(padronizar_graduacao_func, remover_dup_func, pesos_dict):
@@ -298,4 +300,5 @@ def abrir_modal_novo_militar(padronizar_graduacao_func, remover_dup_func, pesos_
                     salvar_militares_supabase([novo_m])
                     st.success(f"✅ Militar {nome_f_upper} cadastrado e salvo no Supabase!")
                     st.rerun()
+
     _dialog()
