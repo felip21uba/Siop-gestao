@@ -37,7 +37,6 @@ def renderizar_mural():
     st.caption("Solicitação de trocas de serviço, balcão de voluntários, caixa de entrada da P1 e comunicados oficiais.")
     st.divider()
 
-    # Identificação do Usuário Logado e Perfil
     usr_logado = st.session_state.get("usuario_dados", {})
     cargo_str = str(usr_logado.get("cargo_funcao", "")).upper()
     nivel_str = str(usr_logado.get("nivel_acesso", usr_logado.get("perfil", ""))).upper()
@@ -45,7 +44,6 @@ def renderizar_mural():
     LISTA_ADMIN = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "SARGENTEANTE"]
     eh_admin = any(p in cargo_str or p in nivel_str for p in LISTA_ADMIN)
     
-    # Busca de Militares no Estado de Sessão ou Supabase
     mils_todos = st.session_state.get("lista_militares", [])
     if not mils_todos and supabase:
         mils_todos = carregar_militares_supabase()
@@ -57,31 +55,25 @@ def renderizar_mural():
     else:
         nomes_mils = ["SGT Exemplo", "CB Silva", "SD Oliveira"]
 
-    # Identificação do Usuário Atual
     nome_guerra_usr = usr_logado.get("nome_guerra", "Militar")
     posto_usr = usr_logado.get("cargo_funcao", usr_logado.get("posto_grad", "Policial"))
     nome_usuario_atual = f"{posto_usr} {nome_guerra_usr}".strip()
 
-    # INICIALIZAÇÃO DOS BANCOS DE DADOS LOCAIS DO MURAL
     if "mural_trocas" not in st.session_state:
         st.session_state["mural_trocas"] = []
     if "mural_mensagens" not in st.session_state:
         st.session_state["mural_mensagens"] = []
 
-    # ABAS DO MURAL
     aba1, aba2, aba3 = st.tabs([
         "🔄 Trocas de Serviço & Permutas", 
         "📩 Requerimentos P1 (Caixa de Entrada)",
         "📢 Correio e Comunicados"
     ])
 
-    # ==========================================
     # ABA 1: TROCAS DE SERVIÇO
-    # ==========================================
     with aba1:
         st.markdown("### Gestão de Trocas e Permutas")
         
-        # FORMULÁRIO DE NOVA SOLICITAÇÃO (EXIBIDO PARA TODOS)
         with st.expander("📝 Criar Nova Solicitação de Permuta / Troca de Serviço", expanded=True):
             with st.form("form_nova_troca"):
                 st.markdown(f"**Solicitante:** `{nome_usuario_atual}`")
@@ -119,7 +111,6 @@ def renderizar_mural():
                         st.success("🎉 Solicitação de permuta registrada com sucesso! Encaminhada para análise da P1.")
                         st.rerun()
 
-        # BALCÃO DE VOLUNTÁRIOS
         st.markdown("#### 🤝 Balcão de Voluntários (Trocas Abertas)")
         trocas_abertas = [t for t in st.session_state["mural_trocas"] if t["tipo"] == "Balcão" and t["status"] == "Aguardando P1"]
         if trocas_abertas:
@@ -177,9 +168,7 @@ def renderizar_mural():
         else:
             st.caption("Nenhum registro de troca de serviço cadastrado nesta sessão.")
 
-    # ==========================================
     # ABA 2: REQUERIMENTOS P1 (SUPABASE BANCO DE DADOS)
-    # ==========================================
     with aba2:
         st.markdown("### 📩 Caixa de Entrada da P1 — Solicitações da Tropa")
         st.caption("Mensagens, requerimentos e comunicados encaminhados pelo efetivo via banco de dados do Supabase.")
@@ -220,7 +209,6 @@ def renderizar_mural():
                         if despacho_existente:
                             st.info(f"💬 **Despacho Registrado:** {despacho_existente}")
 
-                        # FORMULÁRIO DE DESPACHO DO GESTOR
                         with st.expander(f"✏️ Despachar Solicitação #{msg_id}"):
                             with st.form(f"form_despacho_{msg_id}"):
                                 novo_st = st.selectbox(
@@ -251,13 +239,10 @@ def renderizar_mural():
                             st.success(f"**Despacho da P1:** {msg.get('despacho')}")
                         st.divider()
 
-    # ==========================================
     # ABA 3: CORREIO E AVISOS (COM CIENTE)
-    # ==========================================
     with aba3:
         st.markdown("### 📢 Comunicados Oficiais e Caixa de Mensagens")
         
-        # ADMIN: CRIAR NOVA MENSAGEM
         if eh_admin:
             with st.expander("✍️ Escrever Novo Comunicado Oficial", expanded=False):
                 with st.form("form_mensagem"):
@@ -334,4 +319,4 @@ def renderizar_mural():
                             msg["lido_por"][nome_usuario_atual] = datetime.datetime.now().strftime("%d/%m %H:%M")
                             st.rerun()
                     else:
-                        st.success(f"Você tomou ciência deste aviso em: {msg['lido_por'][nome_usuario_atual]}")git add modules/mural.py
+                        st.success(f"Você tomou ciência deste aviso em: {msg['lido_por'][nome_usuario_atual]}")
