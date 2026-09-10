@@ -3,11 +3,38 @@ import pandas as pd
 import datetime
 from core.database import carregar_militares_supabase, supabase
 
+def buscar_mensagens_p1_supabase():
+    """Busca todas as solicitações e mensagens enviadas pela Tropa para a P1 no Supabase."""
+    if not supabase:
+        return []
+    try:
+        res = supabase.table("mensagens_p1").select("*").order("created_at", desc=True).execute()
+        return res.data or []
+    except Exception:
+        try:
+            res = supabase.table("mensagens_p1").select("*").order("data_hora", desc=True).execute()
+            return res.data or []
+        except Exception:
+            return []
+
+def atualizar_despacho_mensagem_p1(msg_id, novo_status, despacho_texto=""):
+    """Atualiza o status e o texto de despacho de um requerimento no Supabase."""
+    if not supabase or not msg_id:
+        return False
+    try:
+        supabase.table("mensagens_p1").update({
+            "status": novo_status,
+            "despacho": despacho_texto
+        }).eq("id", msg_id).execute()
+        return True
+    except Exception:
+        return False
+
 def renderizar_mural():
     st.markdown("""<style>div[data-testid="stContainer"] div[data-testid="stColumn"] button {height: auto !important; min-height: 40px !important;}</style>""", unsafe_allow_html=True)
     
     st.title("🗣️ Portal do Efetivo e Mural de Avisos")
-    st.caption("Solicitação de trocas de serviço, balcão de voluntários e comunicados oficiais.")
+    st.caption("Solicitação de trocas de serviço, balcão de voluntários, caixa de entrada da P1 e comunicados oficiais.")
     st.divider()
 
     # Identificação do Usuário Logado e Perfil
@@ -15,7 +42,8 @@ def renderizar_mural():
     cargo_str = str(usr_logado.get("cargo_funcao", "")).upper()
     nivel_str = str(usr_logado.get("nivel_acesso", usr_logado.get("perfil", ""))).upper()
     
-    eh_admin = "PROGRAMADOR" in cargo_str or "ADMIN" in nivel_str or "COMANDANTE" in cargo_str or "P1" in nivel_str
+    LISTA_ADMIN = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "SARGENTEANTE"]
+    eh_admin = any(p in cargo_str or p in nivel_str for p in LISTA_ADMIN)
     
     # Busca de Militares no Estado de Sessão ou Supabase
     mils_todos = st.session_state.get("lista_militares", [])
@@ -41,7 +69,11 @@ def renderizar_mural():
         st.session_state["mural_mensagens"] = []
 
     # ABAS DO MURAL
-    aba1, aba2 = st.tabs(["🔄 Trocas de Serviço & Permutas", "📢 Correio e Comunicados"])
+    aba1, aba2, aba3 = st.tabs([
+        "🔄 Trocas de Serviço & Permutas", 
+        "📩 Requerimentos P1 (Caixa de Entrada)",
+        "📢 Correio e Comunicados"
+    ])
 
     # ==========================================
     # ABA 1: TROCAS DE SERVIÇO
@@ -49,7 +81,7 @@ def renderizar_mural():
     with aba1:
         st.markdown("### Gestão de Trocas e Permutas")
         
-        # FORMULÁRIO DE NOVA SOLICITATION (EXIBIDO PARA TODOS OS MILITARES LOGADOS)
+        # FORMULÁRIO DE NOVA SOLICITAÇÃO (EXIBIDO PARA TODOS)
         with st.expander("📝 Criar Nova Solicitação de Permuta / Troca de Serviço", expanded=True):
             with st.form("form_nova_troca"):
                 st.markdown(f"**Solicitante:** `{nome_usuario_atual}`")
@@ -87,7 +119,7 @@ def renderizar_mural():
                         st.success("🎉 Solicitação de permuta registrada com sucesso! Encaminhada para análise da P1.")
                         st.rerun()
 
-        # VISÃO GERAL (BALCÃO DE VOLUNTÁRIOS)
+        # BALCÃO DE VOLUNTÁRIOS
         st.markdown("#### 🤝 Balcão de Voluntários (Trocas Abertas)")
         trocas_abertas = [t for t in st.session_state["mural_trocas"] if t["tipo"] == "Balcão" and t["status"] == "Aguardando P1"]
         if trocas_abertas:
@@ -107,7 +139,6 @@ def renderizar_mural():
         else:
             st.info("ℹ️ Nenhuma permuta aberta no balcão de voluntários no momento.")
 
-        # VISÃO DE ACOMPANHAMENTO E APROVAÇÃO P1
         st.divider()
         st.markdown("#### 📋 Acompanhamento e Auditoria de Permutas")
         if st.session_state["mural_trocas"]:
@@ -147,9 +178,83 @@ def renderizar_mural():
             st.caption("Nenhum registro de troca de serviço cadastrado nesta sessão.")
 
     # ==========================================
-    # ABA 2: CORREIO E AVISOS (COM CIENTE)
+    # ABA 2: REQUERIMENTOS P1 (SUPABASE BANCO DE DADOS)
     # ==========================================
     with aba2:
+        st.markdown("### 📩 Caixa de Entrada da P1 — Solicitações da Tropa")
+        st.caption("Mensagens, requerimentos e comunicados encaminhados pelo efetivo via banco de dados do Supabase.")
+        
+        msgs_p1_banco = buscar_mensagens_p1_supabase()
+
+        if not msgs_p1_banco:
+            st.info("ℹ️ Nenhum requerimento gravado na caixa de entrada da P1 até o momento.")
+        else:
+            if eh_admin:
+                st.success(f"📊 Total de requerimentos recebidos no Supabase: **{len(msgs_p1_banco)}**")
+                
+                for msg in msgs_p1_banco:
+                    msg_id = msg.get("id")
+                    num_pol = msg.get("num_policia", "N/I")
+                    nome_m = msg.get("nome_militar", msg.get("militar_nome", "Policial"))
+                    assunto = msg.get("assunto", "Sem Assunto")
+                    texto = msg.get("mensagem", msg.get("texto", ""))
+                    status_atual = msg.get("status", "Pendente")
+                    despacho_existente = msg.get("despacho", "")
+                    data_envio = msg.get("created_at", msg.get("data_hora", ""))
+                    
+                    if data_envio:
+                        try:
+                            data_fmt = pd.to_datetime(data_envio).strftime("%d/%m/%Y %H:%M")
+                        except Exception:
+                            data_fmt = str(data_envio)[:16]
+                    else:
+                        data_fmt = "Data N/I"
+
+                    cor_status = "🟡" if status_atual == "Pendente" else ("🟢" if "DEFERIDO" in status_atual.upper() or "APROVADO" in status_atual.upper() else "🔴")
+
+                    with st.container(border=True):
+                        st.markdown(f"#### {cor_status} {assunto}")
+                        st.caption(f"👤 **Militar:** {nome_m} (`{num_pol}`) | ⏱️ **Enviado em:** {data_fmt} | **Status:** `{status_atual}`")
+                        st.markdown(f"> {texto}")
+
+                        if despacho_existente:
+                            st.info(f"💬 **Despacho Registrado:** {despacho_existente}")
+
+                        # FORMULÁRIO DE DESPACHO DO GESTOR
+                        with st.expander(f"✏️ Despachar Solicitação #{msg_id}"):
+                            with st.form(f"form_despacho_{msg_id}"):
+                                novo_st = st.selectbox(
+                                    "Decisão da P1 / Comando:",
+                                    ["Pendente", "DEFERIDO / APROVADO", "INDEFERIDO", "EM ANÁLISE"],
+                                    index=0 if status_atual == "Pendente" else 1
+                                )
+                                txt_despacho = st.text_area("Texto do Despacho / Observações:", value=despacho_existente)
+                                
+                                if st.form_submit_button("💾 Salvar Despacho no Supabase", type="primary", use_container_width=True):
+                                    if atualizar_despacho_mensagem_p1(msg_id, novo_st, txt_despacho):
+                                        st.success("✅ Despacho salvo com sucesso no banco de dados!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Erro ao atualizar mensagem no Supabase.")
+            else:
+                num_pol_usr = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip()
+                minhas_msgs = [m for m in msgs_p1_banco if str(m.get("num_policia")).strip() == num_pol_usr]
+
+                if not minhas_msgs:
+                    st.info("Você ainda não possui requerimentos enviados à P1.")
+                else:
+                    for msg in minhas_msgs:
+                        st.markdown(f"**Assunto:** {msg.get('assunto')}")
+                        st.caption(f"Status: `{msg.get('status', 'Pendente')}`")
+                        st.markdown(f">{msg.get('mensagem')}")
+                        if msg.get("despacho"):
+                            st.success(f"**Despacho da P1:** {msg.get('despacho')}")
+                        st.divider()
+
+    # ==========================================
+    # ABA 3: CORREIO E AVISOS (COM CIENTE)
+    # ==========================================
+    with aba3:
         st.markdown("### 📢 Comunicados Oficiais e Caixa de Mensagens")
         
         # ADMIN: CRIAR NOVA MENSAGEM
@@ -182,7 +287,6 @@ def renderizar_mural():
                             st.success("Comunicado oficial publicado com sucesso!")
                             st.rerun()
 
-            # ADMIN: PAINEL DE AUDITORIA DE LEITURA
             st.markdown("#### 👁️ Auditoria de Leitura (Controle da P1)")
             if not st.session_state["mural_mensagens"]:
                 st.info("Nenhum comunicado publicado até o momento.")
@@ -209,7 +313,6 @@ def renderizar_mural():
                                 for n in faltam_nomes:
                                     st.markdown(f"- {n}")
 
-        # USUÁRIO / SOLDADO: CAIXA DE ENTRADA E BOTÃO DE "CIENTE"
         minhas_mensagens = [m for m in st.session_state["mural_mensagens"] if nome_usuario_atual in m["destinatarios"] or "TODOS O EFETIVO" in m["destinatarios"]]
         
         if not minhas_mensagens and not eh_admin:
@@ -231,4 +334,4 @@ def renderizar_mural():
                             msg["lido_por"][nome_usuario_atual] = datetime.datetime.now().strftime("%d/%m %H:%M")
                             st.rerun()
                     else:
-                        st.success(f"Você tomou ciência deste aviso em: {msg['lido_por'][nome_usuario_atual]}")
+                        st.success(f"Você tomou ciência deste aviso em: {msg['lido_por'][nome_usuario_atual]}")git add modules/mural.py
