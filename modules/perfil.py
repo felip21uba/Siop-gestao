@@ -1,7 +1,8 @@
 import streamlit as st
 import datetime
 import pandas as pd
-from core.database import supabase, registrar_audit_log
+import hashlib
+from core.database import supabase, registrar_audit_log, buscar_logs_banco
 from core.auth import (
     salvar_usuario_universal_supabase, 
     validar_senha_forte, 
@@ -16,6 +17,7 @@ def exibir_tela_perfil():
 
     usr = st.session_state.get("usuario_dados") or {}
     usr_key = str(usr.get('usuario_login') or usr.get('usuario') or usr.get('num_policia') or '').strip().upper()
+    nome_guerra = str(usr.get('nome_guerra', '')).strip().upper()
 
     aba_p1, aba_p2, aba_p3 = st.tabs([
         "🛡️ Minhas Permissões & Travas de Segurança",
@@ -57,7 +59,7 @@ def exibir_tela_perfil():
 
         st.divider()
 
-        # 🔒 PAINEL DE PROTOCOLOS E TRAVAS DE SEGURANÇA IMPLEMENTADAS
+        # PAINEL DE PROTOCOLOS E TRAVAS DE SEGURANÇA IMPLEMENTADAS
         st.markdown("##### ⚙️ Protocolos Técnicos e Travas de Auditoria Ativas no SIOP")
         
         c_trv1, c_trv2 = st.columns(2)
@@ -77,7 +79,7 @@ def exibir_tela_perfil():
 
         st.divider()
 
-        # 📄 SEÇÃO DE EXPORTAÇÃO DA PARTE INFORMATIVA DE COMPLIANCE
+        # SEÇÃO DE EXPORTAÇÃO DA PARTE INFORMATIVA DE COMPLIANCE
         st.markdown("##### 📄 Exportação do Plano de Segurança e Compliance (Ofício / Parte)")
         st.caption("Gere a Parte Informativa oficial pré-formatada para apresentação ao Comando da Unidade e órgãos de fiscalização/correição.")
 
@@ -191,34 +193,39 @@ def exibir_tela_perfil():
         st.markdown("##### 📜 Registro Auditável de Logins e Operações")
         st.caption("Acompanhe o registro imutável de todas as ações executadas nesta conta para fins de compliance e segurança.")
 
-        logs_reais = []
-        if supabase and usr_key:
-            try:
-                res_logs = supabase.table("log_auditoria")\
-                    .select("data_hora, acao, detalhes, usuario_email")\
-                    .eq("usuario_email", usr_key)\
-                    .order("data_hora", desc=True)\
-                    .limit(15)\
-                    .execute()
+        df_logs = buscar_logs_banco(limite=500)
 
-                if res_logs.data:
-                    logs_reais = res_logs.data
-            except Exception:
-                pass
+        if not df_logs.empty:
+            if "data_hora" in df_logs.columns:
+                df_logs["data_hora"] = pd.to_datetime(df_logs["data_hora"], errors="coerce").dt.strftime("%d/%m/%Y %H:%M:%S")
 
-        if logs_reais:
-            df_logs = pd.DataFrame(logs_reais)
-            df_logs["data_hora"] = pd.to_datetime(df_logs["data_hora"]).dt.strftime("%d/%m/%Y %H:%M:%S")
-            st.dataframe(
-                df_logs,
-                column_config={
-                    "data_hora": "Data/Hora",
-                    "acao": "Ação Executada",
-                    "detalhes": "Detalhamento da Operação",
-                    "usuario_email": "Usuário / Nº Polícia"
-                },
-                use_container_width=True,
-                hide_index=True
-            )
+            mask_usuario = (
+                df_logs["usuario"].astype(str).str.upper().str.contains(nome_guerra, na=False) |
+                df_logs["usuario"].astype(str).str.upper().str.contains(usr_key, na=False) |
+                df_logs["detalhe"].astype(str).str.upper().str.contains(nome_guerra, na=False) |
+                df_logs["detalhe"].astype(str).str.upper().str.contains(usr_key, na=False)
+            ) if (nome_guerra or usr_key) else pd.Series([True] * len(df_logs))
+
+            df_filtrado = df_logs[mask_usuario]
+
+            if nivel_exibicao in ["PROGRAMADOR", "ADMIN"]:
+                ver_geral = st.checkbox("🌐 Exibir Auditoria Geral do Sistema (Visão de Gestor)", value=False, key="chk_ver_geral_perfil")
+                if ver_geral:
+                    df_filtrado = df_logs
+
+            if not df_filtrado.empty:
+                st.dataframe(
+                    df_filtrado[["data_hora", "usuario", "acao", "detalhe"]],
+                    column_config={
+                        "data_hora": st.column_config.TextColumn("Data / Hora", width="medium"),
+                        "usuario": st.column_config.TextColumn("Militar / Operador", width="medium"),
+                        "acao": st.column_config.TextColumn("Ação Executada", width="medium"),
+                        "detalhe": st.column_config.TextColumn("Detalhamento da Operação", width="large")
+                    },
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info(f"ℹ️ Nenhum evento crítico registrado para este usuário ({usr.get('nome_guerra', 'Militar')}) nas últimas sessões.")
         else:
-            st.info("ℹ️ Nenhum evento crítico registrado para este usuário nas últimas sessões.")
+            st.info("ℹ️ Nenhum evento crítico registrado no banco de dados até o momento.")
