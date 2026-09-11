@@ -9,8 +9,8 @@ from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergen
 from modules.tco.compliance import gerar_pdf_termo_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
-def badge_destaque(texto, cor="#60A5FA", bg_cor="#1E293B"):
-    return f"<span style='background-color: {bg_cor}; color: {cor}; font-size: 1.05rem; font-weight: bold; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; margin-right: 6px;'>{texto}</span>"
+def badge_destaque(texto, cor="#C5A059", bg_cor="#3D2B1F"):
+    return f"<span style='background-color: {bg_cor}; color: {cor}; font-size: 1rem; font-weight: bold; padding: 4px 10px; border-radius: 6px; border: 1px solid #8B5A2B; margin-right: 6px;'>{texto}</span>"
 
 def calcular_tempo_decorrido(str_data_hora):
     if not str_data_hora or str_data_hora in ["N/A", "Data N/I", "N/I", "None"]:
@@ -147,24 +147,17 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
         d = st.session_state["temp_reds_extraido"]
         st.divider()
         
-        with st.container(border=True):
-            st.markdown(f"### 📄 REDS Nº {d['num_reds']}")
-            
-            col_hdr1, col_hdr2 = st.columns(2)
-            with col_hdr1:
-                st.markdown(f"📅 **Data Registro:** {badge_destaque(d['data_registro'], '#60A5FA')}", unsafe_allow_html=True)
-                st.markdown(f"⏱️ **Data/Hora Fato:** {badge_destaque(d['data_fato'], '#F59E0B')}", unsafe_allow_html=True)
-            with col_hdr2:
-                st.markdown(f"🚨 **Natureza Principal:** {badge_destaque(d['natureza'], '#EF4444')}", unsafe_allow_html=True)
-                st.markdown(f"🏛️ **Unidade Destino:** {badge_destaque(d['unidade_jecrim'], '#3B82F6')}", unsafe_allow_html=True)
-            
-            st.divider()
-            autores_str = ", ".join(d["autores"])
-            st.markdown(f"✍️ **Militar Relator:** {badge_destaque(d['redator'], '#10B981')}", unsafe_allow_html=True)
-            st.markdown(f"👤 **Autor(es) no REDS:** {badge_destaque(autores_str, '#EC4899')}", unsafe_allow_html=True)
-            st.markdown(f"📍 **Local:** **{d['local']}**")
-            st.markdown(f"📝 **Resumo Fático:** *{d['resumo_fato']}*")
-            st.markdown(f"🔐 **Assinatura Digital (SHA-256):** **{d['hash_pdf']}**")
+        st.markdown(f"""
+        <div class='card-tco'>
+            <h5>📄 REDS Nº {d['num_reds']}</h5>
+            <p><b>Data Registro:</b> {d['data_registro']} &nbsp;|&nbsp; <b>Data/Hora Fato:</b> {d['data_fato']}</p>
+            <p><b>Natureza:</b> {d['natureza']} &nbsp;|&nbsp; <b>Unidade Destino:</b> {d['unidade_jecrim']}</p>
+            <p><b>Militar Relator:</b> {d['redator']} &nbsp;|&nbsp; <b>Autor(es):</b> {", ".join(d['autores'])}</p>
+            <p><b>Local:</b> {d['local']}</p>
+            <p><b>Resumo Fático:</b> <i>{d['resumo_fato']}</i></p>
+            <p><b>Chancela Digital SHA-256:</b> <code>{d['hash_pdf']}</code></p>
+        </div>
+        """, unsafe_allow_html=True)
 
         st.markdown(f"##### 📦 Materiais Identificados no Recibo ({len(d['materiais'])} item(ns)):")
 
@@ -339,27 +332,31 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
         st.divider()
         st.markdown("##### ⚙️ Gestão Individual de Materiais e Mídias Anexas:")
         for idx_m, item_meu in enumerate(meus_bens):
-            with st.container(border=True):
-                col_m1, col_m2 = st.columns([3.5, 1.5])
-                with col_m1:
-                    lbl_ed = " [EDITADO]" if item_meu.get("editado_pelo_operador") else ""
-                    st.markdown(f"📦 **{item_meu['id_bem']}** - **{item_meu['descricao']}** (Lacre: {badge_destaque(item_meu.get('involucro_lacre'), '#F59E0B')}){lbl_ed}", unsafe_allow_html=True)
-                    midias = item_meu.get("midias_anexas") or []
-                    if midias:
-                        st.markdown(f"📎 **{len(midias)} Mídia(s) no Storage:**")
-                        for m_anexa in midias:
-                            url = m_anexa.get("url_publica")
-                            nome_f = m_anexa.get("nome_arquivo", "Arquivo")
-                            hash_f = m_anexa.get("hash_sha256", "")[:16]
-                            if url:
-                                st.markdown(f"• [{nome_f}]({url}) | SHA-256: `{hash_f}...`")
-                            else:
-                                st.text(f"• {nome_f} | SHA-256: {hash_f}...")
-                    else:
-                        st.text("Nenhuma mídia anexa registrada.")
-                with col_m2:
-                    if st.button("✏️ Editar / Anexar Fotos", key=f"btn_edit_meu_bem_{item_meu['id_bem']}_{idx_m}", type="secondary", use_container_width=True):
-                        abrir_modal_edicao_material(item_meu, nome_militar_atual, unidade_militar_atual)
+            st.markdown(f"""
+            <div class='card-tco'>
+                <h5>📦 {item_meu['id_bem']} — {item_meu['descricao']}</h5>
+                <p><b>Invólucro / Lacre:</b> {item_meu.get('involucro_lacre')} &nbsp;|&nbsp; <b>REDS:</b> {item_meu['num_reds']}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            c_meu1, c_meu2 = st.columns([3.5, 1.5])
+            with c_meu1:
+                midias = item_meu.get("midias_anexas") or []
+                if midias:
+                    st.markdown(f"📎 **{len(midias)} Mídia(s) Anexa(s):**")
+                    for m_anexa in midias:
+                        url = m_anexa.get("url_publica")
+                        nome_f = m_anexa.get("nome_arquivo", "Arquivo")
+                        hash_f = m_anexa.get("hash_sha256", "")[:16]
+                        if url:
+                            st.markdown(f"• [{nome_f}]({url}) | SHA-256: `{hash_f}...`")
+                        else:
+                            st.text(f"• {nome_f} | SHA-256: {hash_f}...")
+                else:
+                    st.caption("Nenhuma mídia anexa registrada.")
+            with c_meu2:
+                if st.button("✏️ Editar / Anexar Fotos", key=f"btn_edit_meu_bem_{item_meu['id_bem']}_{idx_m}", type="secondary", use_container_width=True):
+                    abrir_modal_edicao_material(item_meu, nome_militar_atual, unidade_militar_atual)
     else:
         st.info("Você não possui nenhum material sob sua custódia no momento.")
 
@@ -385,7 +382,6 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
     mils_todos = st.session_state.get("lista_militares", [])
     nomes_mils_base = [f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else ["CB MORAES", "SD VINICIUS", "SGT SILVA"]
     
-    # Garante opção válida no selectbox mesmo sem outros militares
     opcoes_destinatario = [n for n in nomes_mils_base if n != nome_militar_atual]
     if not opcoes_destinatario:
         opcoes_destinatario = ["CREDS CENTRAL"]
@@ -443,46 +439,49 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
         if pendentes_filtrados:
             for idx_p, p in enumerate(pendentes_filtrados):
                 tempo_aguardando = calcular_tempo_decorrido(p.get("data_envio_tramite"))
-                with st.container(border=True):
-                    st.markdown(f"**Material:** **{p['descricao']}**")
-                    st.markdown(f"REDS: **{p['num_reds']}** | **Remetente:** **{p.get('remetente_ultimo')}** ({p.get('unidade_remetente', 'N/I')})")
-                    st.markdown(f"⏱️ **Aguardando há:** **{tempo_aguardando}** | **Lacre:** {badge_destaque(p.get('involucro_lacre'), '#F59E0B')}", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div class='card-tco'>
+                    <h5>📦 {p['descricao']}</h5>
+                    <p><b>REDS:</b> {p['num_reds']} &nbsp;|&nbsp; <b>Remetente:</b> {p.get('remetente_ultimo')} ({p.get('unidade_remetente', 'N/I')})</p>
+                    <p><b>Lacre:</b> {p.get('involucro_lacre')} &nbsp;|&nbsp; <b>Aguardando há:</b> {tempo_aguardando}</p>
+                </div>
+                """, unsafe_allow_html=True)
 
-                    c_acc1, c_acc2 = st.columns(2)
-                    with c_acc1:
-                        if st.button("✅ Aceitar Custódia", key=f"btn_acc_tot_{p['id_bem']}_{idx_p}", type="primary"):
-                            orig = p.get('remetente_ultimo') or p.get('fiel_depositario_atual')
-                            orig_unid = p.get('unidade_remetente') or p.get('unidade_posse_atual')
-                            now_iso = datetime.datetime.now().isoformat()
-                            
-                            upd_data = {
-                                "fiel_depositario_atual": nome_militar_atual,
-                                "unidade_posse_atual": unidade_militar_atual,
-                                "data_posse_atual": now_iso,
-                                "status_tramite": "Em Custódia",
-                                "destinatario_pendente": None,
-                                "unidade_destinatario_pendente": None,
-                                "data_envio_tramite": None
-                            }
-                            
-                            if atualizar_material_supabase(p["id_bem"], upd_data):
-                                registrar_log_supabase({
-                                    "data_hora": now_iso,
-                                    "num_reds": p["num_reds"],
-                                    "bem_id": p["id_bem"],
-                                    "acao": "ACEITE DE CUSTÓDIA",
-                                    "origem": orig,
-                                    "unidade_origem": orig_unid,
-                                    "destino": nome_militar_atual,
-                                    "unidade_destino": unidade_militar_atual,
-                                    "detalhe": f"Aceite de custódia confirmado por {nome_militar_atual} na unidade {unidade_militar_atual}."
-                                })
-                                st.success("Material recebido no Supabase!")
-                                st.rerun()
+                c_acc1, c_acc2 = st.columns(2)
+                with c_acc1:
+                    if st.button("✅ Aceitar Custódia", key=f"btn_acc_tot_{p['id_bem']}_{idx_p}", type="primary"):
+                        orig = p.get('remetente_ultimo') or p.get('fiel_depositario_atual')
+                        orig_unid = p.get('unidade_remetente') or p.get('unidade_posse_atual')
+                        now_iso = datetime.datetime.now().isoformat()
+                        
+                        upd_data = {
+                            "fiel_depositario_atual": nome_militar_atual,
+                            "unidade_posse_atual": unidade_militar_atual,
+                            "data_posse_atual": now_iso,
+                            "status_tramite": "Em Custódia",
+                            "destinatario_pendente": None,
+                            "unidade_destinatario_pendente": None,
+                            "data_envio_tramite": None
+                        }
+                        
+                        if atualizar_material_supabase(p["id_bem"], upd_data):
+                            registrar_log_supabase({
+                                "data_hora": now_iso,
+                                "num_reds": p["num_reds"],
+                                "bem_id": p["id_bem"],
+                                "acao": "ACEITE DE CUSTÓDIA",
+                                "origem": orig,
+                                "unidade_origem": orig_unid,
+                                "destino": nome_militar_atual,
+                                "unidade_destino": unidade_militar_atual,
+                                "detalhe": f"Aceite de custódia confirmado por {nome_militar_atual} na unidade {unidade_militar_atual}."
+                            })
+                            st.success("Material recebido no Supabase!")
+                            st.rerun()
 
-                    with c_acc2:
-                        if st.button("⚠️ Recusar / Divergência", key=f"btn_acc_div_{p['id_bem']}_{idx_p}"):
-                            abrir_modal_divergencia(p, nome_militar_atual, unidade_militar_atual)
+                with c_acc2:
+                    if st.button("⚠️ Recusar / Divergência", key=f"btn_acc_div_{p['id_bem']}_{idx_p}"):
+                        abrir_modal_divergencia(p, nome_militar_atual, unidade_militar_atual)
         else:
             st.info("Nenhuma transferência pendente para você no momento.")
 
@@ -511,30 +510,33 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             st.error(f"🚨 **ALERTA CRÍTICO:** Existem {len(bens_divergentes)} material(is) com divergência registrada aguardando apuração!")
             for idx_div, bd in enumerate(bens_divergentes):
                 div = bd.get("dados_divergencia") or {}
-                with st.container(border=True):
-                    st.markdown(f"**DIVERGÊNCIA:** **{bd['id_bem']}** (REDS: **{bd['num_reds']}**)")
-                    st.markdown(f"**Material:** {bd['descricao']}")
-                    st.markdown(f"**Remetente:** {div.get('remetente_origem')} ({div.get('unidade_remetente', 'N/I')}) ➔ **Recusado por:** {div.get('registrado_por')} ({div.get('unidade', 'N/I')})")
-                    st.markdown(f"**Motivo:** **{div.get('motivo')}** | **Justificativa:** {div.get('justificativa')}")
+                st.markdown(f"""
+                <div class='card-tco' style='border-left-color: #B45309;'>
+                    <h5>🚨 DIVERGÊNCIA: {bd['id_bem']} (REDS: {bd['num_reds']})</h5>
+                    <p><b>Material:</b> {bd['descricao']}</p>
+                    <p><b>Remetente:</b> {div.get('remetente_origem')} ({div.get('unidade_remetente', 'N/I')}) ➔ <b>Recusado por:</b> {div.get('registrado_por')}</p>
+                    <p><b>Motivo:</b> {div.get('motivo')} | <b>Justificativa:</b> {div.get('justificativa')}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("✅ Resolver Divergência e Restaurar Custódia", key=f"btn_res_div_{bd['id_bem']}_{idx_div}"):
+                    now_iso = datetime.datetime.now().isoformat()
+                    upd_data = {"status_tramite": "Em Custódia"}
                     
-                    if st.button("✅ Resolver Divergência e Restaurar Custódia", key=f"btn_res_div_{bd['id_bem']}_{idx_div}"):
-                        now_iso = datetime.datetime.now().isoformat()
-                        upd_data = {"status_tramite": "Em Custódia"}
-                        
-                        if atualizar_material_supabase(bd["id_bem"], upd_data):
-                            registrar_log_supabase({
-                                "data_hora": now_iso,
-                                "num_reds": bd["num_reds"],
-                                "bem_id": bd["id_bem"],
-                                "acao": "RESOLUÇÃO DE DIVERGÊNCIA",
-                                "origem": "CREDS-TCO",
-                                "unidade_origem": unidade_militar_atual,
-                                "destino": bd["fiel_depositario_atual"],
-                                "unidade_destino": bd.get("unidade_posse_atual"),
-                                "detalhe": "Divergência apurada e resolvida pelo Gestor do CREDS."
-                            })
-                            st.success("Divergência resolvida com sucesso!")
-                            st.rerun()
+                    if atualizar_material_supabase(bd["id_bem"], upd_data):
+                        registrar_log_supabase({
+                            "data_hora": now_iso,
+                            "num_reds": bd["num_reds"],
+                            "bem_id": bd["id_bem"],
+                            "acao": "RESOLUÇÃO DE DIVERGÊNCIA",
+                            "origem": "CREDS-TCO",
+                            "unidade_origem": unidade_militar_atual,
+                            "destino": bd["fiel_depositario_atual"],
+                            "unidade_destino": bd.get("unidade_posse_atual"),
+                            "detalhe": "Divergência apurada e resolvida pelo Gestor do CREDS."
+                        })
+                        st.success("Divergência resolvida com sucesso!")
+                        st.rerun()
         else:
             st.success("✅ Nenhuma divergência pendente na unidade.")
 
@@ -552,96 +554,69 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         ]
 
         for idx_creds, bem in enumerate(all_bens_filtrados):
-            tempo_na_posse = calcular_tempo_decorrido(bem.get("data_posse_atual"))
             tempo_no_sistema = calcular_tempo_decorrido(bem.get("data_ingestao"))
             fase_atual = bem.get("fase_destinacao")
             
-            with st.container(border=True):
-                c_cr1, c_cr2 = st.columns([3, 2])
+            st.markdown(f"""
+            <div class='card-tco'>
+                <h5>Código: {bem['id_bem']} | REDS: {bem['num_reds']}</h5>
+                <p><b>Material:</b> {bem['descricao']} &nbsp;|&nbsp; <b>Autor:</b> {bem['autores']} &nbsp;|&nbsp; <b>Lacre:</b> {bem.get('involucro_lacre')}</p>
+                <p><b>Custódia Atual:</b> {bem.get('unidade_posse_atual', 'N/I')} ({bem['fiel_depositario_atual']}) &nbsp;|&nbsp; <b>Tempo no Sistema:</b> {tempo_no_sistema}</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            c_cr1, c_cr2 = st.columns([3, 2])
+            with c_cr1:
+                if bem.get("pa_oficio_autorizador"):
+                    st.caption(f"📑 **P.A. / Ofício Autorizador:** {bem['pa_oficio_autorizador']}")
+            
+            with c_cr2:
+                index_dest = opcoes_destinacao.index(fase_atual) if fase_atual in opcoes_destinacao else 0
+                nova_dest = st.selectbox(
+                    "Fase / Destinação Final:",
+                    options=opcoes_destinacao,
+                    index=index_dest,
+                    key=f"sel_dest_creds_{bem['id_bem']}_{idx_creds}"
+                )
                 
-                with c_cr1:
-                    st.markdown(f"**Código:** **{bem['id_bem']}** | REDS: **{bem['num_reds']}**")
-                    st.markdown(f"**Material:** {bem['descricao']}")
-                    st.markdown(f"👤 Autor: **{bem['autores']}** | Invólucro/Lacre: **{bem.get('involucro_lacre')}**")
-                    st.markdown(f"🏛️ **Unidade de Custódia:** **{bem.get('unidade_posse_atual', 'N/I')}** | **Fiel Depositário:** **{bem['fiel_depositario_atual']}**")
-                    
-                    if bem.get("pa_oficio_autorizador"):
-                        st.markdown(f"📑 **P.A. / Ofício Autorizador:** {badge_destaque(bem['pa_oficio_autorizador'], '#38BDF8')}", unsafe_allow_html=True)
-                        
-                    st.markdown(f"⏱️ **Tempo no Sistema:** **{tempo_no_sistema}** (Desde {str(bem.get('data_ingestao'))[:10]})")
-                
-                with c_cr2:
-                    index_dest = opcoes_destinacao.index(fase_atual) if fase_atual in opcoes_destinacao else 0
-                    nova_dest = st.selectbox(
-                        "Fase / Destinação Final:",
-                        options=opcoes_destinacao,
-                        index=index_dest,
-                        key=f"sel_dest_creds_{bem['id_bem']}_{idx_creds}"
-                    )
-                    
-                    e_orgao_externo = nova_dest in [
-                        "Encaminhado à Delegacia de Polícia Civil (PCMG)",
-                        "Encaminhado ao JECRIM / Fórum",
-                        "Encaminhado para Perícia Técnica",
-                        "DESTRUÍDO / DESCARTADO"
-                    ]
+                e_orgao_externo = nova_dest in [
+                    "Encaminhado à Delegacia de Polícia Civil (PCMG)",
+                    "Encaminhado ao JECRIM / Fórum",
+                    "Encaminhado para Perícia Técnica",
+                    "DESTRUÍDO / DESCARTADO"
+                ]
 
-                    input_pa_oficio = ""
-                    if e_orgao_externo and nova_dest != fase_atual:
-                        input_pa_oficio = st.text_input(
-                            "Nº do P.A. / Ofício Autorizador (Obrigatório):",
-                            placeholder="Ex: OFÍCIO 142/2026-35CIA ou PA 001/2026",
-                            key=f"pa_oficio_in_{bem['id_bem']}_{idx_creds}"
-                        ).strip()
+                input_pa_oficio = ""
+                if e_orgao_externo and nova_dest != fase_atual:
+                    input_pa_oficio = st.text_input(
+                        "Nº do P.A. / Ofício Autorizador (Obrigatório):",
+                        placeholder="Ex: OFÍCIO 142/2026-35CIA ou PA 001/2026",
+                        key=f"pa_oficio_in_{bem['id_bem']}_{idx_creds}"
+                    ).strip()
 
-                    if nova_dest != fase_atual:
-                        if st.button("💾 Confirmar Alteração de Fase", key=f"btn_salvar_fase_{bem['id_bem']}_{idx_creds}", type="primary"):
-                            if e_orgao_externo and not input_pa_oficio:
-                                st.error("Informe o número do P.A. ou Ofício autorizador para tramitações externas.")
-                            else:
-                                now_iso = datetime.datetime.now().isoformat()
-                                upd_data = {"fase_destinacao": nova_dest}
-                                if input_pa_oficio:
-                                    upd_data["pa_oficio_autorizador"] = input_pa_oficio
-                                
-                                if atualizar_material_supabase(bem["id_bem"], upd_data):
-                                    registrar_log_supabase({
-                                        "data_hora": now_iso,
-                                        "num_reds": bem["num_reds"],
-                                        "bem_id": bem["id_bem"],
-                                        "acao": "ALTERAÇÃO DE DESTINAÇÃO FINAL",
-                                        "origem": "CREDS-TCO",
-                                        "unidade_origem": unidade_militar_atual,
-                                        "destino": nova_dest,
-                                        "unidade_destino": "Órgão Externo / CREDS",
-                                        "detalhe": f"Nova Fase: {nova_dest} | P.A./Ofício: {input_pa_oficio or 'N/A'}"
-                                    })
-                                    st.success("Fase atualizada com sucesso no Supabase!")
-                                    st.rerun()
-
-                    if fase_atual in ["Encaminhado à Delegacia de Polícia Civil (PCMG)", "Encaminhado ao JECRIM / Fórum", "Encaminhado para Perícia Técnica"]:
-                        if st.button("🔄 Devolução de Órgão Externo (Reingressar)", key=f"btn_dev_ext_{bem['id_bem']}_{idx_creds}"):
+                if nova_dest != fase_atual:
+                    if st.button("💾 Confirmar Alteração de Fase", key=f"btn_salvar_fase_{bem['id_bem']}_{idx_creds}", type="primary"):
+                        if e_orgao_externo and not input_pa_oficio:
+                            st.error("Informe o número do P.A. ou Ofício autorizador para tramitações externas.")
+                        else:
                             now_iso = datetime.datetime.now().isoformat()
-                            upd_data = {
-                                "fase_destinacao": "Guardado no Depósito (Aguardando Autorização Judicial)",
-                                "fiel_depositario_atual": nome_militar_atual,
-                                "unidade_posse_atual": unidade_militar_atual,
-                                "data_posse_atual": now_iso
-                            }
+                            upd_data = {"fase_destinacao": nova_dest}
+                            if input_pa_oficio:
+                                upd_data["pa_oficio_autorizador"] = input_pa_oficio
                             
                             if atualizar_material_supabase(bem["id_bem"], upd_data):
                                 registrar_log_supabase({
                                     "data_hora": now_iso,
                                     "num_reds": bem["num_reds"],
                                     "bem_id": bem["id_bem"],
-                                    "acao": "DEVOLUÇÃO DE ÓRGÃO EXTERNO",
-                                    "origem": fase_atual,
-                                    "unidade_origem": "Órgão Externo",
-                                    "destino": nome_militar_atual,
-                                    "unidade_destino": unidade_militar_atual,
-                                    "detalhe": f"Material reingressado por {nome_militar_atual} na unidade {unidade_militar_atual}."
+                                    "acao": "ALTERAÇÃO DE DESTINAÇÃO FINAL",
+                                    "origem": "CREDS-TCO",
+                                    "unidade_origem": unidade_militar_atual,
+                                    "destino": nova_dest,
+                                    "unidade_destino": "Órgão Externo / CREDS",
+                                    "detalhe": f"Nova Fase: {nova_dest} | P.A./Ofício: {input_pa_oficio or 'N/A'}"
                                 })
-                                st.success("Devolução de órgão externo registrada!")
+                                st.success("Fase atualizada com sucesso no Supabase!")
                                 st.rerun()
 
 def renderizar_aba_logs(all_logs_banco):
@@ -656,7 +631,7 @@ def renderizar_aba_logs(all_logs_banco):
         with f5_col3:
             f5_militar = st.text_input("Militar Envolvido:", placeholder="Ex: ALEXANDRINO", key="f5_militar").strip()
         with f5_col4:
-            usar_f5_data = st.checkbox("Filtrar por Data  ", key="f5_chk_data")
+            usar_f5_data = st.checkbox("Filtrar por Data", key="f5_chk_data")
             f5_data = st.date_input("Data do Evento:", datetime.date.today(), key="f5_data") if usar_f5_data else None
 
     logs_filtrados = aplicar_filtros_logs(all_logs_banco, f5_reds, f5_busca, f5_militar, f5_data)

@@ -29,34 +29,74 @@ TEXTO_TERMO_COMPLIANCE = """
 """
 
 def aplicar_estilo_tco():
-    """Aplica o padrão visual em tons terrosos, marrom e fundo bege com texto escuro."""
+    """Aplica o padrão visual tático PMMG em tons de marrom, ambar, bronze e legibilidade ampliada sem verdes vibrantes."""
     st.markdown("""
         <style>
+        /* Ajuste de tamanho de fonte base e legibilidade geral */
+        html, body, [class*="css"] {
+            font-size: 17px !important;
+        }
+        
+        /* Cartão Tático TCO - Tons Terrosos e Marrom PMMG */
         .card-tco {
-            background-color: #F5F0EB;
-            border-left: 6px solid #6C4E31;
+            background-color: #2A2421;
+            border-left: 6px solid #8B5A2B;
             border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 14px;
-            color: #1A1A1A;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.06);
+            padding: 18px;
+            margin-bottom: 16px;
+            color: #F3EFE6;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            border-top: 1px solid #45362E;
+            border-right: 1px solid #45362E;
+            border-bottom: 1px solid #45362E;
         }
         .card-tco h5 {
-            color: #4A3420;
+            color: #C5A059;
+            font-size: 1.15rem;
             font-weight: 700;
             margin-top: 0;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
         }
         .card-tco p {
-            color: #2D251E;
-            font-size: 0.95rem;
-            line-height: 1.5;
+            color: #E2D9CC;
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        /* Crachás e Badges Táticos em Tons de Âmbar/Marrom */
+        .badge-tatico-amber {
+            background-color: #3D2B1F;
+            color: #C5A059;
+            font-size: 1rem;
+            font-weight: 700;
+            padding: 5px 12px;
+            border-radius: 6px;
+            border: 1px solid #8B5A2B;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        .badge-tatico-bronze {
+            background-color: #4A2810;
+            color: #E28743;
+            font-size: 1rem;
+            font-weight: 700;
+            padding: 5px 12px;
+            border-radius: 6px;
+            border: 1px solid #B45309;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        /* Tabelas e DataEditors com cabeçalho tático marrom */
+        .stDataFrame {
+            border: 1px solid #45362E;
+            border-radius: 8px;
         }
         </style>
     """, unsafe_allow_html=True)
 
 def verificar_aceite_compliance_supabase(usuario_id):
-    """Verifica se o usuário já aceitou o termo de compliance no banco de dados."""
     if not supabase or not usuario_id:
         return True
     try:
@@ -66,7 +106,6 @@ def verificar_aceite_compliance_supabase(usuario_id):
         return False
 
 def registrar_aceite_compliance_supabase(usuario_id, nome_militar, cargo_funcao, unidade):
-    """Grava a aceitação única do militar no Supabase."""
     if not supabase or not usuario_id:
         return False
     try:
@@ -119,7 +158,6 @@ def exibir_modal_termo_compliance(usuario_id, nome_militar, cargo_funcao, unidad
             st.rerun()
 
 def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, usuario_id, data_aceite_str):
-    """Gera o arquivo PDF imprimível do Termo de Compliance assinado pelo operador."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40

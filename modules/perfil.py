@@ -17,7 +17,9 @@ def exibir_tela_perfil():
 
     usr = st.session_state.get("usuario_dados") or {}
     usr_key = str(usr.get('usuario_login') or usr.get('usuario') or usr.get('num_policia') or '').strip().upper()
-    nome_guerra = str(usr.get('nome_guerra', '')).strip().upper()
+    nome_guerra = str(usr.get('nome_guerra', 'MILITAR')).strip().upper()
+    cargo_funcao = str(usr.get('cargo_funcao', 'POLICIAL MILITAR')).strip().upper()
+    operador_str = f"{cargo_funcao} {nome_guerra}".strip()
 
     aba_p1, aba_p2, aba_p3 = st.tabs([
         "🛡️ Minhas Permissões & Travas de Segurança",
@@ -25,16 +27,13 @@ def exibir_tela_perfil():
         "📜 Histórico Auditável de Acessos"
     ])
 
-    # =========================================================================
-    # ABA 1: PERMISSÕES, TRAVAS DE AUDITORIA E PLANO DE COMPLIANCE
-    # =========================================================================
     with aba_p1:
         c_pf1, c_pf2 = st.columns(2)
         with c_pf1:
             st.info(
-                f"👤 **Militar:** {usr.get('nome_guerra', 'Militar')}\n\n"
+                f"👤 **Militar:** {nome_guerra}\n\n"
                 f"🆔 **Nº de Polícia / Login:** {usr_key if usr_key else 'N/I'}\n\n"
-                f"🔰 **Cargo / Função:** {usr.get('cargo_funcao', 'Operador')}"
+                f"🔰 **Cargo / Função:** {cargo_funcao}"
             )
         with c_pf2:
             unidade_exibicao = usr.get('unidade') or st.session_state.get('cfg_subunidade', '35ª CIA PM')
@@ -58,8 +57,6 @@ def exibir_tela_perfil():
         st.write(perm_desc.get(nivel_exibicao, "Visualização de escalas publicadas e solicitação de permutas de serviço."))
 
         st.divider()
-
-        # PAINEL DE PROTOCOLOS E TRAVAS DE SEGURANÇA IMPLEMENTADAS
         st.markdown("##### ⚙️ Protocolos Técnicos e Travas de Auditoria Ativas no SIOP")
         
         c_trv1, c_trv2 = st.columns(2)
@@ -78,8 +75,6 @@ def exibir_tela_perfil():
             """)
 
         st.divider()
-
-        # SEÇÃO DE EXPORTAÇÃO DA PARTE INFORMATIVA DE COMPLIANCE
         st.markdown("##### 📄 Exportação do Plano de Segurança e Compliance (Ofício / Parte)")
         st.caption("Gere a Parte Informativa oficial pré-formatada para apresentação ao Comando da Unidade e órgãos de fiscalização/correição.")
 
@@ -113,9 +108,6 @@ def exibir_tela_perfil():
                 use_container_width=True
             )
 
-    # =========================================================================
-    # ABA 2: ATUALIZAÇÃO DE CONTATOS E TROCA DE SENHA (TROPA & GESTORES)
-    # =========================================================================
     with aba_p2:
         st.markdown("##### ⚙️ Atualização de Contatos Corporativos")
         st.caption("Mantenha seu e-mail e celular atualizados para receber códigos de segurança e avisos de escala.")
@@ -139,7 +131,7 @@ def exibir_tela_perfil():
                     }
                     
                     if salvar_usuario_universal_supabase(usr_key, payload_contatos):
-                        registrar_audit_log(usr_key, "", "ATUALIZAR_CONTATOS", f"E-mail ({novo_email}) e Celular atualizados.")
+                        registrar_audit_log(operador_str, usr_key, "ATUALIZAR_CONTATOS", f"E-mail ({novo_email}) e Celular atualizados.")
                         st.success("✅ Contatos corporativos salvos com sucesso!")
                         st.rerun()
                     else:
@@ -180,20 +172,21 @@ def exibir_tela_perfil():
                             usr["senha"] = nova_senha_p
                             usr["senha_hash"] = hash_nova_p
                             st.session_state["usuario_dados"] = usr
-                            registrar_audit_log(usr_key, "", "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário.")
+                            registrar_audit_log(operador_str, usr_key, "ALTERAR_SENHA", "Troca de senha efetuada pelo próprio usuário.")
                             st.success("🎉 Senha alterada com sucesso!")
                             st.rerun()
                         else:
                             st.error("Erro ao salvar nova senha no banco. Tente novamente.")
 
-    # =========================================================================
-    # ABA 3: HISTÓRICO AUDITÁVEL DE ACESSOS E OPERAÇÕES
-    # =========================================================================
     with aba_p3:
         st.markdown("##### 📜 Registro Auditável de Logins e Operações")
         st.caption("Acompanhe o registro imutável de todas as ações executadas nesta conta para fins de compliance e segurança.")
 
         df_logs = buscar_logs_banco(limite=500)
+
+        if df_logs.empty:
+            registrar_audit_log(operador_str, usr_key, "CONSULTA_PERFIL", "Acesso inicial à aba de auditoria no Perfil.")
+            df_logs = buscar_logs_banco(limite=500)
 
         if not df_logs.empty:
             if "data_hora" in df_logs.columns:
@@ -209,7 +202,7 @@ def exibir_tela_perfil():
             df_filtrado = df_logs[mask_usuario]
 
             if nivel_exibicao in ["PROGRAMADOR", "ADMIN"]:
-                ver_geral = st.checkbox("🌐 Exibir Auditoria Geral do Sistema (Visão de Gestor)", value=False, key="chk_ver_geral_perfil")
+                ver_geral = st.checkbox("🌐 Exibir Auditoria Geral do Sistema (Visão de Gestor)", value=True, key="chk_ver_geral_perfil")
                 if ver_geral:
                     df_filtrado = df_logs
 
@@ -226,6 +219,6 @@ def exibir_tela_perfil():
                     hide_index=True
                 )
             else:
-                st.info(f"ℹ️ Nenhum evento crítico registrado para este usuário ({usr.get('nome_guerra', 'Militar')}) nas últimas sessões.")
+                st.info(f"ℹ️ Nenhum evento registrado especificamente para {nome_guerra}.")
         else:
             st.info("ℹ️ Nenhum evento crítico registrado no banco de dados até o momento.")

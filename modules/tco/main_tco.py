@@ -25,7 +25,6 @@ def renderizar_modulo_tco():
     perfil_usuario = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
     cargo_str = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).upper()
 
-    # Validação do Termo de Compliance (Aparece apenas 1 vez na vida do usuário)
     if not st.session_state.get("termo_compliance_aceito", False):
         if verificar_aceite_compliance_supabase(usr_id):
             st.session_state["termo_compliance_aceito"] = True
@@ -38,7 +37,13 @@ def renderizar_modulo_tco():
 
     eh_gestor_creds = "PROGRAMADOR" in cargo_str or "ADMIN" in perfil_usuario or "P1" in perfil_usuario or "COMANDANTE" in cargo_str or "CREDS" in perfil_usuario
 
-    st.markdown(f"👤 **Operador Ativo:** `{nome_militar_atual}` | 🏛️ **Unidade Atual:** `{unidade_militar_atual}`")
+    # Cabeçalho sem verde neon: utiliza badges táticos dourado e bronze
+    st.markdown(f"""
+    <div style='margin-bottom: 15px;'>
+        <span class='badge-tatico-amber'>👤 Operador Ativo: {nome_militar_atual}</span>
+        <span class='badge-tatico-bronze'>🏛️ Unidade Atual: {unidade_militar_atual}</span>
+    </div>
+    """, unsafe_allow_html=True)
 
     all_bens_banco = carregar_materiais_supabase()
     all_logs_banco = carregar_logs_supabase()
