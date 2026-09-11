@@ -3,6 +3,7 @@ import uuid
 import pandas as pd
 from utils.excel_importer import carregar_planilha_universal
 from core.database import salvar_militares_supabase
+from utils.file_validator import validar_planilha_upload, desarmar_csv_injection
 
 def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
     @st.dialog("✏️ Editar Efetivo em Tabela (Estilo Planilha)", width="large")
@@ -139,41 +140,48 @@ def abrir_modal_upload_planilha(funcs_extracao):
         arquivo_planilha = st.file_uploader("Selecione o arquivo XLSX/CSV:", type=["xls", "xlsx", "csv"], key="uploader_efetivo_modal")
         
         if arquivo_planilha is not None:
-            if st.button("📥 Processar e Conferir Dados", type="primary", use_container_width=True):
-                try:
-                    df_imp = carregar_planilha_universal(arquivo_planilha)
-                    df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
+            # Validação de Segurança do Arquivo
+            is_valido, msg_val = validar_planilha_upload(arquivo_planilha)
+            if not is_valido:
+                st.error(msg_val)
+            else:
+                if st.button("📥 Processar e Conferir Dados", type="primary", use_container_width=True):
+                    try:
+                        df_imp = carregar_planilha_universal(arquivo_planilha)
+                        # Neutraliza potenciais formulas injeções maliciosas
+                        df_imp = desarmar_csv_injection(df_imp)
+                        df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
 
-                    lista_temp = []
-                    for idx_row, row in df_imp.iterrows():
-                        mat_unificada = tratar_num(row)
-                        if not mat_unificada or mat_unificada.upper() == "NAN":
-                            continue
+                        lista_temp = []
+                        for idx_row, row in df_imp.iterrows():
+                            mat_unificada = tratar_num(row)
+                            if not mat_unificada or mat_unificada.upper() == "NAN":
+                                continue
 
-                        posto_raw = extrair_pg(row)
-                        pg_sigla = padronizar_grad(posto_raw)
+                            posto_raw = extrair_pg(row)
+                            pg_sigla = padronizar_grad(posto_raw)
+                            
+                            nome_serv = str(row.get("NOME SERVIDOR", row.get("NOME_COMPLETO", row.get("NOME", "MILITAR")))).strip().upper()
+                            parts_nome = nome_serv.split()
+                            n_guerra_ext = parts_nome[-1] if len(parts_nome) > 1 else nome_serv
+                            
+                            cidade_val = extrair_cid(row)
+                            unidade_val = extrair_uni(row)
+
+                            lista_temp.append({
+                                "id": f"mili_{idx_row}_{uuid.uuid4().hex[:6]}",
+                                "num_policia": mat_unificada,
+                                "posto_grad": pg_sigla,
+                                "nome_guerra": n_guerra_ext,
+                                "nome_completo": nome_serv,
+                                "cidade": cidade_val,
+                                "peso": pesos_dict.get(pg_sigla, 99),
+                                "unidade": unidade_val
+                            })
                         
-                        nome_serv = str(row.get("NOME SERVIDOR", row.get("NOME_COMPLETO", row.get("NOME", "MILITAR")))).strip().upper()
-                        parts_nome = nome_serv.split()
-                        n_guerra_ext = parts_nome[-1] if len(parts_nome) > 1 else nome_serv
-                        
-                        cidade_val = extrair_cid(row)
-                        unidade_val = extrair_uni(row)
-
-                        lista_temp.append({
-                            "id": f"mili_{idx_row}_{uuid.uuid4().hex[:6]}",
-                            "num_policia": mat_unificada,
-                            "posto_grad": pg_sigla,
-                            "nome_guerra": n_guerra_ext,
-                            "nome_completo": nome_serv,
-                            "cidade": cidade_val,
-                            "peso": pesos_dict.get(pg_sigla, 99),
-                            "unidade": unidade_val
-                        })
-                    
-                    st.session_state["temp_importacao_lista"] = remover_dup(lista_temp)
-                except Exception as ex:
-                    st.error(f"Erro ao processar planilha: {ex}")
+                        st.session_state["temp_importacao_lista"] = remover_dup(lista_temp)
+                    except Exception as ex:
+                        st.error(f"Erro ao processar planilha: {ex}")
 
         if st.session_state.get("temp_importacao_lista"):
             st.divider()

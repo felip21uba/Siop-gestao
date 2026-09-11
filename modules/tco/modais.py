@@ -2,6 +2,7 @@ import streamlit as st
 import datetime
 from modules.tco.storage import upload_midia_supabase
 from modules.tco.database import atualizar_material_supabase, registrar_log_supabase
+from utils.file_validator import validar_imagem_upload, validar_pdf_upload, sanitizar_nome_arquivo
 
 @st.dialog("✏️ Editar Dados e Anexar Mídias ao Material")
 def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atual):
@@ -38,10 +39,22 @@ def abrir_modal_edicao_material(bem_obj, nome_militar_atual, unidade_militar_atu
 
                 if uploaded_midias:
                     for f in uploaded_midias:
+                        ext = f.name.lower()
+                        if ext.endswith(".pdf"):
+                            valido, msg_val = validar_pdf_upload(f)
+                        else:
+                            valido, msg_val = validar_imagem_upload(f)
+
+                        if not valido:
+                            st.error(f"Arquivo '{f.name}': {msg_val}")
+                            return
+
+                        nome_seguro = sanitizar_nome_arquivo(f.name)
                         f_bytes = f.getvalue()
+                        
                         resultado_storage = upload_midia_supabase(
                             file_bytes=f_bytes,
-                            file_name=f.name,
+                            file_name=nome_seguro,
                             file_type=f.type,
                             num_reds=bem_obj["num_reds"],
                             id_bem=bem_obj["id_bem"]

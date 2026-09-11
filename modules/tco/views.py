@@ -5,8 +5,9 @@ import uuid
 from modules.tco.parser_reds import extrair_dados_reds_pdf
 from modules.tco.storage import upload_midia_supabase
 from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase
-from modules.tco.modals import abrir_modal_edicao_material, abrir_modal_divergencia
+from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergencia
 from modules.tco.compliance import gerar_pdf_termo_compliance
+from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
 def badge_destaque(texto, cor="#60A5FA", bg_cor="#1E293B"):
     return f"<span style='background-color: {bg_cor}; color: {cor}; font-size: 1.05rem; font-weight: bold; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; margin-right: 6px;'>{texto}</span>"
@@ -76,11 +77,15 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
         arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v19")
 
         if arquivo_pdf is not None:
-            if st.button("⚡ Processar e Ler Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v19"):
-                with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
-                    dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
-                    st.session_state["temp_reds_extraido"] = dados_reds
-                    st.success("Leitura do REDS concluída!")
+            valido_pdf, msg_pdf = validar_pdf_upload(arquivo_pdf)
+            if not valido_pdf:
+                st.error(msg_pdf)
+            else:
+                if st.button("⚡ Processar e Ler Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v19"):
+                    with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
+                        dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
+                        st.session_state["temp_reds_extraido"] = dados_reds
+                        st.success("Leitura do REDS concluída!")
 
     with col_ing2:
         st.markdown("#### ➕ Inserção Manual de Material")
@@ -190,10 +195,22 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
 
                 if photos_ingestao:
                     for p_file in photos_ingestao:
+                        ext_p = p_file.name.lower()
+                        if ext_p.endswith(".pdf"):
+                            valido_p, msg_p = validar_pdf_upload(p_file)
+                        else:
+                            valido_p, msg_p = validar_imagem_upload(p_file)
+
+                        if not valido_p:
+                            st.error(f"Arquivo '{p_file.name}': {msg_p}")
+                            return
+
+                        nome_p_seguro = sanitizar_nome_arquivo(p_file.name)
                         p_bytes = p_file.getvalue()
+                        
                         resultado_storage = upload_midia_supabase(
                             file_bytes=p_bytes,
-                            file_name=p_file.name,
+                            file_name=nome_p_seguro,
                             file_type=p_file.type,
                             num_reds=d["num_reds"],
                             id_bem=f"INGESTAO-{d['num_reds']}"
@@ -366,7 +383,12 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
     meus_bens_filtrados = aplicar_filtros_bens(meus_bens, f3_reds, f3_autor, f3_militar, f3_unidade)
     
     mils_todos = st.session_state.get("lista_militares", [])
-    nomes_mils = [f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else ["CB MORAES", "SD VINICIUS", "SGT SILVA", "CREDS-TCO SEÇÃO"]
+    nomes_mils_base = [f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else ["CB MORAES", "SD VINICIUS", "SGT SILVA"]
+    
+    # Garante opção válida no selectbox mesmo sem outros militares
+    opcoes_destinatario = [n for n in nomes_mils_base if n != nome_militar_atual]
+    if not opcoes_destinatario:
+        opcoes_destinatario = ["CREDS CENTRAL"]
 
     col_tr1, col_tr2 = st.columns(2)
     with col_tr1:
@@ -376,7 +398,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             
             if bens_disp:
                 bem_sel_key = st.selectbox("Selecione o Material:", list(bens_disp.keys()), key="sel_material_transf_v19")
-                destinatario_sel = st.selectbox("Selecione o Destinatário:", [n for n in nomes_mils if n != nome_militar_atual], key="sel_destinatario_v19")
+                destinatario_sel = st.selectbox("Selecione o Destinatário:", opcoes_destinatario, key="sel_destinatario_v19")
                 unidade_dest_sel = st.selectbox("Unidade Destino:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v19")
                 obs_transf = st.text_input("Observações do Lacre / Estado:", key="txt_obs_transf_v19")
                 
