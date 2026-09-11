@@ -1,7 +1,7 @@
 import streamlit as st
 
 def renderizar_passo1():
-    # Inicialização preventiva de chaves no session_state
+    # Garantia de inicialização em segundo plano (sem alterar a interface)
     if "cfg_subunidade" not in st.session_state:
         st.session_state["cfg_subunidade"] = "35ª COMPANHIA DE POLÍCIA MILITAR"
 
@@ -13,7 +13,6 @@ def renderizar_passo1():
     col1, col2 = st.columns([2, 2], gap="large")
 
     with col1:
-        st.markdown("##### 🏢 Identificação da Subunidade / Cia")
         subunidade_input = st.text_input(
             "Nome da Subunidade / OPM:", 
             value=st.session_state.get("cfg_subunidade", "35ª COMPANHIA DE POLÍCIA MILITAR"),
@@ -25,9 +24,6 @@ def renderizar_passo1():
             st.toast("✅ Subunidade atualizada!", icon="🏢")
 
     with col2:
-        st.markdown("##### 🛡️ Gestão de Equipes do Turno")
-        
-        # Formulário para adicionar nova equipe
         c_add1, c_add2 = st.columns([3, 1])
         with c_add1:
             nova_equipe_input = st.text_input(
@@ -48,21 +44,14 @@ def renderizar_passo1():
                 else:
                     st.warning("⚠️ Digite o nome da equipe.")
 
-        st.divider()
-
-        # Listagem e Exclusão de Equipes
-        st.markdown("###### Equipes Cadastradas:")
-        equipes_atuais = list(st.session_state["lista_equipes"])
+        equipes_atuais = list(st.session_state.get("lista_equipes", []))
         
-        if not equipes_atuais:
-            st.info("Nenhuma equipe cadastrada no momento.")
-        else:
-            for eq in equipes_atuais:
-                c_eq1, c_eq2 = st.columns([4, 1])
-                with c_eq1:
-                    st.markdown(f"• **{eq}**")
-                with c_eq2:
-                    if st.button("🗑️", key=f"btn_del_eq_{eq}", help=f"Remover {eq}"):
-                        st.session_state["lista_equipes"].remove(eq)
-                        st.toast(f"🗑️ {eq} removida com sucesso!", icon="✅")
-                        st.rerun()
+        for eq in equipes_atuais:
+            c_eq1, c_eq2 = st.columns([4, 1])
+            with c_eq1:
+                st.markdown(f"• **{eq}**")
+            with c_eq2:
+                if st.button("🗑️", key=f"btn_del_eq_{eq}", help=f"Remover {eq}"):
+                    st.session_state["lista_equipes"].remove(eq)
+                    st.toast(f"🗑️ {eq} removida!", icon="✅")
+                    st.rerun()
