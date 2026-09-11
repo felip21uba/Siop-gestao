@@ -2,10 +2,82 @@ import streamlit as st
 import time
 import datetime
 import json
+import streamlit.components.v1 as components
 from core.database import supabase
 
 # ⏱️ 20 minutos = 1.200 segundos
 TEMPO_TIMEOUT_SEGUNDOS = 20 * 60
+
+def renderizar_relogio_sessao(tempo_minutos=20):
+    """Renderiza o relógio flutuante de contagem regressiva no canto inferior direito."""
+    tempo_segundos = tempo_minutos * 60
+    
+    html_relogio = f"""
+    <div id="badge-sessao-box" style="
+        position: fixed;
+        bottom: 12px;
+        right: 12px;
+        z-index: 999999;
+        background-color: rgba(15, 23, 42, 0.88);
+        color: #ffffff;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 11px;
+        font-weight: 600;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        user-select: none;
+        pointer-events: none;
+    ">
+        <span id="sessao-icon" style="font-size: 12px;">⏱️</span>
+        <span>Sessão: <span id="sessao-timer" style="font-family: monospace; font-size: 12px; font-weight: bold; color: #38bdf8;">20:00</span></span>
+    </div>
+
+    <script>
+        (function() {{
+            var totalSeconds = {tempo_segundos};
+            var timerDisplay = document.getElementById('sessao-timer');
+            var iconDisplay = document.getElementById('sessao-icon');
+            var boxDisplay = document.getElementById('badge-sessao-box');
+
+            function atualizarContagem() {{
+                var minutos = Math.floor(totalSeconds / 60);
+                var segundos = totalSeconds % 60;
+
+                var minStr = minutos < 10 ? "0" + minutos : minutos;
+                var secStr = segundos < 10 ? "0" + segundos : segundos;
+
+                if (timerDisplay) {{
+                    timerDisplay.innerText = minStr + ":" + secStr;
+                }}
+
+                if (totalSeconds <= 300 && totalSeconds > 0) {{
+                    if (timerDisplay) timerDisplay.style.color = "#ef4444";
+                    if (boxDisplay) boxDisplay.style.border = "1px solid rgba(239, 68, 68, 0.5)";
+                }}
+
+                if (totalSeconds <= 0) {{
+                    if (timerDisplay) {{
+                        timerDisplay.innerText = "Expirada";
+                        timerDisplay.style.color = "#ef4444";
+                    }}
+                    if (iconDisplay) iconDisplay.innerText = "⚠️";
+                    return;
+                }}
+
+                totalSeconds--;
+                setTimeout(atualizarContagem, 1000);
+            }}
+
+            atualizarContagem();
+        }})();
+    </script>
+    """
+    components.html(html_relogio, height=0, width=0)
 
 def auto_salvar_rascunho_escala_supabase(usuario_id):
     """Salva automaticamente o progresso da escala no Supabase."""
@@ -71,6 +143,7 @@ def gerenciar_timeout_sessao():
             if usr_id:
                 auto_salvar_rascunho_escala_supabase(usr_id)
             
+            # Limpa sessão
             st.session_state["autenticado"] = False
             st.session_state["usuario_autenticado"] = False
             st.session_state["mfa_pendente"] = False
@@ -79,10 +152,16 @@ def gerenciar_timeout_sessao():
             st.session_state["token_sessao_local"] = None
             st.session_state["escala_restaurada"] = False
             st.session_state["ultima_atividade_ts"] = None
+            
             st.error("⌛ Sua sessão expirou por inatividade (20 min). Seu rascunho foi salvo automaticamente!")
+            time.sleep(2)
             st.rerun()
 
     st.session_state["ultima_atividade_ts"] = now_ts
 
+    # Exibe o relógio flutuante se estiver autenticado
+    renderizar_relogio_sessao(tempo_minutos=20)
+    
+    # Salva o progresso
     if usr_id:
         auto_salvar_rascunho_escala_supabase(usr_id)
