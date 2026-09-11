@@ -48,15 +48,21 @@ def padronizar_graduacao(texto):
     ):
         return "3º SGT"
 
-    if re.search(r"1\s*SGT", t_clean): return "1º SGT"
-    if re.search(r"2\s*SGT", t_clean): return "2º SGT"
-    if re.search(r"3\s*SGT", t_clean): return "3º SGT"
+    if re.search(r"1\s*SGT", t_clean):
+        return "1º SGT"
+    if re.search(r"2\s*SGT", t_clean):
+        return "2º SGT"
+    if re.search(r"3\s*SGT", t_clean):
+        return "3º SGT"
 
     if ("TEN" in t_clean and "CEL" in t_clean) or ("CORONEL" in t_clean and "TEN" in t_clean) or t_clean == "TC":
         return "TEN CEL"
-    if "CEL" in t_clean or "CORONEL" in t_clean: return "CEL"
-    if "MAJ" in t_clean or "MAJOR" in t_clean: return "MAJ"
-    if "CAP" in t_clean or "CAPITAO" in t_clean: return "CAP"
+    if "CEL" in t_clean or "CORONEL" in t_clean:
+        return "CEL"
+    if "MAJ" in t_clean or "MAJOR" in t_clean:
+        return "MAJ"
+    if "CAP" in t_clean or "CAPITAO" in t_clean:
+        return "CAP"
 
     if "SUB TEN" in t_clean or "SUBTENENTE" in t_clean or t_clean in ("SUB", "ST"):
         return "SUB TEN"
@@ -66,18 +72,25 @@ def padronizar_graduacao(texto):
     if ("2" in t_clean and ("TEN" in t_clean or "TENENTE" in t_clean)) or "SEGUNDO TENENTE" in t_clean:
         return "2º TEN"
     if "TENENTE" in t_clean or re.search(r"(^|\s)TEN(\s|$)", t_clean):
-        if "1" in t_clean or "PRIMEIRO" in t_clean: return "1º TEN"
-        if "2" in t_clean or "SEGUNDO" in t_clean: return "2º TEN"
+        if "1" in t_clean or "PRIMEIRO" in t_clean:
+            return "1º TEN"
+        if "2" in t_clean or "SEGUNDO" in t_clean:
+            return "2º TEN"
         return "2º TEN"
 
-    if "ASP" in t_clean or "ASPIRANTE" in t_clean: return "ASP"
-    if "CAD" in t_clean or "CADETE" in t_clean: return "CAD"
-    if "AL OF" in t_clean or "ALUNO OFICIAL" in t_clean: return "AL OF"
+    if "ASP" in t_clean or "ASPIRANTE" in t_clean:
+        return "ASP"
+    if "CAD" in t_clean or "CADETE" in t_clean:
+        return "CAD"
+    if "AL OF" in t_clean or "ALUNO OFICIAL" in t_clean:
+        return "AL OF"
     if "SD AL" in t_clean or "AL SD" in t_clean or "ALUNO SD" in t_clean or "ALUNO SOLDADO" in t_clean:
         return "SD AL"
 
-    if "CABO" in t_clean or t_clean == "CB" or " CB " in f" {t_clean} ": return "CB"
-    if "SOLDADO" in t_clean or t_clean == "SD" or " SD " in f" {t_clean} ": return "SD"
+    if "CABO" in t_clean or t_clean == "CB" or " CB " in f" {t_clean} ":
+        return "CB"
+    if "SOLDADO" in t_clean or t_clean == "SD" or " SD " in f" {t_clean} ":
+        return "SD"
 
     return t_raw
 
@@ -94,7 +107,6 @@ def extrair_posto_grad_planilha(row):
     return "SD"
 
 def extrair_cidade_planilha(row):
-    # Expansão para aceitar Fração, Destacamento, Localidade e Lotação
     for k, v in row.items():
         k_norm = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
         if any(p in k_norm for p in ["MUNICIPIO", "CIDADE", "LOCAL", "FRACAO", "LOTA", "DESTACAMENTO"]):
@@ -245,28 +257,35 @@ def renderizar_fragmento_passo3():
     militares = remover_duplicados_militares(st.session_state.get("lista_militares", []))
     st.session_state["lista_militares"] = militares
 
-    c_uni, c_cid, c_busca = st.columns([1.5, 1.5, 2])
+    c_uni, c_grad, c_cid, c_busca = st.columns([1.3, 1.3, 1.3, 1.8])
+    
     with c_uni:
         unidades_unicas = sorted(list(set([str(m.get("unidade", "UNIDADE N/I")).upper() for m in militares if m.get("unidade")])))
-        unidades_sel = st.multiselect("🏢 Filtrar por Unidade(s):", options=unidades_unicas, key="msel_unidade_filtro_p3_frag")
-    
+        unidades_sel = st.multiselect("🏢 Unidade:", options=unidades_unicas, key="msel_unidade_filtro_p3_frag")
+
+    with c_grad:
+        graduacoes_unicas = sorted(
+            list(set([padronizar_graduacao(m.get("posto_grad", "SD")) for m in militares])),
+            key=lambda x: PESOS_HIERARQUIA.get(x, 99)
+        )
+        graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
+
     with c_cid:
-        # Filtro de Cidades em Cascata: Só mostra cidades ligadas à(s) unidade(s) escolhida(s)
+        militares_para_cidade = militares
         if unidades_sel:
-            militares_para_cidade = [m for m in militares if str(m.get("unidade")).upper() in unidades_sel]
-        else:
-            militares_para_cidade = militares
-            
+            militares_para_cidade = [m for m in militares_para_cidade if str(m.get("unidade")).upper() in unidades_sel]
+        if graduacoes_sel:
+            militares_para_cidade = [m for m in militares_para_cidade if padronizar_graduacao(m.get("posto_grad", "SD")) in graduacoes_sel]
+
         cidades_unicas = sorted(list(set([str(m.get("cidade", "N/I")).upper() for m in militares_para_cidade if m.get("cidade")])))
-        
-        # Limpeza segura do estado para evitar erros do Streamlit
+
         cidades_atuais = st.session_state.get("msel_cidade_filtro_p3_frag", [])
         cidades_validas = [c for c in cidades_atuais if c in cidades_unicas]
         if cidades_atuais != cidades_validas:
             st.session_state["msel_cidade_filtro_p3_frag"] = cidades_validas
-            
-        cidades_sel = st.multiselect("🏙️ Filtrar por Cidade(s):", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
-        
+
+        cidades_sel = st.multiselect("🏙️ Cidade / Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
+
     with c_busca:
         termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag").strip().upper()
 
@@ -304,6 +323,8 @@ def renderizar_fragmento_passo3():
     militares_filtrados = militares
     if unidades_sel:
         militares_filtrados = [m for m in militares_filtrados if str(m.get("unidade")).upper() in unidades_sel]
+    if graduacoes_sel:
+        militares_filtrados = [m for m in militares_filtrados if padronizar_graduacao(m.get("posto_grad", "SD")) in graduacoes_sel]
     if cidades_sel:
         militares_filtrados = [m for m in militares_filtrados if str(m.get("cidade")).upper() in cidades_sel]
     if termo_busca:
