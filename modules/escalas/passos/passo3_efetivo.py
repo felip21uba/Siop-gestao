@@ -257,11 +257,7 @@ def renderizar_fragmento_passo3():
     militares = remover_duplicados_militares(st.session_state.get("lista_militares", []))
     st.session_state["lista_militares"] = militares
 
-    c_uni, c_grad, c_cid, c_busca = st.columns([1.3, 1.3, 1.3, 1.8])
-    
-    with c_uni:
-        unidades_unicas = sorted(list(set([str(m.get("unidade", "UNIDADE N/I")).upper() for m in militares if m.get("unidade")])))
-        unidades_sel = st.multiselect("🏢 Unidade:", options=unidades_unicas, key="msel_unidade_filtro_p3_frag")
+    c_grad, c_cid, c_busca = st.columns([1.5, 1.5, 2])
 
     with c_grad:
         graduacoes_unicas = sorted(
@@ -271,18 +267,12 @@ def renderizar_fragmento_passo3():
         graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
 
     with c_cid:
-        militares_para_cidade = militares
-        if unidades_sel:
-            militares_para_cidade = [m for m in militares_para_cidade if str(m.get("unidade")).upper() in unidades_sel]
-        if graduacoes_sel:
-            militares_para_cidade = [m for m in militares_para_cidade if padronizar_graduacao(m.get("posto_grad", "SD")) in graduacoes_sel]
-
-        cidades_unicas = sorted(list(set([str(m.get("cidade", "N/I")).upper() for m in militares_para_cidade if m.get("cidade")])))
-
-        cidades_atuais = st.session_state.get("msel_cidade_filtro_p3_frag", [])
-        cidades_validas = [c for c in cidades_atuais if c in cidades_unicas]
-        if cidades_atuais != cidades_validas:
-            st.session_state["msel_cidade_filtro_p3_frag"] = cidades_validas
+        # Extrai de forma direta e limpa todas as cidades presentes no efetivo
+        cidades_unicas = sorted(list(set([
+            str(m.get("cidade", "N/I")).strip().upper() 
+            for m in militares 
+            if m.get("cidade") and str(m.get("cidade")).strip().upper() not in ["NONE", "NAN", "NULL", ""]
+        ])))
 
         cidades_sel = st.multiselect("🏙️ Cidade / Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
 
@@ -321,12 +311,10 @@ def renderizar_fragmento_passo3():
         return
 
     militares_filtrados = militares
-    if unidades_sel:
-        militares_filtrados = [m for m in militares_filtrados if str(m.get("unidade")).upper() in unidades_sel]
     if graduacoes_sel:
         militares_filtrados = [m for m in militares_filtrados if padronizar_graduacao(m.get("posto_grad", "SD")) in graduacoes_sel]
     if cidades_sel:
-        militares_filtrados = [m for m in militares_filtrados if str(m.get("cidade")).upper() in cidades_sel]
+        militares_filtrados = [m for m in militares_filtrados if str(m.get("cidade", "N/I")).strip().upper() in cidades_sel]
     if termo_busca:
         militares_filtrados = [
             m for m in militares_filtrados 
