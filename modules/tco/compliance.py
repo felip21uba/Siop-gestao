@@ -32,12 +32,10 @@ def aplicar_estilo_tco():
     """Aplica o padrão visual tático PMMG em tons de marrom, ambar, bronze e legibilidade ampliada sem verdes vibrantes."""
     st.markdown("""
         <style>
-        /* Ajuste de tamanho de fonte base e legibilidade geral */
         html, body, [class*="css"] {
             font-size: 17px !important;
         }
         
-        /* Cartão Tático TCO - Tons Terrosos e Marrom PMMG */
         .card-tco {
             background-color: #2A2421;
             border-left: 6px solid #8B5A2B;
@@ -64,7 +62,6 @@ def aplicar_estilo_tco():
             line-height: 1.6;
         }
 
-        /* Crachás e Badges Táticos em Tons de Âmbar/Marrom */
         .badge-tatico-amber {
             background-color: #3D2B1F;
             color: #C5A059;
@@ -88,7 +85,6 @@ def aplicar_estilo_tco():
             margin-right: 8px;
         }
 
-        /* Tabelas e DataEditors com cabeçalho tático marrom */
         .stDataFrame {
             border: 1px solid #45362E;
             border-radius: 8px;

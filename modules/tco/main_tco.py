@@ -37,7 +37,6 @@ def renderizar_modulo_tco():
 
     eh_gestor_creds = "PROGRAMADOR" in cargo_str or "ADMIN" in perfil_usuario or "P1" in perfil_usuario or "COMANDANTE" in cargo_str or "CREDS" in perfil_usuario
 
-    # Cabeçalho sem verde neon: utiliza badges táticos dourado e bronze
     st.markdown(f"""
     <div style='margin-bottom: 15px;'>
         <span class='badge-tatico-amber'>👤 Operador Ativo: {nome_militar_atual}</span>
