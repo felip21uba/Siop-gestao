@@ -9,32 +9,30 @@ from core.database import supabase
 TEMPO_TIMEOUT_SEGUNDOS = 20 * 60
 
 def renderizar_relogio_sessao(tempo_minutos=20):
-    """Renderiza o relógio flutuante de contagem regressiva no canto inferior direito."""
+    """Renderiza o relógio de contagem regressiva diretamente no menu lateral (st.sidebar)."""
     tempo_segundos = tempo_minutos * 60
     
     html_relogio = f"""
     <div id="badge-sessao-box" style="
-        position: fixed;
-        bottom: 12px;
-        right: 12px;
-        z-index: 999999;
-        background-color: rgba(15, 23, 42, 0.88);
+        background-color: #1e293b;
         color: #ffffff;
-        padding: 5px 12px;
-        border-radius: 20px;
+        padding: 8px 12px;
+        border-radius: 8px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        font-size: 11px;
+        font-size: 13px;
         font-weight: 600;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        border: 1px solid #334155;
         display: flex;
         align-items: center;
-        gap: 6px;
-        user-select: none;
-        pointer-events: none;
+        justify-content: space-between;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        margin-bottom: 10px;
     ">
-        <span id="sessao-icon" style="font-size: 12px;">⏱️</span>
-        <span>Sessão: <span id="sessao-timer" style="font-family: monospace; font-size: 12px; font-weight: bold; color: #38bdf8;">20:00</span></span>
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <span id="sessao-icon" style="font-size: 14px;">⏱️</span>
+            <span style="color: #94a3b8;">Sessão:</span>
+        </div>
+        <span id="sessao-timer" style="font-family: monospace; font-size: 14px; font-weight: bold; color: #38bdf8;">20:00</span>
     </div>
 
     <script>
@@ -57,7 +55,7 @@ def renderizar_relogio_sessao(tempo_minutos=20):
 
                 if (totalSeconds <= 300 && totalSeconds > 0) {{
                     if (timerDisplay) timerDisplay.style.color = "#ef4444";
-                    if (boxDisplay) boxDisplay.style.border = "1px solid rgba(239, 68, 68, 0.5)";
+                    if (boxDisplay) boxDisplay.style.borderColor = "rgba(239, 68, 68, 0.6)";
                 }}
 
                 if (totalSeconds <= 0) {{
@@ -77,7 +75,8 @@ def renderizar_relogio_sessao(tempo_minutos=20):
         }})();
     </script>
     """
-    components.html(html_relogio, height=0, width=0)
+    with st.sidebar:
+        components.html(html_relogio, height=48)
 
 def auto_salvar_rascunho_escala_supabase(usuario_id):
     """Salva automaticamente o progresso da escala no Supabase."""
@@ -126,7 +125,7 @@ def restaurar_rascunho_escala_supabase(usuario_id):
         st.session_state["escala_restaurada"] = True
 
 def gerenciar_timeout_sessao():
-    """Controla a inatividade de 20 minutos usando Epoch Timestamp (imune a fuso horário)."""
+    """Controla a inatividade de 20 minutos usando Epoch Timestamp."""
     if not st.session_state.get("autenticado", False):
         return
 
@@ -143,7 +142,6 @@ def gerenciar_timeout_sessao():
             if usr_id:
                 auto_salvar_rascunho_escala_supabase(usr_id)
             
-            # Limpa sessão
             st.session_state["autenticado"] = False
             st.session_state["usuario_autenticado"] = False
             st.session_state["mfa_pendente"] = False
@@ -159,9 +157,8 @@ def gerenciar_timeout_sessao():
 
     st.session_state["ultima_atividade_ts"] = now_ts
 
-    # Exibe o relógio flutuante se estiver autenticado
+    # Exibe o relógio no menu lateral
     renderizar_relogio_sessao(tempo_minutos=20)
     
-    # Salva o progresso
     if usr_id:
         auto_salvar_rascunho_escala_supabase(usr_id)
