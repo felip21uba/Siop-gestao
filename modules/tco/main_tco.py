@@ -8,19 +8,34 @@ from modules.tco.views import (
     renderizar_aba_logs
 )
 from modules.tco.pdf_generator import renderizar_aba_gerador_oficios
+from modules.tco.compliance import (
+    verificar_aceite_compliance_supabase,
+    exibir_modal_termo_compliance,
+    aplicar_estilo_tco
+)
 
 def renderizar_modulo_tco():
-    """Ponto de entrada do Módulo TCO / Custódia no SIOP sem bloqueio inicial."""
+    """Ponto de entrada do Módulo TCO / Custódia no SIOP."""
+    aplicar_estilo_tco()
+
+    usr_logado = st.session_state.get("usuario_dados", {})
+    usr_id = str(usr_logado.get("id") or usr_logado.get("usuario_login") or "").strip()
+    nome_militar_atual = f"{usr_logado.get('cargo_funcao', 'CB PM')} {usr_logado.get('nome_guerra', 'OPERADOR')}".strip()
+    unidade_militar_atual = str(usr_logado.get("unidade", "35ª CIA PM")).strip().upper()
+    perfil_usuario = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
+    cargo_str = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).upper()
+
+    # Validação do Termo de Compliance (Aparece apenas 1 vez na vida do usuário)
+    if not st.session_state.get("termo_compliance_aceito", False):
+        if verificar_aceite_compliance_supabase(usr_id):
+            st.session_state["termo_compliance_aceito"] = True
+        else:
+            exibir_modal_termo_compliance(usr_id, nome_militar_atual, cargo_str, unidade_militar_atual)
+
     st.title("📋 Custódia de Materiais TCO / JECRIM & Cadeia de Custódia")
     st.caption("Ingestão oficial por recibo JECRIM, rastreabilidade multi-unidades, mídias com SHA-256, gerador de ofícios e controle CREDS.")
     st.divider()
 
-    usr_logado = st.session_state.get("usuario_dados", {})
-    nome_militar_atual = f"{usr_logado.get('cargo_funcao', 'CB PM')} {usr_logado.get('nome_guerra', 'OPERADOR')}".strip()
-    unidade_militar_atual = str(usr_logado.get("unidade", "35ª CIA PM")).strip().upper()
-    perfil_usuario = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
-    cargo_str = str(usr_logado.get("cargo_funcao", "")).upper()
-    
     eh_gestor_creds = "PROGRAMADOR" in cargo_str or "ADMIN" in perfil_usuario or "P1" in perfil_usuario or "COMANDANTE" in cargo_str or "CREDS" in perfil_usuario
 
     st.markdown(f"👤 **Operador Ativo:** `{nome_militar_atual}` | 🏛️ **Unidade Atual:** `{unidade_militar_atual}`")

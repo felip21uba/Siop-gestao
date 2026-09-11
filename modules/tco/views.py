@@ -2,16 +2,11 @@ import streamlit as st
 import pandas as pd
 import datetime
 import uuid
-from modules.tco.parser_reds import extrair_dados_reds_pdf, gerar_hash_sha256
+from modules.tco.parser_reds import extrair_dados_reds_pdf
 from modules.tco.storage import upload_midia_supabase
 from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase
 from modules.tco.modals import abrir_modal_edicao_material, abrir_modal_divergencia
-from modules.tco.compliance import (
-    verificar_aceite_compliance_supabase,
-    registrar_aceite_compliance_supabase,
-    gerar_pdf_termo_compliance,
-    TEXTO_TERMO_COMPLIANCE
-)
+from modules.tco.compliance import gerar_pdf_termo_compliance
 
 def badge_destaque(texto, cor="#60A5FA", bg_cor="#1E293B"):
     return f"<span style='background-color: {bg_cor}; color: {cor}; font-size: 1.05rem; font-weight: bold; padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; margin-right: 6px;'>{texto}</span>"
@@ -74,11 +69,6 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", data
     return resultado
 
 def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
-    usr_logado = st.session_state.get("usuario_dados", {})
-    usr_id = str(usr_logado.get("id") or usr_logado.get("usuario_login") or "").strip()
-    cargo_f = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).strip()
-    ja_aceitou_compliance = verificar_aceite_compliance_supabase(usr_id)
-
     col_ing1, col_ing2 = st.columns([2.5, 1.5])
     
     with col_ing1:
@@ -102,63 +92,51 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 man_qtd = st.number_input("Quantidade:", min_value=0.1, value=1.0, step=1.0)
                 man_unid = st.selectbox("Unidade:", ["UNIDADE", "KG", "G", "DUZIA", "CAIXA", "PACOTE"])
                 man_inv = st.text_input("Nº do Invólucro / Lacre:", placeholder="Ex: A230767651").strip().upper()
-                
-                chk_comp_man = False
-                if not ja_aceitou_compliance:
-                    st.markdown("---")
-                    st.caption("🔒 **Termo de Compliance (Primeiro Aceite Obrigatório):**")
-                    chk_comp_man = st.checkbox("Concordo com os termos de segurança e Cadeia de Custódia.", key="chk_comp_man")
 
                 btn_man = st.form_submit_button("💾 Salvar no Supabase", type="primary", use_container_width=True)
                 if btn_man and man_reds and man_desc:
-                    if not ja_aceitou_compliance and not chk_comp_man:
-                        st.error("⚠️ Aceite o Termo de Compliance para realizar a primeira inserção.")
-                    else:
-                        if not ja_aceitou_compliance and chk_comp_man:
-                            registrar_aceite_compliance_supabase(usr_id, nome_militar_atual, cargo_f, unidade_militar_atual)
-
-                        now_iso = datetime.datetime.now().isoformat()
-                        id_bem_man = f"BEM-{man_reds}-MAN-{uuid.uuid4().hex[:4]}"
-                        inv_man_final = man_inv if man_inv else "SEM LACRE (INSERÇÃO MANUAL)"
-                        
-                        novo_b_man = {
-                            "id_bem": id_bem_man,
-                            "num_reds": man_reds,
-                            "autores": man_autor if man_autor else "AUTOR NÃO INFORMADO",
+                    now_iso = datetime.datetime.now().isoformat()
+                    id_bem_man = f"BEM-{man_reds}-MAN-{uuid.uuid4().hex[:4]}"
+                    inv_man_final = man_inv if man_inv else "SEM LACRE (INSERÇÃO MANUAL)"
+                    
+                    novo_b_man = {
+                        "id_bem": id_bem_man,
+                        "num_reds": man_reds,
+                        "autores": man_autor if man_autor else "AUTOR NÃO INFORMADO",
+                        "descricao": man_desc,
+                        "quantidade": man_qtd,
+                        "unidade_medida": man_unid,
+                        "involucro_lacre": inv_man_final,
+                        "fase_destinacao": "Com Fiel Depositário / Policial",
+                        "fiel_depositario_atual": nome_militar_atual,
+                        "unidade_posse_atual": unidade_militar_atual,
+                        "data_posse_atual": now_iso,
+                        "status_tramite": "Em Custódia",
+                        "data_ingestao": now_iso,
+                        "dados_originais_pdf": {
+                            "autores": man_autor,
                             "descricao": man_desc,
                             "quantidade": man_qtd,
-                            "unidade_medida": man_unid,
-                            "involucro_lacre": inv_man_final,
-                            "fase_destinacao": "Com Fiel Depositário / Policial",
-                            "fiel_depositario_atual": nome_militar_atual,
-                            "unidade_posse_atual": unidade_militar_atual,
-                            "data_posse_atual": now_iso,
-                            "status_tramite": "Em Custódia",
-                            "data_ingestao": now_iso,
-                            "dados_originais_pdf": {
-                                "autores": man_autor,
-                                "descricao": man_desc,
-                                "quantidade": man_qtd,
-                                "unidade": man_unid,
-                                "involucro": inv_man_final
-                            },
-                            "editado_pelo_operador": False,
-                            "midias_anexas": []
-                        }
-                        if salvar_material_supabase(novo_b_man):
-                            registrar_log_supabase({
-                                "data_hora": now_iso,
-                                "num_reds": man_reds,
-                                "bem_id": id_bem_man,
-                                "acao": "INSERÇÃO MANUAL / FIEL DEPÓSITO",
-                                "origem": "Inclusão Manual",
-                                "unidade_origem": unidade_militar_atual,
-                                "destino": nome_militar_atual,
-                                "unidade_destino": unidade_militar_atual,
-                                "detalhe": f"Entrada manual de {man_qtd} {man_unid} - {man_desc} (Lacre: {inv_man_final})"
-                            })
-                            st.success("Material cadastrado no Supabase sob sua custódia!")
-                            st.rerun()
+                            "unidade": man_unid,
+                            "involucro": inv_man_final
+                        },
+                        "editado_pelo_operador": False,
+                        "midias_anexas": []
+                    }
+                    if salvar_material_supabase(novo_b_man):
+                        registrar_log_supabase({
+                            "data_hora": now_iso,
+                            "num_reds": man_reds,
+                            "bem_id": id_bem_man,
+                            "acao": "INSERÇÃO MANUAL / FIEL DEPÓSITO",
+                            "origem": "Inclusão Manual",
+                            "unidade_origem": unidade_militar_atual,
+                            "destino": nome_militar_atual,
+                            "unidade_destino": unidade_militar_atual,
+                            "detalhe": f"Entrada manual de {man_qtd} {man_unid} - {man_desc} (Lacre: {inv_man_final})"
+                        })
+                        st.success("Material cadastrado no Supabase sob sua custódia!")
+                        st.rerun()
 
     if "temp_reds_extraido" in st.session_state:
         d = st.session_state["temp_reds_extraido"]
@@ -205,103 +183,90 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
 
             photos_ingestao = st.file_uploader("📷 Anexar Fotos / Documentos do Local ou Lesões:", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True, key="upl_photos_ingestao_v19")
 
-            chk_comp_ing = False
-            if not ja_aceitou_compliance:
-                st.warning("🔒 **Termo de Compliance (Primeiro Aceite Obrigatório):**")
-                with st.expander("Ler Termo de Compliance do TCO"):
-                    st.markdown(TEXTO_TERMO_COMPLIANCE)
-                chk_comp_ing = st.checkbox("Li e aceito o Termo de Compliance para assumir a custódia do material.", key="chk_comp_ing")
-
             if st.button("💾 Confirmar Ingestão e Salvar no Supabase", type="primary", key="btn_conf_fiel_dep_v19"):
-                if not ja_aceitou_compliance and not chk_comp_ing:
-                    st.error("⚠️ Marque o aceite do Termo de Compliance para prosseguir.")
-                else:
-                    if not ja_aceitou_compliance and chk_comp_ing:
-                        registrar_aceite_compliance_supabase(usr_id, nome_militar_atual, cargo_f, unidade_militar_atual)
+                now_iso = datetime.datetime.now().isoformat()
+                now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+                midias_iniciais = []
 
-                    now_iso = datetime.datetime.now().isoformat()
-                    now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                    midias_iniciais = []
-
-                    if photos_ingestao:
-                        for p_file in photos_ingestao:
-                            p_bytes = p_file.getvalue()
-                            resultado_storage = upload_midia_supabase(
-                                file_bytes=p_bytes,
-                                file_name=p_file.name,
-                                file_type=p_file.type,
-                                num_reds=d["num_reds"],
-                                id_bem=f"INGESTAO-{d['num_reds']}"
-                            )
-                            if resultado_storage:
-                                resultado_storage["enviado_por"] = nome_militar_atual,
-                                resultado_storage["unidade"] = unidade_militar_atual,
-                                resultado_storage["data_envio"] = now_str
-                                midias_iniciais.append(resultado_storage)
-                    
-                    for idx_row, row in df_editado_ing.iterrows():
-                        id_bem_unico = f"BEM-{d['num_reds']}-{row['item_num']}-{uuid.uuid4().hex[:4]}"
-                        orig_item = df_mats.iloc[idx_row]
-                        
-                        desc_final = str(row["descricao"]).strip()
-                        qtd_final = float(row["quantidade"])
-                        unid_final = str(row["unidade"]).strip()
-                        inv_final = str(row["involucro"]).strip()
-                        autor_final = str(row["autor"]).strip()
-
-                        foi_editado = (
-                            desc_final != str(orig_item["descricao"]).strip() or
-                            qtd_final != float(orig_item["quantidade"]) or
-                            unid_final != str(orig_item["unidade"]).strip() or
-                            inv_final != str(orig_item["involucro"]).strip() or
-                            autor_final != str(orig_item["autor"]).strip()
+                if photos_ingestao:
+                    for p_file in photos_ingestao:
+                        p_bytes = p_file.getvalue()
+                        resultado_storage = upload_midia_supabase(
+                            file_bytes=p_bytes,
+                            file_name=p_file.name,
+                            file_type=p_file.type,
+                            num_reds=d["num_reds"],
+                            id_bem=f"INGESTAO-{d['num_reds']}"
                         )
-                        
-                        novo_bem = {
-                            "id_bem": id_bem_unico,
-                            "num_reds": d["num_reds"],
-                            "autores": autor_final,
-                            "descricao": desc_final,
-                            "quantidade": qtd_final,
-                            "unidade_medida": unid_final,
-                            "involucro_lacre": inv_final,
-                            "fase_destinacao": "Com Fiel Depositário / Policial",
-                            "fiel_depositario_atual": nome_militar_atual,
-                            "unidade_posse_atual": unidade_militar_atual,
-                            "data_posse_atual": now_iso,
-                            "status_tramite": "Em Custódia",
-                            "data_ingestao": now_iso,
-                            "dados_originais_pdf": {
-                                "autores": str(orig_item["autor"]).strip(),
-                                "descricao": str(orig_item["descricao"]).strip(),
-                                "quantidade": float(orig_item["quantidade"]),
-                                "unidade": str(orig_item["unidade"]).strip(),
-                                "involucro": str(orig_item["involucro"]).strip()
-                            },
-                            "editado_pelo_operador": foi_editado,
-                            "midias_anexas": list(midias_iniciais)
-                        }
-                        salvar_material_supabase(novo_bem)
-                        
-                        detalhe_log = f"Ingestão inicial de {qtd_final} {unid_final} - {desc_final} (Lacre: {inv_final})"
-                        if foi_editado:
-                            detalhe_log += f" | EDITADO NA INGESTÃO (PDF Original: {orig_item['descricao']})"
+                        if resultado_storage:
+                            resultado_storage["enviado_por"] = nome_militar_atual
+                            resultado_storage["unidade"] = unidade_militar_atual
+                            resultado_storage["data_envio"] = now_str
+                            midias_iniciais.append(resultado_storage)
+                
+                for idx_row, row in df_editado_ing.iterrows():
+                    id_bem_unico = f"BEM-{d['num_reds']}-{row['item_num']}-{uuid.uuid4().hex[:4]}"
+                    orig_item = df_mats.iloc[idx_row]
+                    
+                    desc_final = str(row["descricao"]).strip()
+                    qtd_final = float(row["quantidade"])
+                    unid_final = str(row["unidade"]).strip()
+                    inv_final = str(row["involucro"]).strip()
+                    autor_final = str(row["autor"]).strip()
 
-                        registrar_log_supabase({
-                            "data_hora": now_iso,
-                            "num_reds": d["num_reds"],
-                            "bem_id": id_bem_unico,
-                            "acao": "INGESTÃO / CUSTÓDIA INICIAL",
-                            "origem": f"REDS JECRIM (Relator: {d['redator']})",
-                            "unidade_origem": unidade_militar_atual,
-                            "destino": nome_militar_atual,
-                            "unidade_destino": unidade_militar_atual,
-                            "detalhe": detalhe_log
-                        })
+                    foi_editado = (
+                        desc_final != str(orig_item["descricao"]).strip() or
+                        qtd_final != float(orig_item["quantidade"]) or
+                        unid_final != str(orig_item["unidade"]).strip() or
+                        inv_final != str(orig_item["involucro"]).strip() or
+                        autor_final != str(orig_item["autor"]).strip()
+                    )
+                    
+                    novo_bem = {
+                        "id_bem": id_bem_unico,
+                        "num_reds": d["num_reds"],
+                        "autores": autor_final,
+                        "descricao": desc_final,
+                        "quantidade": qtd_final,
+                        "unidade_medida": unid_final,
+                        "involucro_lacre": inv_final,
+                        "fase_destinacao": "Com Fiel Depositário / Policial",
+                        "fiel_depositario_atual": nome_militar_atual,
+                        "unidade_posse_atual": unidade_militar_atual,
+                        "data_posse_atual": now_iso,
+                        "status_tramite": "Em Custódia",
+                        "data_ingestao": now_iso,
+                        "dados_originais_pdf": {
+                            "autores": str(orig_item["autor"]).strip(),
+                            "descricao": str(orig_item["descricao"]).strip(),
+                            "quantidade": float(orig_item["quantidade"]),
+                            "unidade": str(orig_item["unidade"]).strip(),
+                            "involucro": str(orig_item["involucro"]).strip()
+                        },
+                        "editado_pelo_operador": foi_editado,
+                        "midias_anexas": list(midias_iniciais)
+                    }
+                    salvar_material_supabase(novo_bem)
+                    
+                    detalhe_log = f"Ingestão inicial de {qtd_final} {unid_final} - {desc_final} (Lacre: {inv_final})"
+                    if foi_editado:
+                        detalhe_log += f" | EDITADO NA INGESTÃO (PDF Original: {orig_item['descricao']})"
 
-                    del st.session_state["temp_reds_extraido"]
-                    st.success("Materiais integrados ao Supabase sob a sua custódia!")
-                    st.rerun()
+                    registrar_log_supabase({
+                        "data_hora": now_iso,
+                        "num_reds": d["num_reds"],
+                        "bem_id": id_bem_unico,
+                        "acao": "INGESTÃO / CUSTÓDIA INICIAL",
+                        "origem": f"REDS JECRIM (Relator: {d['redator']})",
+                        "unidade_origem": unidade_militar_atual,
+                        "destino": nome_militar_atual,
+                        "unidade_destino": unidade_militar_atual,
+                        "detalhe": detalhe_log
+                    })
+
+                del st.session_state["temp_reds_extraido"]
+                st.success("Materiais integrados ao Supabase sob a sua custódia!")
+                st.rerun()
 
 def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -312,7 +277,6 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
     with col_tit1:
         st.markdown(f"#### 🎒 Materiais na Custódia de: **{nome_militar_atual}** ({unidade_militar_atual})")
     
-    # IMPRESSÃO DO TERMO DE COMPLIANCE DO OPERADOR
     with col_tit2:
         pdf_comp = gerar_pdf_termo_compliance(
             nome_militar=nome_militar_atual,
@@ -383,11 +347,6 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
         st.info("Você não possui nenhum material sob sua custódia no momento.")
 
 def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    usr_logado = st.session_state.get("usuario_dados", {})
-    usr_id = str(usr_logado.get("id") or usr_logado.get("usuario_login") or "").strip()
-    cargo_f = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).strip()
-    ja_aceitou_compliance = verificar_aceite_compliance_supabase(usr_id)
-
     st.markdown("#### 🔄 Tramitação Multi-Unidades & Aceite Parcial")
     
     unidades_disponiveis = ["TODAS AS UNIDADES", "35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"]
@@ -466,48 +425,38 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                     st.markdown(f"**Material:** **{p['descricao']}**")
                     st.markdown(f"REDS: **{p['num_reds']}** | **Remetente:** **{p.get('remetente_ultimo')}** ({p.get('unidade_remetente', 'N/I')})")
                     st.markdown(f"⏱️ **Aguardando há:** **{tempo_aguardando}** | **Lacre:** {badge_destaque(p.get('involucro_lacre'), '#F59E0B')}", unsafe_allow_html=True)
-                    
-                    chk_comp_acc = False
-                    if not ja_aceitou_compliance:
-                        chk_comp_acc = st.checkbox("Li e concordo com o Termo de Compliance ao aceitar este material.", key=f"chk_acc_{p['id_bem']}")
 
                     c_acc1, c_acc2 = st.columns(2)
                     with c_acc1:
                         if st.button("✅ Aceitar Custódia", key=f"btn_acc_tot_{p['id_bem']}_{idx_p}", type="primary"):
-                            if not ja_aceitou_compliance and not chk_comp_acc:
-                                st.error("⚠️ Aceite o Termo de Compliance para confirmar o recebimento.")
-                            else:
-                                if not ja_aceitou_compliance and chk_comp_acc:
-                                    registrar_aceite_compliance_supabase(usr_id, nome_militar_atual, cargo_f, unidade_militar_atual)
-
-                                orig = p.get('remetente_ultimo') or p.get('fiel_depositario_atual')
-                                orig_unid = p.get('unidade_remetente') or p.get('unidade_posse_atual')
-                                now_iso = datetime.datetime.now().isoformat()
-                                
-                                upd_data = {
-                                    "fiel_depositario_atual": nome_militar_atual,
-                                    "unidade_posse_atual": unidade_militar_atual,
-                                    "data_posse_atual": now_iso,
-                                    "status_tramite": "Em Custódia",
-                                    "destinatario_pendente": None,
-                                    "unidade_destinatario_pendente": None,
-                                    "data_envio_tramite": None
-                                }
-                                
-                                if atualizar_material_supabase(p["id_bem"], upd_data):
-                                    registrar_log_supabase({
-                                        "data_hora": now_iso,
-                                        "num_reds": p["num_reds"],
-                                        "bem_id": p["id_bem"],
-                                        "acao": "ACEITE DE CUSTÓDIA",
-                                        "origem": orig,
-                                        "unidade_origem": orig_unid,
-                                        "destino": nome_militar_atual,
-                                        "unidade_destino": unidade_militar_atual,
-                                        "detalhe": f"Aceite de custódia confirmado por {nome_militar_atual} na unidade {unidade_militar_atual}."
-                                    })
-                                    st.success("Material recebido no Supabase!")
-                                    st.rerun()
+                            orig = p.get('remetente_ultimo') or p.get('fiel_depositario_atual')
+                            orig_unid = p.get('unidade_remetente') or p.get('unidade_posse_atual')
+                            now_iso = datetime.datetime.now().isoformat()
+                            
+                            upd_data = {
+                                "fiel_depositario_atual": nome_militar_atual,
+                                "unidade_posse_atual": unidade_militar_atual,
+                                "data_posse_atual": now_iso,
+                                "status_tramite": "Em Custódia",
+                                "destinatario_pendente": None,
+                                "unidade_destinatario_pendente": None,
+                                "data_envio_tramite": None
+                            }
+                            
+                            if atualizar_material_supabase(p["id_bem"], upd_data):
+                                registrar_log_supabase({
+                                    "data_hora": now_iso,
+                                    "num_reds": p["num_reds"],
+                                    "bem_id": p["id_bem"],
+                                    "acao": "ACEITE DE CUSTÓDIA",
+                                    "origem": orig,
+                                    "unidade_origem": orig_unid,
+                                    "destino": nome_militar_atual,
+                                    "unidade_destino": unidade_militar_atual,
+                                    "detalhe": f"Aceite de custódia confirmado por {nome_militar_atual} na unidade {unidade_militar_atual}."
+                                })
+                                st.success("Material recebido no Supabase!")
+                                st.rerun()
 
                     with c_acc2:
                         if st.button("⚠️ Recusar / Divergência", key=f"btn_acc_div_{p['id_bem']}_{idx_p}"):

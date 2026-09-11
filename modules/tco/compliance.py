@@ -28,12 +28,39 @@ TEXTO_TERMO_COMPLIANCE = """
 4.1. A senha e as chaves de acesso ao SIOP são pessoais e intransferíveis. O militar responde administrativa, civil e penalmente por todos os atos praticados sob sua autenticação.
 """
 
+def aplicar_estilo_tco():
+    """Aplica o padrão visual em tons terrosos, marrom e fundo bege com texto escuro."""
+    st.markdown("""
+        <style>
+        .card-tco {
+            background-color: #F5F0EB;
+            border-left: 6px solid #6C4E31;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 14px;
+            color: #1A1A1A;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.06);
+        }
+        .card-tco h5 {
+            color: #4A3420;
+            font-weight: 700;
+            margin-top: 0;
+            margin-bottom: 8px;
+        }
+        .card-tco p {
+            color: #2D251E;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
 def verificar_aceite_compliance_supabase(usuario_id):
     """Verifica se o usuário já aceitou o termo de compliance no banco de dados."""
     if not supabase or not usuario_id:
         return True
     try:
-        res = supabase.table("tco_compliance_aceites").select("*").eq("usuario_id", usuario_id).execute()
+        res = supabase.table("tco_compliance_aceites").select("*").eq("usuario_id", str(usuario_id)).execute()
         return len(res.data) > 0 if res.data else False
     except Exception:
         return False
@@ -45,7 +72,7 @@ def registrar_aceite_compliance_supabase(usuario_id, nome_militar, cargo_funcao,
     try:
         now_iso = datetime.datetime.now().isoformat()
         dados_aceite = {
-            "usuario_id": usuario_id,
+            "usuario_id": str(usuario_id),
             "nome_militar": nome_militar,
             "cargo_funcao": cargo_funcao,
             "unidade": unidade,
@@ -71,38 +98,41 @@ def registrar_aceite_compliance_supabase(usuario_id, nome_militar, cargo_funcao,
     except Exception as e:
         return False
 
+@st.dialog("🔒 Termo de Ciência, Confidencialidade e Compliance", width="large")
+def exibir_modal_termo_compliance(usuario_id, nome_militar, cargo_funcao, unidade):
+    aplicar_estilo_tco()
+    st.markdown(f"""
+    <div class="card-tco">
+        <h5>ATENÇÃO: TERMO DE ADESÃO E COMPLIANCE OPERACIONAL (TCO/CREDS)</h5>
+        <p>{TEXTO_TERMO_COMPLIANCE}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.warning("⚠️ **Aviso Legal:** Todas as operações realizadas no TCO são auditadas em trilha imutável vinculada ao seu login.")
+    
+    check_aceite = st.checkbox("Li, compreendo e aceito integralmente as diretrizes de confidencialidade e compliance funcional.", key="chk_termo_modal_unico")
+    
+    if st.button("✅ Confirmar Aceite Eletrônico", type="primary", disabled=not check_aceite, use_container_width=True):
+        if registrar_aceite_compliance_supabase(usuario_id, nome_militar, cargo_funcao, unidade):
+            st.session_state["termo_compliance_aceito"] = True
+            st.success("Termo de Compliance assinado com sucesso!")
+            st.rerun()
+
 def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, usuario_id, data_aceite_str):
     """Gera o arquivo PDF imprimível do Termo de Compliance assinado pelo operador."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=40,
-        leftMargin=40,
-        topMargin=40,
-        bottomMargin=40
+        buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40
     )
 
     styles = getSampleStyleSheet()
     
     style_header = ParagraphStyle(
-        'HeaderStyle',
-        parent=styles['Normal'],
-        fontName='Helvetica-Bold',
-        fontSize=11,
-        leading=13,
-        alignment=1,
-        textColor=colors.HexColor('#1E293B')
+        'HeaderStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, leading=13, alignment=1, textColor=colors.HexColor('#1E293B')
     )
     
     style_body = ParagraphStyle(
-        'BodyStyle',
-        parent=styles['Normal'],
-        fontName='Helvetica',
-        fontSize=9,
-        leading=13,
-        alignment=4,
-        textColor=colors.HexColor('#334155')
+        'BodyStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=13, alignment=4, textColor=colors.HexColor('#334155')
     )
 
     elements = []
