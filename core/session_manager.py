@@ -5,14 +5,15 @@ import json
 import streamlit.components.v1 as components
 from core.database import supabase
 
-# ⏱️ 20 minutos = 1.200 segundos
 TEMPO_TIMEOUT_SEGUNDOS = 20 * 60
 
 def renderizar_relogio_sessao(tempo_minutos=20):
-    """Renderiza o relógio de contagem regressiva diretamente no menu lateral (st.sidebar)."""
+    """Renderiza o relógio na sidebar e reinicia a contagem a cada clique do usuário."""
     tempo_segundos = tempo_minutos * 60
+    ts_atual = time.time()
     
     html_relogio = f"""
+    <!-- timestamp: {ts_atual} -->
     <div id="badge-sessao-box" style="
         background-color: #1e293b;
         color: #ffffff;
@@ -125,7 +126,7 @@ def restaurar_rascunho_escala_supabase(usuario_id):
         st.session_state["escala_restaurada"] = True
 
 def gerenciar_timeout_sessao():
-    """Controla a inatividade de 20 minutos usando Epoch Timestamp."""
+    """Controla a inatividade. Qualquer clique reseta o timer para 20 min."""
     if not st.session_state.get("autenticado", False):
         return
 
@@ -155,9 +156,10 @@ def gerenciar_timeout_sessao():
             time.sleep(2)
             st.rerun()
 
+    # Atualiza o timestamp de ultima atividade a cada interacao
     st.session_state["ultima_atividade_ts"] = now_ts
 
-    # Exibe o relógio no menu lateral
+    # Renderiza o relogio que reseta visualmente para 20:00
     renderizar_relogio_sessao(tempo_minutos=20)
     
     if usr_id:

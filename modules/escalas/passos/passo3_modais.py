@@ -7,7 +7,7 @@ from core.database import salvar_militares_supabase
 def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
     @st.dialog("✏️ Editar Efetivo em Tabela (Estilo Planilha)", width="large")
     def _dialog():
-        st.markdown("##### 📝 Edite graduações, nomes, matrículas e unidades diretamente na planilha:")
+        st.markdown("##### 📝 Edite graduações, nomes, matrículas e cidades diretamente na planilha:")
         st.caption("Altere os valores na tabela abaixo e clique em 'Salvar' para atualizar tudo no Supabase.")
 
         mils = st.session_state.get("lista_militares", [])
@@ -24,7 +24,7 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
                 "Nome Funcional": str(m.get("nome_guerra", "")),
                 "Nome Completo": str(m.get("nome_completo", "")),
                 "Unidade": str(m.get("unidade", "")),
-                "Cidade": str(m.get("cidade", ""))
+                "Cidade / Fração": str(m.get("cidade", ""))
             })
 
         df_mils = pd.DataFrame(dados_tabela)
@@ -43,7 +43,7 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
                 "Nome Funcional": st.column_config.TextColumn("Nome Funcional", required=True),
                 "Nome Completo": st.column_config.TextColumn("Nome Completo"),
                 "Unidade": st.column_config.TextColumn("Unidade"),
-                "Cidade": st.column_config.TextColumn("Cidade")
+                "Cidade / Fração": st.column_config.TextColumn("Cidade / Fração")
             }
         )
 
@@ -60,7 +60,7 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
                     nome_g = str(row["Nome Funcional"]).strip().upper()
                     nome_c = str(row["Nome Completo"]).strip().upper()
                     uni_val = str(row["Unidade"]).strip().upper()
-                    cid_val = str(row["Cidade"]).strip().upper()
+                    cid_val = str(row["Cidade / Fração"]).strip().upper()
 
                     obj_m = mapa_existente.get(m_id, {"id": m_id})
                     obj_m["num_policia"] = num_p
@@ -76,7 +76,7 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
                 salvar_militares_supabase(novos_mils)
                 st.session_state["lista_militares"] = novos_mils
                 st.session_state["militares_carregados"] = True
-                st.success("✅ Efetivo atualizado com sucesso!")
+                st.success("✅ Efetivo e cidades salvos no Supabase com sucesso!")
                 st.rerun()
 
         with col_s2:
@@ -184,7 +184,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
             existentes_cnt = len(lista_temp) - novos_cnt
             
             st.markdown(f"📊 **Resumo da Importação ({len(lista_temp)} militares identificados):**")
-            st.info(f"• 👥 **{novos_cnt} novos militares** serão inseridos.\n• 🔄 **{existentes_cnt} militares existentes** terão suas graduações e dados atualizados no Supabase.")
+            st.info(f"• 👥 **{novos_cnt} novos militares** serão inseridos.\n• 🔄 **{existentes_cnt} militares existentes** terão suas graduações e cidades atualizadas no Supabase.")
 
             df_temp = pd.DataFrame(lista_temp)[["num_policia", "posto_grad", "nome_completo", "nome_guerra", "unidade", "cidade"]]
             df_temp.columns = ["Nº Polícia (com DV)", "Graduação", "Nome Completo", "Nome Funcional", "Unidade", "Cidade / Município"]
@@ -193,7 +193,8 @@ def abrir_modal_upload_planilha(funcs_extracao):
                 df_temp, num_rows="fixed", use_container_width=True, height=250,
                 column_config={
                     "Nº Polícia (com DV)": st.column_config.TextColumn(disabled=True), 
-                    "Graduação": st.column_config.TextColumn(disabled=False)
+                    "Graduação": st.column_config.TextColumn(disabled=False),
+                    "Cidade / Município": st.column_config.TextColumn(disabled=False)
                 }
             )
             
@@ -220,8 +221,8 @@ def abrir_modal_upload_planilha(funcs_extracao):
                             m_exist["posto_grad"] = pg_e
                             m_exist["nome_guerra"] = nome_f_e
                             m_exist["nome_completo"] = nome_c_e
-                            m_exist["cidade"] = cidade_e
-                            m_exist["unidade"] = unidade_e
+                            m_exist["cidade"] = cidade_e if cidade_e else "N/I"
+                            m_exist["unidade"] = unidade_e if unidade_e else "UNIDADE N/I"
                             m_exist["peso"] = peso_e
                             todos_salvar_banco.append(m_exist)
                         else:
@@ -232,9 +233,9 @@ def abrir_modal_upload_planilha(funcs_extracao):
                                 "posto_grad": pg_e,
                                 "nome_guerra": nome_f_e,
                                 "nome_completo": nome_c_e,
-                                "cidade": cidade_e,
+                                "cidade": cidade_e if cidade_e else "N/I",
                                 "peso": peso_e,
-                                "unidade": unidade_e
+                                "unidade": unidade_e if unidade_e else "UNIDADE N/I"
                             }
                             mils_memoria.append(novo_obj)
                             todos_salvar_banco.append(novo_obj)
@@ -245,7 +246,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
                     st.session_state["lista_militares"] = remover_dup(mils_memoria)
                     st.session_state["temp_importacao_lista"] = []
                     st.session_state["militares_carregados"] = True
-                    st.success("✅ Efetivo e graduações atualizados no Supabase com sucesso!")
+                    st.success("✅ Efetivo e cidades atualizados no Supabase com sucesso!")
                     st.rerun()
 
             with col_m2:
