@@ -67,7 +67,7 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", data
     return resultado
 
 # =============================================================================
-# ABA 1: INGESTÃO REDS & MÍDIAS (CAIXAS E BOTÕES EQUALIZADOS)
+# ABA 1: INGESTÃO REDS & MÍDIAS
 # =============================================================================
 def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
     col_ing1, col_ing2 = st.columns(2)
@@ -75,14 +75,14 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
     with col_ing1:
         with st.container(border=True):
             st.markdown("##### 📄 Importar Ocorrência (BO REDS)")
-            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v21")
+            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v22")
 
             if arquivo_pdf is not None:
                 valido_pdf, msg_pdf = validar_pdf_upload(arquivo_pdf)
                 if not valido_pdf:
                     st.error(msg_pdf)
                 else:
-                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v21", use_container_width=True):
+                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v22", use_container_width=True):
                         with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
                             dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
                             st.session_state["temp_reds_extraido"] = dados_reds
@@ -95,7 +95,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
             st.markdown("##### ➕ Inserção Manual de Material")
             st.caption("Cadastre itens sem recibo eletrônico do JECRIM.")
             with st.popover("📝 Cadastrar Material Avulso", use_container_width=True):
-                with st.form("form_material_manual_v21", clear_on_submit=True):
+                with st.form("form_material_manual_v22", clear_on_submit=True):
                     man_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-001843571-001").strip()
                     man_autor = st.text_input("Nome do Autor:", placeholder="Ex: MARCIO DE ALMEIDA SOUZA").strip().upper()
                     man_desc = st.text_input("Descrição do Material:", placeholder="Ex: 02 papelotes de cocaína").strip().upper()
@@ -165,11 +165,11 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
             with m4:
                 st.metric("Itens Identificados", len(d['materiais']))
 
-            st.markdown(f"**Natureza Principal:** `{d['natureza']}`")
-            st.markdown(f"**Relator:** `{d['redator']}` | **Autor(es):** `{', '.join(d['autores'])}`")
+            st.markdown(f"**Natureza Principal:** **{d['natureza']}**")
+            st.markdown(f"**Relator:** **{d['redator']}** | **Autor(es):** **{', '.join(d['autores'])}**")
             st.markdown(f"**Local do Fato:** {d['local']}")
             st.caption(f"**Resumo Fático:** {d['resumo_fato']}")
-            st.caption(f"🔐 **Hash SHA-256 PDF:** `{d['hash_pdf']}`")
+            st.caption(f"🔐 **Hash SHA-256 PDF:** **{d['hash_pdf']}**")
 
         st.markdown(f"##### 📦 Conferência de Materiais ({len(d['materiais'])} item(ns)):")
 
@@ -188,12 +188,12 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_materiais_ingestao_v21"
+                key="editor_materiais_ingestao_v22"
             )
 
-            photos_ingestao = st.file_uploader("📷 Anexar Mídias / Documentos de Prova:", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True, key="upl_photos_ingestao_v21")
+            photos_ingestao = st.file_uploader("📷 Anexar Mídias / Documentos de Prova:", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True, key="upl_photos_ingestao_v22")
 
-            if st.button("💾 Confirmar Ingestão e Assumir Custódia", type="primary", key="btn_conf_fiel_dep_v21", use_container_width=True):
+            if st.button("💾 Confirmar Ingestão e Assumir Custódia", type="primary", key="btn_conf_fiel_dep_v22", use_container_width=True):
                 now_iso = datetime.datetime.now().isoformat()
                 now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
                 midias_iniciais = []
@@ -345,7 +345,7 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
             with st.container(border=True):
                 c_meu1, c_meu2 = st.columns([3.5, 1.5])
                 with c_meu1:
-                    st.markdown(f"**📦 {item_meu['id_bem']}** — {item_meu['descricao']} (Lacre: `{item_meu.get('involucro_lacre')}`)")
+                    st.markdown(f"**📦 {item_meu['id_bem']}** — {item_meu['descricao']} (Lacre: **{item_meu.get('involucro_lacre')}**)")
                     midias = item_meu.get("midias_anexas") or []
                     if midias:
                         st.caption(f"📎 **{len(midias)} arquivo(s) anexo(s):**")
@@ -390,15 +390,15 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
 
     col_tr1, col_tr2 = st.columns(2)
     with col_tr1:
-        with st.form("form_transferir_material_v21"):
+        with st.form("form_transferir_material_v22"):
             st.markdown("**1. Encaminhar Material**")
             bens_disp = {f"{b['id_bem']} - {b['descricao']} (Lacre: {b.get('involucro_lacre')})": b['id_bem'] for b in meus_bens_filtrados}
             
             if bens_disp:
-                bem_sel_key = st.selectbox("Selecione o Material:", list(bens_disp.keys()), key="sel_material_transf_v21")
-                destinatario_sel = st.selectbox("Selecione o Destinatário:", opcoes_destinatario, key="sel_destinatario_v21")
-                unidade_dest_sel = st.selectbox("Unidade Destino:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v21")
-                obs_transf = st.text_input("Observações do Lacre / Estado:", key="txt_obs_transf_v21")
+                bem_sel_key = st.selectbox("Selecione o Material:", list(bens_disp.keys()), key="sel_material_transf_v22")
+                destinatario_sel = st.selectbox("Selecione o Destinatário:", opcoes_destinatario, key="sel_destinatario_v22")
+                unidade_dest_sel = st.selectbox("Unidade Destino:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v22")
+                obs_transf = st.text_input("Observações do Lacre / Estado:", key="txt_obs_transf_v22")
                 
                 if st.form_submit_button("📤 Tramitar Material", type="primary", use_container_width=True):
                     id_bem_alvo = bens_disp[bem_sel_key]
@@ -443,7 +443,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 tempo_aguardando = calcular_tempo_decorrido(p.get("data_envio_tramite"))
                 with st.container(border=True):
                     st.markdown(f"**Material:** {p['descricao']}")
-                    st.caption(f"REDS: `{p['num_reds']}` | Remetente: `{p.get('remetente_ultimo')}` | Lacre: `{p.get('involucro_lacre')}` | Tempo: `{tempo_aguardando}`")
+                    st.caption(f"REDS: **{p['num_reds']}** | Remetente: **{p.get('remetente_ultimo')}** | Lacre: **{p.get('involucro_lacre')}** | Tempo: **{tempo_aguardando}**")
 
                     c_acc1, c_acc2 = st.columns(2)
                     with c_acc1:
@@ -509,7 +509,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             for idx_div, bd in enumerate(bens_divergentes):
                 div = bd.get("dados_divergencia") or {}
                 with st.container(border=True):
-                    st.markdown(f"**🚨 DIVERGÊNCIA:** `{bd['id_bem']}` (REDS: `{bd['num_reds']}`)")
+                    st.markdown(f"**🚨 DIVERGÊNCIA:** **{bd['id_bem']}** (REDS: **{bd['num_reds']}**)")
                     st.markdown(f"Material: **{bd['descricao']}** | Recusado por: **{div.get('registrado_por')}**")
                     st.caption(f"Motivo: {div.get('motivo')} | Justificativa: {div.get('justificativa')}")
                     
@@ -554,11 +554,11 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             with st.container(border=True):
                 c_cr1, c_cr2 = st.columns([3, 2])
                 with c_cr1:
-                    st.markdown(f"**Código:** `{bem['id_bem']}` | REDS: `{bem['num_reds']}`")
+                    st.markdown(f"**Código:** **{bem['id_bem']}** | REDS: **{bem['num_reds']}**")
                     st.markdown(f"Material: **{bem['descricao']}** | Autor: **{bem['autores']}**")
-                    st.caption(f"Lacre: `{bem.get('involucro_lacre')}` | Custódia: `{bem['fiel_depositario_atual']}` | Tempo: `{tempo_no_sistema}`")
+                    st.caption(f"Lacre: **{bem.get('involucro_lacre')}** | Custódia: **{bem['fiel_depositario_atual']}** | Tempo: **{tempo_no_sistema}**")
                     if bem.get("pa_oficio_autorizador"):
-                        st.caption(f"📑 P.A. / Ofício Autorizador: `{bem['pa_oficio_autorizador']}`")
+                        st.caption(f"📑 P.A. / Ofício Autorizador: **{bem['pa_oficio_autorizador']}**")
 
                 with c_cr2:
                     index_dest = opcoes_destinacao.index(fase_atual) if fase_atual in opcoes_destinacao else 0
