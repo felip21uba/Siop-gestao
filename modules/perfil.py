@@ -191,7 +191,6 @@ def exibir_tela_perfil():
         st.markdown("##### 📜 Registro Auditável de Logins e Operações")
         st.caption("Acompanhe o registro imutável de todas as ações executadas nesta conta para fins de compliance e segurança.")
 
-        # Grava o log de consulta se a sessão ainda não gravou nesta navegação
         if not st.session_state.get("log_perfil_consultado"):
             registrar_audit_log(operador_str, usr_key, "ACESSO_PERFIL", f"Militar {operador_str} acessou o Histórico de Auditoria.")
             st.session_state["log_perfil_consultado"] = True
@@ -202,16 +201,36 @@ def exibir_tela_perfil():
             if "data_hora" in df_logs.columns:
                 df_logs["data_hora"] = pd.to_datetime(df_logs["data_hora"], errors="coerce").dt.strftime("%d/%m/%Y %H:%M:%S")
 
-            st.dataframe(
-                df_logs[["data_hora", "usuario", "acao", "detalhe"]],
-                column_config={
-                    "data_hora": st.column_config.TextColumn("Data / Hora", width="medium"),
-                    "usuario": st.column_config.TextColumn("Militar / Operador", width="medium"),
-                    "acao": st.column_config.TextColumn("Ação Executada", width="medium"),
-                    "detalhe": st.column_config.TextColumn("Detalhamento da Operação", width="large")
-                },
-                use_container_width=True,
-                hide_index=True
-            )
+            # Busca por login/num_policia (ex: 1337468) ou nome_guerra
+            mask_usuario = (
+                df_logs["usuario"].astype(str).str.upper().str.contains(nome_guerra, na=False) |
+                df_logs["usuario"].astype(str).str.upper().str.contains(usr_key, na=False) |
+                df_logs["detalhe"].astype(str).str.upper().str.contains(nome_guerra, na=False) |
+                df_logs["detalhe"].astype(str).str.upper().str.contains(usr_key, na=False)
+            ) if (nome_guerra or usr_key) else pd.Series([True] * len(df_logs))
+
+            df_filtrado = df_logs[mask_usuario]
+
+            # Opção de ver visão geral para gestores/programadores
+            nivel_exibicao = str(usr.get('nivel_acesso', 'TROPA')).upper()
+            if nivel_exibicao in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA"]:
+                ver_geral = st.checkbox("🌐 Exibir Auditoria Geral do Sistema (Visão de Gestor)", value=True, key="chk_ver_geral_perfil")
+                if ver_geral:
+                    df_filtrado = df_logs
+
+            if not df_filtrado.empty:
+                st.dataframe(
+                    df_filtrado[["data_hora", "usuario", "acao", "detalhe"]],
+                    column_config={
+                        "data_hora": st.column_config.TextColumn("Data / Hora", width="medium"),
+                        "usuario": st.column_config.TextColumn("Militar / Operador", width="medium"),
+                        "acao": st.column_config.TextColumn("Ação Executada", width="medium"),
+                        "detalhe": st.column_config.TextColumn("Detalhamento da Operação", width="large")
+                    },
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info(f"ℹ️ Nenhum evento registrado especificamente para {nome_guerra} ({usr_key}).")
         else:
             st.info("ℹ️ Nenhum evento crítico registrado no banco de dados até o momento.")
