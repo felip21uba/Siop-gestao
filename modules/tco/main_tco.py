@@ -15,7 +15,7 @@ from modules.tco.compliance import (
 )
 
 def renderizar_modulo_tco():
-    """Ponto de entrada do Módulo TCO / Custódia no SIOP."""
+    """Ponto de entrada do Módulo TCO / Custódia no SIOP com layout nativo e limpo."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -33,16 +33,16 @@ def renderizar_modulo_tco():
 
     st.title("📋 Custódia de Materiais TCO / JECRIM & Cadeia de Custódia")
     st.caption("Ingestão oficial por recibo JECRIM, rastreabilidade multi-unidades, mídias com SHA-256, gerador de ofícios e controle CREDS.")
+    
+    col_hdr1, col_hdr2 = st.columns(2)
+    with col_hdr1:
+        st.caption(f"👤 **Operador Ativo:** {nome_militar_atual}")
+    with col_hdr2:
+        st.caption(f"🏛️ **Unidade Atual:** {unidade_militar_atual}")
+
     st.divider()
 
     eh_gestor_creds = "PROGRAMADOR" in cargo_str or "ADMIN" in perfil_usuario or "P1" in perfil_usuario or "COMANDANTE" in cargo_str or "CREDS" in perfil_usuario
-
-    st.markdown(f"""
-    <div style='margin-bottom: 15px;'>
-        <span class='badge-tatico-amber'>👤 Operador Ativo: {nome_militar_atual}</span>
-        <span class='badge-tatico-bronze'>🏛️ Unidade Atual: {unidade_militar_atual}</span>
-    </div>
-    """, unsafe_allow_html=True)
 
     all_bens_banco = carregar_materiais_supabase()
     all_logs_banco = carregar_logs_supabase()

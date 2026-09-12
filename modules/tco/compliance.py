@@ -29,65 +29,24 @@ TEXTO_TERMO_COMPLIANCE = """
 """
 
 def aplicar_estilo_tco():
-    """Aplica o padrão visual tático PMMG em tons de marrom, ambar, bronze e legibilidade ampliada sem verdes vibrantes."""
+    """Aplica o padrão visual tático limpo usando detalhes em tom bronze e marrom sem afetar a tipografia nativa."""
     st.markdown("""
         <style>
-        html, body, [class*="css"] {
-            font-size: 17px !important;
+        /* Ajuste fino de bordas e destaque marrom tático */
+        div[data-testid="stForm"] {
+            border: 1px solid #523E37 !important;
+            border-radius: 8px !important;
         }
         
-        .card-tco {
-            background-color: #2A2421;
-            border-left: 6px solid #8B5A2B;
-            border-radius: 8px;
-            padding: 18px;
-            margin-bottom: 16px;
-            color: #F3EFE6;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            border-top: 1px solid #45362E;
-            border-right: 1px solid #45362E;
-            border-bottom: 1px solid #45362E;
-        }
-        .card-tco h5 {
-            color: #C5A059;
-            font-size: 1.15rem;
-            font-weight: 700;
-            margin-top: 0;
-            margin-bottom: 10px;
-            letter-spacing: 0.5px;
-        }
-        .card-tco p {
-            color: #E2D9CC;
-            font-size: 1rem;
-            line-height: 1.6;
-        }
-
-        .badge-tatico-amber {
-            background-color: #3D2B1F;
-            color: #C5A059;
-            font-size: 1rem;
-            font-weight: 700;
-            padding: 5px 12px;
+        /* Indicador de status tático */
+        .status-badge-tatico {
+            background-color: #382A24;
+            color: #D4A373;
+            border: 1px solid #6B4E42;
+            padding: 4px 10px;
             border-radius: 6px;
-            border: 1px solid #8B5A2B;
-            display: inline-block;
-            margin-right: 8px;
-        }
-        .badge-tatico-bronze {
-            background-color: #4A2810;
-            color: #E28743;
-            font-size: 1rem;
-            font-weight: 700;
-            padding: 5px 12px;
-            border-radius: 6px;
-            border: 1px solid #B45309;
-            display: inline-block;
-            margin-right: 8px;
-        }
-
-        .stDataFrame {
-            border: 1px solid #45362E;
-            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 600;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -136,12 +95,9 @@ def registrar_aceite_compliance_supabase(usuario_id, nome_militar, cargo_funcao,
 @st.dialog("🔒 Termo de Ciência, Confidencialidade e Compliance", width="large")
 def exibir_modal_termo_compliance(usuario_id, nome_militar, cargo_funcao, unidade):
     aplicar_estilo_tco()
-    st.markdown(f"""
-    <div class="card-tco">
-        <h5>ATENÇÃO: TERMO DE ADESÃO E COMPLIANCE OPERACIONAL (TCO/CREDS)</h5>
-        <p>{TEXTO_TERMO_COMPLIANCE}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown(f"### 📑 TERMO DE ADESÃO E COMPLIANCE OPERACIONAL (TCO/CREDS)")
+        st.markdown(TEXTO_TERMO_COMPLIANCE, unsafe_allow_html=True)
     
     st.warning("⚠️ **Aviso Legal:** Todas as operações realizadas no TCO são auditadas em trilha imutável vinculada ao seu login.")
     
