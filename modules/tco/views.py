@@ -70,32 +70,35 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", data
 # ABA 1: INGESTÃO REDS & MÍDIAS
 # =============================================================================
 def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
+    if "temp_reds_extraido" not in st.session_state:
+        st.session_state["temp_reds_extraido"] = None
+
     col_ing1, col_ing2 = st.columns(2)
     
     with col_ing1:
         with st.container(border=True):
             st.markdown("##### 📄 Importar Ocorrência (BO REDS)")
-            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v23")
+            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v26")
 
             if arquivo_pdf is not None:
                 valido_pdf, msg_pdf = validar_pdf_upload(arquivo_pdf)
                 if not valido_pdf:
                     st.error(msg_pdf)
                 else:
-                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v23", use_container_width=True):
+                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v26", use_container_width=True):
                         with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
                             dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
                             st.session_state["temp_reds_extraido"] = dados_reds
                             st.success("Leitura do REDS concluída!")
             else:
-                st.caption("Aguardando arquivo PDF...")
+                st.caption("Aguardando upload de arquivo PDF...")
 
     with col_ing2:
         with st.container(border=True):
             st.markdown("##### ➕ Inserção Manual de Material")
-            st.caption("Cadastre itens sem recibo eletrônico do JECRIM.")
+            st.caption("Adicione itens avulsos para conferência unificada.")
             with st.popover("📝 Cadastrar Material Avulso", use_container_width=True):
-                with st.form("form_material_manual_v23", clear_on_submit=True):
+                with st.form("form_material_manual_v26", clear_on_submit=True):
                     man_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-001843571-001").strip()
                     man_autor = st.text_input("Nome do Autor:", placeholder="Ex: MARCIO DE ALMEIDA SOUZA").strip().upper()
                     man_desc = st.text_input("Descrição do Material:", placeholder="Ex: 02 papelotes de cocaína").strip().upper()
@@ -103,97 +106,125 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                     man_unid = st.selectbox("Unidade:", ["UNIDADE", "KG", "G", "DUZIA", "CAIXA", "PACOTE"])
                     man_inv = st.text_input("Nº do Invólucro / Lacre:", placeholder="Ex: A230767651").strip().upper()
 
-                    btn_man = st.form_submit_button("💾 Salvar no Supabase", type="primary", use_container_width=True)
-                    if btn_man and man_reds and man_desc:
-                        now_iso = datetime.datetime.now().isoformat()
-                        id_bem_man = f"BEM-{man_reds}-MAN-{uuid.uuid4().hex[:4]}"
-                        inv_man_final = man_inv if man_inv else "SEM LACRE (INSERÇÃO MANUAL)"
-                        
-                        novo_b_man = {
-                            "id_bem": id_bem_man,
-                            "num_reds": man_reds,
-                            "autores": man_autor if man_autor else "AUTOR NÃO INFORMADO",
-                            "descricao": man_desc,
-                            "quantidade": man_qtd,
-                            "unidade_medida": man_unid,
-                            "involucro_lacre": inv_man_final,
-                            "fase_destinacao": "Com Fiel Depositário / Policial",
-                            "fiel_depositario_atual": nome_militar_atual,
-                            "unidade_posse_atual": unidade_militar_atual,
-                            "data_posse_atual": now_iso,
-                            "status_tramite": "Em Custódia",
-                            "data_ingestao": now_iso,
-                            "dados_originais_pdf": {
-                                "autores": man_autor,
+                    btn_man = st.form_submit_button("➕ Adicionar à Lista", type="primary", use_container_width=True)
+                    if btn_man:
+                        if not man_reds or not man_desc:
+                            st.error("⚠️ Preencha o Nº do REDS e a Descrição do Material.")
+                        else:
+                            if not st.session_state["temp_reds_extraido"]:
+                                st.session_state["temp_reds_extraido"] = {
+                                    "num_reds": man_reds,
+                                    "data_registro": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                    "data_fato": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                    "natureza": "INSERÇÃO MANUAL / TCO",
+                                    "local": "N/I",
+                                    "redator": nome_militar_atual,
+                                    "unidade_jecrim": unidade_militar_atual,
+                                    "autores": [man_autor] if man_autor else ["AUTOR NÃO INFORMADO"],
+                                    "resumo_fato": "Material incluído manualmente pelo operador.",
+                                    "materiais": [],
+                                    "hash_pdf": "INSERÇÃO MANUAL"
+                                }
+
+                            str_item_num = str(len(st.session_state["temp_reds_extraido"]["materiais"]) + 1)
+                            inv_final = man_inv if man_inv else f"SEM LACRE (ITEM {str_item_num})"
+
+                            st.session_state["temp_reds_extraido"]["materiais"].append({
+                                "remover": False,
+                                "item_num": str_item_num,
+                                "env_nr": "1",
+                                "autor": man_autor if man_autor else "AUTOR NÃO INFORMADO",
+                                "situacao": "APREENDIDO",
                                 "descricao": man_desc,
                                 "quantidade": man_qtd,
                                 "unidade": man_unid,
-                                "involucro": inv_man_final
-                            },
-                            "editado_pelo_operador": False,
-                            "midias_anexas": []
-                        }
-                        if salvar_material_supabase(novo_b_man):
-                            registrar_log_supabase({
-                                "data_hora": now_iso,
-                                "num_reds": man_reds,
-                                "bem_id": id_bem_man,
-                                "acao": "INSERÇÃO MANUAL / FIEL DEPÓSITO",
-                                "origem": "Inclusão Manual",
-                                "unidade_origem": unidade_militar_atual,
-                                "destino": nome_militar_atual,
-                                "unidade_destino": unidade_militar_atual,
-                                "detalhe": f"Entrada manual de {man_qtd} {man_unid} - {man_desc} (Lacre: {inv_man_final})"
+                                "involucro": inv_final,
+                                "destinatario_reds": "JECRIM"
                             })
-                            st.success("Material cadastrado sob sua custódia!")
+                            st.success(f"Item '{man_desc}' adicionado!")
                             st.rerun()
 
-    if "temp_reds_extraido" in st.session_state:
+    # PAINEL UNIFICADO DA OCORRÊNCIA (SEM TEXTOS CORTADOS OU BARRA DE ROLAGEM)
+    if st.session_state.get("temp_reds_extraido"):
         d = st.session_state["temp_reds_extraido"]
         st.divider()
         
         with st.container(border=True):
             st.markdown(f"#### 📄 Dados da Ocorrência — REDS Nº {d['num_reds']}")
             
-            m1, m2, m3, m4 = st.columns(4)
-            with m1:
-                st.metric("Data Registro", d['data_registro'])
-            with m2:
-                st.metric("Data/Hora Fato", d['data_fato'])
-            with m3:
-                st.metric("Unidade Destino", d['unidade_jecrim'])
-            with m4:
-                st.metric("Itens Identificados", len(d['materiais']))
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"• **Data Registro:** {d['data_registro']}")
+                st.markdown(f"• **Data/Hora Fato:** {d['data_fato']}")
+                st.markdown(f"• **Unidade Destino:** {d['unidade_jecrim']}")
+            with c2:
+                st.markdown(f"• **Natureza:** {d['natureza']}")
+                st.markdown(f"• **Relator:** {d['redator']}")
+                st.markdown(f"• **Autor(es):** {', '.join(d['autores'])}")
 
-            st.markdown(f"**Natureza Principal:** **{d['natureza']}**")
-            st.markdown(f"**Relator:** **{d['redator']}** | **Autor(es):** **{', '.join(d['autores'])}**")
-            st.markdown(f"**Local do Fato:** {d['local']}")
-            st.caption(f"**Resumo Fático:** {d['resumo_fato']}")
-            st.caption(f"🔐 **Hash SHA-256 PDF:** **{d['hash_pdf']}**")
+            st.caption(f"**Local do Fato:** {d['local']}")
+            
+            with st.expander("📝 **Ver Resumo Fático & Hash SHA-256 do PDF**"):
+                st.write(d['resumo_fato'])
+                st.caption(f"🔐 Chancela SHA-256: `{d['hash_pdf']}`")
 
-        st.markdown(f"##### 📦 Conferência de Materiais ({len(d['materiais'])} item(ns)):")
+        st.markdown("##### 📦 Conferência e Seleção de Materiais")
+        st.caption("Marque a caixa 'Excluir' nos itens que não foram apreendidos ou não devem ser salvos.")
 
         if d["materiais"]:
             df_mats = pd.DataFrame(d["materiais"])
+            if "remover" not in df_mats.columns:
+                df_mats.insert(0, "remover", False)
             
+            # Tabela limpa configurada para caber 100% na largura sem barra horizontal
             df_editado_ing = st.data_editor(
-                df_mats[["item_num", "autor", "descricao", "quantidade", "unidade", "involucro"]],
+                df_mats[["remover", "item_num", "descricao", "quantidade", "unidade", "involucro", "autor"]],
                 column_config={
-                    "item_num": st.column_config.TextColumn("Item", disabled=True),
-                    "autor": st.column_config.TextColumn("Autor"),
-                    "descricao": st.column_config.TextColumn("Descrição do Material"),
-                    "quantidade": st.column_config.NumberColumn("Qtd", min_value=0.1, step=1.0),
-                    "unidade": st.column_config.TextColumn("Unidade"),
-                    "involucro": st.column_config.TextColumn("Nº Invólucro / Lacre")
+                    "remover": st.column_config.CheckboxColumn("🗑️ Excluir", default=False, width="small"),
+                    "item_num": st.column_config.TextColumn("Item", disabled=True, width="small"),
+                    "descricao": st.column_config.TextColumn("Descrição do Material", width="large"),
+                    "quantidade": st.column_config.NumberColumn("Qtd", min_value=0.1, step=1.0, width="small"),
+                    "unidade": st.column_config.TextColumn("Unid", width="small"),
+                    "involucro": st.column_config.TextColumn("Nº Lacre / Invólucro", width="medium"),
+                    "autor": st.column_config.TextColumn("Autor Vinculado", width="medium")
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_materiais_ingestao_v23"
+                key="editor_materiais_ingestao_v26"
             )
 
-            photos_ingestao = st.file_uploader("📷 Anexar Mídias / Documentos de Prova:", type=["jpg", "jpeg", "png", "pdf"], accept_multiple_files=True, key="upl_photos_ingestao_v23")
+            # Contagem dos itens ativos
+            itens_validos = df_editado_ing[~df_editado_ing["remover"]]
+            qtd_validos = len(itens_validos)
+            qtd_excluidos = len(df_editado_ing) - qtd_validos
 
-            if st.button("💾 Confirmar Ingestão e Assumir Custódia", type="primary", key="btn_conf_fiel_dep_v23", use_container_width=True):
+            if qtd_excluidos > 0:
+                st.warning(f"⚠️ {qtd_excluidos} item(ns) marcado(s) para exclusão e não será(ão) salvo(s).")
+
+            photos_ingestao = st.file_uploader(
+                "📷 Anexar Mídias / Fotos da Apreensão (Opcional):", 
+                type=["jpg", "jpeg", "png", "pdf"], 
+                accept_multiple_files=True, 
+                key="upl_photos_ingestao_v26"
+            )
+
+            col_b1, col_b2 = st.columns([3, 1])
+            with col_b1:
+                btn_confirmar = st.button(
+                    f"💾 Salvar {qtd_validos} Material(is) Selecionado(s) no Supabase", 
+                    type="primary", 
+                    disabled=(qtd_validos == 0),
+                    key="btn_conf_fiel_dep_v26", 
+                    use_container_width=True
+                )
+            with col_b2:
+                btn_limpar = st.button("🗑️ Descartar Tudo", key="btn_limpar_ingestao_v26", use_container_width=True)
+
+            if btn_limpar:
+                st.session_state["temp_reds_extraido"] = None
+                st.rerun()
+
+            if btn_confirmar:
                 now_iso = datetime.datetime.now().isoformat()
                 now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
                 midias_iniciais = []
@@ -226,7 +257,8 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                             resultado_storage["data_envio"] = now_str
                             midias_iniciais.append(resultado_storage)
                 
-                for idx_row, row in df_editado_ing.iterrows():
+                # Salva apenas os itens ativos na tabela
+                for idx_row, row in itens_validos.iterrows():
                     id_bem_unico = f"BEM-{d['num_reds']}-{row['item_num']}-{uuid.uuid4().hex[:4]}"
                     orig_item = df_mats.iloc[idx_row]
                     
@@ -237,11 +269,11 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                     autor_final = str(row["autor"]).strip()
 
                     foi_editado = (
-                        desc_final != str(orig_item["descricao"]).strip() or
-                        qtd_final != float(orig_item["quantidade"]) or
-                        unid_final != str(orig_item["unidade"]).strip() or
-                        inv_final != str(orig_item["involucro"]).strip() or
-                        autor_final != str(orig_item["autor"]).strip()
+                        desc_final != str(orig_item.get("descricao", "")).strip() or
+                        qtd_final != float(orig_item.get("quantidade", 1.0)) or
+                        unid_final != str(orig_item.get("unidade", "")).strip() or
+                        inv_final != str(orig_item.get("involucro", "")).strip() or
+                        autor_final != str(orig_item.get("autor", "")).strip()
                     )
                     
                     novo_bem = {
@@ -259,20 +291,20 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                         "status_tramite": "Em Custódia",
                         "data_ingestao": now_iso,
                         "dados_originais_pdf": {
-                            "autores": str(orig_item["autor"]).strip(),
-                            "descricao": str(orig_item["descricao"]).strip(),
-                            "quantidade": float(orig_item["quantidade"]),
-                            "unidade": str(orig_item["unidade"]).strip(),
-                            "involucro": str(orig_item["involucro"]).strip()
+                            "autores": str(orig_item.get("autor", "")).strip(),
+                            "descricao": str(orig_item.get("descricao", "")).strip(),
+                            "quantidade": float(orig_item.get("quantidade", 1.0)),
+                            "unidade": str(orig_item.get("unidade", "")).strip(),
+                            "involucro": str(orig_item.get("involucro", "")).strip()
                         },
                         "editado_pelo_operador": foi_editado,
                         "midias_anexas": list(midias_iniciais)
                     }
                     salvar_material_supabase(novo_bem)
                     
-                    detalhe_log = f"Ingestão inicial de {qtd_final} {unid_final} - {desc_final} (Lacre: {inv_final})"
+                    detalhe_log = f"Ingestão de {qtd_final} {unid_final} - {desc_final} (Lacre: {inv_final})"
                     if foi_editado:
-                        detalhe_log += f" | EDITADO NA INGESTÃO (PDF Original: {orig_item['descricao']})"
+                        detalhe_log += f" | EDITADO NA INGESTÃO"
 
                     registrar_log_supabase({
                         "data_hora": now_iso,
@@ -287,9 +319,12 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                     })
 
                 del st.session_state["temp_reds_extraido"]
-                st.success("Materiais cadastrados com sucesso!")
+                st.success(f"Sucesso! {qtd_validos} material(is) integrado(s) ao Supabase sob sua custódia!")
                 st.rerun()
 
+# =============================================================================
+# DEMAIS ABAS
+# =============================================================================
 def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     usr_logado = st.session_state.get("usuario_dados", {})
     usr_id = str(usr_logado.get("id") or usr_logado.get("usuario_login") or "").strip()
@@ -390,15 +425,15 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
 
     col_tr1, col_tr2 = st.columns(2)
     with col_tr1:
-        with st.form("form_transferir_material_v23"):
+        with st.form("form_transferir_material_v26"):
             st.markdown("**1. Encaminhar Material**")
             bens_disp = {f"{b['id_bem']} - {b['descricao']} (Lacre: {b.get('involucro_lacre')})": b['id_bem'] for b in meus_bens_filtrados}
             
             if bens_disp:
-                bem_sel_key = st.selectbox("Selecione o Material:", list(bens_disp.keys()), key="sel_material_transf_v23")
-                destinatario_sel = st.selectbox("Selecione o Destinatário:", opcoes_destinatario, key="sel_destinatario_v23")
-                unidade_dest_sel = st.selectbox("Unidade Destino:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v23")
-                obs_transf = st.text_input("Observações do Lacre / Estado:", key="txt_obs_transf_v23")
+                bem_sel_key = st.selectbox("Selecione o Material:", list(bens_disp.keys()), key="sel_material_transf_v26")
+                destinatario_sel = st.selectbox("Selecione o Destinatário:", opcoes_destinatario, key="sel_destinatario_v26")
+                unidade_dest_sel = st.selectbox("Unidade Destino:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v26")
+                obs_transf = st.text_input("Observações do Lacre / Estado:", key="txt_obs_transf_v26")
                 
                 if st.form_submit_button("📤 Tramitar Material", type="primary", use_container_width=True):
                     id_bem_alvo = bens_disp[bem_sel_key]
@@ -430,7 +465,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                         st.success("Tramitação registrada no Supabase!")
                         st.rerun()
             else:
-                st.info("Nenhum material disponível para tramitação com os filtros aplicados.")
+                st.info("Nenum material disponível para tramitação com os filtros aplicados.")
                 st.form_submit_button("Tramitar Material", disabled=True, use_container_width=True)
 
     with col_tr2:
