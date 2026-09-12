@@ -8,6 +8,12 @@ from modules.tco.database import salvar_material_supabase, atualizar_material_su
 from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergencia
 from modules.tco.compliance import gerar_pdf_termo_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
+from core.database import (
+    carregar_militares_supabase,
+    atualizar_usuario_supabase,
+    supabase,
+    registrar_audit_log
+)
 
 def calcular_tempo_decorrido(str_data_hora):
     if not str_data_hora or str_data_hora in ["N/A", "Data N/I", "N/I", "None"]:
@@ -880,3 +886,91 @@ def renderizar_aba_logs(all_logs_banco):
         st.dataframe(df_l[cols_reais], use_container_width=True, hide_index=True)
     else:
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
+        # =============================================================================
+# ABA 7: DESIGNAÇÃO DE GESTORES DO CREDS TCO (100% RECLUSA NO MÓDULO TCO)
+# =============================================================================
+
+def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
+    """Aba de uso exclusivo da P1/Comandante para nomear e revogar Gestores CREDS-TCO."""
+    eh_autorizado = any(k in f"{cargo_operador} {perfil_operador}".upper() for k in ["PROGRAMADOR", "ADMIN", "P1", "COMANDANTE"])
+
+    if not eh_autorizado:
+        st.error("🔒 **Acesso Restrito:** Apenas P1, Comandante ou Administradores do SIOP podem nomear Gestores do CREDS-TCO.")
+        return
+
+    st.markdown("#### 👥 Gestão e Nomeação de Gestores CREDS-TCO")
+    st.caption("Conceda ou revogue a função de Gestor do CREDS-TCO para militares da unidade. Gestores possuem acesso ao acervo geral, à caixa coletiva do setor e ao controle de perícias/descarte.")
+
+    all_milit = carregar_militares_supabase()
+    
+    usuarios_banco = []
+    if supabase:
+        try:
+            res_u = supabase.table("usuarios").select("*").execute()
+            usuarios_banco = res_u.data or []
+        except Exception as e:
+            st.warning(f"Aviso ao consultar lista de usuários: {e}")
+
+    df_u = pd.DataFrame(usuarios_banco) if usuarios_banco else pd.DataFrame()
+
+    col_des1, col_des2 = st.columns(2)
+
+    with col_des1:
+        with st.container(border=True):
+            st.markdown("##### ➕ Nomear Novo Gestor CREDS")
+            
+            mils_unidade = [m for m in all_milit if "PROGRAMADOR" in cargo_operador or "ADMIN" in perfil_operador or m.get("unidade") == unidade_operador]
+            
+            opcoes_militar = {
+                f"{m.get('posto_grad')} {m.get('nome_guerra')} (PM: {m.get('num_policia')}) - {m.get('unidade')}": m
+                for m in mils_unidade
+            }
+
+            if opcoes_militar:
+                militar_sel_key = st.selectbox("Selecione o Militar para Atribuir a Função:", list(opcoes_militar.keys()), key="sel_mil_creds_aba7")
+                militar_obj = opcoes_militar[militar_sel_key]
+                num_pm = str(militar_obj.get("num_policia", "")).strip()
+
+                if st.button("✅ Conceder Função CREDS-TCO", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
+                    if atualizar_usuario_supabase(num_pm, {
+                        "nivel_acesso": "CREDS",
+                        "unidade": militar_obj.get("unidade")
+                    }):
+                        registrar_audit_log(
+                            operador_pm=f"{cargo_operador} {nome_operador}",
+                            alvo_pm=num_pm,
+                            tipo_acao="DESIGNAÇÃO GESTOR CREDS",
+                            descricao=f"Função de Gestor CREDS TCO atribuída ao militar {militar_obj.get('nome_guerra')} ({num_pm}) na unidade {militar_obj.get('unidade')}."
+                        )
+                        st.success(f"Função de Gestor CREDS-TCO concedida com sucesso ao militar {militar_obj.get('nome_guerra')}!")
+                        st.rerun()
+            else:
+                st.info("Nenhum militar encontrado para nomeação na unidade atual.")
+
+    with col_des2:
+        with st.container(border=True):
+            st.markdown("##### 📜 Gestores CREDS Ativos")
+            
+            gestores_creds = []
+            if not df_u.empty and "nivel_acesso" in df_u.columns:
+                gestores_creds = df_u[df_u["nivel_acesso"] == "CREDS"].to_dict("records")
+
+            if gestores_creds:
+                for idx_g, g in enumerate(gestores_creds):
+                    with st.container(border=True):
+                        st.markdown(f"**👤 {g.get('cargo_funcao', 'PM')} {g.get('nome_guerra', 'OPERADOR')}**")
+                        st.caption(f"PM: **{g.get('usuario_login')}** | Unidade: **{g.get('unidade', '35ª CIA PM')}**")
+                        
+                        if st.button("🔻 Revogar Função CREDS", key=f"btn_revogar_creds_aba7_{g.get('usuario_login')}_{idx_g}", use_container_width=True):
+                            num_pm_rev = str(g.get("usuario_login")).strip()
+                            if atualizar_usuario_supabase(num_pm_rev, {"nivel_acesso": "TROPA"}):
+                                registrar_audit_log(
+                                    operador_pm=f"{cargo_operador} {nome_operador}",
+                                    alvo_pm=num_pm_rev,
+                                    tipo_acao="REVOGAÇÃO GESTOR CREDS",
+                                    descricao=f"Função de Gestor CREDS TCO revogada para o militar {num_pm_rev}."
+                                )
+                                st.success("Função CREDS revogada!")
+                                st.rerun()
+            else:
+                st.info("Nenhum gestor CREDS ativo cadastrado na unidade.")

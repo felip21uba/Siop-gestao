@@ -5,7 +5,8 @@ from modules.tco.views import (
     renderizar_aba_meus_bens,
     renderizar_aba_transferencias,
     renderizar_aba_creds,
-    renderizar_aba_logs
+    renderizar_aba_logs,
+    renderizar_aba_gestores_creds
 )
 from modules.tco.pdf_generator import renderizar_aba_gerador_oficios
 from modules.tco.compliance import (
@@ -46,13 +47,14 @@ def renderizar_modulo_tco():
     all_bens_banco = carregar_materiais_supabase()
     all_logs_banco = carregar_logs_supabase()
 
-    aba1, aba2, aba3, aba4, aba5, aba6 = st.tabs([
+    aba1, aba2, aba3, aba4, aba5, aba6, aba7 = st.tabs([
         "📥 1. Ingestão REDS & Mídias",
         "🎒 2. Meus Materiais em Custódia",
         "🔄 3. Transferência & Aceite Parcial",
         "📄 4. Gerador de Ofícios (PDF)",
         "🏛️ 5. Painel CREDS-TCO (Gestor)",
-        "📜 6. Trilha de Auditoria Imutável"
+        "📜 6. Trilha de Auditoria Imutável",
+        "👥 7. Designar Gestores CREDS"
     ])
 
     with aba1:
@@ -72,3 +74,6 @@ def renderizar_modulo_tco():
 
     with aba6:
         renderizar_aba_logs(all_logs_banco)
+
+    with aba7:
+        renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)
