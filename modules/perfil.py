@@ -27,6 +27,9 @@ def exibir_tela_perfil():
         "📜 Histórico Auditável de Acessos"
     ])
 
+    # =========================================================================
+    # ABA 1: PERMISSÕES, TRAVAS DE AUDITORIA E PLANO DE COMPLIANCE
+    # =========================================================================
     with aba_p1:
         c_pf1, c_pf2 = st.columns(2)
         with c_pf1:
@@ -108,6 +111,9 @@ def exibir_tela_perfil():
                 use_container_width=True
             )
 
+    # =========================================================================
+    # ABA 2: ATUALIZAÇÃO DE CONTATOS E TROCA DE SENHA
+    # =========================================================================
     with aba_p2:
         st.markdown("##### ⚙️ Atualização de Contatos Corporativos")
         st.caption("Mantenha seu e-mail e celular atualizados para receber códigos de segurança e avisos de escala.")
@@ -178,47 +184,34 @@ def exibir_tela_perfil():
                         else:
                             st.error("Erro ao salvar nova senha no banco. Tente novamente.")
 
+    # =========================================================================
+    # ABA 3: HISTÓRICO AUDITÁVEL DE ACESSOS E OPERAÇÕES
+    # =========================================================================
     with aba_p3:
         st.markdown("##### 📜 Registro Auditável de Logins e Operações")
         st.caption("Acompanhe o registro imutável de todas as ações executadas nesta conta para fins de compliance e segurança.")
 
-        df_logs = buscar_logs_banco(limite=500)
+        # Grava o log de consulta se a sessão ainda não gravou nesta navegação
+        if not st.session_state.get("log_perfil_consultado"):
+            registrar_audit_log(operador_str, usr_key, "ACESSO_PERFIL", f"Militar {operador_str} acessou o Histórico de Auditoria.")
+            st.session_state["log_perfil_consultado"] = True
 
-        if df_logs.empty:
-            registrar_audit_log(operador_str, usr_key, "CONSULTA_PERFIL", "Acesso inicial à aba de auditoria no Perfil.")
-            df_logs = buscar_logs_banco(limite=500)
+        df_logs = buscar_logs_banco(limite=500)
 
         if not df_logs.empty:
             if "data_hora" in df_logs.columns:
                 df_logs["data_hora"] = pd.to_datetime(df_logs["data_hora"], errors="coerce").dt.strftime("%d/%m/%Y %H:%M:%S")
 
-            mask_usuario = (
-                df_logs["usuario"].astype(str).str.upper().str.contains(nome_guerra, na=False) |
-                df_logs["usuario"].astype(str).str.upper().str.contains(usr_key, na=False) |
-                df_logs["detalhe"].astype(str).str.upper().str.contains(nome_guerra, na=False) |
-                df_logs["detalhe"].astype(str).str.upper().str.contains(usr_key, na=False)
-            ) if (nome_guerra or usr_key) else pd.Series([True] * len(df_logs))
-
-            df_filtrado = df_logs[mask_usuario]
-
-            if nivel_exibicao in ["PROGRAMADOR", "ADMIN"]:
-                ver_geral = st.checkbox("🌐 Exibir Auditoria Geral do Sistema (Visão de Gestor)", value=True, key="chk_ver_geral_perfil")
-                if ver_geral:
-                    df_filtrado = df_logs
-
-            if not df_filtrado.empty:
-                st.dataframe(
-                    df_filtrado[["data_hora", "usuario", "acao", "detalhe"]],
-                    column_config={
-                        "data_hora": st.column_config.TextColumn("Data / Hora", width="medium"),
-                        "usuario": st.column_config.TextColumn("Militar / Operador", width="medium"),
-                        "acao": st.column_config.TextColumn("Ação Executada", width="medium"),
-                        "detalhe": st.column_config.TextColumn("Detalhamento da Operação", width="large")
-                    },
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.info(f"ℹ️ Nenhum evento registrado especificamente para {nome_guerra}.")
+            st.dataframe(
+                df_logs[["data_hora", "usuario", "acao", "detalhe"]],
+                column_config={
+                    "data_hora": st.column_config.TextColumn("Data / Hora", width="medium"),
+                    "usuario": st.column_config.TextColumn("Militar / Operador", width="medium"),
+                    "acao": st.column_config.TextColumn("Ação Executada", width="medium"),
+                    "detalhe": st.column_config.TextColumn("Detalhamento da Operação", width="large")
+                },
+                use_container_width=True,
+                hide_index=True
+            )
         else:
             st.info("ℹ️ Nenhum evento crítico registrado no banco de dados até o momento.")
