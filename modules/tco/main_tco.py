@@ -15,7 +15,7 @@ from modules.tco.compliance import (
 )
 
 def renderizar_modulo_tco():
-    """Ponto de entrada do Módulo TCO / Custódia no SIOP com layout nativo e limpo."""
+    """Ponto de entrada do Módulo TCO / Custódia no SIOP."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -31,14 +31,14 @@ def renderizar_modulo_tco():
         else:
             exibir_modal_termo_compliance(usr_id, nome_militar_atual, cargo_str, unidade_militar_atual)
 
-    st.title("📋 Custódia de Materiais TCO / JECRIM & Cadeia de Custódia")
-    st.caption("Ingestão oficial por recibo JECRIM, rastreabilidade multi-unidades, mídias com SHA-256, gerador de ofícios e controle CREDS.")
+    # Título harmonizado em linha única sem legenda poluída
+    st.markdown("### 📦 Custódia de Materiais TCO & Cadeia de Custódia")
     
     col_hdr1, col_hdr2 = st.columns(2)
     with col_hdr1:
-        st.caption(f"👤 **Operador Ativo:** {nome_militar_atual}")
+        st.markdown(f"👤 **Operador Ativo:** `{nome_militar_atual}`")
     with col_hdr2:
-        st.caption(f"🏛️ **Unidade Atual:** {unidade_militar_atual}")
+        st.markdown(f"🏛️ **Unidade Atual:** `{unidade_militar_atual}`")
 
     st.divider()
 
