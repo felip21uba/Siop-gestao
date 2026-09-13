@@ -34,31 +34,33 @@ def calcular_tempo_decorrido_detalhado(str_data_hora):
         return "N/A", False, 0
 
 def obter_status_gargalo_e_tempo(bem):
-    """Mapeia exatamente em qual ponto da cadeia de custódia o material está retido."""
+    """Mapeia o ponto da cadeia e formata o tempo no mesmo tamanho de fonte do texto base."""
     status_tr = bem.get("status_tramite", "Em Custódia")
     fase_dest = bem.get("fase_destinacao", "Com Fiel Depositário / Policial")
-    
-    # Data de referência da última movimentação física
     dt_ref = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao")
     
     texto_tempo, e_alerta_4dias, dias_num = calcular_tempo_decorrido_detalhado(dt_ref)
     
+    # Tag de cor verde com o mesmo tamanho da fonte branca
+    def tag_verde(txt):
+        return f"<span style='color: #4ADE80; font-weight: bold;'>{txt}</span>"
+
     if status_tr == "Pendente Aceite":
-        ponto_cadeia = f"⏳ **Aguardando Aceite:** `{bem.get('destinatario_pendente', 'N/I')}` ({bem.get('unidade_destinatario_pendente', 'N/I')})"
+        ponto_cadeia = f"⏳ **Aguardando Aceite:** {tag_verde(bem.get('destinatario_pendente', 'N/I'))} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
     elif status_tr == "Divergência Registrada":
         ponto_cadeia = f"🚨 **Divergência Registrada:** Pendente de Apuração pelo Gestor CREDS"
     elif "Perícia" in fase_dest:
-        ponto_cadeia = f"🔬 **Em Perícia Técnica (Fora da Unidade):** Responsável: `{bem.get('fiel_depositario_atual', 'N/I')}`"
+        ponto_cadeia = f"🔬 **Em Perícia Técnica:** Responsável: {tag_verde(bem.get('fiel_depositario_atual', 'N/I'))}"
     elif "PCMG" in fase_dest or "Delegacia" in fase_dest:
-        ponto_cadeia = f"🏛️ **Encaminhado à Polícia Civil:** Responsável: `{bem.get('fiel_depositario_atual', 'N/I')}`"
+        ponto_cadeia = f"🏛️ **Encaminhado à Polícia Civil:** Responsável: {tag_verde(bem.get('fiel_depositario_atual', 'N/I'))}"
     elif "JECRIM" in fase_dest or "Fórum" in fase_dest:
-        ponto_cadeia = f"⚖️ **Entregue no JECRIM / Fórum:** Responsável: `{bem.get('fiel_depositario_atual', 'N/I')}`"
+        ponto_cadeia = f"⚖️ **Entregue no JECRIM / Fórum:** Responsável: {tag_verde(bem.get('fiel_depositario_atual', 'N/I'))}"
     elif "Destruição" in fase_dest or "Descarte" in fase_dest:
         ponto_cadeia = f"🔥 **Aguardando Destruição / Descarte Físico no Depósito**"
     elif "DESTRUÍDO" in fase_dest or "ENCERRADO" in fase_dest:
         ponto_cadeia = f"🔒 **Processo Encerrado / Material Destruído**"
     else:
-        ponto_cadeia = f"🎒 **Em Custódia Física de:** `{bem.get('fiel_depositario_atual', 'N/I')}` ({bem.get('unidade_posse_atual', 'N/I')})"
+        ponto_cadeia = f"🎒 **Em Custódia Física de:** {tag_verde(bem.get('fiel_depositario_atual', 'N/I'))} ({bem.get('unidade_posse_atual', 'N/I')})"
         
     return ponto_cadeia, texto_tempo, e_alerta_4dias, dias_num
 
@@ -112,14 +114,14 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
     with col_ing1:
         with st.container(border=True):
             st.markdown("##### 📄 Importar Ocorrência (BO REDS)")
-            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v32")
+            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v33")
 
             if arquivo_pdf is not None:
                 valido_pdf, msg_pdf = validar_pdf_upload(arquivo_pdf)
                 if not valido_pdf:
                     st.error(msg_pdf)
                 else:
-                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v32", use_container_width=True):
+                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v33", use_container_width=True):
                         with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
                             dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
                             st.session_state["temp_reds_extraido"] = dados_reds
@@ -132,7 +134,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
             st.markdown("##### ➕ Inserção Manual de Material")
             st.caption("Adicione itens avulsos para conferência unificada.")
             with st.popover("📝 Cadastrar Material Avulso", use_container_width=True):
-                with st.form("form_material_manual_v32", clear_on_submit=True):
+                with st.form("form_material_manual_v33", clear_on_submit=True):
                     man_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-001843571-001").strip()
                     man_autor = st.text_input("Nome do Autor:", placeholder="Ex: MARCIO DE ALMEIDA SOUZA").strip().upper()
                     man_desc = st.text_input("Descrição do Material:", placeholder="Ex: 02 papelotes de cocaína").strip().upper()
@@ -222,7 +224,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_materiais_ingestao_v32"
+                key="editor_materiais_ingestao_v33"
             )
 
             qtd_marcados = len(df_editado_ing[df_editado_ing["remover"] == True])
@@ -231,7 +233,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 "📷 Anexar Mídias / Fotos da Apreensão (Opcional):", 
                 type=["jpg", "jpeg", "png", "pdf"], 
                 accept_multiple_files=True, 
-                key="upl_photos_ingestao_v32"
+                key="upl_photos_ingestao_v33"
             )
 
             col_b1, col_b2, col_b3 = st.columns([2, 1.5, 1])
@@ -239,18 +241,18 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 btn_confirmar = st.button(
                     "💾 Salvar Materiais no Supabase", 
                     type="primary", 
-                    key="btn_conf_fiel_dep_v32", 
+                    key="btn_conf_fiel_dep_v33", 
                     use_container_width=True
                 )
             with col_b2:
                 btn_excluir_marcados = st.button(
                     f"🗑️ Excluir Marcados ({qtd_marcados})", 
                     disabled=(qtd_marcados == 0),
-                    key="btn_excluir_marcados_v32", 
+                    key="btn_excluir_marcados_v33", 
                     use_container_width=True
                 )
             with col_b3:
-                btn_limpar = st.button("❌ Descartar REDS", key="btn_limpar_ingestao_v32", use_container_width=True)
+                btn_limpar = st.button("❌ Descartar REDS", key="btn_limpar_ingestao_v33", use_container_width=True)
 
             if btn_excluir_marcados:
                 manter = df_editado_ing[df_editado_ing["remover"] == False]
@@ -502,16 +504,16 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             itens_selecionados_keys = st.multiselect(
                 "Selecione o(s) Material(is) para Tramitar:",
                 options=list(bens_disp.keys()),
-                key="ms_materiais_transf_v32"
+                key="ms_materiais_transf_v33"
             )
             
             c_tr1, c_tr2 = st.columns(2)
             with c_tr1:
-                destinatario_sel = st.selectbox("Selecione o Destino (CREDS Cia ou Militar):", opcoes_destinatarios_geral, key="sel_destinatario_v32")
+                destinatario_sel = st.selectbox("Selecione o Destino (CREDS Cia ou Militar):", opcoes_destinatarios_geral, key="sel_destinatario_v33")
             with c_tr2:
-                unidade_dest_sel = st.selectbox("Unidade Responsável:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v32")
+                unidade_dest_sel = st.selectbox("Unidade Responsável:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v33")
             
-            obs_transf = st.text_input("Observações Gerais da Tramitação:", key="txt_obs_transf_v32", placeholder="Ex: Encaminhado para o depósito do CREDS TCO da Cia")
+            obs_transf = st.text_input("Observações Gerais da Tramitação:", key="txt_obs_transf_v33", placeholder="Ex: Encaminhado para o depósito do CREDS TCO da Cia")
 
             qtd_sel_envio = len(itens_selecionados_keys)
             
@@ -519,7 +521,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 f"📤 Tramitar {qtd_sel_envio} Material(is) Selecionado(s)", 
                 type="primary", 
                 disabled=(qtd_sel_envio == 0),
-                key="btn_tramitar_lote_v32",
+                key="btn_tramitar_lote_v33",
                 use_container_width=True
             )
 
@@ -600,7 +602,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_pendentes_rec_v32"
+                key="editor_pendentes_rec_v33"
             )
 
             itens_aceitar = df_editado_rec[df_editado_rec["receber"] == True]
@@ -616,7 +618,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                     type="primary",
                     disabled=(qtd_aceitar == 0),
                     use_container_width=True,
-                    key="btn_acc_sel_v32"
+                    key="btn_acc_sel_v33"
                 )
 
             with col_acc2:
@@ -624,7 +626,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                     f"⚠️ Registrar Divergência / Recusa nos Não Marcados ({qtd_recusar} item/ns)",
                     disabled=(qtd_recusar == 0),
                     use_container_width=True,
-                    key="btn_rec_des_v32"
+                    key="btn_rec_des_v33"
                 )
 
             if btn_aceitar_selecionados:
@@ -667,7 +669,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
 
             if btn_recusar_desmarcados:
                 st.warning("⚠️ Informe o motivo e a justificativa para a recusa dos itens desmarcados:")
-                with st.form("form_motivo_recusa_lote_v32"):
+                with st.form("form_motivo_recusa_lote_v33"):
                     motivo_lote = st.selectbox(
                         "Motivo da Divergência:",
                         [
@@ -744,7 +746,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     if "kpi_filtro_creds" not in st.session_state:
         st.session_state["kpi_filtro_creds"] = "TODOS"
 
-    # Processamento dos pontos de retenção
     bens_processados = []
     q_parados_critico = 0
     q_custodia = 0
@@ -774,7 +775,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         if "Destruição" in str(b.get("fase_destinacao", "")) or "DESTRUÍDO" in str(b.get("fase_destinacao", "")):
             q_destruicao += 1
 
-    # MÉTRICAS E INDICADORES (BOTÕES INTERATIVOS)
     st.markdown("##### 📊 Filtros Rápidos (Clique nos cartões para filtrar a tabela)")
     kp1, kp2, kp3, kp4, kp5 = st.columns(5)
     with kp1:
@@ -816,16 +816,13 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         with f4_col4:
             f4_filtro_alerta = st.selectbox("Status Crítico:", ["TODOS OS MATERIAIS", "⚠️ PENDENTES DE ACEITE", "🚨 COM DIVERGÊNCIA"], key="f4_alerta")
 
-    # Aplicação dos filtros de texto
     all_bens_filtrados = aplicar_filtros_bens(bens_processados, f4_reds, f4_autor, f4_militar, "TODAS AS UNIDADES")
 
-    # Aplicação do Filtro Crítico
     if f4_filtro_alerta == "⚠️ PENDENTES DE ACEITE":
         all_bens_filtrados = [b for b in all_bens_filtrados if b.get("status_tramite") == "Pendente Aceite"]
     elif f4_filtro_alerta == "🚨 COM DIVERGÊNCIA":
         all_bens_filtrados = [b for b in all_bens_filtrados if b.get("status_tramite") == "Divergência Registrada"]
 
-    # Aplicação do Filtro Interativo (Botões KPI)
     if st.session_state["kpi_filtro_creds"] == "CUSTODIA":
         all_bens_filtrados = [b for b in all_bens_filtrados if b.get("fase_destinacao") == "Com Fiel Depositário / Policial" and b.get("status_tramite") == "Em Custódia"]
     elif st.session_state["kpi_filtro_creds"] == "PERICIA":
@@ -894,12 +891,20 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 st.markdown(f"📦 Material: **{bem['descricao']}** | Autor: **{bem['autores']}**")
                 st.caption(f"🔒 Lacre: **{bem.get('involucro_lacre')}** | Qtd: **{bem.get('quantidade')} {bem.get('unidade_medida')}**")
                 
-                st.markdown(f"📍 {ponto_cadeia}")
+                # Exibição do ponto da cadeia com formatação HTML nativa
+                st.markdown(f"📍 {ponto_cadeia}", unsafe_allow_html=True)
                 
+                # Exibição do tempo com marcação em vermelho para >= 4 dias
                 if alerta_4d and not eh_encerrado:
-                    st.markdown(f"🚨 **Tempo Imóvel:** :red[**{tempo_str} (ATENÇÃO: PARADO HÁ MAIS DE 4 DIAS!)**]")
+                    st.markdown(
+                        f"🚨 **Tempo Imóvel:** <span style='color: #EF4444; font-weight: bold; font-size: 1.05em;'>{tempo_str} (ATENÇÃO: PARADO HÁ MAIS DE 4 DIAS!)</span>", 
+                        unsafe_allow_html=True
+                    )
                 else:
-                    st.markdown(f"⏱️ **Tempo Imóvel:** `{tempo_str}`")
+                    st.markdown(
+                        f"⏱️ **Tempo Imóvel:** <span style='color: #4ADE80; font-weight: bold;'>{tempo_str}</span>", 
+                        unsafe_allow_html=True
+                    )
 
                 if bem.get("pa_oficio_autorizador"):
                     st.caption(f"📑 P.A. / Ofício Autorizador: **{bem['pa_oficio_autorizador']}**")
@@ -907,7 +912,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     st.error("🔒 STATUS: MATERIAL ENCERRADO / DESTRUÍDO (REGISTRO CONGELADO)")
 
             with c_cr2:
-                # Se a fase salva no banco for diferente das padrões, ela é adicionada à lista dinamicamente
                 opcoes_dinamicas = opcoes_destinacao_base.copy()
                 if fase_atual not in opcoes_dinamicas and fase_atual:
                     opcoes_dinamicas.insert(0, fase_atual)
@@ -947,7 +951,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                         if input_pa_oficio:
                             upd_data["pa_oficio_autorizador"] = input_pa_oficio
                         
-                        # Retorno da perícia restaura o status da custódia física
                         if destino_final == "Retornado da Perícia (Em Custódia)":
                             upd_data["status_tramite"] = "Em Custódia"
                             upd_data["fase_destinacao"] = "Com Fiel Depositário / Policial"
@@ -996,7 +999,7 @@ def renderizar_aba_logs(all_logs_banco):
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
 # =============================================================================
-# ABA 7: DESIGNAÇÃO DE GESTORES DO CREDS TCO (100% RECLUSA NO MÓDULO TCO)
+# ABA 7: DESIGNAÇÃO DE GESTORES DO CREDS TCO
 # =============================================================================
 from core.database import (
     carregar_militares_supabase,
@@ -1014,7 +1017,7 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
         return
 
     st.markdown("#### 👥 Gestão e Nomeação de Gestores CREDS-TCO")
-    st.caption("Conceda ou revogue a função de Gestor do CREDS-TCO para militares da unidade. Gestores possuem acesso ao acervo geral, à caixa coletiva do setor e ao controle de perícias/descarte.")
+    st.caption("Conceda ou revogue a função de Gestor do CREDS-TCO para militares da unidade.")
 
     all_milit = carregar_militares_supabase()
     
