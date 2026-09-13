@@ -1,7 +1,7 @@
 import streamlit as st
 from modules.tco.database import carregar_materiais_supabase, carregar_logs_supabase
 from modules.tco.views import (
-    renderizar_aba_ingestao,
+    renderizar_aba_importacao,
     renderizar_aba_meus_bens,
     renderizar_aba_transferencias,
     renderizar_aba_creds,
@@ -26,6 +26,7 @@ def renderizar_modulo_tco():
     perfil_usuario = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
     cargo_str = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).upper()
 
+    # Validação do Termo de Compliance
     if not st.session_state.get("termo_compliance_aceito", False):
         if verificar_aceite_compliance_supabase(usr_id):
             st.session_state["termo_compliance_aceito"] = True
@@ -44,36 +45,30 @@ def renderizar_modulo_tco():
 
     eh_gestor_creds = "PROGRAMADOR" in cargo_str or "ADMIN" in perfil_usuario or "P1" in perfil_usuario or "COMANDANTE" in cargo_str or "CREDS" in perfil_usuario
 
+    # Carregamento dos dados em tempo real
     all_bens_banco = carregar_materiais_supabase()
     all_logs_banco = carregar_logs_supabase()
 
-    aba1, aba2, aba3, aba4, aba5, aba6, aba7 = st.tabs([
-        "📥 1. Ingestão REDS & Mídias",
-        "🎒 2. Meus Materiais em Custódia",
-        "🔄 3. Transferência & Aceite Parcial",
-        "📄 4. Gerador de Ofícios (PDF)",
-        "🏛️ 5. Painel CREDS-TCO (Gestor)",
-        "📜 6. Trilha de Auditoria Imutável",
-        "👥 7. Designar Gestores CREDS"
-    ])
+    # ROTEAMENTO DINÂMICO BASEADO NO MENU LATERAL (SIDEBAR)
+    aba_selecionada = st.session_state.get("subnav_tco", "📥 Importar REDS")
 
-    with aba1:
-        renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual)
+    if "Importar" in aba_selecionada or "Ingestão" in aba_selecionada:
+        renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
 
-    with aba2:
+    elif "Meus Materiais" in aba_selecionada:
         renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    with aba3:
+    elif "Tramitação" in aba_selecionada:
         renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    with aba4:
+    elif "Ofícios" in aba_selecionada:
         renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    with aba5:
+    elif "Painel CREDS" in aba_selecionada:
         renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual)
 
-    with aba6:
+    elif "Auditoria" in aba_selecionada:
         renderizar_aba_logs(all_logs_banco)
 
-    with aba7:
+    elif "Gestores" in aba_selecionada:
         renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)

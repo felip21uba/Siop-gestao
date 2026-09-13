@@ -40,7 +40,7 @@ def criar_draw_qrcode(texto_qr):
         return None
 
 def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia, data_aceite_str, data_impressao_str=None):
-    """Gera o PDF oficial do Termo de Compliance com a data fixa de aceite e a data/hora atual de impressão."""
+    """Gera o PDF oficial do Termo de Compliance com data fixa de aceite e hora de impressão."""
     if not data_impressao_str:
         data_impressao_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
@@ -85,11 +85,11 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     elements.append(tabela_id)
     elements.append(Spacer(1, 12))
 
-    # Texto Jurídico de Compliance
+    # Texto Jurídico de Compliance (Substituído "ingestão" por "importação de REDS")
     texto_juridico = (
         "<b>1. DA CADEIA DE CUSTÓDIA (ART. 158-A CPP):</b> O operador declara ciência formal de que todas as ações "
-        "realizadas no Módulo de Custódia e TCO (ingestão, alteração de invólucro, transferência física, registro de "
-        "divergências e destinação final) são vinculadas de forma unívoca à sua credencial funcional e endereço IP.<br/><br/>"
+        "realizadas no Módulo de Custódia e TCO (importação de REDS, alteração de invólucro, transferência física, "
+        "registro de divergências e destinação final) são vinculadas de forma unívoca à sua credencial funcional e endereço IP.<br/><br/>"
         "<b>2. DA VINCULAÇÃO E IMUTABILIDADE:</b> O aceite deste termo foi registrado eletronicamente no primeiro acesso do "
         "militar ao sistema e constitui assinatura digital idônea para fins de auditoria interna, correicional e instrução processual.<br/><br/>"
         "<b>3. DA SEGURANÇA DA INFORMAÇÃO E LGPD:</b> A credencial de acesso é pessoal e intransferível. O uso inadequado "
@@ -130,7 +130,7 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     return buffer.getvalue()
 
 def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao, unidade):
-    """Verifica se o militar já possui data de aceite gravada. Se for o primeiro aceite, grava e congela a data."""
+    """Verifica se o militar possui aceite gravado. Se for o primeiro acesso, registra e congela a data."""
     if not supabase or not num_policia:
         return True, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
@@ -145,7 +145,6 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
         if aceito and data_existente:
             return True, data_existente
 
-        # Registrar Primeiro Aceite (Congelar a data)
         now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
         supabase.table("usuarios").update({
             "termo_compliance_aceito": True,
@@ -170,7 +169,7 @@ def verificar_aceite_compliance_supabase(num_policia):
         return True
 
 def exibir_modal_termo_compliance(num_policia, nome_militar, cargo_funcao, unidade):
-    """Exibe a tela/modal para aceite do Termo de Compliance no primeiro acesso."""
+    """Exibe a tela para aceite do Termo de Compliance no primeiro acesso."""
     st.warning("⚠️ **TERMO DE COMPLIANCE E RESPONSABILIDADE LEGAL**")
     st.markdown(
         "Para utilizar o Módulo TCO / Custódia, você deve declarar ciência das normas de "

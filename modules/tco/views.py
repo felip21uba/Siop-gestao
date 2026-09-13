@@ -6,12 +6,10 @@ from modules.tco.parser_reds import extrair_dados_reds_pdf
 from modules.tco.storage import upload_midia_supabase
 from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase
 from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergencia
-from modules.tco.compliance import gerar_pdf_termo_compliance
-from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registrar_aceite_compliance
+from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
 def calcular_tempo_decorrido_detalhado(str_data_hora):
-    """Calcula o tempo decorrido e sinaliza se ultrapassou o limite crítico de 4 dias."""
     if not str_data_hora or str_data_hora in ["N/A", "Data N/I", "N/I", "None"]:
         return "N/A", False, 0
     try:
@@ -35,14 +33,12 @@ def calcular_tempo_decorrido_detalhado(str_data_hora):
         return "N/A", False, 0
 
 def obter_status_gargalo_e_tempo(bem):
-    """Mapeia o ponto da cadeia e formata o tempo no mesmo tamanho de fonte do texto base."""
     status_tr = bem.get("status_tramite", "Em Custódia")
     fase_dest = bem.get("fase_destinacao", "Com Fiel Depositário / Policial")
     dt_ref = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao")
     
     texto_tempo, e_alerta_4dias, dias_num = calcular_tempo_decorrido_detalhado(dt_ref)
     
-    # Tag de cor verde com o mesmo tamanho da fonte branca
     def tag_verde(txt):
         return f"<span style='color: #4ADE80; font-weight: bold;'>{txt}</span>"
 
@@ -104,9 +100,9 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", data
     return resultado
 
 # =============================================================================
-# ABA 1: INGESTÃO REDS & MÍDIAS
+# ABA 1: IMPORTAR REDS & MÍDIAS
 # =============================================================================
-def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
+def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     if "temp_reds_extraido" not in st.session_state:
         st.session_state["temp_reds_extraido"] = None
 
@@ -115,14 +111,14 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
     with col_ing1:
         with st.container(border=True):
             st.markdown("##### 📄 Importar Ocorrência (BO REDS)")
-            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v33")
+            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v34")
 
             if arquivo_pdf is not None:
                 valido_pdf, msg_pdf = validar_pdf_upload(arquivo_pdf)
                 if not valido_pdf:
                     st.error(msg_pdf)
                 else:
-                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v33", use_container_width=True):
+                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v34", use_container_width=True):
                         with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
                             dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
                             st.session_state["temp_reds_extraido"] = dados_reds
@@ -135,7 +131,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
             st.markdown("##### ➕ Inserção Manual de Material")
             st.caption("Adicione itens avulsos para conferência unificada.")
             with st.popover("📝 Cadastrar Material Avulso", use_container_width=True):
-                with st.form("form_material_manual_v33", clear_on_submit=True):
+                with st.form("form_material_manual_v34", clear_on_submit=True):
                     man_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-001843571-001").strip()
                     man_autor = st.text_input("Nome do Autor:", placeholder="Ex: MARCIO DE ALMEIDA SOUZA").strip().upper()
                     man_desc = st.text_input("Descrição do Material:", placeholder="Ex: 02 papelotes de cocaína").strip().upper()
@@ -225,7 +221,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_materiais_ingestao_v33"
+                key="editor_materiais_importacao_v34"
             )
 
             qtd_marcados = len(df_editado_ing[df_editado_ing["remover"] == True])
@@ -234,7 +230,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 "📷 Anexar Mídias / Fotos da Apreensão (Opcional):", 
                 type=["jpg", "jpeg", "png", "pdf"], 
                 accept_multiple_files=True, 
-                key="upl_photos_ingestao_v33"
+                key="upl_photos_importacao_v34"
             )
 
             col_b1, col_b2, col_b3 = st.columns([2, 1.5, 1])
@@ -242,18 +238,18 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 btn_confirmar = st.button(
                     "💾 Salvar Materiais no Supabase", 
                     type="primary", 
-                    key="btn_conf_fiel_dep_v33", 
+                    key="btn_conf_fiel_dep_v34", 
                     use_container_width=True
                 )
             with col_b2:
                 btn_excluir_marcados = st.button(
                     f"🗑️ Excluir Marcados ({qtd_marcados})", 
                     disabled=(qtd_marcados == 0),
-                    key="btn_excluir_marcados_v33", 
+                    key="btn_excluir_marcados_v34", 
                     use_container_width=True
                 )
             with col_b3:
-                btn_limpar = st.button("❌ Descartar REDS", key="btn_limpar_ingestao_v33", use_container_width=True)
+                btn_limpar = st.button("❌ Descartar REDS", key="btn_limpar_importacao_v34", use_container_width=True)
 
             if btn_excluir_marcados:
                 manter = df_editado_ing[df_editado_ing["remover"] == False]
@@ -305,7 +301,7 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                             file_name=nome_p_seguro,
                             file_type=p_file.type,
                             num_reds=d["num_reds"],
-                            id_bem=f"INGESTAO-{d['num_reds']}"
+                            id_bem=f"IMPORTACAO-{d['num_reds']}"
                         )
                         if resultado_storage:
                             resultado_storage["enviado_por"] = nome_militar_atual
@@ -357,15 +353,15 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                     }
                     salvar_material_supabase(novo_bem)
                     
-                    detalhe_log = f"Ingestão de {qtd_final} {unid_final} - {desc_final} (Lacre: {inv_final})"
+                    detalhe_log = f"Importação de {qtd_final} {unid_final} - {desc_final} (Lacre: {inv_final})"
                     if foi_editado:
-                        detalhe_log += f" | EDITADO NA INGESTÃO"
+                        detalhe_log += f" | EDITADO NA IMPORTAÇÃO"
 
                     registrar_log_supabase({
                         "data_hora": now_iso,
                         "num_reds": d["num_reds"],
                         "bem_id": id_bem_unico,
-                        "acao": "INGESTÃO / CUSTÓDIA INICIAL",
+                        "acao": "IMPORTAÇÃO / CUSTÓDIA INICIAL",
                         "origem": f"REDS JECRIM (Relator: {d['redator']})",
                         "unidade_origem": unidade_militar_atual,
                         "destino": nome_militar_atual,
@@ -376,6 +372,9 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
                 del st.session_state["temp_reds_extraido"]
                 st.success("Materiais selecionados salvos com sucesso no Supabase!")
                 st.rerun()
+
+# Manter alias por retrocompatibilidade se invocado por nome antigo
+renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
 # ABA 2: MEUS MATERIAIS EM CUSTÓDIA
@@ -508,16 +507,16 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             itens_selecionados_keys = st.multiselect(
                 "Selecione o(s) Material(is) para Tramitar:",
                 options=list(bens_disp.keys()),
-                key="ms_materiais_transf_v33"
+                key="ms_materiais_transf_v34"
             )
             
             c_tr1, c_tr2 = st.columns(2)
             with c_tr1:
-                destinatario_sel = st.selectbox("Selecione o Destino (CREDS Cia ou Militar):", opcoes_destinatarios_geral, key="sel_destinatario_v33")
+                destinatario_sel = st.selectbox("Selecione o Destino (CREDS Cia ou Militar):", opcoes_destinatarios_geral, key="sel_destinatario_v34")
             with c_tr2:
-                unidade_dest_sel = st.selectbox("Unidade Responsável:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v33")
+                unidade_dest_sel = st.selectbox("Unidade Responsável:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v34")
             
-            obs_transf = st.text_input("Observações Gerais da Tramitação:", key="txt_obs_transf_v33", placeholder="Ex: Encaminhado para o depósito do CREDS TCO da Cia")
+            obs_transf = st.text_input("Observações Gerais da Tramitação:", key="txt_obs_transf_v34", placeholder="Ex: Encaminhado para o depósito do CREDS TCO da Cia")
 
             qtd_sel_envio = len(itens_selecionados_keys)
             
@@ -525,7 +524,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 f"📤 Tramitar {qtd_sel_envio} Material(is) Selecionado(s)", 
                 type="primary", 
                 disabled=(qtd_sel_envio == 0),
-                key="btn_tramitar_lote_v33",
+                key="btn_tramitar_lote_v34",
                 use_container_width=True
             )
 
@@ -606,7 +605,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_pendentes_rec_v33"
+                key="editor_pendentes_rec_v34"
             )
 
             itens_aceitar = df_editado_rec[df_editado_rec["receber"] == True]
@@ -622,7 +621,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                     type="primary",
                     disabled=(qtd_aceitar == 0),
                     use_container_width=True,
-                    key="btn_acc_sel_v33"
+                    key="btn_acc_sel_v34"
                 )
 
             with col_acc2:
@@ -630,7 +629,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                     f"⚠️ Registrar Divergência / Recusa nos Não Marcados ({qtd_recusar} item/ns)",
                     disabled=(qtd_recusar == 0),
                     use_container_width=True,
-                    key="btn_rec_des_v33"
+                    key="btn_rec_des_v34"
                 )
 
             if btn_aceitar_selecionados:
@@ -673,7 +672,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
 
             if btn_recusar_desmarcados:
                 st.warning("⚠️ Informe o motivo e a justificativa para a recusa dos itens desmarcados:")
-                with st.form("form_motivo_recusa_lote_v33"):
+                with st.form("form_motivo_recusa_lote_v34"):
                     motivo_lote = st.selectbox(
                         "Motivo da Divergência:",
                         [
@@ -738,7 +737,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             st.info("Nenhuma transferência pendente de aceite para você ou para o CREDS TCO da sua Cia.")
 
 # =============================================================================
-# ABA 5: PAINEL CREDS-TCO (KPIs INTERATIVOS E DESTINO LIVRE)
+# ABA 5: PAINEL CREDS-TCO
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Gargalos na Custódia")
@@ -895,10 +894,8 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 st.markdown(f"📦 Material: **{bem['descricao']}** | Autor: **{bem['autores']}**")
                 st.caption(f"🔒 Lacre: **{bem.get('involucro_lacre')}** | Qtd: **{bem.get('quantidade')} {bem.get('unidade_medida')}**")
                 
-                # Exibição do ponto da cadeia com formatação HTML nativa
                 st.markdown(f"📍 {ponto_cadeia}", unsafe_allow_html=True)
                 
-                # Exibição do tempo com marcação em vermelho para >= 4 dias
                 if alerta_4d and not eh_encerrado:
                     st.markdown(
                         f"🚨 **Tempo Imóvel:** <span style='color: #EF4444; font-weight: bold; font-size: 1.05em;'>{tempo_str} (ATENÇÃO: PARADO HÁ MAIS DE 4 DIAS!)</span>", 
@@ -1013,7 +1010,6 @@ from core.database import (
 )
 
 def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
-    """Aba de uso exclusivo da P1/Comandante para nomear e revogar Gestores CREDS-TCO."""
     eh_autorizado = any(k in f"{cargo_operador} {perfil_operador}".upper() for k in ["PROGRAMADOR", "ADMIN", "P1", "COMANDANTE"])
 
     if not eh_autorizado:

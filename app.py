@@ -653,7 +653,7 @@ with st.sidebar:
             aba_tco_sel = st.radio(
                 "Submenu TCO:",
                 [
-                    "📥 Ingestão REDS",
+                    "📥 Importar REDS",
                     "🎒 Meus Materiais",
                     "🔄 Tramitação",
                     "📄 Ofícios PDF",
