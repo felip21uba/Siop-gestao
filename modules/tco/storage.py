@@ -1,14 +1,27 @@
 import datetime
+import unicodedata
+import re
 import streamlit as st
 from core.database import supabase
+
+def remover_acentos_e_caracteres_especiais(texto):
+    """Remove acentos, ç e caracteres especiais mantendo apenas caracteres ASCII seguros para URLs/S3."""
+    texto_sem_acento = unicodedata.normalize('NFKD', str(texto)).encode('ASCII', 'ignore').decode('utf-8')
+    texto_limpo = re.sub(r'[^a-zA-Z0-9_\-]', '_', texto_sem_acento)
+    texto_limpo = re.sub(r'_+', '_', texto_limpo).strip('_')
+    return texto_limpo.upper()
 
 def upload_midia_supabase(file_bytes, file_name, file_type, num_reds, id_bem):
     """Realiza o upload de mídias/fotos do material para o Supabase Storage."""
     if not supabase or not file_bytes:
         return None
     try:
-        caminho_arquivo = f"mids_{num_reds}/{id_bem}_{file_name}"
-        res = supabase.storage.from_("midias_tco").upload(
+        reds_limpo = remover_acentos_e_caracteres_especiais(num_reds)
+        bem_limpo = remover_acentos_e_caracteres_especiais(id_bem)
+        nome_limpo = remover_acentos_e_caracteres_especiais(file_name)
+        
+        caminho_arquivo = f"mids_{reds_limpo}/{bem_limpo}_{nome_limpo}"
+        supabase.storage.from_("midias_tco").upload(
             path=caminho_arquivo,
             file=file_bytes,
             file_options={"content-type": file_type}
@@ -29,7 +42,7 @@ def upload_oficio_pdf_supabase(pdf_bytes, num_oficio, num_reds):
         return None
 
     try:
-        nome_limpo = str(num_oficio).replace('/', '_').replace(' ', '_').strip().upper()
+        nome_limpo = remover_acentos_e_caracteres_especiais(num_oficio)
         time_stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         caminho_arquivo = f"oficios/{time_stamp}_{nome_limpo}.pdf"
 
