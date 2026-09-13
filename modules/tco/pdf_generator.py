@@ -1,6 +1,7 @@
 import io
 import datetime
 import hashlib
+import json
 import streamlit as st
 import pandas as pd
 from reportlab.lib.pagesizes import letter
@@ -11,6 +12,7 @@ from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
 from core.database import supabase
 from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
+from modules.tco.storage import upload_oficio_pdf_supabase, deletar_arquivo_storage_supabase
 
 def gerar_hash_oficio(conteudo_str):
     """Gera assinatura SHA-256 para o documento oficial."""
@@ -140,10 +142,16 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     return buffer.getvalue(), hash_doc
 
 def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    st.markdown("#### 📄 Gerador Oficial de Ofícios de Encaminhamento & Consulta de Expedidos")
+    st.markdown("#### 📄 Gerador Oficial de Ofícios de Encaminhamento & Repositório de Expedidos")
 
-    tab_emissao, tab_consulta = st.tabs(["📝 Emitir Novo Ofício", "📜 Ofícios Expedidos (Consulta Posterior)"])
+    tab_emissao, tab_repositorio = st.tabs([
+        "📝 Emitir Novo Ofício (PDF)", 
+        "📜 Repositório de Ofícios Expedidos"
+    ])
 
+    # -------------------------------------------------------------------------
+    # ABA 1: EMISSÃO E BACKUP DO OFÍCIO
+    # -------------------------------------------------------------------------
     with tab_emissao:
         st.caption("Emita expedientes oficiais de custódia contendo materiais de um único REDS ou múltiplos REDSs unificados.")
 
@@ -250,7 +258,7 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
             with c_em2:
                 emissor_cargo = st.text_input("Cargo / Função:", value="RESPONSÁVEL PELA CUSTÓDIA / CREDS").strip().upper()
 
-            btn_gerar = st.button("🚀 Gerar e Baixar Ofício com QR Code (PDF)", type="primary", disabled=(not materiais_selecionados), use_container_width=True)
+            btn_gerar = st.button("🚀 Gerar, Fazer Backup e Baixar Ofício com QR Code (PDF)", type="primary", disabled=(not materiais_selecionados), use_container_width=True)
 
             if btn_gerar:
                 if not destinatario_nome or not destinatario_cargo or not corpo_texto:
@@ -270,7 +278,14 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                     )
 
                     now_iso = datetime.datetime.now().isoformat()
+                    first_reds = materiais_selecionados[0]["num_reds"] if materiais_selecionados else "N/I"
                     
+                    # Upload para Backup no Storage
+                    res_storage = upload_oficio_pdf_supabase(pdf_bytes, num_oficio, first_reds)
+                    url_pdf = res_storage.get("url_publica") if res_storage else None
+                    caminho_st = res_storage.get("caminho_storage") if res_storage else None
+
+                    # Atualiza fase e documento autorizador dos materiais vinculados
                     for m_item in materiais_selecionados:
                         atualizar_material_supabase(m_item["id_bem"], {
                             "fase_destinacao": f"Encaminhado ({orgao_destino})",
@@ -286,12 +301,12 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                             "unidade_origem": unidade_militar_atual,
                             "destino": orgao_destino,
                             "unidade_destino": "Órgão Externo",
-                            "detalhe": f"Gerado {num_oficio} para {destinatario_nome}. SHA-256: {hash_sha}"
+                            "detalhe": f"GERADO {num_oficio} | Dest: {destinatario_nome} | SHA-256: {hash_sha} | URL: {url_pdf or 'N/I'} | ST_PATH: {caminho_st or 'N/I'}"
                         })
 
-                    st.success("✅ Ofício gerado com sucesso com QR Code de Autenticidade!")
+                    st.success("✅ Ofício gerado com sucesso! Backup do PDF salvo no repositório.")
                     st.download_button(
-                        label="📥 Clique para Baixar o Ofício (PDF)",
+                        label="📥 Clique para Baixar a 1ª Via do Ofício (PDF)",
                         data=pdf_bytes,
                         file_name=f"{num_oficio.replace(' ', '_')}.pdf",
                         mime="application/pdf",
@@ -299,36 +314,70 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                         use_container_width=True
                     )
 
-    with tab_consulta:
-        st.markdown("##### 📜 Histórico Geral de Ofícios Expedidos")
-        st.caption("Consulte todas as emissões oficiais de ofício registradas na Trilha de Auditoria do Módulo TCO.")
+    # -------------------------------------------------------------------------
+    # ABA 2: REPOSITÓRIO E SEGUNDA VIA DE OFÍCIOS EXPEDIDOS
+    # -------------------------------------------------------------------------
+    with tab_repositorio:
+        st.markdown("##### 📂 Repositório Digital de Ofícios Emitidos (Backup Permanente)")
+        st.caption("Resgate a segunda via em PDF exata de qualquer ofício expedido ou realize a exclusão do expediente se necessário.")
 
         logs_oficios = []
         if supabase:
             try:
-                # CORREÇÃO: Sintaxe desc=True para postgrest-py
                 res_of = supabase.table("tco_logs").select("*").ilike("acao", "%OFÍCIO%").order("data_hora", desc=True).execute()
                 logs_oficios = res_of.data or []
             except Exception as e:
-                st.warning(f"Erro ao consultar histórico no Supabase: {e}")
+                st.warning(f"Erro ao consultar repositório no Supabase: {e}")
 
         if logs_oficios:
-            df_of = pd.DataFrame(logs_oficios)
-            
-            if "data_hora" in df_of.columns:
-                df_of["data_formatada"] = pd.to_datetime(df_of["data_hora"]).dt.strftime("%d/%m/%Y %H:%M")
+            for idx_of, log_item in enumerate(logs_oficios):
+                detalhe_txt = str(log_item.get("detalhe", ""))
+                
+                # Extração de URL e caminho do storage salvos no detalhe
+                url_pdf = None
+                path_st = None
+                if "URL: " in detalhe_txt:
+                    url_pdf = detalhe_txt.split("URL: ")[1].split(" |")[0].strip()
+                if "ST_PATH: " in detalhe_txt:
+                    path_st = detalhe_txt.split("ST_PATH: ")[1].strip()
 
-            st.dataframe(
-                df_of[["data_formatada", "num_reds", "bem_id", "origem", "destino", "detalhe"]],
-                column_config={
-                    "data_formatada": "Data / Hora Expedição",
-                    "num_reds": "Nº REDS",
-                    "bem_id": "Código Bem",
-                    "origem": "Emissor",
-                    "destino": "Órgão / Destino",
-                    "detalhe": "Detalhamento e Chancela SHA-256"
-                },
-                hide_index=True, use_container_width=True
-            )
+                if url_pdf == "N/I":
+                    url_pdf = None
+
+                dt_raw = log_item.get("data_hora", "")
+                try:
+                    dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y %H:%M")
+                except Exception:
+                    dt_fmt = str(dt_raw)[:16]
+
+                with st.container(border=True):
+                    c_rep1, c_rep2 = st.columns([3.5, 1.5])
+                    
+                    with c_rep1:
+                        st.markdown(f"📄 REDS: **{log_item.get('num_reds')}** | Bem: **{log_item.get('bem_id')}**")
+                        st.markdown(f"✍️ **Emissor:** {log_item.get('origem')} | 🏛️ **Destino:** {log_item.get('destino')}")
+                        st.caption(f"⏱️ Data/Hora Emissão: **{dt_fmt}**")
+                        st.caption(f"📝 Detalhes: {detalhe_txt}")
+
+                    with c_rep2:
+                        if url_pdf:
+                            st.link_button("📥 Baixar Segunda Via (PDF)", url_pdf, use_container_width=True)
+                        else:
+                            st.caption("⚠️ PDF original não gravado no storage.")
+
+                        with st.popover("🗑️ Excluir Ofício"):
+                            st.warning("Atenção: A exclusão removerá o registro e a cópia em PDF do backup.")
+                            chk_conf = st.checkbox("Confirmar exclusão?", key=f"chk_del_of_{log_item.get('id')}_{idx_of}")
+                            if st.button("🔥 Confirmar Exclusão", key=f"btn_del_of_{log_item.get('id')}_{idx_of}", type="primary", use_container_width=True):
+                                if not chk_conf:
+                                    st.error("Marque a caixa de confirmação.")
+                                else:
+                                    if path_st and path_st != "N/I":
+                                        deletar_arquivo_storage_supabase(path_st)
+                                    
+                                    if supabase:
+                                        supabase.table("tco_logs").delete().eq("id", log_item.get("id")).execute()
+                                    st.success("Expediente removido do repositório!")
+                                    st.rerun()
         else:
-            st.info("Nenhum registro de expedição de ofício localizado no banco de dados.")
+            st.info("Nenhum registro de ofício expedido localizado no repositório.")
