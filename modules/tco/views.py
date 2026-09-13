@@ -984,7 +984,7 @@ def renderizar_aba_logs(all_logs_banco):
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
 # =============================================================================
-# ABA 7: DESIGNAÇÃO DE GESTORES POR CREDS ESPECÍFICO (DINÂMICO E MANUAL)
+# ABA 7: DESIGNAÇÃO DE GESTORES ORGANIZADOS POR CIA / BATALHÃO
 # =============================================================================
 def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
     eh_autorizado = any(k in f"{cargo_operador} {perfil_operador}".upper() for k in ["PROGRAMADOR", "ADMIN", "P1", "COMANDANTE"])
@@ -993,11 +993,12 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
         st.error("🔒 **Acesso Restrito:** Apenas P1, Comandante ou Administradores do SIOP podem designar Gestores do CREDS-TCO.")
         return
 
-    st.markdown("#### 👥 Designação de Gestores por CREDS (Cia ou Batalhão)")
-    st.caption("Especifique a qual CREDS setorial o militar ficará vinculado.")
+    st.markdown("#### 👥 Designação e Estrutura de Gestores por CREDS (Cia / Batalhão)")
+    st.caption("Cadastre novas Companhias/Batalhões ou atribua militares aos CREDS setoriais oficiais.")
 
     all_milit = carregar_militares_supabase()
     
+    # Mapeamento hierárquico para garantir a exibição correta da graduação (SGT, TEN, CB, etc.)
     mapa_graduacoes = {}
     for m in all_milit:
         pm_num = str(m.get("num_policia") or m.get("usuario_login") or "").strip().upper()
@@ -1011,27 +1012,30 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
             res_u = supabase.table("usuarios").select("*").execute()
             usuarios_banco = res_u.data or []
         except Exception as e:
-            st.warning(f"Aviso ao consultar usuários: {e}")
+            st.warning(f"Aviso ao consultar lista de usuários: {e}")
 
     df_u = pd.DataFrame(usuarios_banco) if usuarios_banco else pd.DataFrame()
 
-    col_des1, col_des2 = st.columns(2)
+    col_des1, col_des2 = st.columns([2, 2.2])
 
+    # -------------------------------------------------------------------------
+    # PAINEL DA ESQUERDA: NOMEAÇÃO POR COMPANHIA / BATALHÃO
+    # -------------------------------------------------------------------------
     with col_des1:
         with st.container(border=True):
-            st.markdown("##### ➕ Nomear Gestor para um CREDS")
+            st.markdown("##### ➕ Nomear Gestor para Unidade / CREDS")
             
             opcoes_creds_destino = obter_lista_creds_dinamica()
-            creds_alvo_sel = st.selectbox("Selecione o CREDS de Destino:", opcoes_creds_destino, key="sb_creds_destino_aba7")
+            creds_alvo_sel = st.selectbox("Selecione o CREDS da Companhia ou Batalhão:", opcoes_creds_destino, key="sb_creds_destino_aba7")
 
             creds_final_nome = creds_alvo_sel
             if creds_alvo_sel == "✏️ Outro CREDS / Digitar Manualmente":
-                creds_final_nome = st.text_input("Digite a sigla/nome do CREDS:", placeholder="Ex: CREDS TCO - 285ª CIA PM").strip().upper()
+                creds_final_nome = st.text_input("Digite o Nome da Nova Unidade / CREDS:", placeholder="Ex: CREDS TCO - 285ª CIA TM").strip().upper()
 
             mils_unidade = [m for m in all_milit if "PROGRAMADOR" in cargo_operador or "ADMIN" in perfil_operador or m.get("unidade") == unidade_operador]
             
             opcoes_militar = {
-                f"{m.get('posto_grad') or m.get('graduacao', 'PM')} {m.get('nome_guerra')} (PM: {m.get('num_policia')}) - {m.get('unidade')}": m
+                f"{m.get('posto_grad') or m.get('graduacao', 'PM')} {m.get('nome_guerra')} (PM: {m.get('num_policia')}) - Lotação: {m.get('unidade', 'N/I')}": m
                 for m in mils_unidade
             }
 
@@ -1040,7 +1044,7 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                 militar_obj = opcoes_militar[militar_sel_key]
                 num_pm = str(militar_obj.get("num_policia", "")).strip()
 
-                if st.button("✅ Designar para o CREDS Selecionado", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
+                if st.button("✅ Conceder Função CREDS na Unidade", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
                     unid_creds_limpa = creds_final_nome.replace("CREDS TCO - ", "").strip()
                     if atualizar_usuario_supabase(num_pm, {
                         "nivel_acesso": "CREDS",
@@ -1050,44 +1054,62 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                             operador_pm=f"{cargo_operador} {nome_operador}",
                             alvo_pm=num_pm,
                             tipo_acao="DESIGNAÇÃO GESTOR CREDS",
-                            descricao=f"Atribuída função de Gestor no {creds_final_nome} ao militar {militar_obj.get('nome_guerra')} ({num_pm})."
+                            descricao=f"Atribuída função de Gestor do {creds_final_nome} ao militar {militar_obj.get('nome_guerra')} ({num_pm})."
                         )
-                        st.success(f"{militar_obj.get('nome_guerra')} designado para o {creds_final_nome}!")
+                        st.success(f"{militar_obj.get('nome_guerra')} vinculado com sucesso ao {creds_final_nome}!")
                         st.rerun()
+            else:
+                st.info("Nenhum militar localizado para vinculação.")
 
+    # -------------------------------------------------------------------------
+    # PAINEL DA DIREITA: LISTAGEM AGRUPADA POR COMPANHIA E BATALHÃO
+    # -------------------------------------------------------------------------
     with col_des2:
         with st.container(border=True):
-            st.markdown("##### 📜 Gestores CREDS Ativos nas Unidades")
+            st.markdown("##### 🏛️ Gestores Ativos Agrupados por CREDS")
             
             gestores_creds = []
             if not df_u.empty and "nivel_acesso" in df_u.columns:
                 gestores_creds = df_u[df_u["nivel_acesso"] == "CREDS"].to_dict("records")
 
             if gestores_creds:
-                for idx_g, g in enumerate(gestores_creds):
-                    pm_key = str(g.get("usuario_login") or g.get("usuario") or "").strip().upper()
-                    
-                    grad_correta = (
-                        mapa_graduacoes.get(pm_key) or 
-                        g.get("posto_grad") or 
-                        g.get("graduacao") or 
-                        g.get("cargo_funcao") or 
-                        "PM"
-                    )
-                    
-                    with st.container(border=True):
-                        st.markdown(f"**👤 {grad_correta} {g.get('nome_guerra', 'OPERADOR')}**")
-                        st.caption(f"PM: **{pm_key}** | CREDS Designado: **{g.get('unidade', '35ª CIA PM')}**")
-                        
-                        if st.button("🔻 Revogar Função CREDS", key=f"btn_revogar_creds_aba7_{pm_key}_{idx_g}", use_container_width=True):
-                            if atualizar_usuario_supabase(pm_key, {"nivel_acesso": "TROPA"}):
-                                registrar_audit_log(
-                                    operador_pm=f"{cargo_operador} {nome_operador}",
-                                    alvo_pm=pm_key,
-                                    tipo_acao="REVOGAÇÃO GESTOR CREDS",
-                                    descricao=f"Função de Gestor CREDS TCO revogada para o militar {pm_key}."
-                                )
-                                st.success("Função CREDS revogada!")
-                                st.rerun()
+                # Agrupamento de gestores por Unidade/CREDS
+                grupos_creds = {}
+                for g in gestores_creds:
+                    unid_g = str(g.get("unidade", "35ª CIA PM")).strip().upper()
+                    if unid_g not in grupos_creds:
+                        grupos_creds[unid_g] = []
+                    grupos_creds[unid_g].append(g)
+
+                for unid_nome, lista_gestores in grupos_creds.items():
+                    with st.expander(f"🏢 **CREDS TCO - {unid_nome}** ({len(lista_gestores)} Gestor/es)", expanded=True):
+                        for idx_g, g in enumerate(lista_gestores):
+                            pm_key = str(g.get("usuario_login") or g.get("usuario") or "").strip().upper()
+                            
+                            # Resgate da graduação oficial (SGT, TEN, CB)
+                            grad_correta = (
+                                mapa_graduacoes.get(pm_key) or 
+                                g.get("posto_grad") or 
+                                g.get("graduacao") or 
+                                g.get("cargo_funcao") or 
+                                "PM"
+                            )
+                            
+                            with st.container(border=True):
+                                c_g1, c_g2 = st.columns([3, 1.5])
+                                with c_g1:
+                                    st.markdown(f"**👤 {grad_correta} {g.get('nome_guerra', 'OPERADOR')}**")
+                                    st.caption(f"Nº Polícia: **{pm_key}** | Setor: **CREDS {unid_nome}**")
+                                with c_g2:
+                                    if st.button("🔻 Revogar", key=f"btn_revogar_creds_{pm_key}_{idx_g}", use_container_width=True):
+                                        if atualizar_usuario_supabase(pm_key, {"nivel_acesso": "TROPA"}):
+                                            registrar_audit_log(
+                                                operador_pm=f"{cargo_operador} {nome_operador}",
+                                                alvo_pm=pm_key,
+                                                tipo_acao="REVOGAÇÃO GESTOR CREDS",
+                                                descricao=f"Função de Gestor CREDS revogada para o militar {pm_key}."
+                                            )
+                                            st.success("Função revogada!")
+                                            st.rerun()
             else:
-                st.info("Nenhum gestor CREDS ativo cadastrado nas unidades.")
+                st.info("Nenhum gestor CREDS ativo cadastrado nas Companhias ou Batalhão.")
