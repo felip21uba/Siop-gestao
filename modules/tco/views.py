@@ -8,6 +8,7 @@ from modules.tco.database import salvar_material_supabase, atualizar_material_su
 from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergencia
 from modules.tco.compliance import gerar_pdf_termo_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
+from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registrar_aceite_compliance
 
 def calcular_tempo_decorrido_detalhado(str_data_hora):
     """Calcula o tempo decorrido e sinaliza se ultrapassou o limite crítico de 4 dias."""
@@ -381,25 +382,28 @@ def renderizar_aba_ingestao(nome_militar_atual, unidade_militar_atual):
 # =============================================================================
 def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     usr_logado = st.session_state.get("usuario_dados", {})
-    usr_id = str(usr_logado.get("id") or usr_logado.get("usuario_login") or "").strip()
-    cargo_f = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).strip()
+    num_pm = str(usr_logado.get("usuario_login") or usr_logado.get("num_policia") or usr_logado.get("id") or "").strip().upper()
+    cargo_f = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).strip().upper()
 
     col_tit1, col_tit2 = st.columns([3, 1.2])
     with col_tit1:
         st.markdown(f"#### 🎒 Materiais sob Fiel Depósito de: **{nome_militar_atual}**")
     
     with col_tit2:
+        _, data_aceite_fixa = obter_ou_registrar_aceite_compliance(num_pm, nome_militar_atual, cargo_f, unidade_militar_atual)
+        
         pdf_comp = gerar_pdf_termo_compliance(
             nome_militar=nome_militar_atual,
             cargo_funcao=cargo_f,
             unidade=unidade_militar_atual,
-            usuario_id=usr_id,
-            data_aceite_str=datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+            num_policia=num_pm,
+            data_aceite_str=data_aceite_fixa,
+            data_impressao_str=datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         )
         st.download_button(
             label="🖨️ Imprimir Termo Compliance",
             data=pdf_comp,
-            file_name=f"Termo_Compliance_{usr_id}.pdf",
+            file_name=f"Termo_Compliance_PM_{num_pm}.pdf",
             mime="application/pdf",
             use_container_width=True
         )
