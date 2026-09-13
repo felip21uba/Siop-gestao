@@ -1092,3 +1092,49 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                                 st.rerun()
             else:
                 st.info("Nenhum gestor CREDS ativo cadastrado na unidade.")
+import io
+import openpyxl
+
+def gerar_excel_panoramico_tco(lista_bens_filtrados):
+    """Gera um arquivo Excel (.xlsx) formatado com o panorama completo dos materiais selecionados."""
+    buffer = io.BytesIO()
+    
+    dados_excel = []
+    for b in lista_bens_filtrados:
+        _, _, alerta_4d, dias_num = obter_status_gargalo_e_tempo(b)
+        
+        # Formatação amigável da data de importação
+        dt_ing = b.get("data_ingestao") or b.get("data_posse_atual") or ""
+        if dt_ing:
+            try:
+                dt_ing_fmt = pd.to_datetime(dt_ing).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                dt_ing_fmt = str(dt_ing)[:16]
+        else:
+            dt_ing_fmt = "N/I"
+
+        dados_excel.append({
+            "Nº REDS": str(b.get("num_reds", "N/I")),
+            "Código Bem": str(b.get("id_bem", "N/I")),
+            "Descrição do Material": str(b.get("descricao", "N/I")),
+            "Qtd": b.get("quantidade", 1.0),
+            "Unidade": str(b.get("unidade_medida", "UN")),
+            "Nº Lacre / Invólucro": str(b.get("involucro_lacre", "N/I")),
+            "Autor(es) Vinculado(s)": str(b.get("autores", "N/I")),
+            "Custodiante Atual": str(b.get("fiel_depositario_atual", "N/I")),
+            "Unidade / Posse Atual": str(b.get("unidade_posse_atual", "N/I")),
+            "Fase / Destinação Final": str(b.get("fase_destinacao", "N/I")),
+            "Status do Trâmite": str(b.get("status_tramite", "N/I")),
+            "Tempo Imóvel (Dias)": dias_num,
+            "Alerta Gargalo (>4d)": "SIM (RETIDO)" if (alerta_4d and "DESTRUÍDO" not in str(b.get("fase_destinacao", ""))) else "NÃO",
+            "Data Importação REDS": dt_ing_fmt,
+            "P.A. / Ofício Autorizador": str(b.get("pa_oficio_autorizador", "N/A"))
+        })
+
+    df_exp = pd.DataFrame(dados_excel)
+
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df_exp.to_excel(writer, index=False, sheet_name="Panorama_Custodia_TCO")
+
+    buffer.seek(0)
+    return buffer.getvalue()
