@@ -19,51 +19,81 @@ from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registra
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
 # =============================================================================
-# HELPER DE EXTRAÇÃO E MONTAGEM DINÂMICA DE CREDS
+# INJEÇÃO DE CSS DE CARDS ALTERNADOS (AZUL E MARROM BRONZE)
+# =============================================================================
+def injetar_css_cards_alternados():
+    st.markdown("""
+    <style>
+    .card-tco-azul {
+        background-color: #0F172A;
+        border-left: 5px solid #3B82F6;
+        border-top: 1px solid #1E293B;
+        border-right: 1px solid #1E293B;
+        border-bottom: 1px solid #1E293B;
+        border-radius: 8px;
+        padding: 14px 18px;
+        margin-bottom: 12px;
+    }
+    .card-tco-marrom {
+        background-color: #1D1512;
+        border-left: 5px solid #C2410C;
+        border-top: 1px solid #38241D;
+        border-right: 1px solid #38241D;
+        border-bottom: 1px solid #38241D;
+        border-radius: 8px;
+        padding: 14px 18px;
+        margin-bottom: 12px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# =============================================================================
+# HELPER DE EXTRAÇÃO E MONTAGEM DINÂMICA DE CREDS POR CIA / BATALHÃO
 # =============================================================================
 def extrair_unidade_mae_creds(str_unidade):
-    """Extrai a Companhia ou Batalhão responsável a partir da string de lotação do militar."""
+    """Extrai estritamente a Companhia ou Batalhão a partir de uma string de lotação."""
     if not str_unidade or not isinstance(str_unidade, str):
         return None
     str_u = str_unidade.upper().strip()
 
-    # Mapeamento dinâmico para as unidades do 21º BPM
-    if "35" in str_u and "CIA" in str_u:
+    if "35" in str_u and ("CIA" in str_u or "COMPANHIA" in str_u):
         return "35ª CIA PM"
-    elif "111" in str_u and "CIA" in str_u:
+    elif "111" in str_u and ("CIA" in str_u or "COMPANHIA" in str_u):
         return "111ª CIA PM"
-    elif "285" in str_u and "CIA" in str_u:
+    elif "285" in str_u and ("CIA" in str_u or "TM" in str_u or "TÁTICO" in str_u or "TATIC" in str_u):
         return "285ª CIA TM"
-    elif "21" in str_u and ("BPM" in str_u or "EM" in str_u or "SECT" in str_u or "GAB" in str_u or "COPOM" in str_u):
+    elif "21" in str_u and ("BPM" in str_u or "EM" in str_u or "BATALHAO" in str_u or "BATALHÃO" in str_u or "SECT" in str_u or "GAB" in str_u or "COPOM" in str_u or "SADM" in str_u or "CTPM" in str_u):
         return "21º BPM"
 
-    # Regex genérico para Cias e Batalhões de outras unidades
-    m_cia = re.search(r'(\d+)\s*CIA', str_u)
+    m_cia = re.search(r'(\d+)\s*ª?\s*CIA', str_u)
     if m_cia:
         return f"{m_cia.group(1)}ª CIA PM"
         
-    m_bpm = re.search(r'(\d+)\s*BPM', str_u)
+    m_bpm = re.search(r'(\d+)\s*º?\s*BPM', str_u)
     if m_bpm:
         return f"{m_bpm.group(1)}º BPM"
 
-    return str_u
+    if "CENTRAL" in str_u and "CUSTODIA" in str_u:
+        return "CENTRAL DE CUSTÓDIA"
+
+    return None
 
 def obter_lista_creds_dinamica():
-    """Lê todas as lotações dos militares e gera a lista de CREDS por Companhia/Batalhão."""
+    """Lê todas as lotações dos militares e gera a lista de CREDS estritamente por Companhia/Batalhão."""
     unidades_set = set()
     all_m = carregar_militares_supabase()
     
     for m in all_m:
-        unid_bruta = str(m.get("unidade") or m.get("nome_unidade") or "").strip()
-        unid_mae = extrair_unidade_mae_creds(unid_bruta)
-        if unid_mae:
-            unidades_set.add(unid_mae)
+        for col in ["unidade", "nome_unidade", "lotacao", "secao"]:
+            unid_bruta = str(m.get(col) or "").strip()
+            unid_mae = extrair_unidade_mae_creds(unid_bruta)
+            if unid_mae:
+                unidades_set.add(unid_mae)
 
-    # Fallback garantido para o 21º BPM
-    if not unidades_set:
-        unidades_set = {"35ª CIA PM", "111ª CIA PM", "285ª CIA TM", "21º BPM"}
+    unidades_base = {"35ª CIA PM", "111ª CIA PM", "285ª CIA TM", "21º BPM"}
+    unidades_set.update(unidades_base)
 
-    lista = [f"CREDS TCO - {u}" for u in sorted(list(unidades_set))]
+    lista = [f"CREDS TCO - {u}" for u in sorted(list(unidades_set)) if "CENTRAL" not in u]
     if "CREDS TCO - CENTRAL DE CUSTÓDIA" not in lista:
         lista.append("CREDS TCO - CENTRAL DE CUSTÓDIA")
     
@@ -213,6 +243,7 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", peri
 # ABA 1: IMPORTAR REDS & MÍDIAS
 # =============================================================================
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
+    injetar_css_cards_alternados()
     if "temp_reds_extraido" not in st.session_state:
         st.session_state["temp_reds_extraido"] = None
 
@@ -476,9 +507,10 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA 2: MEUS MATERIAIS EM CUSTÓDIA
+# ABA 2: MEUS MATERIAIS EM CUSTÓDIA (COM CARDS ALTERNADOS)
 # =============================================================================
 def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
+    injetar_css_cards_alternados()
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm = str(usr_logado.get("usuario_login") or usr_logado.get("num_policia") or usr_logado.get("id") or "").strip().upper()
     cargo_f = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).strip().upper()
@@ -535,27 +567,25 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
         st.divider()
         st.markdown("##### ⚙️ Ações e Mídias Anexas:")
         for idx_m, item_meu in enumerate(meus_bens):
-            with st.container(border=True):
-                c_meu1, c_meu2 = st.columns([3.5, 1.5])
-                with c_meu1:
-                    st.markdown(f"📄 **Nº REDS:** **{item_meu.get('num_reds', 'N/I')}** | **Código:** **{item_meu.get('id_bem', 'N/I')}**")
-                    st.markdown(f"📦 **Descrição do Material:** **{item_meu.get('descricao', 'N/I')}**")
-                    st.markdown(f"👤 **Nome do Autor:** **{item_meu.get('autores', 'AUTOR NÃO INFORMADO')}**")
-                    st.caption(f"🔒 Lacre/Invólucro: **{item_meu.get('involucro_lacre', 'N/I')}** | Qtd: **{item_meu.get('quantidade', '1.0')} {item_meu.get('unidade_medida', 'UN')}**")
-                    
-                    midias = item_meu.get("midias_anexas") or []
-                    if midias:
-                        st.caption(f"📎 **{len(midias)} arquivo(s) anexo(s):**")
-                        for m_anexa in midias:
-                            url = m_anexa.get("url_publica")
-                            nome_f = m_anexa.get("nome_arquivo", "Arquivo")
-                            if url:
-                                st.markdown(f"• [{nome_f}]({url})")
-                    else:
-                        st.caption("Nenhuma mídia anexa registrada.")
-                with c_meu2:
-                    if st.button("✏️ Editar / Anexar Mídias", key=f"btn_edit_meu_bem_{item_meu['id_bem']}_{idx_m}", use_container_width=True):
-                        abrir_modal_edicao_material(item_meu, nome_militar_atual, unidade_militar_atual)
+            classe_card = "card-tco-azul" if idx_m % 2 == 0 else "card-tco-marrom"
+            
+            midias = item_meu.get("midias_anexas") or []
+            str_midias = f"📎 <b>{len(midias)} arquivo(s) anexo(s)</b>" if midias else "Nenhuma mídia anexa"
+
+            html_card = f"""
+            <div class="{classe_card}">
+                <b>📄 REDS:</b> {item_meu.get('num_reds', 'N/I')} | <b>Código:</b> {item_meu.get('id_bem', 'N/I')}<br/>
+                <b>📦 Material:</b> {item_meu.get('descricao', 'N/I')}<br/>
+                <b>👤 Autor:</b> {item_meu.get('autores', 'AUTOR NÃO INFORMADO')}<br/>
+                <small>🔒 Lacre: <b>{item_meu.get('involucro_lacre', 'N/I')}</b> | Qtd: <b>{item_meu.get('quantidade', '1.0')} {item_meu.get('unidade_medida', 'UN')}</b> | {str_midias}</small>
+            </div>
+            """
+            st.markdown(html_card, unsafe_allow_html=True)
+            
+            c_act1, c_act2 = st.columns([4, 1])
+            with c_act2:
+                if st.button("✏️ Editar / Anexar", key=f"btn_edit_meu_bem_{item_meu['id_bem']}_{idx_m}", use_container_width=True):
+                    abrir_modal_edicao_material(item_meu, nome_militar_atual, unidade_militar_atual)
     else:
         st.info("Você não possui nenhum material sob sua custódia no momento.")
 
@@ -563,6 +593,7 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
 # ABA 3: TRAMITAÇÃO COM DESTINO AO CREDS TCO DA COMPANHIA
 # =============================================================================
 def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_militar_atual):
+    injetar_css_cards_alternados()
     st.markdown("#### 🔄 Tramitação Multi-Unidades & Aceite Parcial")
     
     unidades_creds_destino = obter_lista_creds_dinamica()
@@ -609,7 +640,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 
                 destino_final_tram = destinatario_sel
                 if destinatario_sel == "✏️ Outro CREDS / Digitar Manualmente":
-                    destino_final_tram = st.text_input("Digite o Nome do CREDS de Destino:", placeholder="Ex: CREDS TCO - 285ª CIA PM").strip().upper()
+                    destino_final_tram = st.text_input("Digite o Nome do CREDS de Destino:", placeholder="Ex: CREDS TCO - 285ª CIA TM").strip().upper()
 
             with c_tr2:
                 unidade_dest_sel = st.text_input("Unidade Responsável:", value=unidade_militar_atual).strip().upper()
@@ -835,9 +866,10 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             st.info("Nenhuma transferência pendente de aceite para você ou para o CREDS TCO da sua Cia.")
 
 # =============================================================================
-# ABA 5: PAINEL CREDS-TCO (EXPORTAÇÃO EXCEL E FILTRO DINÂMICO DE UNIDADES)
+# ABA 5: PAINEL CREDS-TCO (EXIBIÇÃO COM CARDS ALTERNADOS AZUL E MARROM)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
+    injetar_css_cards_alternados()
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Custódia")
     
     if not eh_gestor_creds:
@@ -870,7 +902,8 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             bens_filtrados_painel = [
                 b for b in bens_filtrados_painel
                 if unid_str.lower() in str(b.get("unidade_posse_atual", "")).lower() or
-                   unid_str.lower() in str(b.get("destinatario_pendente", "")).lower()
+                   unid_str.lower() in str(b.get("destinatario_pendente", "")).lower() or
+                   unid_str.lower() in str(extrair_unidade_mae_creds(str(b.get("unidade_posse_atual", ""))) or "").lower()
             ]
 
         if isinstance(periodo_datas, tuple) and len(periodo_datas) == 2:
@@ -941,14 +974,20 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.markdown(f"##### 📦 Acervo Exibido ({len(bens_processados)} item/ns):")
     
+    # ITERAÇÃO DE CARDS ALTERNADOS (AZUL / MARROM BRONZE)
     for idx_creds, bem in enumerate(bens_processados):
-        with st.container(border=True):
-            st.markdown(f"📄 REDS: **{bem['num_reds']}** | Bem: **{bem['id_bem']}** | Material: **{bem['descricao']}**")
-            st.markdown(f"📍 {bem['_ponto_cadeia']}", unsafe_allow_html=True)
-            if bem['_alerta_4dias']:
-                st.markdown(f"🚨 **Tempo Imóvel:** <span style='color: #EF4444; font-weight: bold;'>{bem['_tempo_str']} (PARADO > 4 DIAS)</span>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"⏱️ **Tempo Imóvel:** <span style='color: #4ADE80; font-weight: bold;'>{bem['_tempo_str']}</span>", unsafe_allow_html=True)
+        classe_card = "card-tco-azul" if idx_creds % 2 == 0 else "card-tco-marrom"
+        
+        tempo_html = f"<span style='color: #EF4444; font-weight: bold;'>{bem['_tempo_str']} (PARADO > 4 DIAS)</span>" if bem['_alerta_4dias'] else f"<span style='color: #4ADE80; font-weight: bold;'>{bem['_tempo_str']}</span>"
+
+        html_item = f"""
+        <div class="{classe_card}">
+            📄 REDS: <b>{bem['num_reds']}</b> | Código Bem: <b>{bem['id_bem']}</b> | Material: <b>{bem['descricao']}</b><br/>
+            📍 Status: {bem['_ponto_cadeia']}<br/>
+            ⏱️ Tempo Imóvel na Etapa: {tempo_html}
+        </div>
+        """
+        st.markdown(html_item, unsafe_allow_html=True)
 
 # =============================================================================
 # ABA 6: TRILHA DE AUDITORIA (FILTRO POR PERÍODO DE DATAS INÍCIO/FIM)
@@ -984,7 +1023,7 @@ def renderizar_aba_logs(all_logs_banco):
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
 # =============================================================================
-# ABA 7: DESIGNAÇÃO DE GESTORES ORGANIZADOS POR CIA / BATALHÃO
+# ABA 7: DESIGNAÇÃO E ESTRUTURA DE GESTORES POR COMPANHIA / BATALHÃO
 # =============================================================================
 def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
     eh_autorizado = any(k in f"{cargo_operador} {perfil_operador}".upper() for k in ["PROGRAMADOR", "ADMIN", "P1", "COMANDANTE"])
@@ -998,7 +1037,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
 
     all_milit = carregar_militares_supabase()
     
-    # Mapeamento hierárquico para garantir a exibição correta da graduação (SGT, TEN, CB, etc.)
     mapa_graduacoes = {}
     for m in all_milit:
         pm_num = str(m.get("num_policia") or m.get("usuario_login") or "").strip().upper()
@@ -1018,9 +1056,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
 
     col_des1, col_des2 = st.columns([2, 2.2])
 
-    # -------------------------------------------------------------------------
-    # PAINEL DA ESQUERDA: NOMEAÇÃO POR COMPANHIA / BATALHÃO
-    # -------------------------------------------------------------------------
     with col_des1:
         with st.container(border=True):
             st.markdown("##### ➕ Nomear Gestor para Unidade / CREDS")
@@ -1061,9 +1096,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
             else:
                 st.info("Nenhum militar localizado para vinculação.")
 
-    # -------------------------------------------------------------------------
-    # PAINEL DA DIREITA: LISTAGEM AGRUPADA POR COMPANHIA E BATALHÃO
-    # -------------------------------------------------------------------------
     with col_des2:
         with st.container(border=True):
             st.markdown("##### 🏛️ Gestores Ativos Agrupados por CREDS")
@@ -1073,7 +1105,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                 gestores_creds = df_u[df_u["nivel_acesso"] == "CREDS"].to_dict("records")
 
             if gestores_creds:
-                # Agrupamento de gestores por Unidade/CREDS
                 grupos_creds = {}
                 for g in gestores_creds:
                     unid_g = str(g.get("unidade", "35ª CIA PM")).strip().upper()
@@ -1086,7 +1117,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                         for idx_g, g in enumerate(lista_gestores):
                             pm_key = str(g.get("usuario_login") or g.get("usuario") or "").strip().upper()
                             
-                            # Resgate da graduação oficial (SGT, TEN, CB)
                             grad_correta = (
                                 mapa_graduacoes.get(pm_key) or 
                                 g.get("posto_grad") or 
