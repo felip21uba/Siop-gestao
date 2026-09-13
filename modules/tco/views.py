@@ -2,12 +2,78 @@ import streamlit as st
 import pandas as pd
 import datetime
 import uuid
+import io
+import openpyxl
+from core.database import (
+    supabase,
+    carregar_militares_supabase,
+    atualizar_usuario_supabase,
+    registrar_audit_log
+)
 from modules.tco.parser_reds import extrair_dados_reds_pdf
 from modules.tco.storage import upload_midia_supabase
 from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase
 from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergencia
 from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registrar_aceite_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
+
+def obter_lista_creds_dinamica():
+    """Obtém dinamicamente a lista de CREDS do Batalhão e Companhias com base no cadastro de militares."""
+    unidades_set = set()
+    all_m = carregar_militares_supabase()
+    for m in all_m:
+        u = str(m.get("unidade") or "").strip().upper()
+        if u and "CENTRAL" not in u:
+            unidades_set.add(u)
+
+    if not unidades_set:
+        unidades_set = {"35ª CIA PM", "285ª CIA PM", "21º BPM"}
+
+    lista = [f"CREDS TCO - {u}" for u in sorted(list(unidades_set))]
+    if "CREDS TCO - CENTRAL DE CUSTÓDIA" not in lista:
+        lista.append("CREDS TCO - CENTRAL DE CUSTÓDIA")
+    lista.append("✏️ Outro CREDS / Digitar Manualmente")
+    return lista
+
+def gerar_excel_panoramico_tco(lista_bens_filtrados):
+    """Gera o arquivo Excel (.xlsx) formatado com o acervo completo de materiais."""
+    buffer = io.BytesIO()
+    dados_excel = []
+    
+    for b in lista_bens_filtrados:
+        _, _, alerta_4d, dias_num = obter_status_gargalo_e_tempo(b)
+        dt_ing = b.get("data_ingestao") or b.get("data_posse_atual") or ""
+        if dt_ing:
+            try:
+                dt_ing_fmt = pd.to_datetime(dt_ing).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                dt_ing_fmt = str(dt_ing)[:16]
+        else:
+            dt_ing_fmt = "N/I"
+
+        dados_excel.append({
+            "Nº REDS": str(b.get("num_reds", "N/I")),
+            "Código Bem": str(b.get("id_bem", "N/I")),
+            "Descrição do Material": str(b.get("descricao", "N/I")),
+            "Qtd": b.get("quantidade", 1.0),
+            "Unidade Medida": str(b.get("unidade_medida", "UN")),
+            "Nº Lacre / Invólucro": str(b.get("involucro_lacre", "N/I")),
+            "Autor(es) Vinculado(s)": str(b.get("autores", "N/I")),
+            "Custodiante Atual": str(b.get("fiel_depositario_atual", "N/I")),
+            "Unidade / Posse Atual": str(b.get("unidade_posse_atual", "N/I")),
+            "Fase / Destinação Final": str(b.get("fase_destinacao", "N/I")),
+            "Status do Trâmite": str(b.get("status_tramite", "N/I")),
+            "Tempo Imóvel (Dias)": dias_num,
+            "Alerta Gargalo (>4d)": "SIM (RETIDO)" if (alerta_4d and "DESTRUÍDO" not in str(b.get("fase_destinacao", ""))) else "NÃO",
+            "Data Importação REDS": dt_ing_fmt,
+            "P.A. / Ofício Autorizador": str(b.get("pa_oficio_autorizador", "N/A"))
+        })
+
+    df_exp = pd.DataFrame(dados_excel)
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df_exp.to_excel(writer, index=False, sheet_name="Panorama_Custodia_TCO")
+    buffer.seek(0)
+    return buffer.getvalue()
 
 def calcular_tempo_decorrido_detalhado(str_data_hora):
     if not str_data_hora or str_data_hora in ["N/A", "Data N/I", "N/I", "None"]:
@@ -82,8 +148,12 @@ def aplicar_filtros_bens(lista_bens, reds_q="", autor_q="", militar_q="", unidad
         resultado.append(b)
     return resultado
 
-def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", data_q=None):
+def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", periodo_q=None):
     resultado = []
+    d_ini, d_fim = None, None
+    if isinstance(periodo_q, tuple) and len(periodo_q) == 2:
+        d_ini, d_fim = periodo_q
+
     for l in lista_logs:
         if reds_q and reds_q.lower() not in str(l.get("num_reds", "")).lower():
             continue
@@ -92,10 +162,15 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", data
         militares_log = f"{l.get('origem', '')} {l.get('destino', '')}"
         if militar_q and militar_q.lower() not in militares_log.lower():
             continue
-        if data_q:
-            data_str = data_q.strftime("%Y-%m-%d")
-            if data_str not in str(l.get("data_hora", "")):
-                continue
+        if d_ini and d_fim:
+            str_dh = str(l.get("data_hora", ""))
+            if str_dh:
+                try:
+                    dt_log = pd.to_datetime(str_dh).date()
+                    if not (d_ini <= dt_log <= d_fim):
+                        continue
+                except Exception:
+                    pass
         resultado.append(l)
     return resultado
 
@@ -111,14 +186,14 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     with col_ing1:
         with st.container(border=True):
             st.markdown("##### 📄 Importar Ocorrência (BO REDS)")
-            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v34")
+            arquivo_pdf = st.file_uploader("Selecione o PDF do REDS:", type=["pdf"], key="uploader_reds_pdf_v35")
 
             if arquivo_pdf is not None:
                 valido_pdf, msg_pdf = validar_pdf_upload(arquivo_pdf)
                 if not valido_pdf:
                     st.error(msg_pdf)
                 else:
-                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v34", use_container_width=True):
+                    if st.button("⚡ Processar Recibo JECRIM", type="primary", key="btn_processar_pdf_recibo_v35", use_container_width=True):
                         with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
                             dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
                             st.session_state["temp_reds_extraido"] = dados_reds
@@ -131,7 +206,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
             st.markdown("##### ➕ Inserção Manual de Material")
             st.caption("Adicione itens avulsos para conferência unificada.")
             with st.popover("📝 Cadastrar Material Avulso", use_container_width=True):
-                with st.form("form_material_manual_v34", clear_on_submit=True):
+                with st.form("form_material_manual_v35", clear_on_submit=True):
                     man_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-001843571-001").strip()
                     man_autor = st.text_input("Nome do Autor:", placeholder="Ex: MARCIO DE ALMEIDA SOUZA").strip().upper()
                     man_desc = st.text_input("Descrição do Material:", placeholder="Ex: 02 papelotes de cocaína").strip().upper()
@@ -221,7 +296,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_materiais_importacao_v34"
+                key="editor_materiais_importacao_v35"
             )
 
             qtd_marcados = len(df_editado_ing[df_editado_ing["remover"] == True])
@@ -230,26 +305,16 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                 "📷 Anexar Mídias / Fotos da Apreensão (Opcional):", 
                 type=["jpg", "jpeg", "png", "pdf"], 
                 accept_multiple_files=True, 
-                key="upl_photos_importacao_v34"
+                key="upl_photos_importacao_v35"
             )
 
             col_b1, col_b2, col_b3 = st.columns([2, 1.5, 1])
             with col_b1:
-                btn_confirmar = st.button(
-                    "💾 Salvar Materiais no Supabase", 
-                    type="primary", 
-                    key="btn_conf_fiel_dep_v34", 
-                    use_container_width=True
-                )
+                btn_confirmar = st.button("💾 Salvar Materiais no Supabase", type="primary", key="btn_conf_fiel_dep_v35", use_container_width=True)
             with col_b2:
-                btn_excluir_marcados = st.button(
-                    f"🗑️ Excluir Marcados ({qtd_marcados})", 
-                    disabled=(qtd_marcados == 0),
-                    key="btn_excluir_marcados_v34", 
-                    use_container_width=True
-                )
+                btn_excluir_marcados = st.button(f"🗑️ Excluir Marcados ({qtd_marcados})", disabled=(qtd_marcados == 0), key="btn_excluir_marcados_v35", use_container_width=True)
             with col_b3:
-                btn_limpar = st.button("❌ Descartar REDS", key="btn_limpar_importacao_v34", use_container_width=True)
+                btn_limpar = st.button("❌ Descartar REDS", key="btn_limpar_importacao_v35", use_container_width=True)
 
             if btn_excluir_marcados:
                 manter = df_editado_ing[df_editado_ing["remover"] == False]
@@ -373,7 +438,6 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                 st.success("Materiais selecionados salvos com sucesso no Supabase!")
                 st.rerun()
 
-# Manter alias por retrocompatibilidade se invocado por nome antigo
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
@@ -466,13 +530,7 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
 def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     st.markdown("#### 🔄 Tramitação Multi-Unidades & Aceite Parcial")
     
-    unidades_creds_destino = [
-        "CREDS TCO - 35ª CIA PM",
-        "CREDS TCO - 111ª CIA PM",
-        "CREDS TCO - 112ª CIA PM",
-        "CREDS TCO - 21º BPM",
-        "CREDS TCO - CENTRAL DE CUSTÓDIA"
-    ]
+    unidades_creds_destino = obter_lista_creds_dinamica()
 
     meus_bens = [b for b in all_bens_banco if b.get("fiel_depositario_atual") == nome_militar_atual and b.get("status_tramite") == "Em Custódia"]
 
@@ -485,18 +543,18 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
         with f3_col3:
             f3_militar = st.text_input("Militar / Custodiante:", placeholder="Ex: ALEXANDRINO", key="f3_militar").strip()
         with f3_col4:
-            f3_unidade = st.selectbox("Unidade Fiel Depósito:", ["TODAS AS UNIDADES"] + unidades_creds_destino, key="f3_unidade")
+            f3_unidade = st.selectbox("Unidade Fiel Depósito:", ["TODAS AS UNIDADES"] + [u for u in unidades_creds_destino if "✏️" not in u], key="f3_unidade")
 
     meus_bens_filtrados = aplicar_filtros_bens(meus_bens, f3_reds, f3_autor, f3_militar, f3_unidade)
     
-    mils_todos = st.session_state.get("lista_militares", [])
+    mils_todos = carregar_militares_supabase()
     nomes_mils_base = [f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else ["CB MORAES", "SD VINICIUS", "SGT SILVA"]
     
     opcoes_destinatarios_geral = unidades_creds_destino + [n for n in nomes_mils_base if n != nome_militar_atual]
 
     with st.container(border=True):
         st.markdown("##### 📤 1. Encaminhar Materiais em LOTE")
-        st.caption("Envie um ou múltiplos materiais para o CREDS TCO da Companhia ou para outro militar específico.")
+        st.caption("Envie um ou múltiplos materiais para o CREDS TCO da Companhia/Batalhão ou para outro militar específico.")
 
         bens_disp = {
             f"{b['id_bem']} | REDS: {b['num_reds']} - {b['descricao']} (Lacre: {b.get('involucro_lacre', 'N/I')})": b['id_bem'] 
@@ -507,16 +565,21 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             itens_selecionados_keys = st.multiselect(
                 "Selecione o(s) Material(is) para Tramitar:",
                 options=list(bens_disp.keys()),
-                key="ms_materiais_transf_v34"
+                key="ms_materiais_transf_v35"
             )
             
             c_tr1, c_tr2 = st.columns(2)
             with c_tr1:
-                destinatario_sel = st.selectbox("Selecione o Destino (CREDS Cia ou Militar):", opcoes_destinatarios_geral, key="sel_destinatario_v34")
+                destinatario_sel = st.selectbox("Selecione o Destino (CREDS Cia ou Militar):", opcoes_destinatarios_geral, key="sel_destinatario_v35")
+                
+                destino_final_tram = destinatario_sel
+                if destinatario_sel == "✏️ Outro CREDS / Digitar Manualmente":
+                    destino_final_tram = st.text_input("Digite o Nome do CREDS de Destino:", placeholder="Ex: CREDS TCO - 285ª CIA PM").strip().upper()
+
             with c_tr2:
-                unidade_dest_sel = st.selectbox("Unidade Responsável:", ["35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"], key="sel_unidade_dest_v34")
+                unidade_dest_sel = st.text_input("Unidade Responsável:", value=unidade_militar_atual).strip().upper()
             
-            obs_transf = st.text_input("Observações Gerais da Tramitação:", key="txt_obs_transf_v34", placeholder="Ex: Encaminhado para o depósito do CREDS TCO da Cia")
+            obs_transf = st.text_input("Observações Gerais da Tramitação:", key="txt_obs_transf_v35", placeholder="Ex: Encaminhado para o depósito do CREDS TCO da Cia")
 
             qtd_sel_envio = len(itens_selecionados_keys)
             
@@ -524,7 +587,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 f"📤 Tramitar {qtd_sel_envio} Material(is) Selecionado(s)", 
                 type="primary", 
                 disabled=(qtd_sel_envio == 0),
-                key="btn_tramitar_lote_v34",
+                key="btn_tramitar_lote_v35",
                 use_container_width=True
             )
 
@@ -540,7 +603,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                         "status_tramite": "Pendente Aceite",
                         "remetente_ultimo": nome_militar_atual,
                         "unidade_remetente": unidade_militar_atual,
-                        "destinatario_pendente": destinatario_sel,
+                        "destinatario_pendente": destino_final_tram,
                         "unidade_destinatario_pendente": unidade_dest_sel,
                         "data_envio_tramite": now_iso,
                         "obs_tramite": obs_transf
@@ -554,9 +617,9 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                             "acao": "SOLICITAÇÃO DE TRAMITAÇÃO EM LOTE",
                             "origem": nome_militar_atual,
                             "unidade_origem": unidade_militar_atual,
-                            "destino": destinatario_sel,
+                            "destino": destino_final_tram,
                             "unidade_destino": unidade_dest_sel,
-                            "detalhe": f"Encaminhado para {destinatario_sel} ({unidade_dest_sel}). Obs: {obs_transf}"
+                            "detalhe": f"Encaminhado para {destino_final_tram} ({unidade_dest_sel}). Obs: {obs_transf}"
                         })
                         sucessos += 1
 
@@ -605,7 +668,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="editor_pendentes_rec_v34"
+                key="editor_pendentes_rec_v35"
             )
 
             itens_aceitar = df_editado_rec[df_editado_rec["receber"] == True]
@@ -621,7 +684,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                     type="primary",
                     disabled=(qtd_aceitar == 0),
                     use_container_width=True,
-                    key="btn_acc_sel_v34"
+                    key="btn_acc_sel_v35"
                 )
 
             with col_acc2:
@@ -629,7 +692,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                     f"⚠️ Registrar Divergência / Recusa nos Não Marcados ({qtd_recusar} item/ns)",
                     disabled=(qtd_recusar == 0),
                     use_container_width=True,
-                    key="btn_rec_des_v34"
+                    key="btn_rec_des_v35"
                 )
 
             if btn_aceitar_selecionados:
@@ -672,7 +735,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
 
             if btn_recusar_desmarcados:
                 st.warning("⚠️ Informe o motivo e a justificativa para a recusa dos itens desmarcados:")
-                with st.form("form_motivo_recusa_lote_v34"):
+                with st.form("form_motivo_recusa_lote_v35"):
                     motivo_lote = st.selectbox(
                         "Motivo da Divergência:",
                         [
@@ -737,7 +800,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             st.info("Nenhuma transferência pendente de aceite para você ou para o CREDS TCO da sua Cia.")
 
 # =============================================================================
-# ABA 5: PAINEL CREDS-TCO (FILTRO DE PERÍODO, UNIDADE E EXPORTAÇÃO EXCEL)
+# ABA 5: PAINEL CREDS-TCO (EXPORTAÇÃO EXCEL E FILTRO DINÂMICO DE UNIDADES)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Custódia")
@@ -746,34 +809,25 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO, P1, Comandantes ou Administradores têm acesso a esta área.")
         return
 
-    # 📊 PAINEL DE EXPORTAÇÃO EM EXCEL E FILTROS DE PERÍODO / CREDS
+    # EXPORTAÇÃO EM EXCEL E FILTROS DINÂMICOS POR PERÍODO / CREDS
     with st.container(border=True):
-        st.markdown("##### 📊 Exportação de Relatório Panorâmico & Filtro por Período / CREDS")
+        st.markdown("##### 📊 Relatório Panorâmico (Excel) & Filtro de Período")
         
         c_exp1, c_exp2, c_exp3 = st.columns([1.5, 1.5, 1])
         
         with c_exp1:
-            # Lista de Unidades/CREDS dinâmicas
-            unidades_disponiveis = [
-                "TODOS OS CREDS (ACERVO GERAL)",
-                "CREDS TCO - 35ª CIA PM",
-                "CREDS TCO - 285ª CIA PM",
-                "CREDS TCO - 111ª CIA PM",
-                "CREDS TCO - 112ª CIA PM",
-                "CREDS TCO - 21º BPM (BATALHÃO)"
-            ]
-            creds_selecionado = st.selectbox("Selecione o CREDS / Unidade:", unidades_disponiveis, key="sb_creds_filtro_main")
+            lista_creds_opts = ["TODOS OS CREDS (ACERVO GERAL)"] + [u for u in obter_lista_creds_dinamica() if "✏️" not in u]
+            creds_selecionado = st.selectbox("Selecione o CREDS / Unidade:", lista_creds_opts, key="sb_creds_filtro_main")
 
         with c_exp2:
             dt_hoje = datetime.date.today()
             dt_30d = dt_hoje - datetime.timedelta(days=30)
             periodo_datas = st.date_input(
-                "Período de Entrada (Data Início e Fim):",
+                "Período de Entrada (Início e Fim):",
                 value=(dt_30d, dt_hoje),
                 key="range_datas_creds"
             )
 
-        # Filtragem dos dados com base no período e CREDS
         bens_filtrados_painel = all_bens_banco.copy()
 
         if creds_selecionado != "TODOS OS CREDS (ACERVO GERAL)":
@@ -786,7 +840,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
         if isinstance(periodo_datas, tuple) and len(periodo_datas) == 2:
             d_ini, d_fim = periodo_datas
-            d_fim_ajustada = d_fim + datetime.timedelta(days=1)
             bens_periodo = []
             for b in bens_filtrados_painel:
                 dt_str = b.get("data_ingestao") or b.get("data_posse_atual")
@@ -806,7 +859,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             if bens_filtrados_painel:
                 excel_bytes = gerar_excel_panoramico_tco(bens_filtrados_painel)
                 st.download_button(
-                    label=f"📥 Baixar Planilha Excel ({len(bens_filtrados_painel)} itens)",
+                    label=f"📥 Baixar Excel ({len(bens_filtrados_painel)} itens)",
                     data=excel_bytes,
                     file_name=f"Relatorio_TCO_{creds_selecionado.replace(' ', '_')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -818,7 +871,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.divider()
 
-    # RASTREAMENTO E TABELA DE MATERIAIS
     bens_processados = []
     q_parados = 0
     q_custodia = 0
@@ -864,7 +916,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 st.markdown(f"⏱️ **Tempo Imóvel:** <span style='color: #4ADE80; font-weight: bold;'>{bem['_tempo_str']}</span>", unsafe_allow_html=True)
 
 # =============================================================================
-# ABA 6: TRILHA DE AUDITORIA
+# ABA 6: TRILHA DE AUDITORIA (FILTRO POR PERÍODO DE DATAS INÍCIO/FIM)
 # =============================================================================
 def renderizar_aba_logs(all_logs_banco):
     st.markdown("#### 📜 Trilha de Auditoria Imutável da Custódia (Supabase)")
@@ -878,10 +930,15 @@ def renderizar_aba_logs(all_logs_banco):
         with f5_col3:
             f5_militar = st.text_input("Militar Envolvido:", placeholder="Ex: ALEXANDRINO", key="f5_militar").strip()
         with f5_col4:
-            usar_f5_data = st.checkbox("Filtrar por Data", key="f5_chk_data")
-            f5_data = st.date_input("Data do Evento:", datetime.date.today(), key="f5_data") if usar_f5_data else None
+            usar_f5_data = st.checkbox("Filtrar por Período de Data", key="f5_chk_data")
+            if usar_f5_data:
+                dt_hoje = datetime.date.today()
+                dt_30d = dt_hoje - datetime.timedelta(days=30)
+                f5_periodo = st.date_input("Período (Início e Fim):", value=(dt_30d, dt_hoje), key="f5_periodo_logs")
+            else:
+                f5_periodo = None
 
-    logs_filtrados = aplicar_filtros_logs(all_logs_banco, f5_reds, f5_busca, f5_militar, f5_data)
+    logs_filtrados = aplicar_filtros_logs(all_logs_banco, f5_reds, f5_busca, f5_militar, f5_periodo)
     
     if logs_filtrados:
         df_l = pd.DataFrame(logs_filtrados)
@@ -892,7 +949,7 @@ def renderizar_aba_logs(all_logs_banco):
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
 # =============================================================================
-# ABA 7: DESIGNAÇÃO DE GESTORES POR CREDS ESPECÍFICO (CORREÇÃO DE PATENTES)
+# ABA 7: DESIGNAÇÃO DE GESTORES POR CREDS ESPECÍFICO (DINÂMICO E MANUAL)
 # =============================================================================
 def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
     eh_autorizado = any(k in f"{cargo_operador} {perfil_operador}".upper() for k in ["PROGRAMADOR", "ADMIN", "P1", "COMANDANTE"])
@@ -902,11 +959,10 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
         return
 
     st.markdown("#### 👥 Designação de Gestores por CREDS (Cia ou Batalhão)")
-    st.caption("Especifique a qual CREDS setorial o militar ficará vinculado (ex: 35ª Cia, 285ª Cia ou 21º BPM).")
+    st.caption("Especifique a qual CREDS setorial o militar ficará vinculado.")
 
     all_milit = carregar_militares_supabase()
     
-    # Dicionário de busca direta por Matrícula para garantir Posto/Graduação correto (SGT, Ten, etc.)
     mapa_graduacoes = {}
     for m in all_milit:
         pm_num = str(m.get("num_policia") or m.get("usuario_login") or "").strip().upper()
@@ -930,16 +986,12 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
         with st.container(border=True):
             st.markdown("##### ➕ Nomear Gestor para um CREDS")
             
-            opcoes_creds_destino = [
-                "CREDS TCO - 35ª CIA PM",
-                "CREDS TCO - 285ª CIA PM",
-                "CREDS TCO - 111ª CIA PM",
-                "CREDS TCO - 112ª CIA PM",
-                "CREDS TCO - 21º BPM (BATALHÃO)",
-                "CREDS TCO - CENTRAL DE CUSTÓDIA"
-            ]
-            
+            opcoes_creds_destino = obter_lista_creds_dinamica()
             creds_alvo_sel = st.selectbox("Selecione o CREDS de Destino:", opcoes_creds_destino, key="sb_creds_destino_aba7")
+
+            creds_final_nome = creds_alvo_sel
+            if creds_alvo_sel == "✏️ Outro CREDS / Digitar Manualmente":
+                creds_final_nome = st.text_input("Digite a sigla/nome do CREDS:", placeholder="Ex: CREDS TCO - 285ª CIA PM").strip().upper()
 
             mils_unidade = [m for m in all_milit if "PROGRAMADOR" in cargo_operador or "ADMIN" in perfil_operador or m.get("unidade") == unidade_operador]
             
@@ -954,7 +1006,7 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                 num_pm = str(militar_obj.get("num_policia", "")).strip()
 
                 if st.button("✅ Designar para o CREDS Selecionado", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
-                    unid_creds_limpa = creds_alvo_sel.replace("CREDS TCO - ", "").strip()
+                    unid_creds_limpa = creds_final_nome.replace("CREDS TCO - ", "").strip()
                     if atualizar_usuario_supabase(num_pm, {
                         "nivel_acesso": "CREDS",
                         "unidade": unid_creds_limpa
@@ -963,9 +1015,9 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                             operador_pm=f"{cargo_operador} {nome_operador}",
                             alvo_pm=num_pm,
                             tipo_acao="DESIGNAÇÃO GESTOR CREDS",
-                            descricao=f"Atribuída função de Gestor no {creds_alvo_sel} ao militar {militar_obj.get('nome_guerra')} ({num_pm})."
+                            descricao=f"Atribuída função de Gestor no {creds_final_nome} ao militar {militar_obj.get('nome_guerra')} ({num_pm})."
                         )
-                        st.success(f"{militar_obj.get('nome_guerra')} designado para o {creds_alvo_sel}!")
+                        st.success(f"{militar_obj.get('nome_guerra')} designado para o {creds_final_nome}!")
                         st.rerun()
 
     with col_des2:
@@ -980,7 +1032,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                 for idx_g, g in enumerate(gestores_creds):
                     pm_key = str(g.get("usuario_login") or g.get("usuario") or "").strip().upper()
                     
-                    # Resgate hierárquico da graduação correta (SGT, CB, TEN, etc.)
                     grad_correta = (
                         mapa_graduacoes.get(pm_key) or 
                         g.get("posto_grad") or 

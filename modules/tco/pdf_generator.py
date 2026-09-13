@@ -33,43 +33,20 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     """Gera o arquivo PDF do Ofício de Encaminhamento com tabela unificada e QR Code."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer,
-        pagesize=letter,
-        rightMargin=36,
-        leftMargin=36,
-        topMargin=36,
-        bottomMargin=36
+        buffer, pagesize=letter,
+        rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36
     )
 
     styles = getSampleStyleSheet()
-    
-    style_header = ParagraphStyle(
-        'HeaderStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1, textColor=colors.HexColor('#1E293B')
-    )
-    
-    style_title = ParagraphStyle(
-        'TitleStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=11, leading=13, alignment=0, textColor=colors.HexColor('#0F172A')
-    )
-    
-    style_body = ParagraphStyle(
-        'BodyStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=13, alignment=4, textColor=colors.HexColor('#334155')
-    )
-
-    style_meta = ParagraphStyle(
-        'MetaStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12, textColor=colors.HexColor('#1E293B')
-    )
-
-    style_table_hdr = ParagraphStyle(
-        'TableHdrStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.HexColor('#0F172A')
-    )
-
-    style_table_cell = ParagraphStyle(
-        'TableCellStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=11, textColor=colors.HexColor('#334155')
-    )
+    style_header = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1, textColor=colors.HexColor('#1E293B'))
+    style_title = ParagraphStyle('TitleStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=11, leading=13, alignment=0, textColor=colors.HexColor('#0F172A'))
+    style_body = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=13, alignment=4, textColor=colors.HexColor('#334155'))
+    style_meta = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12, textColor=colors.HexColor('#1E293B'))
+    style_table_hdr = ParagraphStyle('TableHdrStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.HexColor('#0F172A'))
+    style_table_cell = ParagraphStyle('TableCellStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=11, textColor=colors.HexColor('#334155'))
 
     elements = []
 
-    # Cabeçalho Institucional
     header_text = "<b>POLÍCIA MILITAR DE MINAS GERAIS</b><br/>" \
                   f"<b>{emissor_unidade.upper()}</b><br/>" \
                   "SEÇÃO DE CUSTÓDIA DE MATERIAIS E TCO - CREDS"
@@ -77,14 +54,12 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     elements.append(Spacer(1, 8))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=12))
 
-    # Dados do Expediente
     meta_text = f"<b>OFÍCIO Nº:</b> {num_oficio}<br/>" \
                 f"<b>REF. P.A. / PROTOCOLO:</b> {pa_oficio if pa_oficio else 'N/A'}<br/>" \
                 f"<b>DATA DE EMISSÃO:</b> {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}"
     elements.append(Paragraph(meta_text, style_meta))
     elements.append(Spacer(1, 12))
 
-    # Endereçamento
     dest_text = f"<b>Ao(À) Excelentíssimo(a) Senhor(a):</b><br/>" \
                 f"<b>{destinatario_nome.upper()}</b><br/>" \
                 f"{destinatario_cargo.upper()}<br/>" \
@@ -92,7 +67,6 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     elements.append(Paragraph(dest_text, style_body))
     elements.append(Spacer(1, 12))
 
-    # Tabela com Materiais, REDS e Autores
     elements.append(Paragraph("<b>RELAÇÃO DE MATERIAIS ENCAMINHADOS (CADEIA DE CUSTÓDIA)</b>", style_title))
     elements.append(Spacer(1, 6))
 
@@ -128,21 +102,18 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     elements.append(tabela)
     elements.append(Spacer(1, 14))
 
-    # Corpo do Texto
     elements.append(Paragraph("<b>TEOR DA SOLICITAÇÃO / HISTÓRICO:</b>", style_title))
     elements.append(Spacer(1, 4))
     corpo_formatado = str(corpo_texto or "").replace('\n', '<br/>')
     elements.append(Paragraph(corpo_formatado, style_body))
     elements.append(Spacer(1, 20))
 
-    # Assinatura
     ass_text = f"____________________________________________________<br/>" \
                f"<b>{emissor_nome.upper()}</b><br/>" \
                f"{emissor_cargo} - {emissor_unidade}"
     elements.append(Paragraph(ass_text, ParagraphStyle('AssStyle', parent=style_header, alignment=1)))
     elements.append(Spacer(1, 15))
 
-    # Hash SHA-256 e Rodapé
     concat_materiais = "".join([f"{m.get('id_bem')}{m.get('num_reds')}" for m in lista_materiais])
     hash_doc = gerar_hash_oficio(f"{num_oficio}{concat_materiais}{corpo_texto}")
     
@@ -157,10 +128,7 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
 
     if qr_drawing:
         tabela_rodape = Table([[rodape_p1, qr_drawing]], colWidths=[475, 65])
-        tabela_rodape.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN', (1, 0), (1, 0), 'RIGHT')
-        ]))
+        tabela_rodape.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('ALIGN', (1, 0), (1, 0), 'RIGHT')]))
         elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=8, spaceAfter=6))
         elements.append(tabela_rodape)
     else:
@@ -172,21 +140,16 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     return buffer.getvalue(), hash_doc
 
 def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    """Aba interativa para emissão de Ofícios e consulta de expedientes gerados."""
     st.markdown("#### 📄 Gerador Oficial de Ofícios de Encaminhamento & Consulta de Expedidos")
 
     tab_emissao, tab_consulta = st.tabs(["📝 Emitir Novo Ofício", "📜 Ofícios Expedidos (Consulta Posterior)"])
 
-    # -------------------------------------------------------------------------
-    # ABA 1: EMISSÃO DE NOVO OFÍCIO
-    # -------------------------------------------------------------------------
     with tab_emissao:
         st.caption("Emita expedientes oficiais de custódia contendo materiais de um único REDS ou múltiplos REDSs unificados.")
 
         if not all_bens_banco:
             st.info("Nenhum material cadastrado no banco para gerar ofício.")
         else:
-            # 1. MODO DE SELEÇÃO DE MATERIAIS
             st.markdown("**1. Seleção dos Materiais Relacionados**")
             modo_selecao = st.radio(
                 "Como deseja selecionar os materiais?",
@@ -222,15 +185,12 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                         "involucro_lacre": "Nº Lacre / Invólucro",
                         "autores": "Nome do Autor"
                     },
-                    hide_index=True,
-                    use_container_width=True
+                    hide_index=True, use_container_width=True
                 )
 
             st.divider()
 
-            # 2. DADOS DO DESTINATÁRIO
             st.markdown("**2. Dados do Destinatário / Autoridade**")
-            
             preset_dest = st.selectbox(
                 "Selecione um destinatário predefinido ou digite o seu:",
                 [
@@ -261,9 +221,7 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
 
             st.divider()
 
-            # 3. IDENTIFICAÇÃO DO EXPEDIENTE E CORPO DO TEXTO
             st.markdown("**3. Dados do Ofício e Texto do Expediente**")
-            
             c_of1, c_of2 = st.columns(2)
             with c_of1:
                 val_num_oficio = f"OFÍCIO {datetime.datetime.now().strftime('%Y%m%d')}-35CIA"
@@ -285,7 +243,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
 
             st.divider()
 
-            # 4. ASSINATURA E EMISSÃO
             st.markdown("**4. Emissor / Responsável**")
             c_em1, c_em2 = st.columns(2)
             with c_em1:
@@ -314,7 +271,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
 
                     now_iso = datetime.datetime.now().isoformat()
                     
-                    # Atualiza a fase e o documento autorizador de todos os materiais vinculados
                     for m_item in materiais_selecionados:
                         atualizar_material_supabase(m_item["id_bem"], {
                             "fase_destinacao": f"Encaminhado ({orgao_destino})",
@@ -343,9 +299,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                         use_container_width=True
                     )
 
-    # -------------------------------------------------------------------------
-    # ABA 2: CONSULTA HISTÓRICA DE OFÍCIOS EXPEDIDOS
-    # -------------------------------------------------------------------------
     with tab_consulta:
         st.markdown("##### 📜 Histórico Geral de Ofícios Expedidos")
         st.caption("Consulte todas as emissões oficiais de ofício registradas na Trilha de Auditoria do Módulo TCO.")
@@ -353,7 +306,8 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
         logs_oficios = []
         if supabase:
             try:
-                res_of = supabase.table("tco_logs").select("*").ilike("acao", "%OFÍCIO%").order("data_hora", ascending=False).execute()
+                # CORREÇÃO: Sintaxe desc=True para postgrest-py
+                res_of = supabase.table("tco_logs").select("*").ilike("acao", "%OFÍCIO%").order("data_hora", desc=True).execute()
                 logs_oficios = res_of.data or []
             except Exception as e:
                 st.warning(f"Erro ao consultar histórico no Supabase: {e}")
@@ -361,7 +315,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
         if logs_oficios:
             df_of = pd.DataFrame(logs_oficios)
             
-            # Formatação da Data/Hora para o padrão brasileiro dd/mm/yyyy HH:MM
             if "data_hora" in df_of.columns:
                 df_of["data_formatada"] = pd.to_datetime(df_of["data_hora"]).dt.strftime("%d/%m/%Y %H:%M")
 
@@ -375,8 +328,7 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                     "destino": "Órgão / Destino",
                     "detalhe": "Detalhamento e Chancela SHA-256"
                 },
-                hide_index=True,
-                use_container_width=True
+                hide_index=True, use_container_width=True
             )
         else:
             st.info("Nenhum registro de expedição de ofício localizado no banco de dados.")
