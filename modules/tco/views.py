@@ -19,30 +19,48 @@ from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registra
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
 # =============================================================================
-# INJEÇÃO DE CSS DE CARDS ALTERNADOS (AZUL E MARROM BRONZE)
+# INJEÇÃO DO CSS PERSONALIZADO (AZUL E MARROM COM TEXTO AJUSTADO)
 # =============================================================================
 def injetar_css_cards_alternados():
     st.markdown("""
     <style>
-    .card-tco-azul {
-        background-color: #0F172A;
-        border-left: 5px solid #3B82F6;
-        border-top: 1px solid #1E293B;
-        border-right: 1px solid #1E293B;
-        border-bottom: 1px solid #1E293B;
-        border-radius: 8px;
-        padding: 14px 18px;
-        margin-bottom: 12px;
+    /* 1. SUAVIZAÇÃO DO TEXTO GERAL */
+    .card-content {
+      color: #e2e8f0;
     }
-    .card-tco-marrom {
-        background-color: #1D1512;
-        border-left: 5px solid #C2410C;
-        border-top: 1px solid #38241D;
-        border-right: 1px solid #38241D;
-        border-bottom: 1px solid #38241D;
-        border-radius: 8px;
-        padding: 14px 18px;
-        margin-bottom: 12px;
+    .card-content strong, .card-content b {
+      color: #ffffff;
+    }
+
+    /* 2. CARD AZUL (Status Normal / Aguardando) */
+    .card-blue {
+      background-color: #0c1938;
+      border: 2px solid #1e6091;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      color: #e2e8f0 !important;
+    }
+    .card-blue b, .card-blue strong {
+      color: #ffffff !important;
+    }
+
+    /* 3. CARD MARROM (Dourado Institucional - Texto PRETO) */
+    .card-brown {
+      background-color: #9e8652;
+      border: 2px solid #7a663b;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      color: #000000 !important;
+    }
+    .card-brown .card-title,
+    .card-brown .status-text,
+    .card-brown strong,
+    .card-brown b,
+    .card-brown small,
+    .card-brown i {
+      color: #000000 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -79,7 +97,7 @@ def extrair_unidade_mae_creds(str_unidade):
     return None
 
 def obter_lista_creds_dinamica():
-    """Lê todas as lotações dos militares e gera a lista de CREDS estritamente por Companhia/Batalhão."""
+    """Lê as lotações das planilhas importadas e preserva CREDS criados manualmente."""
     unidades_set = set()
     all_m = carregar_militares_supabase()
     
@@ -89,6 +107,17 @@ def obter_lista_creds_dinamica():
             unid_mae = extrair_unidade_mae_creds(unid_bruta)
             if unid_mae:
                 unidades_set.add(unid_mae)
+
+    if supabase:
+        try:
+            res_u = supabase.table("usuarios").select("unidade").eq("nivel_acesso", "CREDS").execute()
+            if res_u and res_u.data:
+                for u in res_u.data:
+                    u_manual = str(u.get("unidade") or "").strip().upper()
+                    if u_manual and u_manual != "NONE":
+                        unidades_set.add(u_manual)
+        except Exception:
+            pass
 
     unidades_base = {"35ª CIA PM", "111ª CIA PM", "285ª CIA TM", "21º BPM"}
     unidades_set.update(unidades_base)
@@ -106,7 +135,7 @@ def gerar_excel_panoramico_tco(lista_bens_filtrados):
     dados_excel = []
     
     for b in lista_bens_filtrados:
-        _, _, alerta_4d, dias_num = obter_status_gargalo_e_tempo(b)
+        _, _, alerta_4d, dias_num = obter_status_gargalo_e_tempo(b, e_marrom=False)
         dt_ing = b.get("data_ingestao") or b.get("data_posse_atual") or ""
         if dt_ing:
             try:
@@ -163,32 +192,34 @@ def calcular_tempo_decorrido_detalhado(str_data_hora):
     except Exception:
         return "N/A", False, 0
 
-def obter_status_gargalo_e_tempo(bem):
+def obter_status_gargalo_e_tempo(bem, e_marrom=False):
     status_tr = bem.get("status_tramite", "Em Custódia")
     fase_dest = bem.get("fase_destinacao", "Com Fiel Depositário / Policial")
     dt_ref = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao")
     
     texto_tempo, e_alerta_4dias, dias_num = calcular_tempo_decorrido_detalhado(dt_ref)
     
-    def tag_verde(txt):
+    def tag_destaque(txt):
+        if e_marrom:
+            return f"<strong style='color: #000000;'>{txt}</strong>"
         return f"<span style='color: #4ADE80; font-weight: bold;'>{txt}</span>"
 
     if status_tr == "Pendente Aceite":
-        ponto_cadeia = f"⏳ **Aguardando Aceite:** {tag_verde(bem.get('destinatario_pendente', 'N/I'))} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
+        ponto_cadeia = f"⏳ <b>Aguardando Aceite:</b> {tag_destaque(bem.get('destinatario_pendente', 'N/I'))} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
     elif status_tr == "Divergência Registrada":
-        ponto_cadeia = f"🚨 **Divergência Registrada:** Pendente de Apuração pelo Gestor CREDS"
+        ponto_cadeia = f"🚨 <b>Divergência Registrada:</b> Pendente de Apuração pelo Gestor CREDS"
     elif "Perícia" in fase_dest:
-        ponto_cadeia = f"🔬 **Em Perícia Técnica:** Responsável: {tag_verde(bem.get('fiel_depositario_atual', 'N/I'))}"
+        ponto_cadeia = f"🔬 <b>Em Perícia Técnica:</b> Responsável: {tag_destaque(bem.get('fiel_depositario_atual', 'N/I'))}"
     elif "PCMG" in fase_dest or "Delegacia" in fase_dest:
-        ponto_cadeia = f"🏛️ **Encaminhado à Polícia Civil:** Responsável: {tag_verde(bem.get('fiel_depositario_atual', 'N/I'))}"
+        ponto_cadeia = f"🏛️ <b>Encaminhado à Polícia Civil:</b> Responsável: {tag_destaque(bem.get('fiel_depositario_atual', 'N/I'))}"
     elif "JECRIM" in fase_dest or "Fórum" in fase_dest:
-        ponto_cadeia = f"⚖️ **Entregue no JECRIM / Fórum:** Responsável: {tag_verde(bem.get('fiel_depositario_atual', 'N/I'))}"
+        ponto_cadeia = f"⚖️ <b>Entregue no JECRIM / Fórum:</b> Responsável: {tag_destaque(bem.get('fiel_depositario_atual', 'N/I'))}"
     elif "Destruição" in fase_dest or "Descarte" in fase_dest:
-        ponto_cadeia = f"🔥 **Aguardando Destruição / Descarte Físico no Depósito**"
+        ponto_cadeia = f"🔥 <b>Aguardando Destruição / Descarte Físico no Depósito</b>"
     elif "DESTRUÍDO" in fase_dest or "ENCERRADO" in fase_dest:
-        ponto_cadeia = f"🔒 **Processo Encerrado / Material Destruído**"
+        ponto_cadeia = f"🔒 <b>Processo Encerrado / Material Destruído</b>"
     else:
-        ponto_cadeia = f"🎒 **Em Custódia Física de:** {tag_verde(bem.get('fiel_depositario_atual', 'N/I'))} ({bem.get('unidade_posse_atual', 'N/I')})"
+        ponto_cadeia = f"🎒 <b>Em Custódia Física de:</b> {tag_destaque(bem.get('fiel_depositario_atual', 'N/I'))} ({bem.get('unidade_posse_atual', 'N/I')})"
         
     return ponto_cadeia, texto_tempo, e_alerta_4dias, dias_num
 
@@ -507,7 +538,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA 2: MEUS MATERIAIS EM CUSTÓDIA (COM CARDS ALTERNADOS)
+# ABA 2: MEUS MATERIAIS EM CUSTÓDIA (CARDS ALTERNADOS AZUL E MARROM)
 # =============================================================================
 def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -567,16 +598,17 @@ def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar
         st.divider()
         st.markdown("##### ⚙️ Ações e Mídias Anexas:")
         for idx_m, item_meu in enumerate(meus_bens):
-            classe_card = "card-tco-azul" if idx_m % 2 == 0 else "card-tco-marrom"
+            e_marrom = (idx_m % 2 != 0)
+            classe_card = "card-brown" if e_marrom else "card-blue"
             
             midias = item_meu.get("midias_anexas") or []
             str_midias = f"📎 <b>{len(midias)} arquivo(s) anexo(s)</b>" if midias else "Nenhuma mídia anexa"
 
             html_card = f"""
             <div class="{classe_card}">
-                <b>📄 REDS:</b> {item_meu.get('num_reds', 'N/I')} | <b>Código:</b> {item_meu.get('id_bem', 'N/I')}<br/>
-                <b>📦 Material:</b> {item_meu.get('descricao', 'N/I')}<br/>
-                <b>👤 Autor:</b> {item_meu.get('autores', 'AUTOR NÃO INFORMADO')}<br/>
+                📄 REDS: <b>{item_meu.get('num_reds', 'N/I')}</b> | Código: <b>{item_meu.get('id_bem', 'N/I')}</b><br/>
+                📦 Material: <b>{item_meu.get('descricao', 'N/I')}</b><br/>
+                👤 Autor: <b>{item_meu.get('autores', 'AUTOR NÃO INFORMADO')}</b><br/>
                 <small>🔒 Lacre: <b>{item_meu.get('involucro_lacre', 'N/I')}</b> | Qtd: <b>{item_meu.get('quantidade', '1.0')} {item_meu.get('unidade_medida', 'UN')}</b> | {str_midias}</small>
             </div>
             """
@@ -946,7 +978,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     q_destruicao = 0
 
     for b in bens_filtrados_painel:
-        ponto_cad, tempo_str, alerta_4d, dias_num = obter_status_gargalo_e_tempo(b)
+        ponto_cad, tempo_str, alerta_4d, dias_num = obter_status_gargalo_e_tempo(b, e_marrom=False)
         b_copy = dict(b)
         b_copy["_ponto_cadeia"] = ponto_cad
         b_copy["_tempo_str"] = tempo_str
@@ -974,16 +1006,22 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.markdown(f"##### 📦 Acervo Exibido ({len(bens_processados)} item/ns):")
     
-    # ITERAÇÃO DE CARDS ALTERNADOS (AZUL / MARROM BRONZE)
+    # ITERAÇÃO DE CARDS ALTERNADOS (AZUL E MARROM COM TEXTO PRETO)
     for idx_creds, bem in enumerate(bens_processados):
-        classe_card = "card-tco-azul" if idx_creds % 2 == 0 else "card-tco-marrom"
+        e_marrom = (idx_creds % 2 != 0)
+        classe_card = "card-brown" if e_marrom else "card-blue"
         
-        tempo_html = f"<span style='color: #EF4444; font-weight: bold;'>{bem['_tempo_str']} (PARADO > 4 DIAS)</span>" if bem['_alerta_4dias'] else f"<span style='color: #4ADE80; font-weight: bold;'>{bem['_tempo_str']}</span>"
+        ponto_cad_card, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
+
+        if e_marrom:
+            tempo_html = f"<strong style='color: #991B1B;'>{tempo_str_card} (PARADO > 4 DIAS)</strong>" if alerta_4d_card else f"<strong style='color: #000000;'>{tempo_str_card}</strong>"
+        else:
+            tempo_html = f"<span style='color: #F87171; font-weight: bold;'>{tempo_str_card} (PARADO > 4 DIAS)</span>" if alerta_4d_card else f"<span style='color: #4ADE80; font-weight: bold;'>{tempo_str_card}</span>"
 
         html_item = f"""
         <div class="{classe_card}">
             📄 REDS: <b>{bem['num_reds']}</b> | Código Bem: <b>{bem['id_bem']}</b> | Material: <b>{bem['descricao']}</b><br/>
-            📍 Status: {bem['_ponto_cadeia']}<br/>
+            📍 Status: {ponto_cad_card}<br/>
             ⏱️ Tempo Imóvel na Etapa: {tempo_html}
         </div>
         """
