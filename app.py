@@ -1,7 +1,7 @@
 import os
 import sys
 
-# 🌐 REGISTRO DO DIRETÓRIO RAIZ NO SYS.PATH (PREVINE KEYERROR NO STREAMLIT CLOUD)
+# 🌐 REGISTRO DO DIRETÓRIO RAIZ NO SYS.PATH
 DIRETORIO_RAIZ = os.path.abspath(os.path.dirname(__file__))
 if DIRETORIO_RAIZ not in sys.path:
     sys.path.insert(0, DIRETORIO_RAIZ)
@@ -66,6 +66,7 @@ from modules.mural import renderizar_mural
 from modules.gestao_usuarios import exibir_tela_gestao_usuarios
 from modules.perfil import exibir_tela_perfil
 from modules.tco.main_tco import renderizar_modulo_tco
+from modules.governanca.views import renderizar_modulo_governanca
 
 # 1. Configuração Inicial da Página
 st.set_page_config(
@@ -537,7 +538,7 @@ if "modulo_ativo" not in st.session_state:
 modulo_ativo = st.session_state["modulo_ativo"]
 
 # =========================================================================
-# 🏗️ RENDERIZAÇÃO DA BARRA LATERAL (SIDEBAR) REESTRUTURADA
+# 🏗️ RENDERIZAÇÃO DA BARRA LATERAL (SIDEBAR) REESTRUTURADA E REORDENADA
 # =========================================================================
 with st.sidebar:
     # 1. BOTÃO / METRIC DE SESSÃO
@@ -573,7 +574,7 @@ with st.sidebar:
             st.session_state["simular_visao_tropa"] = False
             st.rerun()
 
-        # SELETOR DE UNIDADE MULTI-TENANT (APENAS PARA GESTORES FORA DO MODO TROPA)
+        # SELETOR DE UNIDADE MULTI-TENANT
         if not st.session_state.get("simular_visao_tropa", False):
             st.markdown("---")
             st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
@@ -612,7 +613,7 @@ with st.sidebar:
 
     st.divider()
 
-    # 4. MÓDULOS AGRUPADOS NO MESMO CONTAINER / DELIMITADOR
+    # 4. MÓDULOS AGRUPADOS NO MESMO CONTAINER
     st.markdown("##### 🧩 Módulos do Sistema")
     with st.container(border=True):
         if eh_gestor_ou_admin:
@@ -664,8 +665,6 @@ with st.sidebar:
                 key="subnav_tco",
                 label_visibility="collapsed"
             )
-            # Obs: As abas continuarão funcionando pelo st.tabs no main_tco.py.
-            # O radio acima é um excelente indicador visual complementar.
 
         # Módulo Procedimentos
         if st.button("⚖️ Módulo Procedimentos", use_container_width=True, type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
@@ -675,15 +674,20 @@ with st.sidebar:
         if modulo_ativo == "PROCEDIMENTOS":
             st.caption("🚧 Módulo em construção...")
 
-        # Gestão de Acessos (Apenas Admin/Cmt)
+        # Gestão de Acessos (REORDENADO: SUBIU)
         if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR"]):
             if st.button("⚙️ Gestão de Acessos", use_container_width=True, type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
 
+        # Governança & Segurança (NOVO MÓDULO)
+        if st.button("🛡️ Governança & Segurança", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
+            st.session_state["modulo_ativo"] = "GOVERNANCA"
+            st.rerun()
+
     st.divider()
 
-    # 5. MURAL DE AVISOS COM BADGE DE NOTIFICAÇÕES (MOCKUP = 0 para ser ajustado depois)
+    # 5. MURAL DE AVISOS (REORDENADO: DESCEU)
     qtd_novas_mensagens = 0 
     badge_msg = f" 🔴 ({qtd_novas_mensagens})" if qtd_novas_mensagens > 0 else ""
     if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
@@ -732,7 +736,7 @@ with st.sidebar:
 # =========================================================================
 modulo = st.session_state.get("modulo_ativo", "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA")
 
-if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO", "MURAL", "MEU_PERFIL", "PROCEDIMENTOS"]):
+if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO", "MURAL", "MEU_PERFIL", "PROCEDIMENTOS", "GOVERNANCA"]):
     st.title("📅 Central do Policial")
     aba_escala, aba_mensagens = st.tabs([
         "📅 Minha Escala Individual", 
@@ -792,6 +796,20 @@ elif modulo == "PROCEDIMENTOS":
 
 elif modulo == "GESTOES_USUARIOS":
     exibir_tela_gestao_usuarios()
+
+elif modulo == "GOVERNANCA":
+    usr_dados_gov = st.session_state.get("usuario_dados", {})
+    nome_op = usr_dados_gov.get("nome_guerra") or usr_dados_gov.get("nome_completo") or "Operador"
+    unid_op = st.session_state.get("unidade_ativa_nome") or usr_dados_gov.get("unidade") or "21º BPM"
+    cargo_op = usr_dados_gov.get("cargo_funcao") or "Policial Militar"
+    perfil_op = perfil_ativo
+    
+    renderizar_modulo_governanca(
+        nome_operador=nome_op,
+        unidade_operador=unid_op,
+        cargo_operador=cargo_op,
+        perfil_operador=perfil_op
+    )
 
 elif modulo == "MURAL":
     st.title("📢 Mural de Avisos & Trocas de Serviço")
