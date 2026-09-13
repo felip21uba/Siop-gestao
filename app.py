@@ -100,6 +100,8 @@ if "reset_token_dados" not in st.session_state:
     st.session_state["reset_token_dados"] = {}
 if "usuarios_teste_db" not in st.session_state:
     st.session_state["usuarios_teste_db"] = {}
+if "tema_visual" not in st.session_state:
+    st.session_state["tema_visual"] = "DARK"
 
 # CONSTANTES VISUAIS INSTITUCIONAIS
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
@@ -119,17 +121,14 @@ if st.session_state.get("autenticado", False):
     usr_id = str(usr_dados.get("id") or usr_login or "").strip()
     token_local = st.session_state.get("token_sessao_local")
 
-    # 1. Trava de Sessão Única Concorrente
     if supabase and usr_login and token_local:
         try:
             res = supabase.table("usuarios").select("token_sessao_ativa").eq("usuario_login", usr_login).execute()
-            
             if not res.data or len(res.data) == 0:
                 res = supabase.table("usuarios").select("token_sessao_ativa").eq("usuario", usr_login).execute()
 
             if res.data and len(res.data) > 0:
                 token_banco = res.data[0].get("token_sessao_ativa")
-                
                 if token_banco and str(token_banco).strip() != str(token_local).strip() and str(token_banco) != "REVOGADO":
                     st.session_state["autenticado"] = False
                     st.session_state["usuario_autenticado"] = False
@@ -142,11 +141,9 @@ if st.session_state.get("autenticado", False):
         except Exception:
             pass
 
-    # 2. Restauração Automática do Rascunho da Escala ao Iniciar
     if usr_id:
         restaurar_rascunho_escala_supabase(usr_id)
 
-    # 3. Gerenciamento do Timeout por Inatividade (20 Minutos)
     gerenciar_timeout_sessao()
 
 # ==============================================================================
@@ -170,9 +167,7 @@ if not st.session_state.get("autenticado", False):
 
         st.divider()
 
-        # ----------------------------------------------------------------------
         # FLUXO 1: RESET DE SENHA AUTOATENDÍVEL VIA E-MAIL
-        # ----------------------------------------------------------------------
         if st.session_state.get("recuperar_senha_modo", False):
             st.subheader("🔑 Autoreset de Senha via E-mail")
             st.info("Informe seu Nº de Polícia ou e-mail cadastrado para redefinir sua senha.")
@@ -271,9 +266,7 @@ if not st.session_state.get("autenticado", False):
                                 st.session_state["reset_token_dados"] = {}
                                 st.rerun()
 
-        # ----------------------------------------------------------------------
         # FLUXO 2: PRIMEIRO ACESSO - CADASTRO DO QR CODE + TROCA DE SENHA
-        # ----------------------------------------------------------------------
         elif st.session_state.get("mfa_setup_mode", False):
             usr_temp = st.session_state.get("temp_user_data", {})
             st.warning("🛡️ **Primeiro Acesso: Configuração Inicial de Segurança**")
@@ -376,9 +369,7 @@ if not st.session_state.get("autenticado", False):
                             st.toast("✅ Nova senha e 2FA salvos com sucesso!", icon="🎉")
                             st.rerun()
 
-        # ----------------------------------------------------------------------
         # FLUXO 3: DIGITAÇÃO DO CÓDIGO AUTHY PARA ACESSOS SEGUINTES
-        # ----------------------------------------------------------------------
         elif st.session_state.get("mfa_pendente", False):
             usr_temp = st.session_state.get("temp_user_data", {})
             
@@ -445,9 +436,7 @@ if not st.session_state.get("autenticado", False):
                     else:
                         st.error("🚨 Token Authy/E-mail incorreto ou expirado. Verifique seu app ou caixa de entrada.")
 
-        # ----------------------------------------------------------------------
         # FLUXO 4: TELA PRINCIPAL DE LOGIN (CONSULTA DIRETA NO SUPABASE)
-        # ----------------------------------------------------------------------
         else:
             with st.form("form_login_principal"):
                 usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 0000000") or "").strip()
@@ -519,145 +508,204 @@ if not st.session_state.get("autenticado", False):
     st.stop()
 
 # =========================================================================
-# 📌 SISTEMA PRINCIPAL (LIBERADO APÓS SUCESSO NO LOGIN)
+# 📌 SISTEMA PRINCIPAL E BARRA LATERAL (LIBERADO APÓS SUCESSO NO LOGIN)
 # =========================================================================
 aplicar_estilo_visual()
 
 usr = st.session_state.get("usuario_dados", {})
 usr_real_perfil = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("cargo_funcao") or "TROPA").upper()
 
-with st.sidebar:
-    c_side_logo, c_side_txt = st.columns([1, 2])
-    with c_side_logo:
-        st.image(obter_imagem_brasao(), width=50)
-    with c_side_txt:
-        st.markdown("### **SIOP**")
-        st.caption("PMMG - 2026")
+# DEFINIÇÃO DE PERFIL E MODO DE VISUALIZAÇÃO
+LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "CMT_FRACAO", "GESTOR"]
+eh_gestor_real = any(p in usr_real_perfil for p in LISTA_GESTORES)
 
-    # -------------------------------------------------------------------------
-    # 👁️ SIMULADOR DE VISÃO DE TROPA (BOTÃO PARA GESTORES)
-    # -------------------------------------------------------------------------
-    LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "CMT_FRACAO", "GESTOR"]
-    eh_gestor_real = any(p in usr_real_perfil for p in LISTA_GESTORES)
-    
-    if eh_gestor_real:
-        st.markdown("---")
-        st.markdown("👁️ **Modo de Visualização:**")
-        
-        simular_tropa = st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa")
-        st.session_state["simular_visao_tropa"] = simular_tropa
-        
-        if simular_tropa:
-            perfil_ativo = "TROPA"
-            st.info("💡 **Simulador Ativo:** Exibindo tela restrita da TROPA.")
-        else:
-            perfil_ativo = usr_real_perfil
-
-        # -------------------------------------------------------------------------
-        # 🏛️ SELETOR MULTI-TENANT DE UNIDADES (PARA PROGRAMADOR / GESTOR)
-        # -------------------------------------------------------------------------
-        st.markdown("---")
-        st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
-        
-        lista_unis = []
-        if supabase:
-            try:
-                res_u = supabase.table("configuracao_unidade").select("id, unidade_nome, subunidade_nome").execute()
-                lista_unis = res_u.data or []
-            except Exception:
-                lista_unis = []
-
-        if lista_unis:
-            opcoes_uni = [f"{u.get('unidade_nome', '')} / {u.get('subunidade_nome', '')}".strip(" /") for u in lista_unis]
-            
-            idx_sel = 0
-            uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
-            if uni_atual_sessao and uni_atual_sessao in opcoes_uni:
-                idx_sel = opcoes_uni.index(uni_atual_sessao)
-
-            sel_uni_sidebar = st.selectbox(
-                "Unidade em Operação:",
-                opcoes_uni,
-                index=idx_sel,
-                key="sb_multi_tenant_unidade"
-            )
-            st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
-            
-            parts = sel_uni_sidebar.split(" / ")
-            st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
-            st.session_state["cfg_subunidade"] = parts[1] if len(parts) > 1 else ""
-        else:
-            st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
-        st.markdown("---")
-    else:
+if eh_gestor_real:
+    simular_tropa = st.session_state.get("simular_visao_tropa", False)
+    if simular_tropa:
         perfil_ativo = "TROPA"
-        st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
+    else:
+        perfil_ativo = usr_real_perfil
+else:
+    perfil_ativo = "TROPA"
+    st.session_state["simular_visao_tropa"] = False
 
-    eh_gestor_ou_admin = (perfil_ativo != "TROPA")
+eh_gestor_ou_admin = (perfil_ativo != "TROPA")
 
-    unidade_card_exibida = st.session_state.get("unidade_ativa_nome", usr.get("unidade", "PMMG"))
-    st.info(f"👤 **{usr.get('nome_guerra', 'Militar')}**\n\n🔰 **Perfil Ativo:** `{perfil_ativo}`\n\n🏛️ **Unidade Ativa:** {unidade_card_exibida}")
+if "modulo_ativo" not in st.session_state:
+    st.session_state["modulo_ativo"] = "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA"
+
+modulo_ativo = st.session_state["modulo_ativo"]
+
+# =========================================================================
+# 🏗️ RENDERIZAÇÃO DA BARRA LATERAL (SIDEBAR) REESTRUTURADA
+# =========================================================================
+with st.sidebar:
+    # 1. BOTÃO / METRIC DE SESSÃO
+    with st.container(border=True):
+        st.markdown(f"<div style='text-align: center;'>⏰ <b>Sessão:</b> <span style='color: #38BDF8;'>{obter_agora().strftime('%H:%M')}</span></div>", unsafe_allow_html=True)
+
+    # 2. SÍMBOLO E TÍTULO SIOP CENTRALIZADOS
+    c_l, c_mid, c_r = st.columns([1, 1.5, 1])
+    with c_mid:
+        try:
+            st.image(obter_imagem_brasao(), use_container_width=True)
+        except Exception:
+            st.markdown("🛡️")
+        
+    st.markdown(
+        """
+        <div style='text-align: center; margin-top: -10px; margin-bottom: 10px;'>
+            <h3 style='margin: 0; font-weight: bold;'>SIOP</h3>
+            <span style='color: #64748B; font-size: 0.85em;'>PMMG - 2026</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.divider()
 
-    if "modulo_ativo" not in st.session_state:
-        st.session_state["modulo_ativo"] = "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA"
-
-    st.markdown("**📌 Módulos Operacionais:**")
-    
-    if eh_gestor_ou_admin:
-        if st.button("📅 Módulo de Escalas (Gestão)", use_container_width=True):
-            st.session_state["modulo_ativo"] = "ESCALAS"
+    # 3. MODO DE VISUALIZAÇÃO (APENAS O TOGGLE PARA GESTORES)
+    if eh_gestor_real:
+        if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa"):
+            st.session_state["simular_visao_tropa"] = True
+            st.rerun()
+        elif st.session_state.get("simular_visao_tropa", False):
+            st.session_state["simular_visao_tropa"] = False
             st.rerun()
 
-        if st.session_state.get("modulo_ativo") == "ESCALAS":
-            st.markdown("**📍 Filtro de Passos da Escala:**")
-            passo_sel = st.radio(
-                "Exibir na Tela:",
-                [
-                    "VISUALIZAR TODOS",
-                    "PASSO 1: Unidade & Equipes",
-                    "PASSO 2: Turno & Horários",
-                    "PASSO 3: Efetivo & Ausências",
-                    "PASSO 4: Matriz Mensal",
-                    "PASSO 5: Quadro Geral",
-                    "PASSO 6: Exportação & Auditoria",
-                    "PASSO 7: Banco de Horas",
-                    "🗣️ Mural & Trocas de Serviço"
-                ],
-                key="rad_passos_escala"
-            )
-            st.session_state["passo_escala_ativo"] = passo_sel
-        st.divider()
+        # SELETOR DE UNIDADE MULTI-TENANT (APENAS PARA GESTORES FORA DO MODO TROPA)
+        if not st.session_state.get("simular_visao_tropa", False):
+            st.markdown("---")
+            st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
+            
+            lista_unis = []
+            if supabase:
+                try:
+                    res_u = supabase.table("configuracao_unidade").select("id, unidade_nome, subunidade_nome").execute()
+                    lista_unis = res_u.data or []
+                except Exception:
+                    lista_unis = []
 
-        if st.button("📋 Módulo de TCO", use_container_width=True):
+            if lista_unis:
+                opcoes_uni = [f"{u.get('unidade_nome', '')} / {u.get('subunidade_nome', '')}".strip(" /") for u in lista_unis]
+                idx_sel = 0
+                uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
+                if uni_atual_sessao and uni_atual_sessao in opcoes_uni:
+                    idx_sel = opcoes_uni.index(uni_atual_sessao)
+
+                sel_uni_sidebar = st.selectbox(
+                    "Unidade em Operação:",
+                    opcoes_uni,
+                    index=idx_sel,
+                    key="sb_multi_tenant_unidade",
+                    label_visibility="collapsed"
+                )
+                st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
+                
+                parts = sel_uni_sidebar.split(" / ")
+                st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
+                st.session_state["cfg_subunidade"] = parts[1] if len(parts) > 1 else ""
+            else:
+                st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
+    else:
+        st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
+
+    st.divider()
+
+    # 4. MÓDULOS AGRUPADOS NO MESMO CONTAINER / DELIMITADOR
+    st.markdown("##### 🧩 Módulos do Sistema")
+    with st.container(border=True):
+        if eh_gestor_ou_admin:
+            # Módulo Escalas (Gestão)
+            if st.button("📅 Módulo Escalas", use_container_width=True, type="primary" if modulo_ativo == "ESCALAS" else "secondary"):
+                st.session_state["modulo_ativo"] = "ESCALAS"
+                st.rerun()
+
+            if modulo_ativo == "ESCALAS":
+                passo_sel = st.radio(
+                    "Submenu Escalas:",
+                    [
+                        "VISUALIZAR TODOS",
+                        "PASSO 1: Unidade & Equipes",
+                        "PASSO 2: Turno & Horários",
+                        "PASSO 3: Efetivo & Ausências",
+                        "PASSO 4: Matriz Mensal",
+                        "PASSO 5: Quadro Geral",
+                        "PASSO 6: Exportação & Auditoria",
+                        "PASSO 7: Banco de Horas"
+                    ],
+                    key="subnav_escalas",
+                    label_visibility="collapsed"
+                )
+                st.session_state["passo_escala_ativo"] = passo_sel
+        else:
+            # Minha Escala (Tropa)
+            if st.button("📅 Minha Escala Individual", use_container_width=True, type="primary" if modulo_ativo == "MINHA_ESCALA" else "secondary"):
+                st.session_state["modulo_ativo"] = "MINHA_ESCALA"
+                st.rerun()
+
+        # Módulo TCO
+        if st.button("📦 Módulo TCO / Custódia", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
             st.session_state["modulo_ativo"] = "TCO"
             st.rerun()
 
-        if st.button("📑 Módulo de Procedimentos", use_container_width=True):
+        if modulo_ativo == "TCO":
+            aba_tco_sel = st.radio(
+                "Submenu TCO:",
+                [
+                    "📥 Ingestão REDS",
+                    "🎒 Meus Materiais",
+                    "🔄 Tramitação",
+                    "📄 Ofícios PDF",
+                    "🏛️ Painel CREDS",
+                    "📜 Trilha Auditoria",
+                    "👥 Gestores CREDS"
+                ],
+                key="subnav_tco",
+                label_visibility="collapsed"
+            )
+            # Obs: As abas continuarão funcionando pelo st.tabs no main_tco.py.
+            # O radio acima é um excelente indicador visual complementar.
+
+        # Módulo Procedimentos
+        if st.button("⚖️ Módulo Procedimentos", use_container_width=True, type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
             st.session_state["modulo_ativo"] = "PROCEDIMENTOS"
             st.rerun()
-            
+
+        if modulo_ativo == "PROCEDIMENTOS":
+            st.caption("🚧 Módulo em construção...")
+
+        # Gestão de Acessos (Apenas Admin/Cmt)
         if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR"]):
-            if st.button("⚙️ Gestão de Acessos", use_container_width=True):
+            if st.button("⚙️ Gestão de Acessos", use_container_width=True, type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
-        st.divider()
 
-    if st.button("📅 Minha Escala & Mural", use_container_width=True):
-        st.session_state["modulo_ativo"] = "MINHA_ESCALA"
-        st.rerun()
-
-    if st.button("👤 Meu Perfil & Segurança", key="btn_menu_meu_perfil", use_container_width=True):
-        st.session_state["modulo_ativo"] = "MEU_PERFIL"
-        st.rerun()
-
-    st.markdown("**🎨 Visualização da Interface:**")
-    tema_atual = st.session_state.get("tema_visual", "DARK")
-    label_tema = "☀️ Modo Claro" if tema_atual == "DARK" else "🌙 Modo Escuro"
-    if st.button(label_tema, use_container_width=True):
-        st.session_state["tema_visual"] = "LIGHT" if tema_atual == "DARK" else "DARK"
-        st.rerun()
     st.divider()
+
+    # 5. MURAL DE AVISOS COM BADGE DE NOTIFICAÇÕES (MOCKUP = 0 para ser ajustado depois)
+    qtd_novas_mensagens = 0 
+    badge_msg = f" 🔴 ({qtd_novas_mensagens})" if qtd_novas_mensagens > 0 else ""
+    if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
+        st.session_state["modulo_ativo"] = "MURAL"
+        st.rerun()
+
+    st.divider()
+
+    # 6. DEMAIS CARDS: PERFIL, MODO ESCURO/CLARO E SAIR
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        if st.button("👤 Perfil", use_container_width=True, type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
+            st.session_state["modulo_ativo"] = "MEU_PERFIL"
+            st.rerun()
+            
+    with col_p2:
+        tema_atual = st.session_state.get("tema_visual", "DARK")
+        is_dark = (tema_atual == "DARK")
+        novo_tema_toggle = st.toggle("🌙 Escuro", value=is_dark, key="toggle_tema_escuro_nav")
+        if novo_tema_toggle != is_dark:
+            st.session_state["tema_visual"] = "DARK" if novo_tema_toggle else "LIGHT"
+            st.rerun()
 
     if st.button("🚪 Sair do Sistema", use_container_width=True):
         usr_m = str(usr.get("usuario_login") or usr.get("usuario") or "").strip().upper()
@@ -684,11 +732,10 @@ with st.sidebar:
 # =========================================================================
 modulo = st.session_state.get("modulo_ativo", "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA")
 
-if modulo == "MINHA_ESCALA" or not eh_gestor_ou_admin or perfil_ativo == "TROPA":
+if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO", "MURAL", "MEU_PERFIL", "PROCEDIMENTOS"]):
     st.title("📅 Central do Policial")
-    aba_escala, aba_mural, aba_mensagens = st.tabs([
+    aba_escala, aba_mensagens = st.tabs([
         "📅 Minha Escala Individual", 
-        "🗣️ Mural & Trocas de Serviço", 
         "📩 Mensagens & Requerimentos P1"
     ])
     
@@ -710,9 +757,6 @@ if modulo == "MINHA_ESCALA" or not eh_gestor_ou_admin or perfil_ativo == "TROPA"
                 st.warning("Nenhum turno cadastrado para você na escala publicada deste mês.")
         else:
             st.warning("A escala geral deste mês ainda não foi publicada pela P1/P3.")
-            
-    with aba_mural:
-        renderizar_mural()
 
     with aba_mensagens:
         st.subheader("📩 Enviar Mensagem ou Solicitação à P1")
@@ -737,10 +781,7 @@ if modulo == "MINHA_ESCALA" or not eh_gestor_ou_admin or perfil_ativo == "TROPA"
                         st.error("Erro ao enviar mensagem. Tente novamente.")
 
 elif modulo == "ESCALAS":
-    if st.session_state.get("passo_escala_ativo") == "🗣️ Mural & Trocas de Serviço":
-        renderizar_mural()
-    else:
-        exibir_modulo_escalas()
+    exibir_modulo_escalas()
 
 elif modulo == "TCO":
     renderizar_modulo_tco()
@@ -751,6 +792,10 @@ elif modulo == "PROCEDIMENTOS":
 
 elif modulo == "GESTOES_USUARIOS":
     exibir_tela_gestao_usuarios()
+
+elif modulo == "MURAL":
+    st.title("📢 Mural de Avisos & Trocas de Serviço")
+    renderizar_mural()
 
 elif modulo == "MEU_PERFIL":
     exibir_tela_perfil()
@@ -770,7 +815,7 @@ def renderizar_rodape_corporativo():
         st.caption("PMMG - Polícia Militar de Minas Gerais")
         
     with col_f2:
-        st.caption("🛡️ **SIOP - Sistema Integrado de Operações** v2.4")
+        st.caption("🛡️ **SIOP - Sistema Integrado de Operações** v2.5")
         st.caption("Segurança da Informação, Compliance e Protocolos LGPD/PMMG")
         
     with col_f3:
