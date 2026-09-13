@@ -3,161 +3,143 @@ import datetime
 import hashlib
 import streamlit as st
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from reportlab.graphics.barcode import qr
+from reportlab.graphics.shapes import Drawing
 from core.database import supabase
 
-TEXTO_TERMO_COMPLIANCE = """
-<b>TERMO DE COMPROMISSO, CONFIDENCIALIDADE E COMPLIANCE OPERACIONAL</b><br/>
-<b>SISTEMA INTEGRADO DE OPERAÇÕES POLICIAIS (SIOP) — MÓDULO TCO & CUSTÓDIA DE MATERIAIS</b><br/><br/>
+def gerar_hash_compliance(texto):
+    """Gera chancela SHA-256 para o Termo de Compliance."""
+    return hashlib.sha256(str(texto).encode('utf-8')).hexdigest()
 
-<b>1. DA CADEIA DE CUSTÓDIA (ART. 158-A AO 158-F DO CPP):</b><br/>
-1.1. O operador compromete-se a assegurar a rastreabilidade e a inviolabilidade dos elementos probatórios apreendidos, utilizando obrigatoriamente o registro de invólucros/lacres oficiais.<br/>
-1.2. Qualquer divergência observada na conferência física do material (violação de lacre, avaria ou diferença de quantidade) deve ser registrada na função de "Divergência/Recusa" do sistema.<br/><br/>
-
-<b>2. DA RESPONSABILIDADE SOBRE DADOS E LGPD (LEI Nº 13.709/2018):</b><br/>
-2.1. Todas as informações de qualificação de civis, testemunhas, vítimas e infratores acessadas via REDS/TCO são estritamente confidenciais e de uso exclusivo para instrução de procedimentos oficiais.<br/>
-2.2. É expressamente vedado o compartilhamento, extração não autorizada, captura de tela ou divulgação de dados sensíveis para finalidades alheias ao serviço policial militar.<br/><br/>
-
-<b>3. DA IRRETRATABILIDADE E AUDITORIA DE AÇÕES:</b><br/>
-3.1. O operador declara ciência de que edições de materiais, uploads de mídias, solicitações de tramitação, aceite e rejeição de custódia são gravados com chancela SHA-256 na trilha imutável de auditoria.<br/>
-3.2. As alterações manuais de dados importados do REDS exigem justificativa fundamentada, sujeita à fiscalização da Seção de P1/CREDS e Corregedoria.<br/><br/>
-
-<b>4. DO USO DE CREDENCIAIS PESSOAIS:</b><br/>
-4.1. A senha e as chaves de acesso ao SIOP são pessoais e intransferíveis. O militar responde administrativa, civil e penalmente por todos os atos praticados sob sua autenticação.
-"""
-
-def aplicar_estilo_tco():
-    """Aplica o padrão visual tático limpo usando detalhes em tom bronze e marrom sem afetar a tipografia nativa."""
-    st.markdown("""
-        <style>
-        /* Ajuste fino de bordas e destaque marrom tático */
-        div[data-testid="stForm"] {
-            border: 1px solid #523E37 !important;
-            border-radius: 8px !important;
-        }
-        
-        /* Indicador de status tático */
-        .status-badge-tatico {
-            background-color: #382A24;
-            color: #D4A373;
-            border: 1px solid #6B4E42;
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 0.9rem;
-            font-weight: 600;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-def verificar_aceite_compliance_supabase(usuario_id):
-    if not supabase or not usuario_id:
-        return True
+def criar_draw_qrcode(texto_qr):
+    """Gera o elemento gráfico do QR Code no PDF."""
     try:
-        res = supabase.table("tco_compliance_aceites").select("*").eq("usuario_id", str(usuario_id)).execute()
-        return len(res.data) > 0 if res.data else False
+        qr_code = qr.QrCodeWidget(str(texto_qr))
+        bounds = qr_code.getBounds()
+        w = bounds[2] - bounds[0]
+        h = bounds[3] - bounds[1]
+        d = Drawing(50, 55, transform=[50/w, 0, 0, 55/h, 0, 0])
+        d.add(qr_code)
+        return d
     except Exception:
-        return False
+        return None
 
-def registrar_aceite_compliance_supabase(usuario_id, nome_militar, cargo_funcao, unidade):
-    if not supabase or not usuario_id:
-        return False
-    try:
-        now_iso = datetime.datetime.now().isoformat()
-        dados_aceite = {
-            "usuario_id": str(usuario_id),
-            "nome_militar": nome_militar,
-            "cargo_funcao": cargo_funcao,
-            "unidade": unidade,
-            "data_aceite": now_iso,
-            "versao_termo": "1.0 - 2026"
-        }
-        
-        supabase.table("tco_compliance_aceites").insert(dados_aceite).execute()
-        
-        supabase.table("tco_logs").insert({
-            "data_hora": now_iso,
-            "num_reds": "COMPLIANCE-SISTEMA",
-            "bem_id": "ACEITE-TERMO",
-            "acao": "ACEITE DO TERMO DE COMPLIANCE TCO/CREDS",
-            "origem": nome_militar,
-            "unidade_origem": unidade,
-            "destino": "SIOP COMPLIANCE",
-            "unidade_destino": unidade,
-            "detalhe": f"Militar {nome_militar} ({cargo_funcao}) confirmou leitura e aceite do Termo de Compliance v1.0."
-        }).execute()
-        
-        return True
-    except Exception as e:
-        return False
+def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia, data_aceite_str, data_impressao_str=None):
+    """Gera o PDF oficial do Termo de Compliance com a data fixa de aceite e a data/hora atual de impressão."""
+    if not data_impressao_str:
+        data_impressao_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-@st.dialog("🔒 Termo de Ciência, Confidencialidade e Compliance", width="large")
-def exibir_modal_termo_compliance(usuario_id, nome_militar, cargo_funcao, unidade):
-    aplicar_estilo_tco()
-    with st.container(border=True):
-        st.markdown(f"### 📑 TERMO DE ADESÃO E COMPLIANCE OPERACIONAL (TCO/CREDS)")
-        st.markdown(TEXTO_TERMO_COMPLIANCE, unsafe_allow_html=True)
-    
-    st.warning("⚠️ **Aviso Legal:** Todas as operações realizadas no TCO são auditadas em trilha imutável vinculada ao seu login.")
-    
-    check_aceite = st.checkbox("Li, compreendo e aceito integralmente as diretrizes de confidencialidade e compliance funcional.", key="chk_termo_modal_unico")
-    
-    if st.button("✅ Confirmar Aceite Eletrônico", type="primary", disabled=not check_aceite, use_container_width=True):
-        if registrar_aceite_compliance_supabase(usuario_id, nome_militar, cargo_funcao, unidade):
-            st.session_state["termo_compliance_aceito"] = True
-            st.success("Termo de Compliance assinado com sucesso!")
-            st.rerun()
-
-def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, usuario_id, data_aceite_str):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40
+        buffer, pagesize=letter,
+        rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36
     )
 
     styles = getSampleStyleSheet()
-    
-    style_header = ParagraphStyle(
-        'HeaderStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=11, leading=13, alignment=1, textColor=colors.HexColor('#1E293B')
-    )
-    
-    style_body = ParagraphStyle(
-        'BodyStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=13, alignment=4, textColor=colors.HexColor('#334155')
-    )
+    style_hdr = ParagraphStyle('HeaderComp', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1, textColor=colors.HexColor('#0F172A'))
+    style_tit = ParagraphStyle('TitComp', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=1, textColor=colors.HexColor('#1E293B'))
+    style_body = ParagraphStyle('BodyComp', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=13, alignment=4, textColor=colors.HexColor('#334155'))
+    style_box = ParagraphStyle('BoxComp', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=14, textColor=colors.HexColor('#0F172A'))
 
     elements = []
 
-    header_text = "<b>POLÍCIA MILITAR DE MINAS GERAIS</b><br/>" \
-                  f"<b>{unidade.upper()}</b><br/>" \
-                  "<b>DECLARAÇÃO DE CUMPRIÇÃO E COMPLIANCE OPERACIONAL (TCO/CREDS)</b>"
-    elements.append(Paragraph(header_text, style_header))
+    # Cabeçalho Institucional
+    elements.append(Paragraph("<b>POLÍCIA MILITAR DE MINAS GERAIS</b><br/><b>SEÇÃO DE CUSTÓDIA DE MATERIAIS E TCO - SIOP</b>", style_hdr))
+    elements.append(Spacer(1, 8))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=10))
+
+    elements.append(Paragraph("TERMO DE COMPLIANCE, RESPONSABILIDADE LEGAL E SEGURANÇA DA INFORMAÇÃO", style_tit))
     elements.append(Spacer(1, 10))
-    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=15))
 
-    meta_text = f"<b>OPERADOR:</b> {cargo_funcao} {nome_militar}<br/>" \
-                f"<b>IDENTIFICAÇÃO / POLÍCIA:</b> {usuario_id}<br/>" \
-                f"<b>UNIDADE:</b> {unidade}<br/>" \
-                f"<b>DATA DE ACEITE ELETRÔNICO:</b> {data_aceite_str}"
-    elements.append(Paragraph(meta_text, style_body))
-    elements.append(Spacer(1, 15))
+    # Bloco de Identificação
+    operador_completo = f"{cargo_funcao} {nome_militar}".strip()
+    bloco_id = f"<b>OPERADOR:</b> {operador_completo.upper()}<br/>" \
+               f"<b>IDENTIFICAÇÃO / POLÍCIA:</b> {str(num_policia).upper()}<br/>" \
+               f"<b>UNIDADE:</b> {str(unidade).upper()}<br/>" \
+               f"<b>DATA DE ACEITE ELETRÔNICO:</b> <font color='#166534'>{data_aceite_str}</font><br/>" \
+               f"<b>DATA E HORA DE IMPRESSÃO:</b> {data_impressao_str}"
+    
+    tabela_id = Table([[Paragraph(bloco_id, style_box)]], colWidths=[540])
+    tabela_id.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F1F5F9')),
+        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1')),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+    ]))
+    elements.append(tabela_id)
+    elements.append(Spacer(1, 12))
 
-    elements.append(Paragraph(TEXTO_TERMO_COMPLIANCE, style_body))
-    elements.append(Spacer(1, 30))
-
-    ass_text = f"____________________________________________________<br/>" \
-               f"<b>{nome_militar.upper()}</b><br/>" \
-               f"{cargo_funcao} - {unidade}<br/>" \
-               f"Assinado Eletronicamente via SIOP"
-    elements.append(Paragraph(ass_text, ParagraphStyle('AssStyle', parent=style_header, alignment=1)))
+    # Texto Jurídico de Compliance
+    texto_juridico = (
+        "<b>1. DA CADEIA DE CUSTÓDIA (ART. 158-A CPP):</b> O operador declara ciência formal de que todas as ações "
+        "realizadas no Módulo de Custódia e TCO (ingestão, alteração de invólucro, transferência física, registro de "
+        "divergências e destinação final) são vinculadas de forma unívoca à sua credencial funcional e endereço IP.<br/><br/>"
+        "<b>2. DA VINCULAÇÃO E IMUTABILIDADE:</b> O aceite deste termo foi registrado eletronicamente no primeiro acesso do "
+        "militar ao sistema e constitui assinatura digital idônea para fins de auditoria interna, correicional e instrução processual.<br/><br/>"
+        "<b>3. DA SEGURANÇA DA INFORMAÇÃO E LGPD:</b> A credencial de acesso é pessoal e intransferível. O uso inadequado "
+        "ou o repasse de senhas/tokens MFA a terceiros ensejará responsabilidade administrativa, civil e penal."
+    )
+    elements.append(Paragraph(texto_juridico, style_body))
     elements.append(Spacer(1, 20))
 
-    hash_comp = hashlib.sha256(f"{usuario_id}{nome_militar}{data_aceite_str}".encode('utf-8')).hexdigest()
-    rodape_text = f"<b>CHANCELA DIGITAL DE COMPLIANCE:</b> SHA-256: {hash_comp}<br/>" \
-                  "Documento impresso via Sistema SIOP para fins de auditoria e conformidade."
-    
-    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#CBD5E1'), spaceBefore=10, spaceAfter=8))
-    elements.append(Paragraph(rodape_text, ParagraphStyle('RodapeStyle', parent=styles['Normal'], fontSize=7, alignment=1)))
+    # Assinatura
+    ass_txt = f"____________________________________________________<br/>" \
+              f"<b>{operador_completo.upper()}</b><br/>" \
+              f"Nº de Polícia: {num_policia} - {unidade}"
+    elements.append(Paragraph(ass_txt, ParagraphStyle('AssComp', parent=style_hdr, alignment=1)))
+    elements.append(Spacer(1, 15))
+
+    # Chancela SHA-256 e QR Code
+    hash_doc = gerar_hash_compliance(f"{num_policia}{data_aceite_str}{operador_completo}")
+    qr_draw = criar_draw_qrcode(f"SIOP-PMMG | COMPLIANCE PM: {num_policia} | ACEITE: {data_aceite_str} | SHA: {hash_doc}")
+
+    txt_rodape = Paragraph(
+        f"<b>CHANCELA ELETRÔNICA DE AUTENTICIDADE:</b><br/>"
+        f"<font size=7 color='#64748B'>SHA-256: {hash_doc}</font><br/>"
+        f"<font size=7 color='#64748B'>Documento extraído via SIOP em {data_impressao_str}.</font>",
+        ParagraphStyle('RodapeComp', parent=styles['Normal'], alignment=0)
+    )
+
+    if qr_draw:
+        tbl_f = Table([[txt_rodape, qr_draw]], colWidths=[475, 65])
+        tbl_f.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('ALIGN', (1, 0), (1, 0), 'RIGHT')]))
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=8, spaceAfter=6))
+        elements.append(tbl_f)
+    else:
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=8, spaceAfter=6))
+        elements.append(txt_rodape)
 
     doc.build(elements)
     buffer.seek(0)
     return buffer.getvalue()
+
+def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao, unidade):
+    """Verifica se o militar já possui data de aceite gravada. Se for o primeiro aceite, grava e congela a data."""
+    if not supabase or not num_policia:
+        return True, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+
+    try:
+        num_pm_str = str(num_policia).strip().upper()
+        res = supabase.table("usuarios").select("termo_compliance_aceito, data_aceite_compliance").eq("usuario_login", num_pm_str).execute()
+        
+        data_banco = res.data[0] if res.data else {}
+        aceito = data_banco.get("termo_compliance_aceito", False)
+        data_existente = data_banco.get("data_aceite_compliance")
+
+        if aceito and data_existente:
+            return True, data_existente
+
+        # Registrar Primeiro Aceite (Congelar a data)
+        now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        supabase.table("usuarios").update({
+            "termo_compliance_aceito": True,
+            "data_aceite_compliance": now_str
+        }).eq("usuario_login", num_pm_str).execute()
+
+        return True, now_str
+    except Exception as e:
+        return True, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
