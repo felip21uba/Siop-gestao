@@ -9,6 +9,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
+from core.database import supabase
 from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
 
 def gerar_hash_oficio(conteudo_str):
@@ -171,167 +172,211 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     return buffer.getvalue(), hash_doc
 
 def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    """Aba interativa para emissão de Ofícios com seleção múltipla ou envio em bloco por REDS."""
-    st.markdown("#### 📄 Gerador Oficial de Ofícios de Encaminhamento")
-    st.caption("Emita expedientes oficiais de custódia contendo materiais de um único REDS ou múltiplos REDSs unificados.")
+    """Aba interativa para emissão de Ofícios e consulta de expedientes gerados."""
+    st.markdown("#### 📄 Gerador Oficial de Ofícios de Encaminhamento & Consulta de Expedidos")
 
-    if not all_bens_banco:
-        st.info("Nenhum material cadastrado no banco para gerar ofício.")
-        return
+    tab_emissao, tab_consulta = st.tabs(["📝 Emitir Novo Ofício", "📜 Ofícios Expedidos (Consulta Posterior)"])
 
-    # 1. MODO DE SELEÇÃO DE MATERIAIS
-    st.markdown("**1. Seleção dos Materiais Relacionados**")
-    modo_selecao = st.radio(
-        "Como deseja selecionar os materiais?",
-        ["📦 Envio em Bloco (Todos os materiais de um REDS)", "🔀 Seleção Múltipla Livre (Vários REDSs / Materiais Avulsos)"],
-        horizontal=True
-    )
+    # -------------------------------------------------------------------------
+    # ABA 1: EMISSÃO DE NOVO OFÍCIO
+    # -------------------------------------------------------------------------
+    with tab_emissao:
+        st.caption("Emita expedientes oficiais de custódia contendo materiais de um único REDS ou múltiplos REDSs unificados.")
 
-    materiais_selecionados = []
-
-    if "Envio em Bloco" in modo_selecao:
-        reds_unicos = sorted(list(set([str(b.get("num_reds", "")) for b in all_bens_banco if b.get("num_reds")])))
-        reds_escolhido = st.selectbox("Selecione o Número do REDS:", reds_unicos)
-        
-        if reds_escolhido:
-            materiais_selecionados = [b for b in all_bens_banco if str(b.get("num_reds")) == reds_escolhido]
-            st.success(f"Encontrado(s) {len(materiais_selecionados)} material(is) vinculado(s) ao REDS {reds_escolhido}.")
-    else:
-        bens_map = {
-            f"REDS: {b['num_reds']} | {b['id_bem']} - {b['descricao']} (Autor: {b.get('autores', 'N/I')})": b 
-            for b in all_bens_banco
-        }
-        chaves_sel = st.multiselect("Selecione um ou mais materiais (pode ser de REDSs diferentes):", list(bens_map.keys()))
-        materiais_selecionados = [bens_map[k] for k in chaves_sel]
-
-    if materiais_selecionados:
-        st.markdown("**Pré-visualização da Tabela do Ofício:**")
-        df_prev = pd.DataFrame(materiais_selecionados)
-        st.dataframe(
-            df_prev[["num_reds", "descricao", "involucro_lacre", "autores"]],
-            column_config={
-                "num_reds": "Nº REDS",
-                "descricao": "Descrição do Material",
-                "involucro_lacre": "Nº Lacre / Invólucro",
-                "autores": "Nome do Autor"
-            },
-            hide_index=True,
-            use_container_width=True
-        )
-
-    st.divider()
-
-    # 2. DADOS DO DESTINATÁRIO
-    st.markdown("**2. Dados do Destinatário / Autoridade**")
-    
-    preset_dest = st.selectbox(
-        "Selecione um destinatário predefinido ou digite o seu:",
-        [
-            "EXCELENTÍSSIMO(A) SENHOR(A) JUIZ(A) DE DIREITO",
-            "ILUSTRÍSSIMO(A) SENHOR(A) DELEGADO(A) REGIONAL DA POLÍCIA CIVIL",
-            "✏️ Outra Autoridade / Digitação Livre"
-        ]
-    )
-
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        if preset_dest == "✏️ Outra Autoridade / Digitação Livre":
-            destinatario_cargo = st.text_input("Cargo da Autoridade:", placeholder="Ex: PROMOTOR(A) DE JUSTIÇA").strip().upper()
+        if not all_bens_banco:
+            st.info("Nenhum material cadastrado no banco para gerar ofício.")
         else:
-            destinatario_cargo = preset_dest
-
-        destinatario_nome = st.text_input("Nome da Autoridade / Destinatário:", placeholder="Ex: DR. MARCO ANTÔNIO SILVA").strip().upper()
-
-    with col_d2:
-        if "JUIZ" in destinatario_cargo:
-            orgao_padrao = "JUIZADO ESPECIAL CRIMINAL (JECRIM) / FÓRUM"
-        elif "DELEGADO" in destinatario_cargo:
-            orgao_padrao = "DELEGACIA REGIONAL DE POLÍCIA CIVIL (PCMG)"
-        else:
-            orgao_padrao = "ÓRGÃO JUDICIÁRIO / POLICIAL"
-
-        orgao_destino = st.text_input("Órgão / Destino:", value=orgao_padrao).strip().upper()
-
-    st.divider()
-
-    # 3. IDENTIFICAÇÃO DO EXPEDIENTE E CORPO DO TEXTO
-    st.markdown("**3. Dados do Ofício e Texto do Expediente**")
-    
-    c_of1, c_of2 = st.columns(2)
-    with c_of1:
-        val_num_oficio = f"OFÍCIO {datetime.datetime.now().strftime('%Y%m%d')}-35CIA"
-        num_oficio = st.text_input("Nº do Ofício:", value=val_num_oficio).strip().upper()
-    with c_of2:
-        pa_oficio = st.text_input("Nº do Processo Administrativo (P.A.) / Protocolo:", placeholder="Ex: P.A. 104/2026").strip().upper()
-
-    reds_listados_str = ", ".join(sorted(list(set([str(m['num_reds']) for m in materiais_selecionados])))) if materiais_selecionados else "N/I"
-    
-    corpo_padrao = (
-        f"Cumprimentando-o(a) cordialmente, encaminho a Vossa Excelência/Senhoria o(s) material(is) apreendido(s) "
-        f"vinculado(s) ao(s) REDS Nº {reds_listados_str}, conforme discriminado na tabela acima, para as providências "
-        f"de praxe relativas ao procedimento em epígrafe.\n\n"
-        f"Ressalta-se que o(s) referido(s) bem(ns) encontra(m)-se devidamente acondicionado(s) em invólucro(s) inspecionado(s) "
-        f"e registrado(s), garantindo a preservação da Cadeia de Custódia nos termos do Artigo 158-A e seguintes do Código de Processo Penal."
-    )
-    
-    corpo_texto = st.text_area("Teor do Expediente:", value=corpo_padrao, height=150)
-
-    st.divider()
-
-    # 4. ASSINATURA E EMISSÃO
-    st.markdown("**4. Emissor / Responsável**")
-    c_em1, c_em2 = st.columns(2)
-    with c_em1:
-        emissor_nome = st.text_input("Nome Completo do Emissor:", value=str(nome_militar_atual)).strip().upper()
-    with c_em2:
-        emissor_cargo = st.text_input("Cargo / Função:", value="RESPONSÁVEL PELA CUSTÓDIA / CREDS").strip().upper()
-
-    btn_gerar = st.button("🚀 Gerar e Baixar Ofício com QR Code (PDF)", type="primary", disabled=(not materiais_selecionados), use_container_width=True)
-
-    if btn_gerar:
-        if not destinatario_nome or not destinatario_cargo or not corpo_texto:
-            st.error("⚠️ Preencha os campos de Destinatário e Teor do Expediente.")
-        else:
-            pdf_bytes, hash_sha = gerar_pdf_oficio(
-                num_oficio=num_oficio,
-                destinatario_nome=destinatario_nome,
-                destinatario_cargo=destinatario_cargo,
-                orgao_destino=orgao_destino,
-                lista_materiais=materiais_selecionados,
-                pa_oficio=pa_oficio,
-                corpo_texto=corpo_texto,
-                emissor_nome=emissor_nome,
-                emissor_cargo=emissor_cargo,
-                emissor_unidade=unidade_militar_atual
+            # 1. MODO DE SELEÇÃO DE MATERIAIS
+            st.markdown("**1. Seleção dos Materiais Relacionados**")
+            modo_selecao = st.radio(
+                "Como deseja selecionar os materiais?",
+                ["📦 Envio em Bloco (Todos os materiais de um REDS)", "🔀 Seleção Múltipla Livre (Vários REDSs / Materiais Avulsos)"],
+                horizontal=True
             )
 
-            now_iso = datetime.datetime.now().isoformat()
-            
-            # Atualiza fase e processo de todos os materiais incluídos
-            for m_item in materiais_selecionados:
-                atualizar_material_supabase(m_item["id_bem"], {
-                    "fase_destinacao": f"Encaminhado ({orgao_destino})",
-                    "pa_oficio_autorizador": num_oficio
-                })
-                
-                registrar_log_supabase({
-                    "data_hora": now_iso,
-                    "num_reds": m_item["num_reds"],
-                    "bem_id": m_item["id_bem"],
-                    "acao": "EMISSÃO DE OFÍCIO DE ENCAMINHAMENTO",
-                    "origem": nome_militar_atual,
-                    "unidade_origem": unidade_militar_atual,
-                    "destino": orgao_destino,
-                    "unidade_destino": "Órgão Externo",
-                    "detalhe": f"Gerado {num_oficio} para {destinatario_nome}. SHA-256: {hash_sha}"
-                })
+            materiais_selecionados = []
 
-            st.success("✅ Ofício gerado com sucesso com QR Code de Autenticidade!")
-            st.download_button(
-                label="📥 Clique para Baixar o Ofício (PDF)",
-                data=pdf_bytes,
-                file_name=f"{num_oficio.replace(' ', '_')}.pdf",
-                mime="application/pdf",
-                type="primary",
+            if "Envio em Bloco" in modo_selecao:
+                reds_unicos = sorted(list(set([str(b.get("num_reds", "")) for b in all_bens_banco if b.get("num_reds")])))
+                reds_escolhido = st.selectbox("Selecione o Número do REDS:", reds_unicos)
+                
+                if reds_escolhido:
+                    materiais_selecionados = [b for b in all_bens_banco if str(b.get("num_reds")) == reds_escolhido]
+                    st.success(f"Encontrado(s) {len(materiais_selecionados)} material(is) vinculado(s) ao REDS {reds_escolhido}.")
+            else:
+                bens_map = {
+                    f"REDS: {b['num_reds']} | {b['id_bem']} - {b['descricao']} (Autor: {b.get('autores', 'N/I')})": b 
+                    for b in all_bens_banco
+                }
+                chaves_sel = st.multiselect("Selecione um ou mais materiais (pode ser de REDSs diferentes):", list(bens_map.keys()))
+                materiais_selecionados = [bens_map[k] for k in chaves_sel]
+
+            if materiais_selecionados:
+                st.markdown("**Pré-visualização da Tabela do Ofício:**")
+                df_prev = pd.DataFrame(materiais_selecionados)
+                st.dataframe(
+                    df_prev[["num_reds", "descricao", "involucro_lacre", "autores"]],
+                    column_config={
+                        "num_reds": "Nº REDS",
+                        "descricao": "Descrição do Material",
+                        "involucro_lacre": "Nº Lacre / Invólucro",
+                        "autores": "Nome do Autor"
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+            st.divider()
+
+            # 2. DADOS DO DESTINATÁRIO
+            st.markdown("**2. Dados do Destinatário / Autoridade**")
+            
+            preset_dest = st.selectbox(
+                "Selecione um destinatário predefinido ou digite o seu:",
+                [
+                    "EXCELENTÍSSIMO(A) SENHOR(A) JUIZ(A) DE DIREITO",
+                    "ILUSTRÍSSIMO(A) SENHOR(A) DELEGADO(A) REGIONAL DA POLÍCIA CIVIL",
+                    "✏️ Outra Autoridade / Digitação Livre"
+                ]
+            )
+
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                if preset_dest == "✏️ Outra Autoridade / Digitação Livre":
+                    destinatario_cargo = st.text_input("Cargo da Autoridade:", placeholder="Ex: PROMOTOR(A) DE JUSTIÇA").strip().upper()
+                else:
+                    destinatario_cargo = preset_dest
+
+                destinatario_nome = st.text_input("Nome da Autoridade / Destinatário:", placeholder="Ex: DR. MARCO ANTÔNIO SILVA").strip().upper()
+
+            with col_d2:
+                if "JUIZ" in destinatario_cargo:
+                    orgao_padrao = "JUIZADO ESPECIAL CRIMINAL (JECRIM) / FÓRUM"
+                elif "DELEGADO" in destinatario_cargo:
+                    orgao_padrao = "DELEGACIA REGIONAL DE POLÍCIA CIVIL (PCMG)"
+                else:
+                    orgao_padrao = "ÓRGÃO JUDICIÁRIO / POLICIAL"
+
+                orgao_destino = st.text_input("Órgão / Destino:", value=orgao_padrao).strip().upper()
+
+            st.divider()
+
+            # 3. IDENTIFICAÇÃO DO EXPEDIENTE E CORPO DO TEXTO
+            st.markdown("**3. Dados do Ofício e Texto do Expediente**")
+            
+            c_of1, c_of2 = st.columns(2)
+            with c_of1:
+                val_num_oficio = f"OFÍCIO {datetime.datetime.now().strftime('%Y%m%d')}-35CIA"
+                num_oficio = st.text_input("Nº do Ofício:", value=val_num_oficio).strip().upper()
+            with c_of2:
+                pa_oficio = st.text_input("Nº do Processo Administrativo (P.A.) / Protocolo:", placeholder="Ex: P.A. 104/2026").strip().upper()
+
+            reds_listados_str = ", ".join(sorted(list(set([str(m['num_reds']) for m in materiais_selecionados])))) if materiais_selecionados else "N/I"
+            
+            corpo_padrao = (
+                f"Cumprimentando-o(a) cordialmente, encaminho a Vossa Excelência/Senhoria o(s) material(is) apreendido(s) "
+                f"vinculado(s) ao(s) REDS Nº {reds_listados_str}, conforme discriminado na tabela acima, para as providências "
+                f"de praxe relativas ao procedimento em epígrafe.\n\n"
+                f"Ressalta-se que o(s) referido(s) bem(ns) encontra(m)-se devidamente acondicionado(s) em invólucro(s) inspecionado(s) "
+                f"e registrado(s), garantindo a preservação da Cadeia de Custódia nos termos do Artigo 158-A e seguintes do Código de Processo Penal."
+            )
+            
+            corpo_texto = st.text_area("Teor do Expediente:", value=corpo_padrao, height=150)
+
+            st.divider()
+
+            # 4. ASSINATURA E EMISSÃO
+            st.markdown("**4. Emissor / Responsável**")
+            c_em1, c_em2 = st.columns(2)
+            with c_em1:
+                emissor_nome = st.text_input("Nome Completo do Emissor:", value=str(nome_militar_atual)).strip().upper()
+            with c_em2:
+                emissor_cargo = st.text_input("Cargo / Função:", value="RESPONSÁVEL PELA CUSTÓDIA / CREDS").strip().upper()
+
+            btn_gerar = st.button("🚀 Gerar e Baixar Ofício com QR Code (PDF)", type="primary", disabled=(not materiais_selecionados), use_container_width=True)
+
+            if btn_gerar:
+                if not destinatario_nome or not destinatario_cargo or not corpo_texto:
+                    st.error("⚠️ Preencha os campos de Destinatário e Teor do Expediente.")
+                else:
+                    pdf_bytes, hash_sha = gerar_pdf_oficio(
+                        num_oficio=num_oficio,
+                        destinatario_nome=destinatario_nome,
+                        destinatario_cargo=destinatario_cargo,
+                        orgao_destino=orgao_destino,
+                        lista_materiais=materiais_selecionados,
+                        pa_oficio=pa_oficio,
+                        corpo_texto=corpo_texto,
+                        emissor_nome=emissor_nome,
+                        emissor_cargo=emissor_cargo,
+                        emissor_unidade=unidade_militar_atual
+                    )
+
+                    now_iso = datetime.datetime.now().isoformat()
+                    
+                    # Atualiza a fase e o documento autorizador de todos os materiais vinculados
+                    for m_item in materiais_selecionados:
+                        atualizar_material_supabase(m_item["id_bem"], {
+                            "fase_destinacao": f"Encaminhado ({orgao_destino})",
+                            "pa_oficio_autorizador": num_oficio
+                        })
+                        
+                        registrar_log_supabase({
+                            "data_hora": now_iso,
+                            "num_reds": m_item["num_reds"],
+                            "bem_id": m_item["id_bem"],
+                            "acao": "EMISSÃO DE OFÍCIO DE ENCAMINHAMENTO",
+                            "origem": nome_militar_atual,
+                            "unidade_origem": unidade_militar_atual,
+                            "destino": orgao_destino,
+                            "unidade_destino": "Órgão Externo",
+                            "detalhe": f"Gerado {num_oficio} para {destinatario_nome}. SHA-256: {hash_sha}"
+                        })
+
+                    st.success("✅ Ofício gerado com sucesso com QR Code de Autenticidade!")
+                    st.download_button(
+                        label="📥 Clique para Baixar o Ofício (PDF)",
+                        data=pdf_bytes,
+                        file_name=f"{num_oficio.replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+    # -------------------------------------------------------------------------
+    # ABA 2: CONSULTA HISTÓRICA DE OFÍCIOS EXPEDIDOS
+    # -------------------------------------------------------------------------
+    with tab_consulta:
+        st.markdown("##### 📜 Histórico Geral de Ofícios Expedidos")
+        st.caption("Consulte todas as emissões oficiais de ofício registradas na Trilha de Auditoria do Módulo TCO.")
+
+        logs_oficios = []
+        if supabase:
+            try:
+                res_of = supabase.table("tco_logs").select("*").ilike("acao", "%OFÍCIO%").order("data_hora", ascending=False).execute()
+                logs_oficios = res_of.data or []
+            except Exception as e:
+                st.warning(f"Erro ao consultar histórico no Supabase: {e}")
+
+        if logs_oficios:
+            df_of = pd.DataFrame(logs_oficios)
+            
+            # Formatação da Data/Hora para o padrão brasileiro dd/mm/yyyy HH:MM
+            if "data_hora" in df_of.columns:
+                df_of["data_formatada"] = pd.to_datetime(df_of["data_hora"]).dt.strftime("%d/%m/%Y %H:%M")
+
+            st.dataframe(
+                df_of[["data_formatada", "num_reds", "bem_id", "origem", "destino", "detalhe"]],
+                column_config={
+                    "data_formatada": "Data / Hora Expedição",
+                    "num_reds": "Nº REDS",
+                    "bem_id": "Código Bem",
+                    "origem": "Emissor",
+                    "destino": "Órgão / Destino",
+                    "detalhe": "Detalhamento e Chancela SHA-256"
+                },
+                hide_index=True,
                 use_container_width=True
             )
+        else:
+            st.info("Nenhum registro de expedição de ofício localizado no banco de dados.")
