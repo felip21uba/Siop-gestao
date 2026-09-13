@@ -10,6 +10,18 @@ from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
 from core.database import supabase
 
+def aplicar_estilo_tco():
+    """Aplica estilos CSS customizados para o módulo TCO."""
+    st.markdown("""
+    <style>
+        .stMetric {
+            background-color: #1E293B;
+            padding: 10px;
+            border-radius: 8px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
 def gerar_hash_compliance(texto):
     """Gera chancela SHA-256 para o Termo de Compliance."""
     return hashlib.sha256(str(texto).encode('utf-8')).hexdigest()
@@ -141,5 +153,30 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
         }).eq("usuario_login", num_pm_str).execute()
 
         return True, now_str
-    except Exception as e:
+    except Exception:
         return True, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+
+def verificar_aceite_compliance_supabase(num_policia):
+    """Verifica no Supabase se o usuário aceitou o termo de compliance."""
+    if not supabase or not num_policia:
+        return True
+    try:
+        num_pm_str = str(num_policia).strip().upper()
+        res = supabase.table("usuarios").select("termo_compliance_aceito").eq("usuario_login", num_pm_str).execute()
+        if res.data and len(res.data) > 0:
+            return res.data[0].get("termo_compliance_aceito", False)
+        return False
+    except Exception:
+        return True
+
+def exibir_modal_termo_compliance(num_policia, nome_militar, cargo_funcao, unidade):
+    """Exibe a tela/modal para aceite do Termo de Compliance no primeiro acesso."""
+    st.warning("⚠️ **TERMO DE COMPLIANCE E RESPONSABILIDADE LEGAL**")
+    st.markdown(
+        "Para utilizar o Módulo TCO / Custódia, você deve declarar ciência das normas de "
+        "Cadeia de Custódia (Art. 158-A do CPP) e Responsabilidade pela Segurança da Informação."
+    )
+    if st.button("✅ Declarar Ciente e Aceitar Termo", type="primary", use_container_width=True):
+        obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao, unidade)
+        st.session_state["termo_compliance_aceito"] = True
+        st.rerun()
