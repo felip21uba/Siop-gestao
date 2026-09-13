@@ -732,21 +732,24 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             st.info("Nenhuma transferência pendente de aceite para você ou para o CREDS TCO da sua Cia.")
 
 # =============================================================================
-# ABA 5: PAINEL CREDS-TCO (RASTREAMENTO DE TEMPO CRÍTICO E GARGALOS DA CADEIA)
+# ABA 5: PAINEL CREDS-TCO (KPIs INTERATIVOS E DESTINO LIVRE)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Gargalos na Custódia")
-    unidades_disponiveis = ["TODAS AS UNIDADES", "35ª CIA PM", "21º BPM", "111ª CIA PM", "112ª CIA PM", "CREDS CENTRAL"]
     
     if not eh_gestor_creds:
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO, P1, Comandantes ou Administradores podem gerenciar o acervo e rastrear gargalos.")
         return
 
-    # Processamento dos pontos de retenção e marcas temporais de todos os bens
+    if "kpi_filtro_creds" not in st.session_state:
+        st.session_state["kpi_filtro_creds"] = "TODOS"
+
+    # Processamento dos pontos de retenção
     bens_processados = []
     q_parados_critico = 0
     q_custodia = 0
     q_pericia = 0
+    q_jecrim = 0
     q_destruicao = 0
 
     for b in all_bens_banco:
@@ -766,52 +769,73 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             q_custodia += 1
         if "Perícia" in str(b.get("fase_destinacao", "")):
             q_pericia += 1
+        if "JECRIM" in str(b.get("fase_destinacao", "")) or "Fórum" in str(b.get("fase_destinacao", "")):
+            q_jecrim += 1
         if "Destruição" in str(b.get("fase_destinacao", "")) or "DESTRUÍDO" in str(b.get("fase_destinacao", "")):
             q_destruicao += 1
 
-    # MÉTRICAS E INDICADORES DO PAINEL GERAL
-    kp1, kp2, kp3, kp4 = st.columns(4)
+    # MÉTRICAS E INDICADORES (BOTÕES INTERATIVOS)
+    st.markdown("##### 📊 Filtros Rápidos (Clique nos cartões para filtrar a tabela)")
+    kp1, kp2, kp3, kp4, kp5 = st.columns(5)
     with kp1:
-        st.metric("📦 Em Custódia", q_custodia)
+        if st.button(f"📦 Custódia ({q_custodia})", use_container_width=True, type="primary" if st.session_state["kpi_filtro_creds"] == "CUSTODIA" else "secondary"):
+            st.session_state["kpi_filtro_creds"] = "CUSTODIA"
+            st.rerun()
     with kp2:
-        st.metric("🔬 Em Perícia", q_pericia)
+        if st.button(f"🔬 Perícia ({q_pericia})", use_container_width=True, type="primary" if st.session_state["kpi_filtro_creds"] == "PERICIA" else "secondary"):
+            st.session_state["kpi_filtro_creds"] = "PERICIA"
+            st.rerun()
     with kp3:
-        st.metric("🔥 Destruição/Descarte", q_destruicao)
+        if st.button(f"🏛️ JECRIM ({q_jecrim})", use_container_width=True, type="primary" if st.session_state["kpi_filtro_creds"] == "JECRIM" else "secondary"):
+            st.session_state["kpi_filtro_creds"] = "JECRIM"
+            st.rerun()
     with kp4:
-        st.metric(
-            "🚨 Parados > 4 Dias", 
-            q_parados_critico, 
-            delta=f"{q_parados_critico} Gargalo(s)" if q_parados_critico > 0 else "Em dia", 
-            delta_color="inverse"
-        )
+        if st.button(f"🔥 Destruídos ({q_destruicao})", use_container_width=True, type="primary" if st.session_state["kpi_filtro_creds"] == "DESTRUICAO" else "secondary"):
+            st.session_state["kpi_filtro_creds"] = "DESTRUICAO"
+            st.rerun()
+    with kp5:
+        if st.button(f"🚨 Parados >4d ({q_parados_critico})", use_container_width=True, type="primary" if st.session_state["kpi_filtro_creds"] == "PARADOS" else "secondary"):
+            st.session_state["kpi_filtro_creds"] = "PARADOS"
+            st.rerun()
+
+    if st.session_state["kpi_filtro_creds"] != "TODOS":
+        if st.button("🔄 Limpar Filtro Rápido e Mostrar Todos", use_container_width=True):
+            st.session_state["kpi_filtro_creds"] = "TODOS"
+            st.rerun()
 
     st.divider()
 
-    # FILTROS AVANÇADOS DE BUSCA E GARGALOS
-    with st.expander("🔍 **Filtros de Pesquisa e Auditoria de Gargalos**", expanded=True):
+    with st.expander("🔍 **Pesquisa Avançada (Texto e REDS)**", expanded=False):
         f4_col1, f4_col2, f4_col3, f4_col4 = st.columns(4)
         with f4_col1:
-            f4_reds = st.text_input("Nº REDS:", placeholder="Ex: 2026-000484967", key="f4_reds").strip()
+            f4_reds = st.text_input("Nº REDS:", placeholder="Ex: 2026", key="f4_reds").strip()
         with f4_col2:
             f4_autor = st.text_input("Autor:", placeholder="Ex: DOUGLAS", key="f4_autor").strip()
         with f4_col3:
-            f4_militar = st.text_input("Militar Responsável:", placeholder="Ex: ALEXANDRINO", key="f4_militar").strip()
+            f4_militar = st.text_input("Militar:", placeholder="Ex: ALEXANDRINO", key="f4_militar").strip()
         with f4_col4:
-            f4_filtro_alerta = st.selectbox(
-                "Filtrar por Status do Gargalo:",
-                ["TODOS OS MATERIAIS", "🚨 PARADOS HÁ MAIS DE 4 DIAS", "⚠️ PENDENTES DE ACEITE", "🚨 COM DIVERGÊNCIA"],
-                key="f4_alerta"
-            )
+            f4_filtro_alerta = st.selectbox("Status Crítico:", ["TODOS OS MATERIAIS", "⚠️ PENDENTES DE ACEITE", "🚨 COM DIVERGÊNCIA"], key="f4_alerta")
 
+    # Aplicação dos filtros de texto
     all_bens_filtrados = aplicar_filtros_bens(bens_processados, f4_reds, f4_autor, f4_militar, "TODAS AS UNIDADES")
 
-    # Aplica o filtro de status e tempo
-    if f4_filtro_alerta == "🚨 PARADOS HÁ MAIS DE 4 DIAS":
-        all_bens_filtrados = [b for b in all_bens_filtrados if b["_alerta_4dias"] and "DESTRUÍDO" not in str(b.get("fase_destinacao", ""))]
-    elif f4_filtro_alerta == "⚠️ PENDENTES DE ACEITE":
+    # Aplicação do Filtro Crítico
+    if f4_filtro_alerta == "⚠️ PENDENTES DE ACEITE":
         all_bens_filtrados = [b for b in all_bens_filtrados if b.get("status_tramite") == "Pendente Aceite"]
     elif f4_filtro_alerta == "🚨 COM DIVERGÊNCIA":
         all_bens_filtrados = [b for b in all_bens_filtrados if b.get("status_tramite") == "Divergência Registrada"]
+
+    # Aplicação do Filtro Interativo (Botões KPI)
+    if st.session_state["kpi_filtro_creds"] == "CUSTODIA":
+        all_bens_filtrados = [b for b in all_bens_filtrados if b.get("fase_destinacao") == "Com Fiel Depositário / Policial" and b.get("status_tramite") == "Em Custódia"]
+    elif st.session_state["kpi_filtro_creds"] == "PERICIA":
+        all_bens_filtrados = [b for b in all_bens_filtrados if "Perícia" in str(b.get("fase_destinacao", ""))]
+    elif st.session_state["kpi_filtro_creds"] == "JECRIM":
+        all_bens_filtrados = [b for b in all_bens_filtrados if "JECRIM" in str(b.get("fase_destinacao", "")) or "Fórum" in str(b.get("fase_destinacao", ""))]
+    elif st.session_state["kpi_filtro_creds"] == "DESTRUICAO":
+        all_bens_filtrados = [b for b in all_bens_filtrados if "Destruição" in str(b.get("fase_destinacao", "")) or "DESTRUÍDO" in str(b.get("fase_destinacao", ""))]
+    elif st.session_state["kpi_filtro_creds"] == "PARADOS":
+        all_bens_filtrados = [b for b in all_bens_filtrados if b.get("_alerta_4dias", False) and "DESTRUÍDO" not in str(b.get("fase_destinacao", ""))]
 
     bens_divergentes = [b for b in all_bens_filtrados if b.get("status_tramite") == "Divergência Registrada"]
     if bens_divergentes:
@@ -844,7 +868,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.markdown(f"##### 📦 Acervo Geral sob Monitoramento ({len(all_bens_filtrados)} item(ns)):")
     
-    opcoes_destinacao = [
+    opcoes_destinacao_base = [
         "Com Fiel Depositário / Policial",
         "Encaminhado para Perícia Técnica",
         "Retornado da Perícia (Em Custódia)",
@@ -852,7 +876,8 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         "Encaminhado ao JECRIM / Fórum",
         "Guardado no Depósito (Aguardando Autorização Judicial)",
         "Autorizada Destruição (Aguardando Descarte)",
-        "DESTRUÍDO / DESCARTADO (ENCERRADO)"
+        "DESTRUÍDO / DESCARTADO (ENCERRADO)",
+        "✏️ Outro / Digitar Manualmente"
     ]
 
     for idx_creds, bem in enumerate(all_bens_filtrados):
@@ -869,13 +894,12 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 st.markdown(f"📦 Material: **{bem['descricao']}** | Autor: **{bem['autores']}**")
                 st.caption(f"🔒 Lacre: **{bem.get('involucro_lacre')}** | Qtd: **{bem.get('quantidade')} {bem.get('unidade_medida')}**")
                 
-                # Exibição explícita do Ponto da Cadeia de Custódia e Sinalização Vermelha de Tempo
                 st.markdown(f"📍 {ponto_cadeia}")
                 
                 if alerta_4d and not eh_encerrado:
-                    st.markdown(f"🚨 **Tempo Imóvel na Etapa:** :red[**{tempo_str} (ATENÇÃO: PARADO HÁ MAIS DE 4 DIAS!)**]")
+                    st.markdown(f"🚨 **Tempo Imóvel:** :red[**{tempo_str} (ATENÇÃO: PARADO HÁ MAIS DE 4 DIAS!)**]")
                 else:
-                    st.markdown(f"⏱️ **Tempo Imóvel na Etapa:** `{tempo_str}`")
+                    st.markdown(f"⏱️ **Tempo Imóvel:** `{tempo_str}`")
 
                 if bem.get("pa_oficio_autorizador"):
                     st.caption(f"📑 P.A. / Ofício Autorizador: **{bem['pa_oficio_autorizador']}**")
@@ -883,58 +907,65 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     st.error("🔒 STATUS: MATERIAL ENCERRADO / DESTRUÍDO (REGISTRO CONGELADO)")
 
             with c_cr2:
-                index_dest = opcoes_destinacao.index(fase_atual) if fase_atual in opcoes_destinacao else 0
+                # Se a fase salva no banco for diferente das padrões, ela é adicionada à lista dinamicamente
+                opcoes_dinamicas = opcoes_destinacao_base.copy()
+                if fase_atual not in opcoes_dinamicas and fase_atual:
+                    opcoes_dinamicas.insert(0, fase_atual)
+
+                index_dest = opcoes_dinamicas.index(fase_atual) if fase_atual in opcoes_dinamicas else 0
+                
                 nova_dest = st.selectbox(
                     "Fase / Destinação Final:",
-                    options=opcoes_destinacao,
+                    options=opcoes_dinamicas,
                     index=index_dest,
                     disabled=eh_encerrado,
                     key=f"sel_dest_creds_{bem['id_bem']}_{idx_creds}"
                 )
                 
-                e_orgao_externo = nova_dest in [
-                    "Encaminhado à Delegacia de Polícia Civil (PCMG)",
-                    "Encaminhado ao JECRIM / Fórum",
-                    "Encaminhado para Perícia Técnica",
-                    "DESTRUÍDO / DESCARTADO (ENCERRADO)"
-                ]
+                destino_final = nova_dest
+                if nova_dest == "✏️ Outro / Digitar Manualmente":
+                    destino_final = st.text_input(
+                        "Digite o novo status ou destino:", 
+                        placeholder="Ex: Cedido temporariamente à PCMG",
+                        key=f"txt_dest_manual_{bem['id_bem']}_{idx_creds}"
+                    ).strip()
 
+                mudou_destino = (destino_final != fase_atual and destino_final != "")
+                
                 input_pa_oficio = ""
-                if e_orgao_externo and nova_dest != fase_atual and not eh_encerrado:
+                if mudou_destino and not eh_encerrado:
                     input_pa_oficio = st.text_input(
-                        "Nº do P.A. / Auto / Ofício:",
-                        placeholder="Ex: OFÍCIO 142/2026-35CIA",
+                        "Nº do P.A. / Auto / Ofício (Opcional):",
+                        placeholder="Ex: OFÍCIO 142/2026",
                         key=f"pa_oficio_in_{bem['id_bem']}_{idx_creds}"
                     ).strip()
 
-                if nova_dest != fase_atual and not eh_encerrado:
                     if st.button("💾 Confirmar Alteração", key=f"btn_salvar_fase_{bem['id_bem']}_{idx_creds}", type="primary", use_container_width=True):
-                        if e_orgao_externo and not input_pa_oficio:
-                            st.error("Informe o número do P.A., Auto de Destruição ou Ofício.")
-                        else:
-                            now_iso = datetime.datetime.now().isoformat()
-                            upd_data = {"fase_destinacao": nova_dest}
-                            if input_pa_oficio:
-                                upd_data["pa_oficio_autorizador"] = input_pa_oficio
-                            
-                            if nova_dest == "Retornado da Perícia (Em Custódia)":
-                                upd_data["status_tramite"] = "Em Custódia"
-                                upd_data["fase_destinacao"] = "Com Fiel Depositário / Policial"
+                        now_iso = datetime.datetime.now().isoformat()
+                        upd_data = {"fase_destinacao": destino_final}
+                        
+                        if input_pa_oficio:
+                            upd_data["pa_oficio_autorizador"] = input_pa_oficio
+                        
+                        # Retorno da perícia restaura o status da custódia física
+                        if destino_final == "Retornado da Perícia (Em Custódia)":
+                            upd_data["status_tramite"] = "Em Custódia"
+                            upd_data["fase_destinacao"] = "Com Fiel Depositário / Policial"
 
-                            if atualizar_material_supabase(bem["id_bem"], upd_data):
-                                registrar_log_supabase({
-                                    "data_hora": now_iso,
-                                    "num_reds": bem["num_reds"],
-                                    "bem_id": bem["id_bem"],
-                                    "acao": "ALTERAÇÃO DE DESTINAÇÃO FINAL / PERÍCIA",
-                                    "origem": "CREDS-TCO",
-                                    "unidade_origem": unidade_militar_atual,
-                                    "destino": nova_dest,
-                                    "unidade_destino": "Órgão Externo / CREDS",
-                                    "detalhe": f"Nova Fase: {nova_dest} | Doc Autorizador: {input_pa_oficio or 'N/A'}"
-                                })
-                                st.success("Fase e histórico atualizados!")
-                                st.rerun()
+                        if atualizar_material_supabase(bem["id_bem"], upd_data):
+                            registrar_log_supabase({
+                                "data_hora": now_iso,
+                                "num_reds": bem["num_reds"],
+                                "bem_id": bem["id_bem"],
+                                "acao": "ALTERAÇÃO DE DESTINAÇÃO FINAL",
+                                "origem": "CREDS-TCO",
+                                "unidade_origem": unidade_militar_atual,
+                                "destino": destino_final,
+                                "unidade_destino": "Órgão Externo / CREDS",
+                                "detalhe": f"Nova Fase: {destino_final} | Doc Autorizador: {input_pa_oficio or 'N/A'}"
+                            })
+                            st.success("Fase atualizada e registrada na auditoria!")
+                            st.rerun()
 
 # =============================================================================
 # ABA 6: TRILHA DE AUDITORIA
@@ -963,3 +994,98 @@ def renderizar_aba_logs(all_logs_banco):
         st.dataframe(df_l[cols_reais], use_container_width=True, hide_index=True)
     else:
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
+
+# =============================================================================
+# ABA 7: DESIGNAÇÃO DE GESTORES DO CREDS TCO (100% RECLUSA NO MÓDULO TCO)
+# =============================================================================
+from core.database import (
+    carregar_militares_supabase,
+    atualizar_usuario_supabase,
+    supabase,
+    registrar_audit_log
+)
+
+def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
+    """Aba de uso exclusivo da P1/Comandante para nomear e revogar Gestores CREDS-TCO."""
+    eh_autorizado = any(k in f"{cargo_operador} {perfil_operador}".upper() for k in ["PROGRAMADOR", "ADMIN", "P1", "COMANDANTE"])
+
+    if not eh_autorizado:
+        st.error("🔒 **Acesso Restrito:** Apenas P1, Comandante ou Administradores do SIOP podem nomear Gestores do CREDS-TCO.")
+        return
+
+    st.markdown("#### 👥 Gestão e Nomeação de Gestores CREDS-TCO")
+    st.caption("Conceda ou revogue a função de Gestor do CREDS-TCO para militares da unidade. Gestores possuem acesso ao acervo geral, à caixa coletiva do setor e ao controle de perícias/descarte.")
+
+    all_milit = carregar_militares_supabase()
+    
+    usuarios_banco = []
+    if supabase:
+        try:
+            res_u = supabase.table("usuarios").select("*").execute()
+            usuarios_banco = res_u.data or []
+        except Exception as e:
+            st.warning(f"Aviso ao consultar lista de usuários: {e}")
+
+    df_u = pd.DataFrame(usuarios_banco) if usuarios_banco else pd.DataFrame()
+
+    col_des1, col_des2 = st.columns(2)
+
+    with col_des1:
+        with st.container(border=True):
+            st.markdown("##### ➕ Nomear Novo Gestor CREDS")
+            
+            mils_unidade = [m for m in all_milit if "PROGRAMADOR" in cargo_operador or "ADMIN" in perfil_operador or m.get("unidade") == unidade_operador]
+            
+            opcoes_militar = {
+                f"{m.get('posto_grad')} {m.get('nome_guerra')} (PM: {m.get('num_policia')}) - {m.get('unidade')}": m
+                for m in mils_unidade
+            }
+
+            if opcoes_militar:
+                militar_sel_key = st.selectbox("Selecione o Militar para Atribuir a Função:", list(opcoes_militar.keys()), key="sel_mil_creds_aba7")
+                militar_obj = opcoes_militar[militar_sel_key]
+                num_pm = str(militar_obj.get("num_policia", "")).strip()
+
+                if st.button("✅ Conceder Função CREDS-TCO", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
+                    if atualizar_usuario_supabase(num_pm, {
+                        "nivel_acesso": "CREDS",
+                        "unidade": militar_obj.get("unidade")
+                    }):
+                        registrar_audit_log(
+                            operador_pm=f"{cargo_operador} {nome_operador}",
+                            alvo_pm=num_pm,
+                            tipo_acao="DESIGNAÇÃO GESTOR CREDS",
+                            descricao=f"Função de Gestor CREDS TCO atribuída ao militar {militar_obj.get('nome_guerra')} ({num_pm}) na unidade {militar_obj.get('unidade')}."
+                        )
+                        st.success(f"Função de Gestor CREDS-TCO concedida com sucesso ao militar {militar_obj.get('nome_guerra')}!")
+                        st.rerun()
+            else:
+                st.info("Nenhum militar encontrado para nomeação na unidade atual.")
+
+    with col_des2:
+        with st.container(border=True):
+            st.markdown("##### 📜 Gestores CREDS Ativos")
+            
+            gestores_creds = []
+            if not df_u.empty and "nivel_acesso" in df_u.columns:
+                gestores_creds = df_u[df_u["nivel_acesso"] == "CREDS"].to_dict("records")
+
+            if gestores_creds:
+                for idx_g, g in enumerate(gestores_creds):
+                    with st.container(border=True):
+                        st.markdown(f"**👤 {g.get('cargo_funcao', 'PM')} {g.get('nome_guerra', 'OPERADOR')}**")
+                        st.caption(f"PM: **{g.get('usuario_login')}** | Unidade: **{g.get('unidade', '35ª CIA PM')}**")
+                        
+                        if st.button("🔻 Revogar Função CREDS", key=f"btn_revogar_creds_aba7_{g.get('usuario_login')}_{idx_g}", use_container_width=True):
+                            num_pm_rev = str(g.get("usuario_login")).strip()
+                            if atualizar_usuario_supabase(num_pm_rev, {"nivel_acesso": "TROPA"}):
+                                registrar_audit_log(
+                                    operador_pm=f"{cargo_operador} {nome_operador}",
+                                    alvo_pm=num_pm_rev,
+                                    tipo_acao="REVOGAÇÃO GESTOR CREDS",
+                                    descricao=f"Função de Gestor CREDS TCO revogada para o militar {num_pm_rev}."
+                                )
+                                st.success("Função CREDS revogada!")
+                                st.rerun()
+            else:
+                st.info("Nenhum gestor CREDS ativo cadastrado na unidade.")
