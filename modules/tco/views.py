@@ -4,6 +4,7 @@ import datetime
 import uuid
 import io
 import openpyxl
+import re
 from core.database import (
     supabase,
     carregar_militares_supabase,
@@ -16,23 +17,56 @@ from modules.tco.database import salvar_material_supabase, atualizar_material_su
 from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergencia
 from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registrar_aceite_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
-import re
+
+# =============================================================================
+# HELPER DE EXTRAÇÃO E MONTAGEM DINÂMICA DE CREDS
+# =============================================================================
+def extrair_unidade_mae_creds(str_unidade):
+    """Extrai a Companhia ou Batalhão responsável a partir da string de lotação do militar."""
+    if not str_unidade or not isinstance(str_unidade, str):
+        return None
+    str_u = str_unidade.upper().strip()
+
+    # Mapeamento dinâmico para as unidades do 21º BPM
+    if "35" in str_u and "CIA" in str_u:
+        return "35ª CIA PM"
+    elif "111" in str_u and "CIA" in str_u:
+        return "111ª CIA PM"
+    elif "285" in str_u and "CIA" in str_u:
+        return "285ª CIA TM"
+    elif "21" in str_u and ("BPM" in str_u or "EM" in str_u or "SECT" in str_u or "GAB" in str_u or "COPOM" in str_u):
+        return "21º BPM"
+
+    # Regex genérico para Cias e Batalhões de outras unidades
+    m_cia = re.search(r'(\d+)\s*CIA', str_u)
+    if m_cia:
+        return f"{m_cia.group(1)}ª CIA PM"
+        
+    m_bpm = re.search(r'(\d+)\s*BPM', str_u)
+    if m_bpm:
+        return f"{m_bpm.group(1)}º BPM"
+
+    return str_u
 
 def obter_lista_creds_dinamica():
-    """Obtém dinamicamente a lista de CREDS do Batalhão e Companhias com base no cadastro de militares."""
+    """Lê todas as lotações dos militares e gera a lista de CREDS por Companhia/Batalhão."""
     unidades_set = set()
     all_m = carregar_militares_supabase()
+    
     for m in all_m:
-        u = str(m.get("unidade") or "").strip().upper()
-        if u and "CENTRAL" not in u:
-            unidades_set.add(u)
+        unid_bruta = str(m.get("unidade") or m.get("nome_unidade") or "").strip()
+        unid_mae = extrair_unidade_mae_creds(unid_bruta)
+        if unid_mae:
+            unidades_set.add(unid_mae)
 
+    # Fallback garantido para o 21º BPM
     if not unidades_set:
-        unidades_set = {"35ª CIA PM", "285ª CIA PM", "21º BPM"}
+        unidades_set = {"35ª CIA PM", "111ª CIA PM", "285ª CIA TM", "21º BPM"}
 
     lista = [f"CREDS TCO - {u}" for u in sorted(list(unidades_set))]
     if "CREDS TCO - CENTRAL DE CUSTÓDIA" not in lista:
         lista.append("CREDS TCO - CENTRAL DE CUSTÓDIA")
+    
     lista.append("✏️ Outro CREDS / Digitar Manualmente")
     return lista
 
@@ -1057,52 +1091,3 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                                 st.rerun()
             else:
                 st.info("Nenhum gestor CREDS ativo cadastrado nas unidades.")
-def extrair_unidade_mae_creds(str_unidade):
-    """Extrai a Companhia ou Batalhão responsável a partir da string de lotação do militar."""
-    if not str_unidade or not isinstance(str_unidade, str):
-        return None
-    str_u = str_unidade.upper().strip()
-
-    # Mapeamento dinâmico para as unidades do 21º BPM
-    if "35" in str_u and "CIA" in str_u:
-        return "35ª CIA PM"
-    elif "111" in str_u and "CIA" in str_u:
-        return "111ª CIA PM"
-    elif "285" in str_u and "CIA" in str_u:
-        return "285ª CIA TM"
-    elif "21" in str_u and ("BPM" in str_u or "EM" in str_u or "SECT" in str_u or "GAB" in str_u or "COPOM" in str_u):
-        return "21º BPM"
-
-    # Regex genérico para Cias e Batalhões de outras unidades
-    m_cia = re.search(r'(\d+)\s*CIA', str_u)
-    if m_cia:
-        return f"{m_cia.group(1)}ª CIA PM"
-        
-    m_bpm = re.search(r'(\d+)\s*BPM', str_u)
-    if m_bpm:
-        return f"{m_bpm.group(1)}º BPM"
-
-    return str_u
-
-def obter_lista_creds_dinamica():
-    """Lê todas as lotações dos militares e gera a lista de CREDS por Companhia/Batalhão."""
-    unidades_set = set()
-    all_m = carregar_militares_supabase()
-    
-    for m in all_m:
-        unid_bruta = str(m.get("unidade") or m.get("nome_unidade") or "").strip()
-        unid_mae = extrair_unidade_mae_creds(unid_bruta)
-        if unid_mae:
-            unidades_set.add(unid_mae)
-
-    # Fallback garantido para o 21º BPM
-    if not unidades_set:
-        unidades_set = {"35ª CIA PM", "111ª CIA PM", "285ª CIA TM", "21º BPM"}
-
-    lista = [f"CREDS TCO - {u}" for u in sorted(list(unidades_set))]
-    if "CREDS TCO - CENTRAL DE CUSTÓDIA" not in lista:
-        lista.append("CREDS TCO - CENTRAL DE CUSTÓDIA")
-    
-    # Opção para criação manual
-    lista.append("✏️ Outro CREDS / Digitar Manualmente")
-    return lista
