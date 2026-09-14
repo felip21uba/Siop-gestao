@@ -1,40 +1,65 @@
 import streamlit as st
+import pandas as pd
 
-def renderizar_aba_matriz_seguranca():
-    st.markdown("##### 🏛️ Arquitetura de Defesa e Mecanismos de Criptografia do SIOP")
-    st.caption("Estrutura técnica para apresentação à Diretoria de TI e Auditoria Institucional.")
+def renderizar_aba_rbac():
+    st.markdown("##### 🔑 Matriz de Controle de Acesso (RBAC - 7 Níveis)")
+    st.caption("Mapeamento estruturado das prerrogativas operacionais do SIOP por função.")
 
-    with st.expander("🔑 **1. Autenticação, Proteção Anti-Força Bruta e Controle de Sessão**", expanded=True):
-        st.markdown("""
-        * **Autenticação em Duas Etapas (2FA / TOTP):** Integração com Google Authenticator e Authy via chaves temporárias base32.
-        * **Proteção Anti-Brute Force:** Bloqueio temporário progressivo por IP e usuário no endpoint do Supabase Auth após 3 tentativas malsucedidas.
-        * **Controle de Sessão Concorrente (Sessão Única):** Validação por `token_sessao_ativa` no banco de dados. Caso ocorra novo login simultâneo, o acesso anterior é revogado e desconectado imediatamente.
-        * **Gestão de Timeout por Inatividade:** Destruição automática das variáveis locais (`st.session_state`) após 20 minutos de ociosidade ou fechamento do navegador.
-        """)
+    dados_rbac = [
+        {
+            "Nível de Acesso": "1. ADMIN / PROGRAMADOR",
+            "Módulo CREDS/TCO": "Gestão Global (Batalhão)",
+            "Módulo Escalas": "Gestão Global (Batalhão)",
+            "Prerrogativa Operacional": "Acesso total, configuração de sistema e auditoria geral."
+        },
+        {
+            "Nível de Acesso": "2. GESTOR UNIDADE",
+            "Módulo CREDS/TCO": "Gestor Unidade (Visão BPM)",
+            "Módulo Escalas": "Visualização Batalhão",
+            "Prerrogativa Operacional": "Designação de gestores e tramitação entre todas as Companhias."
+        },
+        {
+            "Nível de Acesso": "3. COMANDANTE DE CIA",
+            "Módulo CREDS/TCO": "Gestor Cia (Lotação)",
+            "Módulo Escalas": "Comandante Cia (Aprovação)",
+            "Prerrogativa Operacional": "Gestão e nomeação de operadores na sua respectiva Companhia."
+        },
+        {
+            "Nível de Acesso": "4. GESTOR CIA / P1",
+            "Módulo CREDS/TCO": "Gestor Cia (Lotação)",
+            "Módulo Escalas": "Auxiliar Cia",
+            "Prerrogativa Operacional": "Recebimento, despacho e controle de materiais e efetivo."
+        },
+        {
+            "Nível de Acesso": "5. SARGENTEAÇÃO",
+            "Módulo CREDS/TCO": "Operador CREDS",
+            "Módulo Escalas": "Sargenteação / Planejamento",
+            "Prerrogativa Operacional": "Elaboração de escalas e apoio operacional."
+        },
+        {
+            "Nível de Acesso": "6. OPERADOR CREDS",
+            "Módulo CREDS/TCO": "Operador CREDS",
+            "Módulo Escalas": "Consulta Cia",
+            "Prerrogativa Operacional": "Preenchimento de relatórias, cadastro manual e aceite de custódia."
+        },
+        {
+            "Nível de Acesso": "7. TROPA (ORDINÁRIO)",
+            "Módulo CREDS/TCO": "Registro e Upload REDS",
+            "Módulo Escalas": "Consulta Individual",
+            "Prerrogativa Operacional": "Confecção de TCO de campo e envio inicial ao sistema."
+        }
+    ]
 
-    with st.expander("🛡️ **2. Proteção de Storage e Sanitização de Uploads (Anti-Malware & Traversal)**", expanded=False):
-        st.markdown("""
-        * **Sanitização Criptográfica de Arquivos (`sanitizar_nome_arquivo`):** Tratamento de nomes via Regex e `unicodedata`, eliminando caracteres especiais, cedilhas e caminhos para neutralizar ataques de *Directory Traversal*.
-        * **Filtro Estrito por Extensão e MIME-Type (`file_validator.py`):** Bloqueio absoluto de arquivos executáveis ou maliciosos (`.exe`, `.php`, `.js`, `.py`, `.sh`, `.bat`). Liberação restrita a documentos validados como `application/pdf`, `image/jpeg` e `image/png`.
-        * **Leitura com Buffer Sanitizado:** Leitura de arquivos limitada em memória RAM para prevenir invasões por estouro de cota e estouro de memória (DoS).
-        """)
-
-    with st.expander("⚡ **3. Integridade do Banco de Dados, Anti-SQL Injection e PostgreSQL RLS**", expanded=False):
-        st.markdown("""
-        * **Anulação de SQL Injection:** Comunicação com o PostgreSQL executada exclusivamente por endpoints da API PostgREST/Supabase com parametrização restrita de tipos de dados.
-        * **Row Level Security (RLS - PostgreSQL):** Segurança aplicada diretamente nas tabelas do banco de dados, bloqueando consultas não autorizadas via API REST por validação do token JWT do usuário.
-        * **Isolamento por Controle de Acesso (RBAC):** Restrição de privilégios dividida em 7 níveis funcionais com bloqueio de renderização de componentes de interface no servidor.
-        """)
-
-    with st.expander("📜 **4. Trilha de Auditoria Imutável e Triggers no PostgreSQL**", expanded=False):
-        st.markdown("""
-        * **Triggers de Bloqueio no Banco (`proibir_alteracao_logs`):** Função em PL/pgSQL executada antes de qualquer comando `UPDATE` ou `DELETE` nas tabelas `tco_logs` e `audit_log`, retornando exceção do sistema.
-        * **Imutabilidade Jurídica do Histórico:** Todos os registros de ações (Importação, Edição, Tramitação, Exclusão e Aceite) mantêm carimbo de data/hora em ISO com milissegundos, operador responsável, unidade e payload original alterado.
-        """)
-
-    with st.expander("🔐 **5. Assinatura Criptográfica SHA-256 e Autenticidade Pública**", expanded=False):
-        st.markdown("""
-        * **Chancela Eletrônica SHA-256 (Art. 158-A do CPP):** Geração de hash combinando o código do recibo JECRIM, descrição dos bens, narrativa fática e carimbo de tempo.
-        * **QR Code de Validação Pública:** Impressão de QR Code e código hash SHA-256 no rodapé de todos os documentos oficiais emitidos para conferência em tempo real.
-        * **Segunda Via Física Inalterável:** Backup automático do PDF idêntico gerado enviado para o bucket de armazenamento seguro no Supabase.
-        """)
+    df_rbac = pd.DataFrame(dados_rbac)
+    
+    st.dataframe(
+        df_rbac,
+        column_config={
+            "Nível de Acesso": st.column_config.TextColumn("Nível / Função", width="medium"),
+            "Módulo CREDS/TCO": st.column_config.TextColumn("Escopo CREDS", width="medium"),
+            "Módulo Escalas": st.column_config.TextColumn("Escopo Escalas", width="medium"),
+            "Prerrogativa Operacional": st.column_config.TextColumn("Descrição de Prerrogativas", width="large"),
+        },
+        hide_index=True,
+        use_container_width=True
+    )
