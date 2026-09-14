@@ -83,6 +83,13 @@ def renderizar_aba_termos_aceites(eh_admin, cargo_operador, nome_operador):
 
             if aceites_banco:
                 df_ac = pd.DataFrame(aceites_banco)
+                
+                # Formatação limpa de Data e Hora no padrão DD/MM/AAAA HH:MM
+                if "data_aceite" in df_ac.columns and not df_ac.empty:
+                    df_ac["data_aceite"] = df_ac["data_aceite"].apply(
+                        lambda x: pd.to_datetime(x).strftime("%d/%m/%Y %H:%M") if pd.notna(x) and str(x).strip() not in ["", "None", "NaT"] else "N/I"
+                    )
+
                 st.dataframe(
                     df_ac[["data_aceite", "num_policia", "nome_militar", "unidade", "cargo_funcao"]],
                     column_config={
@@ -97,4 +104,17 @@ def renderizar_aba_termos_aceites(eh_admin, cargo_operador, nome_operador):
                 )
             else:
                 st.info("Nenhum registro de aceite localizado com os filtros aplicados.")
-                
+
+def renderizar_aba_termos(usuario_logado=None):
+    """Função wrapper de compatibilidade com o módulo de governança."""
+    if not usuario_logado:
+        usuario_logado = st.session_state.get("usuario_dados") or {}
+    
+    nivel = usuario_logado.get("nivel_acesso", "TROPA")
+    perfil_creds = usuario_logado.get("perfil_creds", "TROPA")
+    eh_admin = nivel in ["ADMIN", "PROGRAMADOR", "GESTOR", "P1"] or perfil_creds == "GESTOR_UNIDADE"
+    
+    cargo_operador = usuario_logado.get("cargo_funcao") or usuario_logado.get("posto_grad") or "MILITAR"
+    nome_operador = usuario_logado.get("nome_guerra") or usuario_logado.get("usuario_login") or "OPERADOR"
+    
+    renderizar_aba_termos_aceites(eh_admin, cargo_operador, nome_operador)
