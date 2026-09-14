@@ -8,7 +8,7 @@ from utils.file_validator import validar_planilha_upload, desarmar_csv_injection
 def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
     @st.dialog("✏️ Editar Efetivo em Tabela (Estilo Planilha)", width="large")
     def _dialog():
-        st.markdown("##### 📝 Edite graduações, nomes, matrículas e cidades diretamente na planilha:")
+        st.markdown("##### 📝 Edite graduações, nomes, matrículas, unidades e cidades diretamente na planilha:")
         st.caption("Altere os valores na tabela abaixo e clique em 'Salvar' para atualizar tudo no Supabase.")
 
         mils = st.session_state.get("lista_militares", [])
@@ -24,8 +24,8 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
                 "Graduação": padronizar_grad_func(m.get("posto_grad", "SD")),
                 "Nome Funcional": str(m.get("nome_guerra", "")),
                 "Nome Completo": str(m.get("nome_completo", "")),
-                "Unidade": str(m.get("unidade", "")),
-                "Cidade / Fração": str(m.get("cidade", ""))
+                "Unidade": str(m.get("unidade", "UNIDADE N/I")),
+                "Cidade / Fração": str(m.get("cidade", "N/I"))
             })
 
         df_mils = pd.DataFrame(dados_tabela)
@@ -77,7 +77,7 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
                 salvar_militares_supabase(novos_mils)
                 st.session_state["lista_militares"] = novos_mils
                 st.session_state["militares_carregados"] = True
-                st.success("✅ Efetivo e cidades salvos no Supabase com sucesso!")
+                st.success("✅ Efetivo, unidades e cidades salvos no Supabase com sucesso!")
                 st.rerun()
 
         with col_s2:
@@ -105,8 +105,8 @@ def abrir_modal_excluir_lote(excluir_lote_func):
             {
                 "Grad/Nome": f"{m.get('posto_grad')} {m.get('nome_guerra')}", 
                 "Nº Polícia (com DV)": m.get('num_policia'), 
-                "Unidade": m.get('unidade'),
-                "Cidade": m.get('cidade')
+                "Unidade": m.get('unidade', 'UNIDADE N/I'),
+                "Cidade": m.get('cidade', 'N/I')
             } 
             for m in mils_para_excluir
         ])
@@ -140,7 +140,6 @@ def abrir_modal_upload_planilha(funcs_extracao):
         arquivo_planilha = st.file_uploader("Selecione o arquivo XLSX/CSV:", type=["xls", "xlsx", "csv"], key="uploader_efetivo_modal")
         
         if arquivo_planilha is not None:
-            # Validação de Segurança do Arquivo
             is_valido, msg_val = validar_planilha_upload(arquivo_planilha)
             if not is_valido:
                 st.error(msg_val)
@@ -148,7 +147,10 @@ def abrir_modal_upload_planilha(funcs_extracao):
                 if st.button("📥 Processar e Conferir Dados", type="primary", use_container_width=True):
                     try:
                         df_imp = carregar_planilha_universal(arquivo_planilha)
-                        # Neutraliza potenciais formulas injeções maliciosas
+                        if df_imp is None or df_imp.empty:
+                            st.error("🚨 Não foi possível extrair dados da planilha enviada.")
+                            return
+
                         df_imp = desarmar_csv_injection(df_imp)
                         df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
 
@@ -192,7 +194,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
             existentes_cnt = len(lista_temp) - novos_cnt
             
             st.markdown(f"📊 **Resumo da Importação ({len(lista_temp)} militares identificados):**")
-            st.info(f"• 👥 **{novos_cnt} novos militares** serão inseridos.\n• 🔄 **{existentes_cnt} militares existentes** terão suas graduações e cidades atualizadas no Supabase.")
+            st.info(f"• 👥 **{novos_cnt} novos militares** serão inseridos.\n• 🔄 **{existentes_cnt} militares existentes** terão suas graduações, unidades e cidades atualizadas no Supabase.")
 
             df_temp = pd.DataFrame(lista_temp)[["num_policia", "posto_grad", "nome_completo", "nome_guerra", "unidade", "cidade"]]
             df_temp.columns = ["Nº Polícia (com DV)", "Graduação", "Nome Completo", "Nome Funcional", "Unidade", "Cidade / Município"]
@@ -202,6 +204,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
                 column_config={
                     "Nº Polícia (com DV)": st.column_config.TextColumn(disabled=True), 
                     "Graduação": st.column_config.TextColumn(disabled=False),
+                    "Unidade": st.column_config.TextColumn(disabled=False),
                     "Cidade / Município": st.column_config.TextColumn(disabled=False)
                 }
             )
@@ -254,7 +257,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
                     st.session_state["lista_militares"] = remover_dup(mils_memoria)
                     st.session_state["temp_importacao_lista"] = []
                     st.session_state["militares_carregados"] = True
-                    st.success("✅ Efetivo e cidades atualizados no Supabase com sucesso!")
+                    st.success("✅ Efetivo, unidades e cidades atualizados no Supabase com sucesso!")
                     st.rerun()
 
             with col_m2:
@@ -272,7 +275,7 @@ def abrir_modal_novo_militar(padronizar_graduacao_func, remover_dup_func, pesos_
             posto_in = st.selectbox("Graduação:", ["SD AL", "SD", "CB", "3º SGT", "2º SGT", "1º SGT", "SUB TEN", "2º TEN", "1º TEN", "CAP", "MAJ", "TEN CEL"])
             nome_guerra_in = st.text_input("Nome de Guerra / Funcional:", placeholder="Ex: SILVA")
             nome_completo_in = st.text_input("Nome Completo:", placeholder="Ex: SILVA JUNIOR")
-            unidade_in = st.text_input("Unidade (Ex: 35 CIA PM):", placeholder="Ex: 35 CIA PM").strip().upper()
+            unidade_in = st.text_input("Unidade / Lotação:", placeholder="Ex: 35 CIA PM / 21 BPM").strip().upper()
             cidade_in = st.text_input("Cidade / Fração:", placeholder="Ex: UBÁ, VISCONDE DO RIO BRANCO...").strip().upper()
             
             st.markdown("<br>", unsafe_allow_html=True)
@@ -290,7 +293,7 @@ def abrir_modal_novo_militar(padronizar_graduacao_func, remover_dup_func, pesos_
                     pg_abrev = padronizar_graduacao_func(posto_in)
                     nome_comp_final = str(nome_completo_in).strip().upper() if nome_completo_in else f"{pg_abrev} {nome_f_upper}"
                     cidade_final = cidade_in if cidade_in else "N/I"
-                    unidade_final = unidade_in if unidade_in else st.session_state.get("cfg_subunidade", "UNIDADE N/I")
+                    unidade_final = unidade_in if unidade_in else "UNIDADE N/I"
                     
                     novo_m = {
                         "id": m_id_novo,
