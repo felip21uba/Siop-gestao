@@ -104,7 +104,12 @@ def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, n
             res = supabase.table("usuarios").select("usuario_login").or_(f"usuario_login.eq.{m_clean},usuario.eq.{m_clean}").execute()
             
             if res and res.data and len(res.data) > 0:
-                supabase.table("usuarios").update(payload_update).or_(f"usuario_login.eq.{m_clean},usuario.eq.{m_clean}").execute()
+                try:
+                    supabase.table("usuarios").update(payload_update).or_(f"usuario_login.eq.{m_clean},usuario.eq.{m_clean}").execute()
+                except Exception:
+                    # Fallback caso a coluna nome_completo ainda nao exista na tabela usuarios
+                    payload_update.pop("nome_completo", None)
+                    supabase.table("usuarios").update(payload_update).or_(f"usuario_login.eq.{m_clean},usuario.eq.{m_clean}").execute()
             else:
                 hash_init = gerar_hash_senha(m_clean)
                 payload_insert = {
@@ -121,7 +126,11 @@ def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, n
                     "ativo": ativo,
                     "primeiro_acesso": True
                 }
-                supabase.table("usuarios").insert(payload_insert).execute()
+                try:
+                    supabase.table("usuarios").insert(payload_insert).execute()
+                except Exception:
+                    payload_insert.pop("nome_completo", None)
+                    supabase.table("usuarios").insert(payload_insert).execute()
 
             st.cache_data.clear()
             return True
@@ -157,7 +166,8 @@ def exibir_tela_gestao_usuarios():
     usuarios_banco = []
     if supabase:
         try:
-            res_usrs = supabase.table("usuarios").select("usuario_login, usuario, nome_guerra, nome_completo, cargo_funcao, nivel_acesso, perfil_creds, perfil_escala, ativo, email_recuperacao").execute()
+            # Usa select("*") para evitar erros quando uma coluna especifica nao existe no banco
+            res_usrs = supabase.table("usuarios").select("*").execute()
             usuarios_banco = res_usrs.data or []
         except Exception as e:
             st.warning(f"Aviso ao consultar usuários no Supabase: {e}")
