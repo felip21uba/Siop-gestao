@@ -18,7 +18,7 @@ import pyotp
 import streamlit as st
 
 # ==============================================================================
-# 🌐 CONFIGURAÇÃO DE FUSO HORÁRIO OFICIAL (BRASÍLIA / UTC-3)
+# 🌐 CONFIGURAÇÃO DE FUSO HORÁRIO E FUNÇÕES UTILITÁRIAS
 # ==============================================================================
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
@@ -35,6 +35,26 @@ def sanitizar_texto(texto: str) -> str:
     texto_limpo = re.sub(r'(?i)javascript:', '', texto_limpo)
     texto_limpo = re.sub(r'(?i)onerror\s*=', '', texto_limpo)
     return texto_limpo
+
+def renderizar_rodape_corporativo():
+    """Renderiza o rodapé institucional no final da página."""
+    st.markdown("<br><hr>", unsafe_allow_html=True)
+    col_f1, col_f2, col_f3 = st.columns([1.5, 2, 1.5])
+    
+    with col_f1:
+        unidade_txt = st.session_state.get("cfg_unidade") or st.session_state.get("usuario_dados", {}).get("unidade") or "21º BPM"
+        subunidade_txt = st.session_state.get("cfg_subunidade") or "35ª CIA PM"
+        st.caption(f"🏛️ **{unidade_txt}** | {subunidade_txt}")
+        st.caption("PMMG - Polícia Militar de Minas Gerais")
+        
+    with col_f2:
+        st.caption("🛡️ **SIOP - Sistema Integrado de Operações** v2.5")
+        st.caption("Segurança da Informação, Compliance e Protocolos LGPD/PMMG")
+        
+    with col_f3:
+        usr_sessao = st.session_state.get("usuario_dados", {}).get("nome_guerra", "Operador")
+        st.caption(f"🟢 **Sessão Ativa:** {usr_sessao}")
+        st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 from core.database import init_db
 init_db()
@@ -437,7 +457,7 @@ if not st.session_state.get("autenticado", False):
                     else:
                         st.error("🚨 Token Authy/E-mail incorreto ou expirado. Verifique seu app ou caixa de entrada.")
 
-        # FLUXO 4: TELA PRINCIPAL DE LOGIN (CONSULTA DIRETA NO SUPABASE)
+        # FLUXO 4: TELA PRINCIPAL DE LOGIN
         else:
             with st.form("form_login_principal"):
                 usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 0000000") or "").strip()
@@ -541,10 +561,7 @@ modulo_ativo = st.session_state["modulo_ativo"]
 # 🏗️ RENDERIZAÇÃO DA BARRA LATERAL UNIFICADA (SIDEBAR)
 # =========================================================================
 with st.sidebar:
-    # 1. TEMPO DE SESSÃO REGRESSIVO (VIA CORE/SESSION.PY)
-    gerenciar_timeout_sessao()
-
-    # 2. BRASÃO INSTITUCIONAL
+    # 1. BRASÃO INSTITUCIONAL CENTRALIZADO
     c_l, c_mid, c_r = st.columns([1, 1.5, 1])
     with c_mid:
         try:
@@ -552,9 +569,9 @@ with st.sidebar:
         except Exception:
             st.markdown("🛡️")
 
-    # 3. SELETOR MULTI-TENANT DE UNIDADE (GESTOR)
+    # 2. SELETOR MULTI-TENANT DE UNIDADE (GESTOR)
     if eh_gestor_real:
-        if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa"):
+        if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa_nav"):
             st.session_state["simular_visao_tropa"] = True
             st.rerun()
         elif st.session_state.get("simular_visao_tropa", False):
@@ -584,7 +601,7 @@ with st.sidebar:
                     "Unidade em Operação:",
                     opcoes_uni,
                     index=idx_sel,
-                    key="sb_multi_tenant_unidade_unado",
+                    key="sb_multi_tenant_unidade_nav",
                     label_visibility="collapsed"
                 )
                 st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
@@ -598,11 +615,11 @@ with st.sidebar:
 
     st.divider()
 
-    # 4. CONTAINER MÓDULOS (CHAVES ÚNICAS ISOLADAS)
+    # 3. CONTAINER MÓDULOS (COM CHAVES EXPLICITAS E ÚNICAS)
     st.markdown("##### 🧩 Módulos do Sistema")
     with st.container(border=True):
         if eh_gestor_ou_admin:
-            if st.button("📅 Módulo Escalas", key="k_btn_mod_escalas", use_container_width=True, type="primary" if modulo_ativo == "ESCALAS" else "secondary"):
+            if st.button("📅 Módulo Escalas", key="k_btn_mod_escalas_nav", use_container_width=True, type="primary" if modulo_ativo == "ESCALAS" else "secondary"):
                 st.session_state["modulo_ativo"] = "ESCALAS"
                 st.rerun()
 
@@ -619,47 +636,47 @@ with st.sidebar:
                         "PASSO 6: Exportação & Auditoria",
                         "PASSO 7: Banco de Horas"
                     ],
-                    key="subnav_escalas_unique",
+                    key="subnav_escalas_unique_nav",
                     label_visibility="collapsed"
                 )
                 st.session_state["passo_escala_ativo"] = passo_sel
         else:
-            if st.button("📅 Minha Escala Individual", key="k_btn_mod_minha_escala", use_container_width=True, type="primary" if modulo_ativo == "MINHA_ESCALA" else "secondary"):
+            if st.button("📅 Minha Escala Individual", key="k_btn_mod_minha_escala_nav", use_container_width=True, type="primary" if modulo_ativo == "MINHA_ESCALA" else "secondary"):
                 st.session_state["modulo_ativo"] = "MINHA_ESCALA"
                 st.rerun()
 
-        if st.button("📦 Módulo TCO / Custódia", key="k_btn_mod_tco", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
+        if st.button("📦 Módulo TCO / Custódia", key="k_btn_mod_tco_nav", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
             st.session_state["modulo_ativo"] = "TCO"
             st.rerun()
 
-        if st.button("⚖️ Módulo Procedimentos", key="k_btn_mod_procedimentos", use_container_width=True, type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
+        if st.button("⚖️ Módulo Procedimentos", key="k_btn_mod_procedimentos_nav", use_container_width=True, type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
             st.session_state["modulo_ativo"] = "PROCEDIMENTOS"
             st.rerun()
 
         if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR"]):
-            if st.button("⚙️ Gestão de Acessos", key="k_btn_mod_gestao_acessos", use_container_width=True, type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
+            if st.button("⚙️ Gestão de Acessos", key="k_btn_mod_gestao_acessos_nav", use_container_width=True, type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
 
-        if st.button("🛡️ Governança & Segurança", key="k_btn_mod_governanca", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
+        if st.button("🛡️ Governança & Segurança", key="k_btn_mod_governanca_nav", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
             st.session_state["modulo_ativo"] = "GOVERNANCA"
             st.rerun()
 
     st.divider()
 
-    # 5. MURAL DE AVISOS COM CHAVE ÚNICA DE SESSÃO
+    # 4. MURAL DE AVISOS
     qtd_novas_mensagens = 0 
     badge_msg = f" 🔴 ({qtd_novas_mensagens})" if qtd_novas_mensagens > 0 else ""
-    if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", key="k_btn_mural_avisos_sidebar_fix", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
+    if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", key="k_btn_mural_avisos_nav", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
         st.session_state["modulo_ativo"] = "MURAL"
         st.rerun()
 
     st.divider()
 
-    # 6. PERFIL, TEMA E LOGOUT
+    # 5. PERFIL, TEMA E LOGOUT
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        if st.button("👤 Perfil", key="k_btn_perfil_sidebar", use_container_width=True, type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
+        if st.button("👤 Perfil", key="k_btn_perfil_nav", use_container_width=True, type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
             st.session_state["modulo_ativo"] = "MEU_PERFIL"
             st.rerun()
             
@@ -671,7 +688,7 @@ with st.sidebar:
             st.session_state["tema_visual"] = "DARK" if novo_tema_toggle else "LIGHT"
             st.rerun()
 
-    if st.button("🚪 Sair do Sistema", key="k_btn_logout_sidebar", use_container_width=True):
+    if st.button("🚪 Sair do Sistema", key="k_btn_logout_nav", use_container_width=True):
         usr_m = str(usr.get("usuario_login") or usr.get("usuario") or "").strip().upper()
         if supabase and usr_m:
             try:
@@ -684,4 +701,96 @@ with st.sidebar:
         st.session_state["usuario_dados"] = {}
         st.session_state["token_sessao_local"] = None
         st.rerun()
+
+# =========================================================================
+# 🚀 ROUTER CENTRAL DE TELAS
+# =========================================================================
+modulo = st.session_state.get("modulo_ativo", "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA")
+
+if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO", "MURAL", "MEU_PERFIL", "PROCEDIMENTOS", "GOVERNANCA"]):
+    st.title("📅 Central do Policial")
+    aba_escala, aba_mensagens = st.tabs([
+        "📅 Minha Escala Individual", 
+        "📩 Mensagens & Requerimentos P1"
+    ])
+    
+    num_policia_user = str(usr.get("usuario_login") or usr.get("usuario") or usr.get("num_policia") or "").strip()
+    nome_user = usr.get("nome_guerra", "Militar")
+
+    with aba_escala:
+        st.info(f"👮‍♂️ Exibindo a linha individual na escala para **{usr.get('cargo_funcao', '')} {nome_user} ({num_policia_user})**.")
+        
+        df_escala = st.session_state.get("df_escala_consolidada")
+        if df_escala is not None and not df_escala.empty:
+            df_individual = df_escala[
+                df_escala["Nº POLÍCIA"].astype(str).str.contains(num_policia_user, na=False) |
+                df_escala["MILITAR"].astype(str).str.contains(nome_user, na=False)
+            ]
+            if not df_individual.empty:
+                st.dataframe(df_individual, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Nenhum turno cadastrado para você na escala publicada deste mês.")
+        else:
+            st.warning("A escala geral deste mês ainda não foi publicada pela P1/P3.")
+
+    with aba_mensagens:
+        st.subheader("📩 Enviar Mensagem ou Solicitação à P1")
+        st.caption("Utilize este canal oficial para encaminhar solicitações de permuta, certidões ou requerimentos ao comando.")
+        
+        with st.form("form_envio_msg_p1_tropa", clear_on_submit=True):
+            assunto_msg = (st.text_input("Assunto / Motivo:") or "").strip()
+            texto_msg = (st.text_area("Detalhamento da Solicitação:", height=120) or "").strip()
+            
+            btn_enviar_msg = st.form_submit_button("📤 Enviar Mensagem à P1", type="primary", use_container_width=True)
+            if btn_enviar_msg:
+                if not assunto_msg or not texto_msg:
+                    st.error("⚠️ Preencha o assunto e o texto da mensagem.")
+                else:
+                    assunto_limpo = sanitizar_texto(assunto_msg)
+                    texto_limpo = sanitizar_texto(texto_msg)
+
+                    sucesso = salvar_mensagem_p1_supabase(num_policia_user, nome_user, assunto_limpo, texto_limpo)
+                    if sucesso:
+                        st.success("✅ Sua mensagem foi gravada no Supabase e enviada com segurança para a P1!")
+                    else:
+                        st.error("Erro ao enviar mensagem. Tente novamente.")
+
+elif modulo == "ESCALAS":
+    exibir_modulo_escalas()
+
+elif modulo == "TCO":
+    renderizar_modulo_tco()
+
+elif modulo == "PROCEDIMENTOS":
+    st.title("📑 Módulo de Procedimentos Administrativos")
+    st.info("ℹ️ Módulo em desenvolvimento operacional.")
+
+elif modulo == "GESTOES_USUARIOS":
+    exibir_tela_gestao_usuarios()
+
+elif modulo == "GOVERNANCA":
+    usr_dados_gov = st.session_state.get("usuario_dados", {})
+    nome_op = usr_dados_gov.get("nome_guerra") or usr_dados_gov.get("nome_completo") or "Operador"
+    unid_op = st.session_state.get("unidade_ativa_nome") or usr_dados_gov.get("unidade") or "21º BPM"
+    cargo_op = usr_dados_gov.get("cargo_funcao") or "Policial Militar"
+    perfil_op = perfil_ativo
+    
+    renderizar_modulo_governanca(
+        nome_operador=nome_op,
+        unidade_operador=unid_op,
+        cargo_operador=cargo_op,
+        perfil_operador=perfil_op
+    )
+
+elif modulo == "MURAL":
+    st.title("📢 Mural de Avisos & Trocas de Serviço")
+    renderizar_mural()
+
+elif modulo == "MEU_PERFIL":
+    exibir_tela_perfil()
+
+else:
+    st.session_state["modulo_ativo"] = "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA"
+    st.rerun()
+
 renderizar_rodape_corporativo()
