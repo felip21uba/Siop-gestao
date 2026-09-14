@@ -1,36 +1,36 @@
-import streamlit as st
 import time
 import datetime
 import json
+import streamlit as st
 import streamlit.components.v1 as components
 from core.database import supabase
 
 TEMPO_TIMEOUT_SEGUNDOS = 20 * 60
 
 def renderizar_relogio_sessao(tempo_minutos=20):
-    """Renderiza o relógio na sidebar e reinicia a contagem a cada clique do usuário."""
+    """Renderiza o relógio regressivo dinâmico único na sidebar."""
     tempo_segundos = tempo_minutos * 60
     ts_atual = time.time()
     
     html_relogio = f"""
     <!-- timestamp: {ts_atual} -->
     <div id="badge-sessao-box" style="
-        background-color: #1e293b;
+        background-color: #0f172a;
         color: #ffffff;
         padding: 8px 12px;
         border-radius: 8px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-size: 13px;
         font-weight: 600;
-        border: 1px solid #334155;
+        border: 1px solid #1e293b;
         display: flex;
         align-items: center;
         justify-content: space-between;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        margin-bottom: 10px;
+        margin-bottom: 5px;
     ">
         <div style="display: flex; align-items: center; gap: 6px;">
-            <span id="sessao-icon" style="font-size: 14px;">⏱️</span>
+            <span id="sessao-icon" style="font-size: 14px;">⏰</span>
             <span style="color: #94a3b8;">Sessão:</span>
         </div>
         <span id="sessao-timer" style="font-family: monospace; font-size: 14px; font-weight: bold; color: #38bdf8;">20:00</span>
@@ -156,10 +156,7 @@ def gerenciar_timeout_sessao():
             time.sleep(2)
             st.rerun()
 
-    # Atualiza o timestamp de ultima atividade a cada interacao
     st.session_state["ultima_atividade_ts"] = now_ts
-
-    # Renderiza o relogio que reseta visualmente para 20:00
     renderizar_relogio_sessao(tempo_minutos=20)
     
     if usr_id:

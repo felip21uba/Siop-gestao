@@ -82,6 +82,7 @@ def padronizar_graduacao(texto):
     return t_raw
 
 def extrair_posto_grad_planilha(row):
+    """Extrai posto/graduação da linha de dados."""
     for k, v in row.items():
         k_norm = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
         if k_norm in ["POSTO/GRADUACAO", "POSTO / GRADUACAO", "POSTO_GRADUACAO", "POSTO_GRAD", "POSTO GRADUACAO", "GRADUACAO", "POSTO", "P/G", "GRAD"]:
@@ -94,13 +95,14 @@ def extrair_posto_grad_planilha(row):
     return "SD"
 
 def extrair_cidade_planilha(row):
+    """Extrai cidade/município da linha de dados."""
     for k, v in row.items():
         k_norm = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
-        if any(p in k_norm for p in ["MUNICIPIO", "CIDADE", "LOCAL", "FRACAO", "LOTA", "DESTACAMENTO"]):
+        if any(p in k_norm for p in ["MUNICIPIO", "CIDADE", "LOCAL", "FRACAO", "DESTACAMENTO"]):
             if v and str(v).strip().upper() not in ["NONE", "NAN", "NULL", "<NA>", ""]:
                 return str(v).strip().upper()
                 
-    for chave in ["NOME MUNICIPIO", "NOME_MUNICIPIO", "MUNICIPIO", "MUNICÍPIO", "CIDADE", "FRACAO", "FRAÇÃO", "LOCALIDADE", "LOTACAO"]:
+    for chave in ["NOME MUNICIPIO", "NOME_MUNICIPIO", "MUNICIPIO", "MUNICÍPIO", "CIDADE", "FRACAO", "FRAÇÃO", "LOCALIDADE"]:
         val = row.get(chave)
         if val is not None:
             val_str = str(val).strip().upper()
@@ -109,18 +111,27 @@ def extrair_cidade_planilha(row):
     return "N/I"
 
 def extrair_unidade_planilha(row):
+    """Extrai a unidade/lotação real da planilha respeitando as colunas NOME UNIDADE, LOTAÇÃO, etc."""
+    chaves_prioritarias = [
+        "NOME UNIDADE", "NOME_UNIDADE", "UNIDADE", "LOTAÇÃO", "LOTACAO",
+        "NOME LOTACAO", "NOME_LOTACAO", "SUBUNIDADE", "SUB_UNIDADE", "OM", "CIA"
+    ]
+    
+    for chave in chaves_prioritarias:
+        for k, v in row.items():
+            k_clean = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
+            if k_clean == chave:
+                val_str = str(v).strip().upper()
+                if val_str and val_str not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]:
+                    return val_str
+
     for k, v in row.items():
         k_norm = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
-        if any(p in k_norm for p in ["UNIDADE", "SUBUNIDADE", "OM", "BPM", "CIA"]):
-            if v and str(v).strip().upper() not in ["NONE", "NAN", "NULL", "<NA>", ""]:
-                return str(v).strip().upper()
-                
-    for chave in ["NOME UNIDADE", "NOME_UNIDADE", "UNIDADE", "SUBUNIDADE", "BPM", "CIA"]:
-        val = row.get(chave)
-        if val is not None:
-            val_str = str(val).strip().upper()
-            if val_str and val_str not in ["NONE", "NAN", "NULL", "<NA>", ""]:
+        if any(p in k_norm for p in ["UNIDADE", "SUBUNIDADE", "LOTAC", "LOTA", "DESTACAMENTO"]):
+            val_str = str(v).strip().upper()
+            if val_str and val_str not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]:
                 return val_str
+
     return "UNIDADE N/I"
 
 def remover_duplicados_militares(lista):
@@ -258,7 +269,7 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
             posto_abrev = padronizar_graduacao(m.get('posto_grad', 'SD'))
             nome_str = m.get('nome_guerra', 'MILITAR')
             nome_comp_str = m.get('nome_completo', f"{posto_abrev} {nome_str}")
-            cidade_str, unidade_str = m.get('cidade', 'N/I'), m.get('unidade', 'N/I')
+            cidade_str, unidade_str = m.get('cidade', 'N/I'), m.get('unidade', 'UNIDADE N/I')
             
             label_card = f"{posto_abrev} {nome_str}\n\nNº {num_pol}"
             tipo_btn = "primary" if (modo_exclusao and prefixo_key == "col_sel") or is_sel else "secondary"

@@ -77,7 +77,7 @@ def carregar_militares_supabase() -> list[dict]:
                     "cidade": r.get("cidade", "N/I"),
                     "peso": r.get("peso", 99),
                     "ordem_manual": r.get("ordem_manual", 1),
-                    "unidade": r.get("unidade", "35ª CIA PM"),
+                    "unidade": r.get("unidade", "UNIDADE N/I"),
                     "nivel_acesso": r.get("nivel_acesso", "TROPA")
                 })
             return militares
@@ -129,19 +129,23 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
     try:
         dados_salvar = []
         for m in lista_militares:
+            nome_g = str(m.get("nome_guerra", "MILITAR")).strip().upper()
+            nome_c = str(m.get("nome_completo") or nome_g).strip().upper()
+            
             dados_salvar.append({
                 "id": str(m["id"]),
-                "num_policia": str(m.get("num_policia", "N/I")),
+                "num_policia": str(m.get("num_policia", "N/I")).strip().upper(),
                 "posto_grad": m.get("posto_grad", "SD"),
-                "nome_guerra": m.get("nome_guerra", "MILITAR"),
-                "nome_completo": m.get("nome_completo", r.get("nome_guerra", "MILITAR")),
+                "nome_guerra": nome_g,
+                "nome_completo": nome_c,
                 "cidade": str(m.get("cidade", "N/I")).strip().upper(),
                 "peso": m.get("peso", 99),
                 "ordem_manual": m.get("ordem_manual", 1),
-                "unidade": m.get("unidade", "35ª CIA PM"),
+                "unidade": str(m.get("unidade", "UNIDADE N/I")).strip().upper(),
                 "nivel_acesso": m.get("nivel_acesso", "TROPA")
             })
-        supabase.table("militares").upsert(dados_salvar).execute()
+            
+        supabase.table("militares").upsert(dados_salvar, on_conflict="num_policia").execute()
         sincronizar_contas_usuarios_do_efetivo(lista_militares)
         st.cache_data.clear()
         return True
