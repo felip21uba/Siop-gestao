@@ -244,7 +244,6 @@ def tratar_num_policia_unificado(row):
     return num_clean
 
 def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, prefixo_key):
-    # Trava defensiva para garantir a existencia do session_state
     if "militares_selecionados_ids" not in st.session_state:
         st.session_state["militares_selecionados_ids"] = []
 
@@ -282,14 +281,14 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
 
 @st.fragment
 def renderizar_fragmento_passo3():
-    # Garantia de inicializacao defensiva
     if "militares_selecionados_ids" not in st.session_state:
         st.session_state["militares_selecionados_ids"] = []
 
     militares = remover_duplicados_militares(st.session_state.get("lista_militares", []))
     st.session_state["lista_militares"] = militares
 
-    c_grad, c_cid, c_busca = st.columns([1.5, 1.5, 2])
+    # 1. Filtros Superiores (Graduação e Cidade/Fração)
+    c_grad, c_cid = st.columns(2)
 
     with c_grad:
         graduacoes_unicas = sorted(
@@ -304,12 +303,9 @@ def renderizar_fragmento_passo3():
             for m in militares 
             if m.get("cidade") and str(m.get("cidade")).strip().upper() not in ["NONE", "NAN", "NULL", ""]
         ])))
-
         cidades_sel = st.multiselect("🏙️ Cidade / Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
 
-    with c_busca:
-        termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag").strip().upper()
-
+    # 2. Trava de Exclusão
     col_t1, col_t2 = st.columns([1.8, 3.2])
     with col_t1:
         modo_exclusao = st.toggle("🚨 Trava de Exclusão (Habilitar Exclusão)", value=False, key="toggle_modo_exclusao_frag")
@@ -321,6 +317,7 @@ def renderizar_fragmento_passo3():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # 3. Botões de Ação Global
     c_m1, c_m2, c_m3 = st.columns([1, 1, 1.2])
     with c_m1:
         if st.button("✔ Marcar Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
@@ -342,43 +339,66 @@ def renderizar_fragmento_passo3():
         st.info("💡 Nenhum militar cadastrado no momento.")
         return
 
+    # Pré-filtragem por Graduação e Cidade
     militares_filtrados = militares
     if graduacoes_sel:
         militares_filtrados = [m for m in militares_filtrados if padronizar_graduacao(m.get("posto_grad", "SD")) in graduacoes_sel]
     if cidades_sel:
         militares_filtrados = [m for m in militares_filtrados if str(m.get("cidade", "N/I")).strip().upper() in cidades_sel]
-    if termo_busca:
-        militares_filtrados = [
-            m for m in militares_filtrados 
-            if termo_busca in m.get("nome_guerra", "").upper() 
-            or termo_busca in m.get("nome_completo", "").upper() 
-            or termo_busca in m.get("num_policia", "").upper() 
-            or termo_busca in padronizar_graduacao(m.get("posto_grad", "")).upper()
-        ]
 
-    st.session_state["militares_ativos_render"] = militares_filtrados
-    sel_ids_set = set(st.session_state.get('militares_selecionados_ids', []))
-
-    nao_selecionados_ord = sorted(
-        [m for m in militares_filtrados if m["id"] not in sel_ids_set], 
-        key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", ""))
-    )
-    selecionados_ord = sorted(
-        [m for m in militares_filtrados if m["id"] in sel_ids_set], 
-        key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", ""))
-    )
-
+    # 4. Layout dos Quadros com Busca Integrada e Alinhada
     col_quadro_esq, col_quadro_dir = st.columns(2, gap="medium")
+
+    # QUADRO ESQUERDO: Efetivo Filtrado + Busca Global acima do container
     with col_quadro_esq:
-        st.markdown(f"##### ⚪ Efetivo Filtrado ({len(nao_selecionados_ord)}):")
+        sel_ids_set = set(st.session_state.get('militares_selecionados_ids', []))
+        nao_sel_pre = [m for m in militares_filtrados if m["id"] not in sel_ids_set]
+
+        st.markdown(f"##### ⚪ Efetivo Filtrado ({len(nao_sel_pre)}):")
+
+        # CAIXA DE BUSCA GLOBAL (POSICIONADA ABAIXO DO TÍTULO E ACIMA DOS CARDS)
+        termo_busca = st.text_input(
+            "🔍 Busca Global no Efetivo:", 
+            key="txt_busca_militar_p3_frag", 
+            placeholder="Digite nome, número ou graduação..."
+        ).strip().upper()
+        
+        if termo_busca:
+            nao_sel_filtrados = [
+                m for m in nao_sel_pre 
+                if termo_busca in m.get("nome_guerra", "").upper() 
+                or termo_busca in m.get("nome_completo", "").upper() 
+                or termo_busca in m.get("num_policia", "").upper() 
+                or termo_busca in padronizar_graduacao(m.get("posto_grad", "")).upper()
+            ]
+        else:
+            nao_sel_filtrados = nao_sel_pre
+
+        st.session_state["militares_ativos_render"] = nao_sel_filtrados
+
+        nao_selecionados_ord = sorted(
+            nao_sel_filtrados, 
+            key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", ""))
+        )
+
         with st.container(height=420, border=True):
             if not nao_selecionados_ord:
                 st.caption("Nenhum militar pendente de seleção.")
             else:
                 renderizar_grade_cards_4_colunas(nao_selecionados_ord, sel_ids_set, modo_exclusao, prefixo_key="col_disp")
 
+    # QUADRO DIREITO: Selecionados para a Escala
     with col_quadro_dir:
+        selecionados_ord = sorted(
+            [m for m in militares if m["id"] in sel_ids_set], 
+            key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", ""))
+        )
+
         st.markdown(f"##### 🟢 Selecionados para a Escala ({len(selecionados_ord)}):")
+        
+        # Compensador de altura transparente para alinhar perfeitamente com a busca da esquerda
+        st.markdown("<div style='height: 68px;'></div>", unsafe_allow_html=True)
+
         with st.container(height=420, border=True):
             if not selecionados_ord:
                 st.caption("Clique nos cards para mover para este quadro.")

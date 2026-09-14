@@ -1,13 +1,40 @@
+import json
 import streamlit as st
 from core.database import supabase
+
+def carregar_equipes_persistidas():
+    """Carrega as equipes salvas do Supabase ou usa o padrão inicial."""
+    if "lista_equipes" not in st.session_state:
+        equipes_padrao = ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP", "TM ALPHA", "GEPAR"]
+        if supabase:
+            try:
+                res = supabase.table("configuracoes_sistema").select("valor").eq("chave", "lista_equipes_escala").execute()
+                if res.data and len(res.data) > 0:
+                    st.session_state["lista_equipes"] = json.loads(res.data[0]["valor"])
+                else:
+                    st.session_state["lista_equipes"] = equipes_padrao
+            except Exception:
+                st.session_state["lista_equipes"] = equipes_padrao
+        else:
+            st.session_state["lista_equipes"] = equipes_padrao
+
+def salvar_equipes_persistidas(lista):
+    """Persiste a lista de equipes no session_state e no banco de dados Supabase."""
+    st.session_state["lista_equipes"] = lista
+    if supabase:
+        try:
+            supabase.table("configuracoes_sistema").upsert({
+                "chave": "lista_equipes_escala",
+                "valor": json.dumps(lista)
+            }).execute()
+        except Exception:
+            pass
 
 @st.dialog("🗑️ Gerenciar e Excluir Equipes", width="medium")
 def abrir_modal_excluir_equipes():
     st.markdown("##### ⚠️ Clique na lixeira ao lado da equipe para removê-la:")
     
-    if "lista_equipes" not in st.session_state:
-        st.session_state["lista_equipes"] = ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP"]
-        
+    carregar_equipes_persistidas()
     equipes = st.session_state["lista_equipes"]
     
     if len(equipes) <= 1:
@@ -21,16 +48,17 @@ def abrir_modal_excluir_equipes():
         with c_btn:
             if st.button("🗑️ Excluir", key=f"btn_del_eq_modal_{eq}", use_container_width=True):
                 st.session_state["lista_equipes"].remove(eq)
+                salvar_equipes_persistidas(st.session_state["lista_equipes"])
+                
                 if st.session_state.get("equipe_ativa") == eq:
                     st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
                 st.success(f"Equipe '{eq}' removida com sucesso!")
                 st.rerun()
 
 def renderizar_passo1():
-    # Inicialização preventiva de chaves para evitar KeyError
-    if "lista_equipes" not in st.session_state:
-        st.session_state["lista_equipes"] = ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP"]
-    if "equipe_ativa" not in st.session_state:
+    # Carregamento e inicialização preventiva
+    carregar_equipes_persistidas()
+    if "equipe_ativa" not in st.session_state or st.session_state["equipe_ativa"] not in st.session_state["lista_equipes"]:
         st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
 
     exp1 = st.expander("📌 PASSO 1: Configuração da Unidade, Brasão e Gestão de Equipes", expanded=True)
@@ -59,14 +87,14 @@ def renderizar_passo1():
                 grupo_equipes = equipes[i:i + max_colunas]
                 cols = st.columns(max_colunas)
                 for idx, eq_nome in enumerate(grupo_equipes):
-                    eh_ativa = (eq_nome == st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
+                    eh_ativa = (eq_nome == st.session_state.get("equipe_ativa"))
                     with cols[idx]:
                         if st.button(f"🛡️ {eq_nome}", key=f"btn_eq_p1_{eq_nome}", type="primary" if eh_ativa else "secondary", use_container_width=True):
                             st.session_state["equipe_ativa"] = eq_nome
                             st.rerun()
 
             st.markdown("<br>", unsafe_allow_html=True)
-            st.success(f"📍 Equipe Ativa no Momento: **{st.session_state.get('equipe_ativa', 'ADMINISTRAÇÃO')}**")
+            st.success(f"📍 Equipe Ativa no Momento: **{st.session_state.get('equipe_ativa')}**")
 
         with col_gestao:
             with st.expander("➕ **Cadastrar Nova Equipe**", expanded=False):
@@ -76,8 +104,9 @@ def renderizar_passo1():
                     if btn_salvar_eq and nova_equipe_input:
                         if nova_equipe_input not in st.session_state["lista_equipes"]:
                             st.session_state["lista_equipes"].append(nova_equipe_input)
+                            salvar_equipes_persistidas(st.session_state["lista_equipes"])
                             st.session_state["equipe_ativa"] = nova_equipe_input
-                            st.success(f"Equipe '{nova_equipe_input}' cadastrada e ativada!")
+                            st.success(f"Equipe '{nova_equipe_input}' cadastrada e salva no banco!")
                             st.rerun()
 
             if st.button("🗑️ Excluir Equipes", use_container_width=True, key="btn_abrir_modal_del_eq"):

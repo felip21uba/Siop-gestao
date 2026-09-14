@@ -182,6 +182,30 @@ def abrir_modal_importar_escala_excel():
                 st.error(msg)
 
 def renderizar_passo5():
+    # Inicializações defensivas de memória
+    if "militares_selecionados_ids" not in st.session_state:
+        st.session_state["militares_selecionados_ids"] = []
+    if "grade_escala_lancamentos" not in st.session_state:
+        st.session_state["grade_escala_lancamentos"] = {}
+    if "militares_no_quadro_chaves" not in st.session_state:
+        st.session_state["militares_no_quadro_chaves"] = []
+
+    # SINCRONIZAÇÃO AUTOMÁTICA PASSO 3 ➔ PASSO 5
+    # Todo militar selecionado no Passo 3 é automaticamente acoplado à equipe ativa no Passo 5
+    sel_ids = st.session_state.get("militares_selecionados_ids", [])
+    eq_ativa = st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO")
+    chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
+    
+    chaves_set = set(chaves_existentes)
+    for m_id in sel_ids:
+        tem_vinculo = any(str(pair[0]) == str(m_id) for pair in chaves_existentes if isinstance(pair, (tuple, list)))
+        if not tem_vinculo:
+            novo_par = (m_id, eq_ativa)
+            if novo_par not in chaves_set:
+                chaves_existentes.append(novo_par)
+                chaves_set.add(novo_par)
+    st.session_state["militares_no_quadro_chaves"] = chaves_existentes
+
     if st.session_state.get("exibir_toast_autosave", False):
         st.toast("☁️ Rascunho salvo na nuvem com sucesso (Auto-Save)!", icon="✅")
         st.session_state["exibir_toast_autosave"] = False
@@ -498,9 +522,12 @@ def renderizar_passo5():
                     else:
                         st.success(f"✅ Escala coberta!\nNenhum dia possui menos de {min_efetivo} militar(es).")
 
+            # Opções de equipes integradas com as equipes criadas no Passo 1
+            equipes_opcoes = st.session_state.get("lista_equipes", ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP", "TM ALPHA", "GEPAR"])
+
             config_colunas = {
                 "ORDEM": st.column_config.NumberColumn("ORDEM", min_value=1, max_value=99, step=1),
-                "EQUIPE": st.column_config.SelectboxColumn("EQUIPE", options=st.session_state.get("lista_equipes", ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP", "TM ALPHA", "GEPAR"]), required=True),
+                "EQUIPE": st.column_config.SelectboxColumn("EQUIPE", options=equipes_opcoes, required=True),
                 "Nº POLÍCIA": st.column_config.TextColumn("Nº POLÍCIA", disabled=True),
                 "MILITAR": st.column_config.TextColumn("MILITAR", disabled=True),
                 "HORAS / META": st.column_config.TextColumn("HORAS / META", disabled=True),
