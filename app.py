@@ -541,7 +541,7 @@ modulo_ativo = st.session_state["modulo_ativo"]
 # 🏗️ RENDERIZAÇÃO DA BARRA LATERAL (SIDEBAR)
 # =========================================================================
 with st.sidebar:
-    # INDICADOR ÚNICO DE SESSÃO (CARD COM HORÁRIO AZUL)
+    # 1. INDICADOR ÚNICO DE SESSÃO (HORÁRIO AZUL)
     st.markdown(
         f"""
         <div style="
@@ -561,14 +561,15 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
-    # SÍMBOLO E TÍTULO SIOP CENTRALIZADOS
+    # 2. BRASÃO DA PMMG
     c_l, c_mid, c_r = st.columns([1, 1.5, 1])
     with c_mid:
         try:
             st.image(obter_imagem_brasao(), use_container_width=True)
         except Exception:
             st.markdown("🛡️")
-    # 3. MODO DE VISUALIZAÇÃO (APENAS O TOGGLE PARA GESTORES)
+
+    # 3. MODO DE VISUALIZAÇÃO E MULTI-TENANT (APENAS PARA GESTORES)
     if eh_gestor_real:
         if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa"):
             st.session_state["simular_visao_tropa"] = True
@@ -577,7 +578,6 @@ with st.sidebar:
             st.session_state["simular_visao_tropa"] = False
             st.rerun()
 
-        # SELETOR DE UNIDADE MULTI-TENANT
         if not st.session_state.get("simular_visao_tropa", False):
             st.markdown("---")
             st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
@@ -616,11 +616,10 @@ with st.sidebar:
 
     st.divider()
 
-    # 4. MÓDULOS AGRUPADOS NO MESMO CONTAINER
+    # 4. MÓDULOS AGRUPADOS NO CONTAINER
     st.markdown("##### 🧩 Módulos do Sistema")
     with st.container(border=True):
         if eh_gestor_ou_admin:
-            # Módulo Escalas (Gestão)
             if st.button("📅 Módulo Escalas", use_container_width=True, type="primary" if modulo_ativo == "ESCALAS" else "secondary"):
                 st.session_state["modulo_ativo"] = "ESCALAS"
                 st.rerun()
@@ -643,7 +642,6 @@ with st.sidebar:
                 )
                 st.session_state["passo_escala_ativo"] = passo_sel
         else:
-            # Minha Escala (Tropa)
             if st.button("📅 Minha Escala Individual", use_container_width=True, type="primary" if modulo_ativo == "MINHA_ESCALA" else "secondary"):
                 st.session_state["modulo_ativo"] = "MINHA_ESCALA"
                 st.rerun()
@@ -677,20 +675,20 @@ with st.sidebar:
         if modulo_ativo == "PROCEDIMENTOS":
             st.caption("🚧 Módulo em construção...")
 
-        # Gestão de Acessos (REORDENADO: SUBIU)
+        # Gestão de Acessos
         if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR"]):
             if st.button("⚙️ Gestão de Acessos", use_container_width=True, type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
 
-        # Governança & Segurança (NOVO MÓDULO)
+        # Governança & Segurança
         if st.button("🛡️ Governança & Segurança", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
             st.session_state["modulo_ativo"] = "GOVERNANCA"
             st.rerun()
 
     st.divider()
 
-    # 5. MURAL DE AVISOS (REORDENADO: DESCEU)
+    # 5. MURAL DE AVISOS
     qtd_novas_mensagens = 0 
     badge_msg = f" 🔴 ({qtd_novas_mensagens})" if qtd_novas_mensagens > 0 else ""
     if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
@@ -699,7 +697,7 @@ with st.sidebar:
 
     st.divider()
 
-    # 6. DEMAIS CARDS: PERFIL, MODO ESCURO/CLARO E SAIR
+    # 6. DEMAIS CARDS: PERFIL, TEMA E LOGOUT
     col_p1, col_p2 = st.columns(2)
     with col_p1:
         if st.button("👤 Perfil", use_container_width=True, type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
@@ -735,7 +733,7 @@ with st.sidebar:
         st.rerun()
 
 # =========================================================================
-# 🚀 ROUTER CENTRAL DE TELAS INTELIGENTE
+# 🚀 ROUTER CENTRAL DE TELAS
 # =========================================================================
 modulo = st.session_state.get("modulo_ativo", "ESCALAS" if eh_gestor_ou_admin else "MINHA_ESCALA")
 
@@ -801,18 +799,7 @@ elif modulo == "GESTOES_USUARIOS":
     exibir_tela_gestao_usuarios()
 
 elif modulo == "GOVERNANCA":
-    usr_dados_gov = st.session_state.get("usuario_dados", {})
-    nome_op = usr_dados_gov.get("nome_guerra") or usr_dados_gov.get("nome_completo") or "Operador"
-    unid_op = st.session_state.get("unidade_ativa_nome") or usr_dados_gov.get("unidade") or "21º BPM"
-    cargo_op = usr_dados_gov.get("cargo_funcao") or "Policial Militar"
-    perfil_op = perfil_ativo
-    
-    renderizar_modulo_governanca(
-        nome_operador=nome_op,
-        unidade_operador=unid_op,
-        cargo_operador=cargo_op,
-        perfil_operador=perfil_op
-    )
+    renderizar_modulo_governanca(st.session_state.get("usuario_dados", {}))
 
 elif modulo == "MURAL":
     st.title("📢 Mural de Avisos & Trocas de Serviço")
