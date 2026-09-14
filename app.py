@@ -52,9 +52,20 @@ def renderizar_rodape_corporativo():
         st.caption("Segurança da Informação, Compliance e Protocolos LGPD/PMMG")
         
     with col_f3:
-        usr_sessao = st.session_state.get("usuario_dados", {}).get("nome_guerra", "Operador")
-        st.caption(f"🟢 **Sessão Ativa:** {usr_sessao}")
-        st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
+     usr_dados = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_dados, str):
+        usr_dados = {"nome_guerra": usr_dados}
+
+    nome_op = (
+        usr_dados.get("nome_guerra") 
+        or usr_dados.get("nome_completo") 
+        or usr_dados.get("usuario_login") 
+        or "Operador"
+    )
+    usr_sessao = nome_op
+
+    st.caption(f"🟢 **Sessão Ativa:** {nome_op}")
+    st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 from core.database import init_db
 init_db()
