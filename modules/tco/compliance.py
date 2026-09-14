@@ -85,7 +85,7 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     elements.append(tabela_id)
     elements.append(Spacer(1, 12))
 
-    # Texto Jurídico de Compliance (Substituído "ingestão" por "importação de REDS")
+    # Texto Jurídico de Compliance
     texto_juridico = (
         "<b>1. DA CADEIA DE CUSTÓDIA (ART. 158-A CPP):</b> O operador declara ciência formal de que todas as ações "
         "realizadas no Módulo de Custódia e TCO (importação de REDS, alteração de invólucro, transferência física, "
@@ -129,8 +129,31 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     buffer.seek(0)
     return buffer.getvalue()
 
+def salvar_pdf_termo_no_storage(pdf_bytes, num_policia, nome_militar):
+    """Salva o PDF do Termo no Supabase Storage testando buckets de backup sem interromper o sistema."""
+    if not supabase or not pdf_bytes:
+        return None
+
+    data_hoje = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    nome_arquivo = f"Termo_{num_policia}_{data_hoje}.pdf"
+    
+    # Testa os buckets disponíveis para impedir exceções do tipo NoSuchBucket
+    buckets_candidatos = ["termos_compliance", "tco_midias", "midias_tco"]
+
+    for bucket in buckets_candidatos:
+        try:
+            supabase.storage.from_(bucket).upload(
+                path=nome_arquivo,
+                file=pdf_bytes,
+                file_options={"content-type": "application/pdf"}
+            )
+            return supabase.storage.from_(bucket).get_public_url(nome_arquivo)
+        except Exception:
+            continue
+    return None
+
 def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao, unidade):
-    """Verifica se o militar possui aceite gravado. Se for o primeiro acesso, registra e congela a data."""
+    """Verifica se o militar possui aceite gravado. Se for o primeiro acesso, registra e gera o PDF de backup."""
     if not supabase or not num_policia:
         return True, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
@@ -146,10 +169,19 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
             return True, data_existente
 
         now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+        
+        # Atualiza a flag e data de aceite no perfil do usuário
         supabase.table("usuarios").update({
             "termo_compliance_aceito": True,
             "data_aceite_compliance": now_str
         }).eq("usuario_login", num_pm_str).execute()
+
+        # Gera e envia a cópia em PDF para o Storage em segundo plano
+        try:
+            pdf_bytes = gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_pm_str, now_str)
+            salvar_pdf_termo_no_storage(pdf_bytes, num_pm_str, nome_militar)
+        except Exception:
+            pass
 
         return True, now_str
     except Exception:

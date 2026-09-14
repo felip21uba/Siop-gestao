@@ -163,7 +163,7 @@ def renderizar_mural():
                             "data_devolucao": data_devolucao.strftime("%d/%m/%Y") if data_devolucao else "-",
                             "motivo": motivo,
                             "status": "Aguardando P1",
-                            "data_pedido": datetime.datetime.now().strftime("%d/%m %H:%M")
+                            "data_pedido": datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
                         }
                         st.session_state["mural_trocas"].append(nova_troca)
                         st.success("🎉 Solicitação de permuta registrada com sucesso! Encaminhada para análise da P1.")
@@ -240,7 +240,7 @@ def renderizar_mural():
             st.info("ℹ️ Nenhum requerimento localizado no banco de dados até o momento.")
         else:
             if eh_admin:
-                # 🔍 FILTROS DE BUSCA (DATA, MILITAR SOLICITANTE E STATUS)
+                # 🔍 FILTROS DE BUSCA
                 with st.expander("🔍 **Filtros de Busca e Consulta da P1**", expanded=True):
                     col_f1, col_f2, col_f3 = st.columns([1, 1.2, 1])
                     with col_f1:
@@ -251,8 +251,7 @@ def renderizar_mural():
                     with col_f3:
                         filtro_status_p1 = st.selectbox("Filtrar por Status:", ["TODOS OS STATUS", "Pendente / RECEBIDA", "DEFERIDO / APROVADO", "INDEFERIDO", "EM ANÁLISE"], key="filtro_st_p1")
 
-                # APLICAÇÃO DOS FILTROS
-                msgs_exibição = []
+                msgs_exibicao = []
                 for msg in msgs_p1_banco:
                     num_pol = str(
                         msg.get("remetente_id") or 
@@ -273,26 +272,23 @@ def renderizar_mural():
                         except Exception:
                             dt_obj = None
 
-                    # Valida filtro por data
                     if filtro_data_p1 and dt_obj and dt_obj != filtro_data_p1:
                         continue
                     
-                    # Valida filtro por militar
                     if filtro_militar_p1 != "TODOS OS MILITARES" and filtro_militar_p1.upper() not in nome_m.upper():
                         continue
 
-                    # Valida filtro por status
                     if filtro_status_p1 != "TODOS OS STATUS":
                         termo_st = "PENDENTE" if "PENDENTE" in filtro_status_p1.upper() or "RECEBIDA" in filtro_status_p1.upper() else filtro_status_p1.upper()
                         if termo_st not in status_atual.upper() and status_atual.upper() not in termo_st:
                             if not ("RECEBIDA" in status_atual.upper() and "PENDENTE" in filtro_status_p1.upper()):
                                 continue
 
-                    msgs_exibição.append((msg, num_pol, nome_m, data_bruta))
+                    msgs_exibicao.append((msg, num_pol, nome_m, data_bruta))
 
-                st.success(f"📊 Exibindo **{len(msgs_exibição)}** de **{len(msgs_p1_banco)}** requerimentos localizados.")
+                st.success(f"📊 Exibindo **{len(msgs_exibicao)}** de **{len(msgs_p1_banco)}** requerimentos localizados.")
                 
-                for msg, num_pol, nome_m, data_bruta in msgs_exibição:
+                for msg, num_pol, nome_m, data_bruta in msgs_exibicao:
                     msg_id = msg.get("id")
                     assunto = msg.get("assunto") or "Solicitação P1"
                     texto = msg.get("mensagem") or msg.get("texto") or msg.get("conteudo") or ""
@@ -301,26 +297,27 @@ def renderizar_mural():
                     
                     if data_bruta:
                         try:
-                            data_fmt = pd.to_datetime(data_bruta).strftime("%d/%m/%Y às %H:%M")
+                            data_fmt = pd.to_datetime(data_bruta).strftime("%d/%m/%Y %H:%M")
                         except Exception:
                             data_fmt = str(data_bruta)[:16]
                     else:
-                        data_fmt = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M")
+                        data_fmt = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
                     cor_status = "🟡" if "PENDENTE" in status_atual.upper() or "RECEBIDA" in status_atual.upper() else ("🟢" if "DEFERIDO" in status_atual.upper() or "APROVADO" in status_atual.upper() else "🔴")
 
                     with st.container(border=True):
+                        tag_militar_verde = f"<span style='color: #4ADE80; font-weight: bold;'>{nome_m}</span>"
+                        tag_data_verde = f"<span style='color: #4ADE80; font-weight: bold;'>{data_fmt}</span>"
+                        
                         st.markdown(f"#### {cor_status} {assunto}")
-                        st.caption(f"👤 **Militar Solicitante:** {nome_m} (`Nº {num_pol if num_pol else 'N/I'}`) | ⏱️ **Enviado em:** {data_fmt} | **Status:** `{status_atual}`")
+                        st.markdown(f"👤 **Militar Solicitante:** {tag_militar_verde} (`Nº {num_pol if num_pol else 'N/I'}`) | ⏱️ **Enviado em:** {tag_data_verde} | **Status:** `{status_atual}`", unsafe_allow_html=True)
                         st.markdown(f"> {texto}")
 
                         if despacho_existente:
                             st.info(f"💬 **Despacho Registrado:** {despacho_existente}")
 
-                        # AÇÕES DO GESTOR DA P1
                         col_act1, col_act2, col_act3 = st.columns([1.5, 1.5, 1])
 
-                        # 1. FORMULÁRIO DE DESPACHO
                         with col_act1:
                             with st.expander(f"✏️ Despachar #{msg_id}"):
                                 with st.form(f"form_despacho_{msg_id}"):
@@ -338,7 +335,6 @@ def renderizar_mural():
                                         else:
                                             st.error("Erro ao atualizar mensagem.")
 
-                        # 2. ALTERAR MILITAR SOLICITANTE
                         with col_act2:
                             with st.expander(f"👤 Reatribuir Solicitante"):
                                 if lista_usuarios_mils:
@@ -356,7 +352,6 @@ def renderizar_mural():
                                 else:
                                     st.caption("Nenhum usuário cadastrado para reatribuição.")
 
-                        # 3. EXCLUIR MENSAGEM
                         with col_act3:
                             with st.expander(f"🗑️ Excluir"):
                                 with st.form(f"form_excluir_{msg_id}"):
@@ -411,7 +406,7 @@ def renderizar_mural():
                                 
                             nova_msg = {
                                 "id_msg": len(st.session_state["mural_mensagens"]) + 1,
-                                "data_envio": datetime.datetime.now().strftime("%d/%m %H:%M"),
+                                "data_envio": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                                 "titulo": titulo_msg,
                                 "conteudo": corpo_msg,
                                 "destinatarios": lista_dest,
@@ -427,7 +422,7 @@ def renderizar_mural():
             else:
                 for msg in reversed(st.session_state["mural_mensagens"]):
                     with st.container(border=True):
-                        st.markdown(f"**{msg['titulo']}** (Enviado em {msg['data_envio']})")
+                        st.markdown(f"**{msg['titulo']}** (Enviado em <span style='color: #4ADE80; font-weight: bold;'>{msg['data_envio']}</span>)", unsafe_allow_html=True)
                         lidos_qtd = len(msg['lido_por'])
                         dest_qtd = len(msg['destinatarios'])
                         st.progress(lidos_qtd / dest_qtd if dest_qtd > 0 else 0)
@@ -459,13 +454,14 @@ def renderizar_mural():
                 icone = "✅" if ja_leu else "🚨"
                 
                 with st.container(border=True):
+                    tag_data_msg_verde = f"<span style='color: #4ADE80; font-weight: bold;'>{msg['data_envio']}</span>"
                     st.markdown(f"### {icone} {msg['titulo']}")
-                    st.caption(f"Enviado pela P1/Comando em {msg['data_envio']}")
+                    st.markdown(f"Enviado pela P1/Comando em {tag_data_msg_verde}", unsafe_allow_html=True)
                     st.markdown(f">{msg['conteudo']}")
                     
                     if not ja_leu:
                         if st.button("👁️ Marcar como 'Li e Estou Ciente'", key=f"ciente_{msg['id_msg']}", type="primary"):
-                            msg["lido_por"][nome_usuario_atual] = datetime.datetime.now().strftime("%d/%m %H:%M")
+                            msg["lido_por"][nome_usuario_atual] = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
                             st.rerun()
                     else:
                         st.success(f"Você tomou ciência deste aviso em: {msg['lido_por'][nome_usuario_atual]}")

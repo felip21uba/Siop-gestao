@@ -538,33 +538,36 @@ if "modulo_ativo" not in st.session_state:
 modulo_ativo = st.session_state["modulo_ativo"]
 
 # =========================================================================
-# 🏗️ RENDERIZAÇÃO DA BARRA LATERAL (SIDEBAR) REESTRUTURADA E REORDENADA
+# 🏗️ RENDERIZAÇÃO DA BARRA LATERAL (SIDEBAR)
 # =========================================================================
 with st.sidebar:
-    # 1. BOTÃO / METRIC DE SESSÃO
-    with st.container(border=True):
-        st.markdown(f"<div style='text-align: center;'>⏰ <b>Sessão:</b> <span style='color: #38BDF8;'>{obter_agora().strftime('%H:%M')}</span></div>", unsafe_allow_html=True)
+    # INDICADOR ÚNICO DE SESSÃO (CARD COM HORÁRIO AZUL)
+    st.markdown(
+        f"""
+        <div style="
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            padding: 10px 16px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #0f172a;
+        ">
+            <span style="color: #e2e8f0; font-weight: 500;">⏰ Sessão:</span>
+            <span style="color: #38bdf8; font-weight: bold; font-size: 1.1rem;">{obter_agora().strftime('%H:%M')}</span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    # 2. SÍMBOLO E TÍTULO SIOP CENTRALIZADOS
+    # SÍMBOLO E TÍTULO SIOP CENTRALIZADOS
     c_l, c_mid, c_r = st.columns([1, 1.5, 1])
     with c_mid:
         try:
             st.image(obter_imagem_brasao(), use_container_width=True)
         except Exception:
             st.markdown("🛡️")
-        
-    st.markdown(
-        """
-        <div style='text-align: center; margin-top: -10px; margin-bottom: 10px;'>
-            <h3 style='margin: 0; font-weight: bold;'>SIOP</h3>
-            <span style='color: #64748B; font-size: 0.85em;'>PMMG - 2026</span>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.divider()
-
     # 3. MODO DE VISUALIZAÇÃO (APENAS O TOGGLE PARA GESTORES)
     if eh_gestor_real:
         if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa"):
