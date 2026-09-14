@@ -3,6 +3,7 @@ import datetime
 import calendar
 import pandas as pd
 import copy
+from core.database import salvar_escala_mensal_supabase, supabase
 from modules.escalas.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 from utils.excel_escala_importer import (
@@ -25,7 +26,9 @@ def salvar_estado_undo():
     snapshot = {
         "grade": copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {})),
         "chaves": copy.deepcopy(st.session_state.get("militares_no_quadro_chaves", [])),
-        "ordem": copy.deepcopy(st.session_state.get("ordem_customizada_map", {}))
+        "ordem": copy.deepcopy(st.session_state.get("ordem_customizada_map", {})),
+        "bh_configs": copy.deepcopy(st.session_state.get("bh_configs", {})),
+        "ajuste_saldo_map": copy.deepcopy(st.session_state.get("ajuste_saldo_map", {}))
     }
     
     st.session_state["pilha_undo"].append(snapshot)
@@ -40,6 +43,8 @@ def desfazer_ultima_acao():
         st.session_state["grade_escala_lancamentos"] = ultimo_snapshot["grade"]
         st.session_state["militares_no_quadro_chaves"] = ultimo_snapshot["chaves"]
         st.session_state["ordem_customizada_map"] = ultimo_snapshot["ordem"]
+        st.session_state["bh_configs"] = ultimo_snapshot.get("bh_configs", {})
+        st.session_state["ajuste_saldo_map"] = ultimo_snapshot.get("ajuste_saldo_map", {})
         
         registrar_log_auditoria("Desfazer Ação", "O operador reverteu a última alteração no quadro.")
         executar_auto_save_banco()
@@ -129,10 +134,63 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade):
     return "OK", ""
 
 def executar_auto_save_banco():
+    """Salva a matriz inteira, ordem e ajustes de saldo no Supabase."""
+    m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
+    m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
+    eq_ativa = st.session_state.get("equipe_ativa", "GERAL")
+    mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
+    
+    usr = st.session_state.get("usuario_dados", {})
+    usr_nome = usr.get("nome_guerra") or usr.get("usuario_login") or "OPERADOR"
+
+    matriz_payload = {
+        "grade_escala_lancamentos": st.session_state.get("grade_escala_lancamentos", {}),
+        "militares_no_quadro_chaves": st.session_state.get("militares_no_quadro_chaves", []),
+        "ordem_customizada_map": st.session_state.get("ordem_customizada_map", {}),
+        "bh_configs": st.session_state.get("bh_configs", {}),
+        "ajuste_saldo_map": st.session_state.get("ajuste_saldo_map", {})
+    }
+
+    salvar_escala_mensal_supabase(
+        ano=m_ano,
+        mes=m_mes,
+        equipe_nome=eq_ativa,
+        modalidade=mod_nome,
+        matriz_dados=matriz_payload,
+        elaborado_por=usr_nome,
+        homologado_por=usr_nome,
+        status="RASCUNHO"
+    )
     st.session_state["exibir_toast_autosave"] = True
 
+def carregar_escala_salva_banco():
+    """Carrega os dados salvos do Supabase caso o session_state esteja vazio."""
+    if not supabase:
+        return
+    m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
+    m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
+    eq_ativa = st.session_state.get("equipe_ativa", "GERAL")
+
+    try:
+        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", m_ano).eq("mes", m_mes).execute()
+        if res and res.data:
+            m_dados = res.data[0].get("matriz_dados", {})
+            if isinstance(m_dados, dict):
+                if m_dados.get("grade_escala_lancamentos"):
+                    st.session_state["grade_escala_lancamentos"] = m_dados.get("grade_escala_lancamentos", {})
+                if m_dados.get("militares_no_quadro_chaves"):
+                    st.session_state["militares_no_quadro_chaves"] = m_dados.get("militares_no_quadro_chaves", [])
+                if m_dados.get("ordem_customizada_map"):
+                    st.session_state["ordem_customizada_map"] = m_dados.get("ordem_customizada_map", {})
+                if m_dados.get("bh_configs"):
+                    st.session_state["bh_configs"] = m_dados.get("bh_configs", {})
+                if m_dados.get("ajuste_saldo_map"):
+                    st.session_state["ajuste_saldo_map"] = m_dados.get("ajuste_saldo_map", {})
+    except Exception as ex:
+        print(f"Aviso ao carregar escala salva: {ex}")
+
 def recalcular_escala_matriz():
-    """Calcula e preenche a sequência inteira do mês conforme as regras do Passo 2 e Passo 4."""
+    """Calcula e preenche a sequência sem sobrescrever lançamentos manuais existentes."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -186,8 +244,8 @@ def recalcular_escala_matriz():
             chave = f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}"
             val_atual = grade.get(chave)
             
-            # Se for afastamento gravado, preserva
-            if val_atual in ["FE", "LM", "ATE", "LUT", "NUP", "DN", "DIS"]:
+            # PRESERVA VALORES EXISTENTES (Inclusas alterações manuais e afastamentos)
+            if val_atual and val_atual not in ["F", "", None]:
                 continue
             
             valor_dia = "F"
@@ -297,6 +355,10 @@ def renderizar_passo5():
     if "militares_no_quadro_chaves" not in st.session_state:
         st.session_state["militares_no_quadro_chaves"] = []
 
+    # Se a escala em memória estiver vazia, carrega do Supabase
+    if not st.session_state["grade_escala_lancamentos"]:
+        carregar_escala_salva_banco()
+
     # Sincronização e cálculo automático do ciclo de escala
     sel_ids = st.session_state.get("militares_selecionados_ids", [])
     eq_ativa = st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO")
@@ -315,7 +377,6 @@ def renderizar_passo5():
                 
     st.session_state["militares_no_quadro_chaves"] = chaves_existentes
 
-    # Dispara o cálculo do ciclo sempre que solicitado ou ao incluir novos militares
     if st.session_state.get("atualizar_quadro_passo5", False) or houve_inclusao:
         recalcular_escala_matriz()
         st.session_state["atualizar_quadro_passo5"] = False
@@ -440,7 +501,7 @@ def renderizar_passo5():
                     item_sel = dict_mils[mil_sel_label]
                 with c_f2:
                     dias_lista = list(range(1, num_dias_mes + 1))
-                    dias_alvo = st.multiselect("Selecione o(s) Dia(s):", dias_lista, default=[1], key="p5_painel_dias")
+                    dias_alvo = st.multiselect("Selecione o(s) Dia(s):", dias_lista, default=[], key="p5_painel_dias")
                 with c_f3:
                     tipo_evento = st.selectbox(
                         "Tipo de Evento / Horário:",
@@ -522,7 +583,10 @@ def renderizar_passo5():
                 if desfazer_ultima_acao(): st.rerun()
         with col_t3: 
             if st.button("🔄 Recalcular Ciclo", use_container_width=True, type="primary"):
+                # Para forçar o recálculo completo ao clicar explicitamente no botão, limpamos apenas os dias de ciclo teórico
+                st.session_state["grade_escala_lancamentos"] = {}
                 recalcular_escala_matriz()
+                executar_auto_save_banco()
                 st.rerun()
         with col_t4: 
             quadro_travado_toggle = st.toggle("🔒 Travar Quadro", value=quadro_travado, key="toggle_trava_quadro")
@@ -583,12 +647,16 @@ def renderizar_passo5():
             carga_base_mes = 80.0 if eh_reduzida else 160.0
             taxa_diaria = carga_base_mes / float(num_dias_mes)
             meta_efetiva = max(0.0, (num_dias_mes - dias_neutros_cnt) * taxa_diaria)
-            excesso_horas = total_horas - meta_efetiva
+            
+            # Soma / Abate Ajuste Manual de Saldo de Horas
+            ajuste_manual = float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))
+            total_horas_com_ajuste = total_horas + ajuste_manual
+            excesso_horas = total_horas_com_ajuste - meta_efetiva
 
             if excesso_horas > 0:
-                linha["HORAS / META"] = f"⚠️ {total_horas:.1f}h / {meta_efetiva:.1f}h (+{excesso_horas:.1f}h)"
+                linha["HORAS / META"] = f"⚠️ {total_horas_com_ajuste:.1f}h / {meta_efetiva:.1f}h (+{excesso_horas:.1f}h)"
             else:
-                linha["HORAS / META"] = f"{total_horas:.1f}h / {meta_efetiva:.1f}h"
+                linha["HORAS / META"] = f"{total_horas_com_ajuste:.1f}h / {meta_efetiva:.1f}h"
                 
             matriz_dados.append(linha)
 
@@ -710,6 +778,7 @@ def renderizar_passo5():
                     st.session_state["militares_no_quadro_chaves"] = []
                     st.session_state["ordem_customizada_map"] = {}
                     st.session_state["df_escala_consolidada"] = None
+                    st.session_state["ajuste_saldo_map"] = {}
                     registrar_log_auditoria("Limpeza Total", "Todo o quadro mensal de escalas foi resetado pelo usuário.")
                     executar_auto_save_banco()
                     st.rerun()
@@ -720,4 +789,4 @@ def renderizar_passo5():
             if st.button("💾 Salvar Rascunho no Banco de Dados", type="primary", use_container_width=True):
                 executar_auto_save_banco()
                 registrar_log_auditoria("Salvamento Manual", "Escala gravada manualmente no banco de dados.")
-                st.success("✅ Escala salva com sucesso!")
+                st.success("✅ Escala salva com sucesso no Supabase!")
