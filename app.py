@@ -769,12 +769,11 @@ elif modulo == "GESTOES_USUARIOS":
     exibir_tela_gestao_usuarios()
 
 elif modulo == "GOVERNANCA":
-    usr_dados_gov = st.session_state.get("usuario_dados", {})
-    nome_op = usr_dados_gov.get("nome_guerra") or usr_dados_gov.get("nome_completo") or "Operador"
-    unid_op = st.session_state.get("unidade_ativa_nome") or usr_dados_gov.get("unidade") or "21º BPM"
-    cargo_op = usr_dados_gov.get("cargo_funcao") or "Policial Militar"
-    perfil_op = perfil_ativo
-    
+    try:
+        renderizar_modulo_governanca()
+    except TypeError:
+        renderizar_modulo_governanca(st.session_state.get("usuario_dados", {}))
+            
     renderizar_modulo_governanca(
         nome_operador=nome_op,
         unidade_operador=unid_op,
