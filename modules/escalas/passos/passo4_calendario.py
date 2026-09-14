@@ -71,10 +71,12 @@ def renderizar_fragmento_passo4():
     with c_b1:
         if st.button("✔ Marcar Todos os Dias", use_container_width=True, key="btn_marcar_dias_frag"):
             st.session_state["dias_selecionados_passo4"] = list(range(1, num_dias_mes + 1))
+            st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
     with c_b2:
         if st.button("❌ Desmarcar Todos os Dias", use_container_width=True, key="btn_desmarcar_dias_frag"):
             st.session_state["dias_selecionados_passo4"] = []
+            st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -105,12 +107,13 @@ def renderizar_fragmento_passo4():
                     st.session_state["dias_selecionados_passo4"].remove(d)
                 else:
                     st.session_state["dias_selecionados_passo4"].append(d)
+                st.session_state["atualizar_quadro_passo5"] = True
                 st.rerun()
 
     qtd_dias_sel = len(st.session_state.get("dias_selecionados_passo4", []))
     st.info(f"📍 **{qtd_dias_sel} dia(s) selecionado(s)** para a escala.")
 
-def renderizar_passo4(recalcular_matriz_passo5_func):
+def renderizar_passo4(recalcular_matriz_passo5_func=None):
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_ativa = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -125,6 +128,7 @@ def renderizar_passo4(recalcular_matriz_passo5_func):
     if st.session_state.get("ultima_assinatura_p2") != assinatura_p2:
         st.session_state["dias_selecionados_passo4"] = calcular_dias_trabalho_ciclo(mod_ativa, m_ano, m_mes, num_dias)
         st.session_state["ultima_assinatura_p2"] = assinatura_p2
+        st.session_state["atualizar_quadro_passo5"] = True
 
     exp4 = st.expander("📌 PASSO 4: Calendário de Dias da Escala", expanded=True)
     with exp4:
@@ -134,11 +138,12 @@ def renderizar_passo4(recalcular_matriz_passo5_func):
         c_app1, c_app2, c_app3 = st.columns([1, 2, 1])
         with c_app2:
             if st.button("🔄 Sincronizar e Re-Gerar Quadro com Dias Marcados", type="primary", use_container_width=True):
-                recalcular_matriz_passo5_func()
-                st.success("✅ Escala sincronizada com os dias selecionados no Passo 4!")
+                st.session_state["atualizar_quadro_passo5"] = True
+                if recalcular_matriz_passo5_func:
+                    recalcular_matriz_passo5_func()
+                st.success("✅ Escala e ciclo sincronizados com o Quadro Geral!")
                 st.rerun()
 
-        # PAINEL DE AUDITORIA: EXIBIÇÃO DE BLOQUEIOS E AVISOS DE DESCANSO < 8H
         bloqueios = st.session_state.get("lista_bloqueios_auditoria", [])
         alertas_descanso = st.session_state.get("lista_avisos_descanso", [])
 

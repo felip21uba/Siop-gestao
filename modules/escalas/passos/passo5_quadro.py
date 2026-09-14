@@ -131,6 +131,113 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade):
 def executar_auto_save_banco():
     st.session_state["exibir_toast_autosave"] = True
 
+def recalcular_escala_matriz():
+    """Calcula e preenche a sequência inteira do mês conforme as regras do Passo 2 e Passo 4."""
+    m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
+    m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
+    mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
+    chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
+    dias_marcados_p4 = set(st.session_state.get("dias_selecionados_passo4", []))
+    
+    num_dias = calendar.monthrange(m_ano, m_mes)[1]
+    grade = st.session_state.get("grade_escala_lancamentos", {})
+    
+    h_avulso = st.session_state.get("horario_avulso_p2", "07:00 às 19:00")
+    h_adm_norm = st.session_state.get("adm_h_norm", "08:00 às 12:00\n13:30 às 17:00")
+    h_adm_qua = st.session_state.get("adm_h_qua", "08:30 às 13:00")
+    
+    h_36_dia = st.session_state.get("c36_h_dia", "07:00 às 19:00")
+    h_36_noite = st.session_state.get("c36_h_noite", "19:00 às 07:00")
+    fase_36 = st.session_state.get("c36_fase_ini", "Dia (Trabalho)")
+    
+    seq_36_map = {
+        "Dia (Trabalho)": [h_36_dia, "D", h_36_noite, "D", "F"],
+        "Descanso Pós-Dia": ["D", h_36_noite, "D", "F", h_36_dia],
+        "Noite (Trabalho)": [h_36_noite, "D", "F", h_36_dia, "D"],
+        "Descanso Pós-Noite": ["D", "F", h_36_dia, "D", h_36_noite],
+        "Folga": ["F", h_36_dia, "D", h_36_noite, "D"]
+    }
+    
+    h_72_dia = st.session_state.get("c72_h_dia", "06:00 às 18:00")
+    h_72_noite = st.session_state.get("c72_h_noite", "18:00 às 06:00")
+    fase_72 = st.session_state.get("c72_fase_ini", "Fase 1 (Dia)")
+    
+    seq_72_map = {
+        "Fase 1 (Dia)": [h_72_dia, h_72_noite, "D", "D", "F"],
+        "Fase 2 (Noite)": [h_72_noite, "D", "D", "F", h_72_dia],
+        "Descanso 1": ["D", "D", "F", h_72_dia, h_72_noite],
+        "Descanso 2": ["D", "F", h_72_dia, h_72_noite, "D"],
+        "Folga": ["F", h_72_dia, h_72_noite, "D", "D"]
+    }
+    
+    h_dob_sq = st.session_state.get("dob_h_sq", "14:00 às 00:00")
+    h_dob_ss = st.session_state.get("dob_h_ss", "18:00 às 04:00")
+    h_dob_dom = st.session_state.get("dob_h_dom", "18:00 às 02:00")
+    sem_dob_ini = st.session_state.get("dob_sem_ini", "SEMANA A")
+    eh_sem_a_ini = "SEMANA A" in sem_dob_ini
+    sem_iso_d1 = datetime.date(m_ano, m_mes, 1).isocalendar()[1]
+    
+    for pair in chaves_quadro:
+        if not (isinstance(pair, (tuple, list)) and len(pair) == 2):
+            continue
+        m_id, eq_nome = str(pair[0]), pair[1]
+        
+        for d in range(1, num_dias + 1):
+            chave = f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}"
+            val_atual = grade.get(chave)
+            
+            # Se for afastamento gravado, preserva
+            if val_atual in ["FE", "LM", "ATE", "LUT", "NUP", "DN", "DIS"]:
+                continue
+            
+            valor_dia = "F"
+            
+            if mod_nome == "Turno Único / Avulso":
+                valor_dia = h_avulso if d in dias_marcados_p4 else "F"
+                    
+            elif mod_nome == "ADM (Seg-Sex)":
+                w = calendar.weekday(m_ano, m_mes, d)
+                if w < 5:
+                    valor_dia = h_adm_qua if w == 2 else h_adm_norm
+                else:
+                    valor_dia = "F"
+                    
+            elif mod_nome == "Ciclo 12x36":
+                padr = seq_36_map.get(fase_36, [h_36_dia, "D", h_36_noite, "D", "F"])
+                valor_dia = padr[(d - 1) % 5]
+                
+            elif mod_nome == "Ciclo 12x72 (5D)":
+                padr = seq_72_map.get(fase_72, [h_72_dia, h_72_noite, "D", "D", "F"])
+                valor_dia = padr[(d - 1) % 5]
+                
+            elif mod_nome == "Dobradinha (14D)":
+                dt = datetime.date(m_ano, m_mes, d)
+                w = dt.weekday()
+                diff_s = dt.isocalendar()[1] - sem_iso_d1
+                eh_sem_a = (diff_s % 2 == 0) if eh_sem_a_ini else (diff_s % 2 != 0)
+                trabalha = (eh_sem_a and w in [0, 2, 5, 6]) or ((not eh_sem_a) and w in [1, 3, 4])
+                
+                if trabalha:
+                    if w in [0, 1, 2, 3]:
+                        valor_dia = h_dob_sq
+                    elif w in [4, 5]:
+                        valor_dia = h_dob_ss
+                    elif w == 6:
+                        valor_dia = h_dob_dom
+                else:
+                    valor_dia = "F"
+                    
+            elif mod_nome == "Supervisão":
+                if d in dias_marcados_p4:
+                    w = calendar.weekday(m_ano, m_mes, d)
+                    valor_dia = st.session_state.get("horario_sup_sex_sab", "18:00 às 00:00") if w in [4, 5] else st.session_state.get("horario_sup_dom_qui", "15:00 às 21:00")
+                else:
+                    valor_dia = "F"
+
+            grade[chave] = valor_dia
+
+    st.session_state["grade_escala_lancamentos"] = grade
+
 @st.dialog("📥 Importar Escala Pronta via Excel", width="large")
 def abrir_modal_importar_escala_excel():
     st.markdown("##### 📁 Envie a planilha Excel para preenchimento automático do Quadro:")
@@ -182,7 +289,7 @@ def abrir_modal_importar_escala_excel():
                 st.error(msg)
 
 def renderizar_passo5():
-    # Inicializações defensivas de memória
+    # Inicializações defensivas
     if "militares_selecionados_ids" not in st.session_state:
         st.session_state["militares_selecionados_ids"] = []
     if "grade_escala_lancamentos" not in st.session_state:
@@ -190,13 +297,13 @@ def renderizar_passo5():
     if "militares_no_quadro_chaves" not in st.session_state:
         st.session_state["militares_no_quadro_chaves"] = []
 
-    # SINCRONIZAÇÃO AUTOMÁTICA PASSO 3 ➔ PASSO 5
-    # Todo militar selecionado no Passo 3 é automaticamente acoplado à equipe ativa no Passo 5
+    # Sincronização e cálculo automático do ciclo de escala
     sel_ids = st.session_state.get("militares_selecionados_ids", [])
     eq_ativa = st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO")
     chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
     
     chaves_set = set(chaves_existentes)
+    houve_inclusao = False
     for m_id in sel_ids:
         tem_vinculo = any(str(pair[0]) == str(m_id) for pair in chaves_existentes if isinstance(pair, (tuple, list)))
         if not tem_vinculo:
@@ -204,7 +311,14 @@ def renderizar_passo5():
             if novo_par not in chaves_set:
                 chaves_existentes.append(novo_par)
                 chaves_set.add(novo_par)
+                houve_inclusao = True
+                
     st.session_state["militares_no_quadro_chaves"] = chaves_existentes
+
+    # Dispara o cálculo do ciclo sempre que solicitado ou ao incluir novos militares
+    if st.session_state.get("atualizar_quadro_passo5", False) or houve_inclusao:
+        recalcular_escala_matriz()
+        st.session_state["atualizar_quadro_passo5"] = False
 
     if st.session_state.get("exibir_toast_autosave", False):
         st.toast("☁️ Rascunho salvo na nuvem com sucesso (Auto-Save)!", icon="✅")
@@ -407,7 +521,9 @@ def renderizar_passo5():
             if st.button(f"↩️ Desfazer ({qtd_undo})", disabled=not pode_desfazer, use_container_width=True):
                 if desfazer_ultima_acao(): st.rerun()
         with col_t3: 
-            if st.button("🔄 Atualizar", use_container_width=True, type="primary"): st.rerun()
+            if st.button("🔄 Recalcular Ciclo", use_container_width=True, type="primary"):
+                recalcular_escala_matriz()
+                st.rerun()
         with col_t4: 
             quadro_travado_toggle = st.toggle("🔒 Travar Quadro", value=quadro_travado, key="toggle_trava_quadro")
             if quadro_travado_toggle != quadro_travado: st.rerun()
@@ -522,7 +638,6 @@ def renderizar_passo5():
                     else:
                         st.success(f"✅ Escala coberta!\nNenhum dia possui menos de {min_efetivo} militar(es).")
 
-            # Opções de equipes integradas com as equipes criadas no Passo 1
             equipes_opcoes = st.session_state.get("lista_equipes", ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP", "TM ALPHA", "GEPAR"])
 
             config_colunas = {
