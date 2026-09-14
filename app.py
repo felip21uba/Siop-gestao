@@ -541,27 +541,10 @@ modulo_ativo = st.session_state["modulo_ativo"]
 # 🏗️ RENDERIZAÇÃO DA BARRA LATERAL (SIDEBAR)
 # =========================================================================
 with st.sidebar:
-    # 1. INDICADOR ÚNICO DE SESSÃO (HORÁRIO AZUL)
-    st.markdown(
-        f"""
-        <div style="
-            border: 1px solid #1e293b;
-            border-radius: 8px;
-            padding: 10px 16px;
-            margin-bottom: 12px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background-color: #0f172a;
-        ">
-            <span style="color: #e2e8f0; font-weight: 500;">⏰ Sessão:</span>
-            <span style="color: #38bdf8; font-weight: bold; font-size: 1.1rem;">{obter_agora().strftime('%H:%M')}</span>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    # 1. EXIBE APENAS O RELÓGIO REGRESSIVO DE 20 MINUTOS
+    gerenciar_timeout_sessao()
 
-    # 2. BRASÃO DA PMMG
+    # 2. BRASÃO DA PMMG CENTRALIZADO
     c_l, c_mid, c_r = st.columns([1, 1.5, 1])
     with c_mid:
         try:
@@ -645,6 +628,67 @@ with st.sidebar:
             if st.button("📅 Minha Escala Individual", use_container_width=True, type="primary" if modulo_ativo == "MINHA_ESCALA" else "secondary"):
                 st.session_state["modulo_ativo"] = "MINHA_ESCALA"
                 st.rerun()
+
+        # Módulo TCO
+        if st.button("📦 Módulo TCO / Custódia", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
+            st.session_state["modulo_ativo"] = "TCO"
+            st.rerun()
+
+        # Módulo Procedimentos
+        if st.button("⚖️ Módulo Procedimentos", use_container_width=True, type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
+            st.session_state["modulo_ativo"] = "PROCEDIMENTOS"
+            st.rerun()
+
+        # Gestão de Acessos
+        if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR"]):
+            if st.button("⚙️ Gestão de Acessos", use_container_width=True, type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
+                st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
+                st.rerun()
+
+        # Governança & Segurança
+        if st.button("🛡️ Governança & Segurança", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
+            st.session_state["modulo_ativo"] = "GOVERNANCA"
+            st.rerun()
+
+    st.divider()
+
+    # 5. MURAL DE AVISOS
+    qtd_novas_mensagens = 0 
+    badge_msg = f" 🔴 ({qtd_novas_mensagens})" if qtd_novas_mensagens > 0 else ""
+    if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
+        st.session_state["modulo_ativo"] = "MURAL"
+        st.rerun()
+
+    st.divider()
+
+    # 6. DEMAIS CARDS: PERFIL, TEMA E SAIR
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        if st.button("👤 Perfil", use_container_width=True, type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
+            st.session_state["modulo_ativo"] = "MEU_PERFIL"
+            st.rerun()
+            
+    with col_p2:
+        tema_atual = st.session_state.get("tema_visual", "DARK")
+        is_dark = (tema_atual == "DARK")
+        novo_tema_toggle = st.toggle("🌙 Escuro", value=is_dark, key="toggle_tema_escuro_nav")
+        if novo_tema_toggle != is_dark:
+            st.session_state["tema_visual"] = "DARK" if novo_tema_toggle else "LIGHT"
+            st.rerun()
+
+    if st.button("🚪 Sair do Sistema", use_container_width=True):
+        usr_m = str(usr.get("usuario_login") or usr.get("usuario") or "").strip().upper()
+        if supabase and usr_m:
+            try:
+                supabase.table("usuarios").update({"token_sessao_ativa": "REVOGADO"}).eq("usuario_login", usr_m).execute()
+            except Exception:
+                pass
+
+        st.session_state["autenticado"] = False
+        st.session_state["usuario_autenticado"] = False
+        st.session_state["usuario_dados"] = {}
+        st.session_state["token_sessao_local"] = None
+        st.rerun()
 
         # Módulo TCO
         if st.button("📦 Módulo TCO / Custódia", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
