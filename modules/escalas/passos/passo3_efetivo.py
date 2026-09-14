@@ -244,6 +244,10 @@ def tratar_num_policia_unificado(row):
     return num_clean
 
 def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, prefixo_key):
+    # Trava defensiva para garantir a existencia do session_state
+    if "militares_selecionados_ids" not in st.session_state:
+        st.session_state["militares_selecionados_ids"] = []
+
     max_colunas = 4
     for i in range(0, len(lista_mils), max_colunas):
         grupo_4 = lista_mils[i:i + max_colunas]
@@ -268,14 +272,20 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
                         st.rerun()
                     else:
                         if is_sel:
-                            st.session_state["militares_selecionados_ids"].remove(m_id)
+                            if m_id in st.session_state["militares_selecionados_ids"]:
+                                st.session_state["militares_selecionados_ids"].remove(m_id)
                         else:
-                            st.session_state["militares_selecionados_ids"].append(m_id)
+                            if m_id not in st.session_state["militares_selecionados_ids"]:
+                                st.session_state["militares_selecionados_ids"].append(m_id)
                         st.session_state["atualizar_quadro_passo5"] = True
                         st.rerun()
 
 @st.fragment
 def renderizar_fragmento_passo3():
+    # Garantia de inicializacao defensiva
+    if "militares_selecionados_ids" not in st.session_state:
+        st.session_state["militares_selecionados_ids"] = []
+
     militares = remover_duplicados_militares(st.session_state.get("lista_militares", []))
     st.session_state["lista_militares"] = militares
 
@@ -314,7 +324,8 @@ def renderizar_fragmento_passo3():
     c_m1, c_m2, c_m3 = st.columns([1, 1, 1.2])
     with c_m1:
         if st.button("✔ Marcar Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
-            st.session_state["militares_selecionados_ids"] = list(set(st.session_state.get("militares_selecionados_ids", []) + [m["id"] for m in st.session_state.get("militares_ativos_render", [])]))
+            mils_visiveis = [m["id"] for m in st.session_state.get("militares_ativos_render", [])]
+            st.session_state["militares_selecionados_ids"] = list(set(st.session_state.get("militares_selecionados_ids", []) + mils_visiveis))
             st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
     with c_m2:
@@ -378,6 +389,9 @@ def renderizar_fragmento_passo3():
     renderizar_painel_afastamentos(militares, padronizar_graduacao, PESOS_HIERARQUIA)
 
 def renderizar_passo3():
+    if "militares_selecionados_ids" not in st.session_state:
+        st.session_state["militares_selecionados_ids"] = []
+
     if not st.session_state.get("militares_carregados", False):
         m_banco = carregar_militares_supabase()
         if m_banco:
