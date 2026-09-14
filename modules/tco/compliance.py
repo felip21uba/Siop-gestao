@@ -40,7 +40,7 @@ def criar_draw_qrcode(texto_qr):
         return None
 
 def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia, data_aceite_str, data_impressao_str=None):
-    """Gera o PDF oficial do Termo de Compliance com data fixa de aceite e hora de impressão."""
+    """Gera o PDF oficial do Termo de Compliance com todas as cláusulas e protocolos de segurança ativos."""
     if not data_impressao_str:
         data_impressao_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
@@ -53,18 +53,18 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     styles = getSampleStyleSheet()
     style_hdr = ParagraphStyle('HeaderComp', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1, textColor=colors.HexColor('#0F172A'))
     style_tit = ParagraphStyle('TitComp', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=1, textColor=colors.HexColor('#1E293B'))
-    style_body = ParagraphStyle('BodyComp', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=13, alignment=4, textColor=colors.HexColor('#334155'))
-    style_box = ParagraphStyle('BoxComp', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=14, textColor=colors.HexColor('#0F172A'))
+    style_body = ParagraphStyle('BodyComp', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=11.5, alignment=4, textColor=colors.HexColor('#334155'))
+    style_box = ParagraphStyle('BoxComp', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=13, textColor=colors.HexColor('#0F172A'))
 
     elements = []
 
     # Cabeçalho Institucional
     elements.append(Paragraph("<b>POLÍCIA MILITAR DE MINAS GERAIS</b><br/><b>SEÇÃO DE CUSTÓDIA DE MATERIAIS E TCO - SIOP</b>", style_hdr))
-    elements.append(Spacer(1, 8))
-    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=10))
+    elements.append(Spacer(1, 6))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=8))
 
     elements.append(Paragraph("TERMO DE COMPLIANCE, RESPONSABILIDADE LEGAL E SEGURANÇA DA INFORMAÇÃO", style_tit))
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 8))
 
     # Bloco de Identificação
     operador_completo = f"{cargo_funcao} {nome_militar}".strip()
@@ -78,14 +78,14 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     tabela_id.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F1F5F9')),
         ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1')),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
     ]))
     elements.append(tabela_id)
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 10))
 
-    # Texto Jurídico de Compliance
+    # Texto Jurídico de Compliance com todos os Protocolos Técnicos
     texto_juridico = (
         "<b>1. DA CADEIA DE CUSTÓDIA (ART. 158-A CPP):</b> O operador declara ciência formal de que todas as ações "
         "realizadas no Módulo de Custódia e TCO (importação de REDS, alteração de invólucro, transferência física, "
@@ -93,17 +93,24 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
         "<b>2. DA VINCULAÇÃO E IMUTABILIDADE:</b> O aceite deste termo foi registrado eletronicamente no primeiro acesso do "
         "militar ao sistema e constitui assinatura digital idônea para fins de auditoria interna, correicional e instrução processual.<br/><br/>"
         "<b>3. DA SEGURANÇA DA INFORMAÇÃO E LGPD:</b> A credencial de acesso é pessoal e intransferível. O uso inadequado "
-        "ou o repasse de senhas/tokens MFA a terceiros ensejará responsabilidade administrativa, civil e penal."
+        "ou o repasse de senhas/tokens MFA a terceiros ensejará responsabilidade administrativa, civil e penal.<br/><br/>"
+        "<b>4. DOS PROTOCOLOS DE SEGURANÇA E CONFORMIDADE TÉCNICA (PARTE INFORMATIVA Nº 12.4/2026):</b><br/>"
+        "• <b>a. Autenticação e Duplo Papel (RBAC):</b> Controle de acesso em 7 níveis com separação independente de papéis (perfil_creds x perfil_escala) e escopo por Cia/BPM.<br/>"
+        "• <b>b. Autenticação 2FA/TOTP:</b> Validação de identidade via aplicativo TOTP (Google Authenticator/Authy) e trava de dispositivo único.<br/>"
+        "• <b>c. Gestão de Sessão e Timeout:</b> Encerramento automático por ociosidade (30 min) e desconexão emergencial remota.<br/>"
+        "• <b>d. Trilha Universal de Auditoria:</b> Registro imutável de ações de comando e custódia (operador, alvo, IP e carimbo DD/MM/AAAA HH:MM).<br/>"
+        "• <b>e. Proteção de Banco de Dados:</b> Criptografia HTTPS/TLS 1.3 em trânsito e isolamento estrito de registros por Row Level Security (RLS) no PostgreSQL/Supabase.<br/>"
+        "• <b>f. Sanitização e Filtro Anti-Injeção:</b> Escape automático de caracteres e tratamento rigoroso de texto livre contra scripts maliciosos (Anti-XSS e Anti-SQLi)."
     )
     elements.append(Paragraph(texto_juridico, style_body))
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 14))
 
     # Assinatura
     ass_txt = f"____________________________________________________<br/>" \
               f"<b>{operador_completo.upper()}</b><br/>" \
               f"Nº de Polícia: {num_policia} - {unidade}"
     elements.append(Paragraph(ass_txt, ParagraphStyle('AssComp', parent=style_hdr, alignment=1)))
-    elements.append(Spacer(1, 15))
+    elements.append(Spacer(1, 10))
 
     # Chancela SHA-256 e QR Code
     hash_doc = gerar_hash_compliance(f"{num_policia}{data_aceite_str}{operador_completo}")
@@ -111,18 +118,18 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
 
     txt_rodape = Paragraph(
         f"<b>CHANCELA ELETRÔNICA DE AUTENTICIDADE:</b><br/>"
-        f"<font size=7 color='#64748B'>SHA-256: {hash_doc}</font><br/>"
-        f"<font size=7 color='#64748B'>Documento extraído via SIOP em {data_impressao_str}.</font>",
+        f"<font size=6.5 color='#64748B'>SHA-256: {hash_doc}</font><br/>"
+        f"<font size=6.5 color='#64748B'>Documento extraído via SIOP em {data_impressao_str}.</font>",
         ParagraphStyle('RodapeComp', parent=styles['Normal'], alignment=0)
     )
 
     if qr_draw:
         tbl_f = Table([[txt_rodape, qr_draw]], colWidths=[475, 65])
         tbl_f.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('ALIGN', (1, 0), (1, 0), 'RIGHT')]))
-        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=8, spaceAfter=6))
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=6, spaceAfter=4))
         elements.append(tbl_f)
     else:
-        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=8, spaceAfter=6))
+        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=6, spaceAfter=4))
         elements.append(txt_rodape)
 
     doc.build(elements)
@@ -137,7 +144,6 @@ def salvar_pdf_termo_no_storage(pdf_bytes, num_policia, nome_militar):
     data_hoje = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     nome_arquivo = f"Termo_{num_policia}_{data_hoje}.pdf"
     
-    # Testa os buckets disponíveis para impedir exceções do tipo NoSuchBucket
     buckets_candidatos = ["termos_compliance", "tco_midias", "midias_tco"]
 
     for bucket in buckets_candidatos:
@@ -170,13 +176,11 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
 
         now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
         
-        # Atualiza a flag e data de aceite no perfil do usuário
         supabase.table("usuarios").update({
             "termo_compliance_aceito": True,
             "data_aceite_compliance": now_str
         }).eq("usuario_login", num_pm_str).execute()
 
-        # Gera e envia a cópia em PDF para o Storage em segundo plano
         try:
             pdf_bytes = gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_pm_str, now_str)
             salvar_pdf_termo_no_storage(pdf_bytes, num_pm_str, nome_militar)
