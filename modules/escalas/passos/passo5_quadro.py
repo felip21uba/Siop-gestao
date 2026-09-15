@@ -718,6 +718,11 @@ def renderizar_passo5():
                         dias_index = [f"{d:02d}" for d, _ in colunas_dias_nomes]
                         df_count = df_count.reindex(dias_index, fill_value=0)
                         
+                        # ✅ Remove dois pontos ':' dos nomes de colunas para nao travar o parser do Altair
+                        df_count.columns = [str(c).replace(":", "h") for c in df_count.columns]
+                        df_count.columns.name = None
+                        df_count.index.name = "Dia"
+                        
                         st.bar_chart(df_count, height=350)
                     else:
                         st.info("Nenhum serviço escalado ainda para gerar o gráfico.")
