@@ -28,7 +28,8 @@ def salvar_estado_undo():
         "chaves": copy.deepcopy(st.session_state.get("militares_no_quadro_chaves", [])),
         "ordem": copy.deepcopy(st.session_state.get("ordem_customizada_map", {})),
         "bh_configs": copy.deepcopy(st.session_state.get("bh_configs", {})),
-        "ajuste_saldo_map": copy.deepcopy(st.session_state.get("ajuste_saldo_map", {}))
+        "ajuste_saldo_map": copy.deepcopy(st.session_state.get("ajuste_saldo_map", {})),
+        "dias_avulsos": copy.deepcopy(st.session_state.get("dias_selecionados_passo4", []))
     }
     
     st.session_state["pilha_undo"].append(snapshot)
@@ -45,6 +46,7 @@ def desfazer_ultima_acao():
         st.session_state["ordem_customizada_map"] = ultimo_snapshot["ordem"]
         st.session_state["bh_configs"] = ultimo_snapshot.get("bh_configs", {})
         st.session_state["ajuste_saldo_map"] = ultimo_snapshot.get("ajuste_saldo_map", {})
+        st.session_state["dias_selecionados_passo4"] = ultimo_snapshot.get("dias_avulsos", [])
         st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
         
         registrar_log_auditoria("Desfazer Ação", "O operador reverteu a última alteração no quadro.")
@@ -135,7 +137,7 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade):
     return "OK", ""
 
 def executar_auto_save_banco():
-    """Salva a matriz inteira, ordem e ajustes de saldo no Supabase para o mês ativo."""
+    """Salva a matriz inteira, ordem, horas avulsas e ajustes de saldo no Supabase."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     eq_ativa = st.session_state.get("equipe_ativa", "GERAL")
@@ -154,7 +156,9 @@ def executar_auto_save_banco():
         "militares_no_quadro_chaves": chaves_sanitizadas,
         "ordem_customizada_map": st.session_state.get("ordem_customizada_map", {}),
         "bh_configs": st.session_state.get("bh_configs", {}),
-        "ajuste_saldo_map": st.session_state.get("ajuste_saldo_map", {})
+        "ajuste_saldo_map": st.session_state.get("ajuste_saldo_map", {}),
+        "dias_selecionados_passo4": st.session_state.get("dias_selecionados_passo4", []),
+        "horario_avulso_p2": st.session_state.get("horario_avulso_p2", "07:00 às 19:00")
     }
 
     salvar_escala_mensal_supabase(
@@ -170,7 +174,7 @@ def executar_auto_save_banco():
     st.session_state["exibir_toast_autosave"] = True
 
 def carregar_escala_salva_banco():
-    """Busca a escala do mês e ano selecionados no Supabase e converte sub-listas para tuplas."""
+    """Busca a escala e configurações completas do mês selecionado no Supabase."""
     if not supabase:
         return
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
@@ -185,6 +189,8 @@ def carregar_escala_salva_banco():
                 st.session_state["ordem_customizada_map"] = m_dados.get("ordem_customizada_map", {})
                 st.session_state["bh_configs"] = m_dados.get("bh_configs", {})
                 st.session_state["ajuste_saldo_map"] = m_dados.get("ajuste_saldo_map", {})
+                st.session_state["dias_selecionados_passo4"] = m_dados.get("dias_selecionados_passo4", [])
+                st.session_state["horario_avulso_p2"] = m_dados.get("horario_avulso_p2", "07:00 às 19:00")
                 
                 raw_chaves = m_dados.get("militares_no_quadro_chaves", [])
                 st.session_state["militares_no_quadro_chaves"] = [
@@ -852,6 +858,7 @@ def renderizar_passo5():
                     st.session_state["ordem_customizada_map"] = {}
                     st.session_state["df_escala_consolidada"] = None
                     st.session_state["ajuste_saldo_map"] = {}
+                    st.session_state["dias_selecionados_passo4"] = []
                     st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
                     
                     registrar_log_auditoria("Limpeza Total", "Todo o quadro mensal de escalas foi resetado pelo usuário.")
