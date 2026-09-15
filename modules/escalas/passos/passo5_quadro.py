@@ -144,7 +144,6 @@ def executar_auto_save_banco():
     usr = st.session_state.get("usuario_dados", {})
     usr_nome = usr.get("nome_guerra") or usr.get("usuario_login") or "OPERADOR"
 
-    # Sanitiza chaves para tupla de strings antes de enviar ao JSON
     raw_chaves = st.session_state.get("militares_no_quadro_chaves", [])
     chaves_sanitizadas = [
         (str(p[0]), str(p[1])) for p in raw_chaves if isinstance(p, (tuple, list)) and len(p) == 2
@@ -187,7 +186,6 @@ def carregar_escala_salva_banco():
                 st.session_state["bh_configs"] = m_dados.get("bh_configs", {})
                 st.session_state["ajuste_saldo_map"] = m_dados.get("ajuste_saldo_map", {})
                 
-                # Converte listas vinda do JSON de volta para tuplas imutaveis
                 raw_chaves = m_dados.get("militares_no_quadro_chaves", [])
                 st.session_state["militares_no_quadro_chaves"] = [
                     (str(p[0]), str(p[1])) for p in raw_chaves if isinstance(p, (tuple, list)) and len(p) == 2
@@ -257,7 +255,6 @@ def recalcular_escala_matriz():
             chave = f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}"
             val_atual = grade.get(chave)
             
-            # Preserva alteracoes manuais e afastamentos
             if val_atual and val_atual not in ["F", "", None]:
                 continue
             
@@ -375,12 +372,10 @@ def renderizar_passo5():
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     chave_mes_atual = f"{m_ano}_{m_mes:02d}"
 
-    # Carrega do Supabase apenas se alterou o mes/ano selecionado
     if st.session_state.get("chave_escala_carregada") != chave_mes_atual:
         carregar_escala_salva_banco()
         st.session_state["chave_escala_carregada"] = chave_mes_atual
 
-    # Sanitização defensiva contra erro de 'unhashable type: list'
     raw_existentes = st.session_state.get("militares_no_quadro_chaves", [])
     chaves_existentes = [
         (str(p[0]), str(p[1])) for p in raw_existentes if isinstance(p, (tuple, list)) and len(p) == 2
@@ -469,6 +464,7 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
+        # EXCLUSÃO DE MILITAR OU EQUIPE DO QUADRO
         with st.expander("🗑️ Excluir Militar ou Equipe do Quadro"):
             if quadro_travado:
                 st.warning("🔒 **QUADRO TRAVADO:** Desative a chave 'Travar Quadro' abaixo para permitir exclusões de linhas ou equipes.")
@@ -484,33 +480,63 @@ def renderizar_passo5():
                         if st.button("❌ Remover Linha Selecionada", key="btn_del_linha_p5", use_container_width=True):
                             salvar_estado_undo()
                             item_del = dict_del_mil[mil_del_sel]
-                            par_del = (item_del["id"], item_del["equipe"])
-                            if par_del in st.session_state["militares_no_quadro_chaves"]:
-                                st.session_state["militares_no_quadro_chaves"].remove(par_del)
+                            m_id_str = str(item_del["id"])
+                            eq_del_str = str(item_del["equipe"])
+                            par_del = (m_id_str, eq_del_str)
+                            
+                            st.session_state["militares_no_quadro_chaves"] = [
+                                (str(p[0]), str(p[1])) for p in st.session_state["militares_no_quadro_chaves"]
+                                if (str(p[0]), str(p[1])) != par_del
+                            ]
+                            
+                            ainda_em_outra_eq = any(
+                                str(p[0]) == m_id_str for p in st.session_state["militares_no_quadro_chaves"]
+                            )
+                            if not ainda_em_outra_eq and "militares_selecionados_ids" in st.session_state:
+                                st.session_state["militares_selecionados_ids"] = [
+                                    str(mid) for mid in st.session_state["militares_selecionados_ids"]
+                                    if str(mid) != m_id_str
+                                ]
+                                
                             for d in range(1, num_dias_mes + 1):
-                                st.session_state["grade_escala_lancamentos"].pop(f"{item_del['id']}_{item_del['equipe']}_{m_ano}_{m_mes:02d}_{d:02d}", None)
+                                chave_pop = f"{m_id_str}_{eq_del_str}_{m_ano}_{m_mes:02d}_{d:02d}"
+                                st.session_state["grade_escala_lancamentos"].pop(chave_pop, None)
+                                
                             st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
                             registrar_log_auditoria("Remoção de Linha", f"Militar {item_del['posto_grad']} {item_del['nome_guerra']} removido da equipe {item_del['equipe']}.")
                             executar_auto_save_banco()
                             st.rerun()
                 with col_ex2:
                     st.markdown("**Excluir Equipe Inteira:**")
-                    equipes_no_quadro = list(set([m["equipe"] for m in mils_escala_ord]))
+                    equipes_no_quadro = sorted(list(set([m["equipe"] for m in mils_escala_ord])))
                     if equipes_no_quadro:
                         eq_del_sel = st.selectbox("Selecione a equipe:", equipes_no_quadro, key="p5_del_eq_sel")
                         if st.button("🔥 Excluir Toda a Equipe", key="btn_del_eq_p5", use_container_width=True):
                             salvar_estado_undo()
+                            eq_alvo = str(eq_del_sel)
                             chaves_manter = []
+                            
                             for pair in st.session_state["militares_no_quadro_chaves"]:
                                 if isinstance(pair, (tuple, list)) and len(pair) == 2:
-                                    if pair[1] == eq_del_sel:
+                                    m_id_s, eq_n_s = str(pair[0]), str(pair[1])
+                                    if eq_n_s == eq_alvo:
                                         for d in range(1, num_dias_mes + 1):
-                                            st.session_state["grade_escala_lancamentos"].pop(f"{pair[0]}_{pair[1]}_{m_ano}_{m_mes:02d}_{d:02d}", None)
+                                            chave_pop = f"{m_id_s}_{eq_n_s}_{m_ano}_{m_mes:02d}_{d:02d}"
+                                            st.session_state["grade_escala_lancamentos"].pop(chave_pop, None)
                                     else:
-                                        chaves_manter.append((str(pair[0]), str(pair[1])))
+                                        chaves_manter.append((m_id_s, eq_n_s))
+                                        
                             st.session_state["militares_no_quadro_chaves"] = chaves_manter
+                            
+                            ids_restantes = set(str(p[0]) for p in chaves_manter)
+                            if "militares_selecionados_ids" in st.session_state:
+                                st.session_state["militares_selecionados_ids"] = [
+                                    str(mid) for mid in st.session_state["militares_selecionados_ids"]
+                                    if str(mid) in ids_restantes
+                                ]
+                                
                             st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
-                            registrar_log_auditoria("Exclusão de Equipe", f"Toda a equipe '{eq_del_sel}' foi excluída do quadro.")
+                            registrar_log_auditoria("Exclusão de Equipe", f"Toda a equipe '{eq_alvo}' foi excluída do quadro.")
                             executar_auto_save_banco()
                             st.rerun()
 
@@ -609,10 +635,16 @@ def renderizar_passo5():
             if st.button(f"↩️ Desfazer ({qtd_undo})", disabled=not pode_desfazer, use_container_width=True):
                 if desfazer_ultima_acao(): st.rerun()
         with col_t3: 
-            if st.button("🔄 Recalcular Ciclo", use_container_width=True, type="primary"):
+            if st.button(
+                "🔄 Restaurar Ciclo Padrão", 
+                use_container_width=True, 
+                type="primary",
+                help="⚠️ ATENÇÃO: Esta ação desfaz todas as edições manuais, abonos e ajustes rápidos do mês, restaurando a sequência automática original calculada pelo sistema."
+            ):
                 st.session_state["grade_escala_lancamentos"] = {}
                 recalcular_escala_matriz()
                 st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
+                registrar_log_auditoria("Restauração do Ciclo Padrão", "A escala foi restaurada para a sequência automática teórica.")
                 executar_auto_save_banco()
                 st.rerun()
         with col_t4: 
@@ -718,7 +750,6 @@ def renderizar_passo5():
                         dias_index = [f"{d:02d}" for d, _ in colunas_dias_nomes]
                         df_count = df_count.reindex(dias_index, fill_value=0)
                         
-                        # ✅ Remove dois pontos ':' dos nomes de colunas para nao travar o parser do Altair
                         df_count.columns = [str(c).replace(":", "h") for c in df_count.columns]
                         df_count.columns.name = None
                         df_count.index.name = "Dia"
