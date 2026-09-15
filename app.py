@@ -52,20 +52,19 @@ def renderizar_rodape_corporativo():
         st.caption("Segurança da Informação, Compliance e Protocolos LGPD/PMMG")
         
     with col_f3:
-     usr_dados = st.session_state.get("usuario_dados", {})
-    if isinstance(usr_dados, str):
-        usr_dados = {"nome_guerra": usr_dados}
+        usr_dados = st.session_state.get("usuario_dados", {})
+        if isinstance(usr_dados, str):
+            usr_dados = {"nome_guerra": usr_dados}
 
-    nome_op = (
-        usr_dados.get("nome_guerra") 
-        or usr_dados.get("nome_completo") 
-        or usr_dados.get("usuario_login") 
-        or "Operador"
-    )
-    usr_sessao = nome_op
+        nome_operador_rodape = (
+            usr_dados.get("nome_guerra") 
+            or usr_dados.get("nome_completo") 
+            or usr_dados.get("usuario_login") 
+            or "Operador"
+        )
 
-    st.caption(f"🟢 **Sessão Ativa:** {nome_op}")
-    st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
+        st.caption(f"🟢 **Sessão Ativa:** {nome_operador_rodape}")
+        st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 from core.database import init_db
 init_db()
@@ -540,23 +539,34 @@ if not st.session_state.get("autenticado", False):
     st.stop()
 
 # =========================================================================
-# 📌 SISTEMA PRINCIPAL E BARRA LATERAL (LIBERADO APÓS SUCESSO NO LOGIN)
+# 📌 EXTRAÇÃO DE DADOS DO OPERADOR PARA ESCOPO GLOBAL (PREVINE NAMEERROR)
 # =========================================================================
 aplicar_estilo_visual()
 
 usr = st.session_state.get("usuario_dados", {})
-usr_real_perfil = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("cargo_funcao") or "TROPA").upper()
+if isinstance(usr, str):
+    usr = {"nome_guerra": usr}
 
-# DEFINIÇÃO DE PERFIL E MODO DE VISUALIZAÇÃO
+nome_op = (
+    usr.get("nome_guerra") 
+    or usr.get("nome_completo") 
+    or usr.get("usuario_login") 
+    or "OPERADOR"
+)
+unid_op = st.session_state.get("unidade_ativa_nome") or usr.get("unidade", "21º BPM / 35ª CIA PM")
+cargo_op = usr.get("cargo_funcao", "MILITAR")
+perfil_op = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("cargo_funcao") or "TROPA").upper()
+
+# DEFINIÇÃO DE PERFIL E MODO DE VISUALIZÇÃO
 LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "CMT_FRACAO", "GESTOR"]
-eh_gestor_real = any(p in usr_real_perfil for p in LISTA_GESTORES)
+eh_gestor_real = any(p in perfil_op for p in LISTA_GESTORES)
 
 if eh_gestor_real:
     simular_tropa = st.session_state.get("simular_visao_tropa", False)
     if simular_tropa:
         perfil_ativo = "TROPA"
     else:
-        perfil_ativo = usr_real_perfil
+        perfil_ativo = perfil_op
 else:
     perfil_ativo = "TROPA"
     st.session_state["simular_visao_tropa"] = False
@@ -781,16 +791,17 @@ elif modulo == "GESTOES_USUARIOS":
 
 elif modulo == "GOVERNANCA":
     try:
-        renderizar_modulo_governanca()
+        renderizar_modulo_governanca(
+            nome_operador=nome_op,
+            unidade_operador=unid_op,
+            cargo_operador=cargo_op,
+            perfil_operador=perfil_op
+        )
     except TypeError:
-        renderizar_modulo_governanca(st.session_state.get("usuario_dados", {}))
-            
-    renderizar_modulo_governanca(
-        nome_operador=nome_op,
-        unidade_operador=unid_op,
-        cargo_operador=cargo_op,
-        perfil_operador=perfil_op
-    )
+        try:
+            renderizar_modulo_governanca(usr)
+        except TypeError:
+            renderizar_modulo_governanca()
 
 elif modulo == "MURAL":
     st.title("📢 Mural de Avisos & Trocas de Serviço")
