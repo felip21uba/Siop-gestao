@@ -3,6 +3,8 @@ import datetime
 import calendar
 import pandas as pd
 import io
+import os
+import base64
 import streamlit.components.v1 as components
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
@@ -29,6 +31,18 @@ CORES_EQUIPES = {
     "TM ALPHA": "#0369a1", 
     "GEPAR": "#047857"
 }
+
+def obter_brasao_base64(url_padrao):
+    """Retorna a imagem do brasão local convertida para Base64 ou a URL remota de fallback."""
+    caminho_local = "assets/brasao.png"
+    if os.path.exists(caminho_local):
+        try:
+            with open(caminho_local, "rb") as image_file:
+                encoded = base64.b64encode(image_file.read()).decode("utf-8")
+                return f"data:image/png;base64,{encoded}"
+        except Exception:
+            pass
+    return url_padrao
 
 def obter_cor_equipe(eq): 
     return CORES_EQUIPES.get(str(eq).upper().strip(), "#475569")
@@ -91,7 +105,10 @@ def renderizar_passo6():
     
     unidade = st.session_state.get("cfg_unidade", "UNIDADE OPERACIONAL")
     subunidade = st.session_state.get("cfg_subunidade", "PEL/COMPANHIA")
-    img_brasao = st.session_state.get("cfg_brasao_url", URL_BRASAO_PADRAO)
+    
+    # Busca a imagem em Base64 (local) ou o link remoto
+    img_brasao_cfg = st.session_state.get("cfg_brasao_url", URL_BRASAO_PADRAO)
+    img_brasao = obter_brasao_base64(img_brasao_cfg)
     
     usr_logado = st.session_state.get("usuario_dados", {})
     nome_resp_escala = f"{usr_logado.get('cargo_funcao', 'PROGRAMADOR / TESTADOR')} {usr_logado.get('nome_guerra', 'DESENVOLVEDOR')}".strip()
@@ -312,8 +329,8 @@ def renderizar_passo6():
                 .card-container {{ background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); width: 100%; }}
                 .header-table {{ width: 100%; border-collapse: collapse; margin-bottom: 8px; border-bottom: 2px solid #cbd5e1; }}
                 .header-table td {{ border: none !important; padding: 2px; }}
-                .brasao-box {{ width: 65px; height: 65px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 2px; text-align: center; }}
-                .brasao-img {{ max-height: 100%; max-width: 100%; }}
+                .brasao-box {{ width: 65px; height: 65px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 2px; display: flex; align-items: center; justify-content: center; background-color: #ffffff; }}
+                .brasao-img {{ max-height: 100%; max-width: 100%; object-fit: contain; }}
                 .header-titles {{ text-align: center; }}
                 .header-titles h2 {{ margin: 0; font-size: 16px; font-weight: 900; color: #0f172a; text-transform: uppercase; }}
                 .header-titles h3 {{ margin: 1px 0; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; }}
@@ -353,7 +370,7 @@ def renderizar_passo6():
                     <tr>
                         <td style="width: 70px;">
                             <div class="brasao-box">
-                                <img src="{img_brasao}" class="brasao-img" onerror="this.style.display='none'">
+                                <img src="{img_brasao}" class="brasao-img" alt="Brasão PMMG" />
                             </div>
                         </td>
                         <td class="header-titles">
