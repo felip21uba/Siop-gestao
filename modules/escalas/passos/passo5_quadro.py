@@ -144,9 +144,15 @@ def executar_auto_save_banco():
     usr = st.session_state.get("usuario_dados", {})
     usr_nome = usr.get("nome_guerra") or usr.get("usuario_login") or "OPERADOR"
 
+    # Sanitiza chaves para tupla de strings antes de enviar ao JSON
+    raw_chaves = st.session_state.get("militares_no_quadro_chaves", [])
+    chaves_sanitizadas = [
+        (str(p[0]), str(p[1])) for p in raw_chaves if isinstance(p, (tuple, list)) and len(p) == 2
+    ]
+
     matriz_payload = {
         "grade_escala_lancamentos": st.session_state.get("grade_escala_lancamentos", {}),
-        "militares_no_quadro_chaves": st.session_state.get("militares_no_quadro_chaves", []),
+        "militares_no_quadro_chaves": chaves_sanitizadas,
         "ordem_customizada_map": st.session_state.get("ordem_customizada_map", {}),
         "bh_configs": st.session_state.get("bh_configs", {}),
         "ajuste_saldo_map": st.session_state.get("ajuste_saldo_map", {})
@@ -165,7 +171,7 @@ def executar_auto_save_banco():
     st.session_state["exibir_toast_autosave"] = True
 
 def carregar_escala_salva_banco():
-    """Busca a escala do mês e ano selecionados no Supabase."""
+    """Busca a escala do mês e ano selecionados no Supabase e converte sub-listas para tuplas."""
     if not supabase:
         return
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
@@ -177,10 +183,15 @@ def carregar_escala_salva_banco():
             m_dados = res.data[0].get("matriz_dados", {})
             if isinstance(m_dados, dict):
                 st.session_state["grade_escala_lancamentos"] = m_dados.get("grade_escala_lancamentos", {})
-                st.session_state["militares_no_quadro_chaves"] = m_dados.get("militares_no_quadro_chaves", [])
                 st.session_state["ordem_customizada_map"] = m_dados.get("ordem_customizada_map", {})
                 st.session_state["bh_configs"] = m_dados.get("bh_configs", {})
                 st.session_state["ajuste_saldo_map"] = m_dados.get("ajuste_saldo_map", {})
+                
+                # Converte listas vinda do JSON de volta para tuplas imutaveis
+                raw_chaves = m_dados.get("militares_no_quadro_chaves", [])
+                st.session_state["militares_no_quadro_chaves"] = [
+                    (str(p[0]), str(p[1])) for p in raw_chaves if isinstance(p, (tuple, list)) and len(p) == 2
+                ]
         else:
             st.session_state["grade_escala_lancamentos"] = {}
             st.session_state["militares_no_quadro_chaves"] = []
@@ -246,7 +257,7 @@ def recalcular_escala_matriz():
             chave = f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}"
             val_atual = grade.get(chave)
             
-            # Preserva valores existentes (incluso alterações manuais do Ajuste Rápido)
+            # Preserva alteracoes manuais e afastamentos
             if val_atual and val_atual not in ["F", "", None]:
                 continue
             
@@ -329,7 +340,7 @@ def abrir_modal_importar_escala_excel():
                         key=f"inp_leg_dyn_{leg_code}"
                     )
         else:
-            st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão applied.")
+            st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão aplicados.")
 
         st.markdown("<br>", unsafe_allow_html=True)
         limpar_antes = st.checkbox("🧹 Limpar o quadro atual antes de importar (Substitui os dados da tela)", value=True)
@@ -364,22 +375,27 @@ def renderizar_passo5():
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     chave_mes_atual = f"{m_ano}_{m_mes:02d}"
 
-    # Carrega do Supabase apenas se mudou o mês/ano selecionado
+    # Carrega do Supabase apenas se alterou o mes/ano selecionado
     if st.session_state.get("chave_escala_carregada") != chave_mes_atual:
         carregar_escala_salva_banco()
         st.session_state["chave_escala_carregada"] = chave_mes_atual
 
-    # Sincronização e cálculo automático do ciclo de escala
+    # Sanitização defensiva contra erro de 'unhashable type: list'
+    raw_existentes = st.session_state.get("militares_no_quadro_chaves", [])
+    chaves_existentes = [
+        (str(p[0]), str(p[1])) for p in raw_existentes if isinstance(p, (tuple, list)) and len(p) == 2
+    ]
+    st.session_state["militares_no_quadro_chaves"] = chaves_existentes
+
     sel_ids = st.session_state.get("militares_selecionados_ids", [])
     eq_ativa = st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO")
-    chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
     
     chaves_set = set(chaves_existentes)
     houve_inclusao = False
     for m_id in sel_ids:
-        tem_vinculo = any(str(pair[0]) == str(m_id) for pair in chaves_existentes if isinstance(pair, (tuple, list)))
+        tem_vinculo = any(str(pair[0]) == str(m_id) for pair in chaves_existentes)
         if not tem_vinculo:
-            novo_par = (m_id, eq_ativa)
+            novo_par = (str(m_id), str(eq_ativa))
             if novo_par not in chaves_set:
                 chaves_existentes.append(novo_par)
                 chaves_set.add(novo_par)
@@ -432,8 +448,8 @@ def renderizar_passo5():
                 m_obj = next((m for m in mils_todos if str(m["id"]) == str(pair[0])), None)
                 if m_obj:
                     mils_linhas_quadro.append({
-                        "id": pair[0],
-                        "equipe": pair[1],
+                        "id": str(pair[0]),
+                        "equipe": str(pair[1]),
                         "posto_grad": m_obj.get("posto_grad", "SD"),
                         "nome_guerra": m_obj.get("nome_guerra", "MILITAR"),
                         "num_policia": m_obj.get("num_policia", ""),
@@ -491,7 +507,7 @@ def renderizar_passo5():
                                         for d in range(1, num_dias_mes + 1):
                                             st.session_state["grade_escala_lancamentos"].pop(f"{pair[0]}_{pair[1]}_{m_ano}_{m_mes:02d}_{d:02d}", None)
                                     else:
-                                        chaves_manter.append(pair)
+                                        chaves_manter.append((str(pair[0]), str(pair[1])))
                             st.session_state["militares_no_quadro_chaves"] = chaves_manter
                             st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
                             registrar_log_auditoria("Exclusão de Equipe", f"Toda a equipe '{eq_del_sel}' foi excluída do quadro.")
@@ -729,7 +745,6 @@ def renderizar_passo5():
             if quadro_travado:
                 st.dataframe(df_escala, column_config=config_colunas, use_container_width=True, hide_index=True, height=450)
             else:
-                # DYNAMIC KEY FOR DATA_EDITOR FORCES WIDGET RE-RENDER
                 chave_editor = f"editor_quadro_v{st.session_state['quadro_versao']}"
                 df_editado = st.data_editor(
                     df_escala, 
