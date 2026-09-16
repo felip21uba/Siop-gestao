@@ -31,40 +31,60 @@ def salvar_equipes_persistidas(lista):
             pass
 
 def expurgar_equipe_em_cascata(eq_alvo):
-    """Exclui a equipe e remove todos os seus vínculos no quadro e no banco de dados."""
-    if "lista_equipes" in st.session_state and eq_alvo in st.session_state["lista_equipes"]:
-        st.session_state["lista_equipes"].remove(eq_alvo)
+    """Exclui a equipe e expurga seus lançamentos sem reatribuir militares automaticamente."""
+    eq_alvo_str = str(eq_alvo).strip()
+
+    # 1. Remove da lista de equipes salvas
+    if "lista_equipes" in st.session_state and eq_alvo_str in st.session_state["lista_equipes"]:
+        st.session_state["lista_equipes"].remove(eq_alvo_str)
         salvar_equipes_persistidas(st.session_state["lista_equipes"])
 
-    if st.session_state.get("equipe_ativa") == eq_alvo:
+    # 2. Ajusta equipe ativa se a atual for a excluída
+    if st.session_state.get("equipe_ativa") == eq_alvo_str:
         if st.session_state.get("lista_equipes"):
             st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
 
-    # Limpa vínculos de militares com a equipe excluída no Passo 5
+    # 3. Remove exclusivamente os vínculos (militar, eq_alvo) do quadro
     chaves_atuais = st.session_state.get("militares_no_quadro_chaves", [])
-    st.session_state["militares_no_quadro_chaves"] = [
-        (str(p[0]), str(p[1])) for p in chaves_atuais 
-        if isinstance(p, (tuple, list)) and len(p) == 2 and str(p[1]) != str(eq_alvo)
-    ]
+    novas_chaves = []
+    milit_ids_com_outras_equipes = set()
 
-    # Limpa lançamentos de turnos da equipe na matriz
+    for pair in chaves_atuais:
+        if isinstance(pair, (tuple, list)) and len(pair) == 2:
+            m_id_s, eq_n_s = str(pair[0]), str(pair[1])
+            if eq_n_s == eq_alvo_str:
+                continue
+            else:
+                novas_chaves.append((m_id_s, eq_n_s))
+                milit_ids_com_outras_equipes.add(m_id_s)
+
+    st.session_state["militares_no_quadro_chaves"] = novas_chaves
+
+    # 4. Limpa da matriz todos os turnos gravados na equipe excluída
     grade = st.session_state.get("grade_escala_lancamentos", {})
-    chaves_remover = [k for k in list(grade.keys()) if f"_{eq_alvo}_" in k]
+    chaves_remover = [k for k in list(grade.keys()) if f"_{eq_alvo_str}_" in k]
     for k in chaves_remover:
         grade.pop(k, None)
     st.session_state["grade_escala_lancamentos"] = grade
 
-    # Persiste o quadro limpo no Supabase
+    # 5. Atualiza os selecionados globais removendo quem ficou sem equipe alguma
+    if "militares_selecionados_ids" in st.session_state:
+        st.session_state["militares_selecionados_ids"] = [
+            str(mid) for mid in st.session_state["militares_selecionados_ids"]
+            if str(mid) in milit_ids_com_outras_equipes
+        ]
+
+    # 6. Executa o Auto-Save atômico no Supabase
     try:
         from modules.escalas.passos.passo5_quadro import executar_auto_save_banco
         executar_auto_save_banco()
     except Exception as ex:
-        print(f"Aviso ao salvar auto save: {ex}")
+        print(f"Aviso ao salvar auto save no expurgo: {ex}")
 
 @st.dialog("🗑️ Gerenciar e Excluir Equipes", width="medium")
 def abrir_modal_excluir_equipes():
     st.markdown("##### ⚠️ Clique na lixeira ao lado da equipe para removê-la:")
-    st.warning("⚠️ **Atenção:** Ao remover uma equipe, todos os militares e turnos alocados a ela serão expurgados da escala do mês.")
+    st.warning("⚠️ **Atenção:** Ao remover uma equipe, todos os seus turnos serão expurgados da escala. Militares alocados exclusivamente a ela serão removidos do quadro.")
     
     carregar_equipes_persistidas()
     equipes = st.session_state["lista_equipes"]

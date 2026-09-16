@@ -87,8 +87,6 @@ def extrair_datetime_de_string_turno(ano, mes, dia, str_horario):
         return None, None
 
     s = str(str_horario).upper().strip()
-    
-    # Tratamento de formatos de separador: "ÀS", "AS", "-", "A"
     s_norm = s.replace("ÀS", " ÀS ").replace(" AS ", " ÀS ").replace("-", " ÀS ")
     
     if "ÀS" not in s_norm:
@@ -99,13 +97,11 @@ def extrair_datetime_de_string_turno(ano, mes, dia, str_horario):
         str_ini = partes[0].strip()
         str_fim = partes[1].split("(")[0].strip()
 
-        # Extração das horas e minutos de início
         m_ini = re.findall(r'\d+', str_ini)
         if not m_ini: return None, None
         h_i = int(m_ini[0])
         min_i = int(m_ini[1]) if len(m_ini) > 1 else 0
 
-        # Extração das horas e minutos de fim
         m_fim = re.findall(r'\d+', str_fim)
         if not m_fim: return None, None
         h_f = int(m_fim[0])
@@ -230,7 +226,7 @@ def carregar_escala_salva_banco():
         print(f"Aviso ao carregar escala salva: {ex}")
 
 def recalcular_escala_matriz():
-    """Calcula a sequência teórica validando contra choques de horários entre equipes."""
+    """Calcula a sequência teórica sem sobrescrever edições manuais."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -331,7 +327,6 @@ def recalcular_escala_matriz():
                 else:
                     valor_dia = "F"
 
-            # Valida choque de horário antes de inserir o valor automático
             status_aud, _ = auditar_escalacao_militar(m_id, m_ano, m_mes, d, valor_dia, grade)
             if status_aud == "BLOQUEADO":
                 valor_dia = "X"
@@ -371,7 +366,7 @@ def abrir_modal_importar_escala_excel():
                         key=f"inp_leg_dyn_{leg_code}"
                     )
         else:
-            st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão aplicados.")
+            st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão applied.")
 
         st.markdown("<br>", unsafe_allow_html=True)
         limpar_antes = st.checkbox("🧹 Limpar o quadro atual antes de importar (Substitui os dados da tela)", value=True)
@@ -416,23 +411,7 @@ def renderizar_passo5():
     ]
     st.session_state["militares_no_quadro_chaves"] = chaves_existentes
 
-    sel_ids = st.session_state.get("militares_selecionados_ids", [])
-    eq_ativa = st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO")
-    
-    chaves_set = set(chaves_existentes)
-    houve_inclusao = False
-    for m_id in sel_ids:
-        tem_vinculo = any(str(pair[0]) == str(m_id) for pair in chaves_existentes)
-        if not tem_vinculo:
-            novo_par = (str(m_id), str(eq_ativa))
-            if novo_par not in chaves_set:
-                chaves_existentes.append(novo_par)
-                chaves_set.add(novo_par)
-                houve_inclusao = True
-                
-    st.session_state["militares_no_quadro_chaves"] = chaves_existentes
-
-    if st.session_state.get("atualizar_quadro_passo5", False) or houve_inclusao:
+    if st.session_state.get("atualizar_quadro_passo5", False):
         recalcular_escala_matriz()
         st.session_state["atualizar_quadro_passo5"] = False
 
