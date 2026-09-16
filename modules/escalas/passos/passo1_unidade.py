@@ -30,15 +30,47 @@ def salvar_equipes_persistidas(lista):
         except Exception:
             pass
 
+def expurgar_equipe_em_cascata(eq_alvo):
+    """Exclui a equipe e remove todos os seus vínculos no quadro e no banco de dados."""
+    if "lista_equipes" in st.session_state and eq_alvo in st.session_state["lista_equipes"]:
+        st.session_state["lista_equipes"].remove(eq_alvo)
+        salvar_equipes_persistidas(st.session_state["lista_equipes"])
+
+    if st.session_state.get("equipe_ativa") == eq_alvo:
+        if st.session_state.get("lista_equipes"):
+            st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
+
+    # Limpa vínculos de militares com a equipe excluída no Passo 5
+    chaves_atuais = st.session_state.get("militares_no_quadro_chaves", [])
+    st.session_state["militares_no_quadro_chaves"] = [
+        (str(p[0]), str(p[1])) for p in chaves_atuais 
+        if isinstance(p, (tuple, list)) and len(p) == 2 and str(p[1]) != str(eq_alvo)
+    ]
+
+    # Limpa lançamentos de turnos da equipe na matriz
+    grade = st.session_state.get("grade_escala_lancamentos", {})
+    chaves_remover = [k for k in list(grade.keys()) if f"_{eq_alvo}_" in k]
+    for k in chaves_remover:
+        grade.pop(k, None)
+    st.session_state["grade_escala_lancamentos"] = grade
+
+    # Persiste o quadro limpo no Supabase
+    try:
+        from modules.escalas.passos.passo5_quadro import executar_auto_save_banco
+        executar_auto_save_banco()
+    except Exception as ex:
+        print(f"Aviso ao salvar auto save: {ex}")
+
 @st.dialog("🗑️ Gerenciar e Excluir Equipes", width="medium")
 def abrir_modal_excluir_equipes():
     st.markdown("##### ⚠️ Clique na lixeira ao lado da equipe para removê-la:")
+    st.warning("⚠️ **Atenção:** Ao remover uma equipe, todos os militares e turnos alocados a ela serão expurgados da escala do mês.")
     
     carregar_equipes_persistidas()
     equipes = st.session_state["lista_equipes"]
     
     if len(equipes) <= 1:
-        st.warning("ℹ️ É necessário manter pelo menos 1 equipe cadastrada no sistema.")
+        st.info("ℹ️ É necessário manter pelo menos 1 equipe cadastrada no sistema.")
         return
 
     for eq in list(equipes):
@@ -47,16 +79,11 @@ def abrir_modal_excluir_equipes():
             st.markdown(f"🛡️ **{eq}**")
         with c_btn:
             if st.button("🗑️ Excluir", key=f"btn_del_eq_modal_{eq}", use_container_width=True):
-                st.session_state["lista_equipes"].remove(eq)
-                salvar_equipes_persistidas(st.session_state["lista_equipes"])
-                
-                if st.session_state.get("equipe_ativa") == eq:
-                    st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
-                st.success(f"Equipe '{eq}' removida com sucesso!")
+                expurgar_equipe_em_cascata(eq)
+                st.success(f"Equipe '{eq}' e seus lançamentos foram totalmente removidos!")
                 st.rerun()
 
 def renderizar_passo1():
-    # Carregamento e inicialização preventiva
     carregar_equipes_persistidas()
     if "equipe_ativa" not in st.session_state or st.session_state["equipe_ativa"] not in st.session_state["lista_equipes"]:
         st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
@@ -99,7 +126,7 @@ def renderizar_passo1():
         with col_gestao:
             with st.expander("➕ **Cadastrar Nova Equipe**", expanded=False):
                 with st.form("form_inserir_equipe_p1", clear_on_submit=True):
-                    nova_equipe_input = st.text_input("Nome da Nova Equipe", placeholder="Ex: TM ALPHA, GPMOR").strip().upper()
+                    nova_equipe_input = st.text_input("Nome da Nova Equipe", placeholder="Ex: TM ALPHA, GEPAR").strip().upper()
                     btn_salvar_eq = st.form_submit_button("💾 Inserir Equipe")
                     if btn_salvar_eq and nova_equipe_input:
                         if nova_equipe_input not in st.session_state["lista_equipes"]:

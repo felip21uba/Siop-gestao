@@ -3,6 +3,7 @@ import datetime
 import calendar
 import pandas as pd
 import copy
+import re
 from core.database import salvar_escala_mensal_supabase, supabase
 from modules.escalas.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
@@ -81,21 +82,42 @@ def padronizar_entrada_quadro(valor):
     return valor
 
 def extrair_datetime_de_string_turno(ano, mes, dia, str_horario):
-    try:
-        if "AS" not in str_horario.upper() and "ÀS" not in str_horario.upper():
-            return None, None
-            
-        partes = str_horario.lower().replace("as", "às").split("às")
-        h_i, m_i = map(int, partes[0].strip().split(":"))
-        h_f, m_f = map(int, partes[1].split("(")[0].strip().split(":"))
+    """Parser universal de horários para auditoria de sobreposição."""
+    if not str_horario or str_horario in ["F", "D", "X", "DN", "FE", "LM", "DIS", "OFF", "DESCANSO", "FOLGA"]:
+        return None, None
 
-        dt_ini = datetime.datetime(ano, mes, dia, h_i, m_i)
+    s = str(str_horario).upper().strip()
+    
+    # Tratamento de formatos de separador: "ÀS", "AS", "-", "A"
+    s_norm = s.replace("ÀS", " ÀS ").replace(" AS ", " ÀS ").replace("-", " ÀS ")
+    
+    if "ÀS" not in s_norm:
+        return None, None
+
+    try:
+        partes = s_norm.split("ÀS")
+        str_ini = partes[0].strip()
+        str_fim = partes[1].split("(")[0].strip()
+
+        # Extração das horas e minutos de início
+        m_ini = re.findall(r'\d+', str_ini)
+        if not m_ini: return None, None
+        h_i = int(m_ini[0])
+        min_i = int(m_ini[1]) if len(m_ini) > 1 else 0
+
+        # Extração das horas e minutos de fim
+        m_fim = re.findall(r'\d+', str_fim)
+        if not m_fim: return None, None
+        h_f = int(m_fim[0])
+        min_f = int(m_fim[1]) if len(m_fim) > 1 else 0
+
+        dt_ini = datetime.datetime(ano, mes, dia, h_i, min_i)
         
-        if (h_f < h_i) or (h_f == h_i and m_f <= m_i):
+        if (h_f < h_i) or (h_f == h_i and min_f <= min_i):
             dt_fim = dt_ini + datetime.timedelta(days=1)
-            dt_fim = dt_fim.replace(hour=h_f, minute=m_f)
+            dt_fim = dt_fim.replace(hour=h_f, minute=min_f)
         else:
-            dt_fim = dt_ini.replace(hour=h_f, minute=m_f)
+            dt_fim = dt_ini.replace(hour=h_f, minute=min_f)
             
         return dt_ini, dt_fim
     except Exception:
@@ -121,15 +143,16 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade):
                     continue
                     
                 if dt_novo_ini < dt_ex_fim and dt_novo_fim > dt_ex_ini:
-                    eq_ex = key_grade.split("_")[1]
-                    return "BLOQUEADO", f"Choque de Horário: Já escalado no dia {d_ex:02d} ({val_ex}) pela equipe {eq_ex}."
+                    partes_k = key_grade.split("_")
+                    eq_ex = partes_k[1] if len(partes_k) > 1 else "OUTRA"
+                    return "BLOQUEADO", f"Choque de Horário: Já escalado no dia {d_ex:02d} ({val_ex}) na equipe {eq_ex}."
 
-                if dt_novo_ini >= dt_ex_fim:
+                if dt_novo_ini >= dt_ex_fim and d_ex == d_alvo:
                     descanso = (dt_novo_ini - dt_ex_fim).total_seconds() / 3600.0
                     if 0 <= descanso < 8.0:
                         return "AVISO", f"Descanso Reduzido ({descanso:.1f}h) após o serviço do dia {d_ex:02d}."
                         
-                if dt_novo_fim <= dt_ex_ini:
+                if dt_novo_fim <= dt_ex_ini and d_ex == d_alvo:
                     descanso = (dt_ex_ini - dt_novo_fim).total_seconds() / 3600.0
                     if 0 <= descanso < 8.0:
                         return "AVISO", f"Descanso Reduzido ({descanso:.1f}h) antes do serviço do dia {d_ex:02d}."
@@ -207,7 +230,7 @@ def carregar_escala_salva_banco():
         print(f"Aviso ao carregar escala salva: {ex}")
 
 def recalcular_escala_matriz():
-    """Calcula e preenche a sequência sem sobrescrever lançamentos manuais existentes."""
+    """Calcula a sequência teórica validando contra choques de horários entre equipes."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -307,6 +330,11 @@ def recalcular_escala_matriz():
                     valor_dia = st.session_state.get("horario_sup_sex_sab", "18:00 às 00:00") if w in [4, 5] else st.session_state.get("horario_sup_dom_qui", "15:00 às 21:00")
                 else:
                     valor_dia = "F"
+
+            # Valida choque de horário antes de inserir o valor automático
+            status_aud, _ = auditar_escalacao_militar(m_id, m_ano, m_mes, d, valor_dia, grade)
+            if status_aud == "BLOQUEADO":
+                valor_dia = "X"
 
             grade[chave] = valor_dia
 
