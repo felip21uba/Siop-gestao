@@ -226,7 +226,7 @@ def carregar_escala_salva_banco():
         print(f"Aviso ao carregar escala salva: {ex}")
 
 def recalcular_escala_matriz():
-    """Calcula a sequência teórica sem sobrescrever edições manuais."""
+    """Calcula a sequência teórica apenas quando o comando de aplicação é acionado."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -413,25 +413,22 @@ def renderizar_passo5():
     ]
     st.session_state["militares_no_quadro_chaves"] = chaves_existentes
 
-    # Sincronização segura de novos militares selecionados no Passo 3 que ainda não possuem equipe vinculada
-    sel_ids = st.session_state.get("militares_selecionados_ids", [])
-    eq_ativa = st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO")
-    chaves_set = set(chaves_existentes)
-    houve_inclusao = False
-    
-    for m_id in sel_ids:
-        m_id_str = str(m_id)
-        tem_vinculo = any(str(pair[0]) == m_id_str for pair in chaves_existentes)
-        if not tem_vinculo:
-            novo_par = (m_id_str, str(eq_ativa))
-            if novo_par not in chaves_set:
-                chaves_existentes.append(novo_par)
-                chaves_set.add(novo_par)
-                houve_inclusao = True
+    # ATUALIZAÇÃO RESTRITA: O quadro só é recalculado/gerado quando a ordem/comando for explicitamente acionada
+    if st.session_state.get("atualizar_quadro_passo5", False):
+        sel_ids = st.session_state.get("militares_selecionados_ids", [])
+        eq_ativa = st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO")
+        chaves_set = set(chaves_existentes)
+        
+        for m_id in sel_ids:
+            m_id_str = str(m_id)
+            tem_vinculo = any(str(pair[0]) == m_id_str for pair in chaves_existentes)
+            if not tem_vinculo:
+                novo_par = (m_id_str, str(eq_ativa))
+                if novo_par not in chaves_set:
+                    chaves_existentes.append(novo_par)
+                    chaves_set.add(novo_par)
 
-    st.session_state["militares_no_quadro_chaves"] = chaves_existentes
-
-    if st.session_state.get("atualizar_quadro_passo5", False) or houve_inclusao:
+        st.session_state["militares_no_quadro_chaves"] = chaves_existentes
         recalcular_escala_matriz()
         st.session_state["atualizar_quadro_passo5"] = False
 
@@ -466,6 +463,11 @@ def renderizar_passo5():
         with c_info2:
             if st.button("📥 Importar Escala (Excel)", type="primary", use_container_width=True):
                 abrir_modal_importar_escala_excel()
+
+        # Botão explícito para aplicar lançamentos pendentes
+        if st.button("⚡ Aplicar Lançamentos e Atualizar Quadro", type="primary", use_container_width=True):
+            st.session_state["atualizar_quadro_passo5"] = True
+            st.rerun()
 
         num_dias_mes = calendar.monthrange(m_ano, m_mes)[1]
         mils_todos = st.session_state.get("lista_militares", [])
@@ -801,7 +803,6 @@ def renderizar_passo5():
                     else:
                         st.success(f"✅ Escala coberta!\nNenhum dia possui menos de {min_efetivo} militar(es).")
 
-            # Higienização das opções de equipes no SelectboxColumn para evitar exceção no Streamlit
             equipes_cadastradas = st.session_state.get("lista_equipes", ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP", "TM ALPHA", "GEPAR"])
             equipes_presentes_df = list(df_escala["EQUIPE"].unique()) if "EQUIPE" in df_escala.columns else []
             equipes_opcoes = sorted(list(set(equipes_cadastradas + equipes_presentes_df)))
