@@ -4,7 +4,7 @@ import calendar
 import pandas as pd
 import copy
 import re
-from core.database import salvar_escala_mensal_supabase, supabase
+from core.database import salvar_escala_mensal_supabase, supabase, carregar_militares_supabase
 from modules.escalas.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 from utils.excel_escala_importer import (
@@ -366,7 +366,7 @@ def abrir_modal_importar_escala_excel():
                         key=f"inp_leg_dyn_{leg_code}"
                     )
         else:
-            st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão applied.")
+            st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão aplicados.")
 
         st.markdown("<br>", unsafe_allow_html=True)
         limpar_antes = st.checkbox("🧹 Limpar o quadro atual antes de importar (Substitui os dados da tela)", value=True)
@@ -387,7 +387,7 @@ def abrir_modal_importar_escala_excel():
                 st.error(msg)
 
 def renderizar_passo5():
-    # Inicializações defensivas
+    # Inicializações defensivas e carregamento preventivo do efetivo
     if "militares_selecionados_ids" not in st.session_state:
         st.session_state["militares_selecionados_ids"] = []
     if "grade_escala_lancamentos" not in st.session_state:
@@ -396,6 +396,8 @@ def renderizar_passo5():
         st.session_state["militares_no_quadro_chaves"] = []
     if "quadro_versao" not in st.session_state:
         st.session_state["quadro_versao"] = 0
+    if "lista_militares" not in st.session_state or not st.session_state["lista_militares"]:
+        st.session_state["lista_militares"] = carregar_militares_supabase() or []
 
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
@@ -411,7 +413,25 @@ def renderizar_passo5():
     ]
     st.session_state["militares_no_quadro_chaves"] = chaves_existentes
 
-    if st.session_state.get("atualizar_quadro_passo5", False):
+    # Sincronização segura de novos militares selecionados no Passo 3 que ainda não possuem equipe vinculada
+    sel_ids = st.session_state.get("militares_selecionados_ids", [])
+    eq_ativa = st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO")
+    chaves_set = set(chaves_existentes)
+    houve_inclusao = False
+    
+    for m_id in sel_ids:
+        m_id_str = str(m_id)
+        tem_vinculo = any(str(pair[0]) == m_id_str for pair in chaves_existentes)
+        if not tem_vinculo:
+            novo_par = (m_id_str, str(eq_ativa))
+            if novo_par not in chaves_set:
+                chaves_existentes.append(novo_par)
+                chaves_set.add(novo_par)
+                houve_inclusao = True
+
+    st.session_state["militares_no_quadro_chaves"] = chaves_existentes
+
+    if st.session_state.get("atualizar_quadro_passo5", False) or houve_inclusao:
         recalcular_escala_matriz()
         st.session_state["atualizar_quadro_passo5"] = False
 
@@ -453,7 +473,7 @@ def renderizar_passo5():
         mils_linhas_quadro = []
         for pair in chaves_quadro:
             if isinstance(pair, (tuple, list)) and len(pair) == 2:
-                m_obj = next((m for m in mils_todos if str(m["id"]) == str(pair[0])), None)
+                m_obj = next((m for m in mils_todos if str(m.get("id")) == str(pair[0])), None)
                 if m_obj:
                     mils_linhas_quadro.append({
                         "id": str(pair[0]),
@@ -781,7 +801,10 @@ def renderizar_passo5():
                     else:
                         st.success(f"✅ Escala coberta!\nNenhum dia possui menos de {min_efetivo} militar(es).")
 
-            equipes_opcoes = st.session_state.get("lista_equipes", ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP", "TM ALPHA", "GEPAR"])
+            # Higienização das opções de equipes no SelectboxColumn para evitar exceção no Streamlit
+            equipes_cadastradas = st.session_state.get("lista_equipes", ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP", "TM ALPHA", "GEPAR"])
+            equipes_presentes_df = list(df_escala["EQUIPE"].unique()) if "EQUIPE" in df_escala.columns else []
+            equipes_opcoes = sorted(list(set(equipes_cadastradas + equipes_presentes_df)))
 
             config_colunas = {
                 "ORDEM": st.column_config.NumberColumn("ORDEM", min_value=1, max_value=99, step=1),
@@ -807,37 +830,38 @@ def renderizar_passo5():
 
                 houve_alteracao = False
                 for idx_r, row in df_editado.iterrows():
-                    item = mils_escala_ord[idx_r]
-                    nova_ordem = int(row.get("ORDEM", idx_r + 1))
-                    if st.session_state["ordem_customizada_map"].get(item["chave_linha"]) != nova_ordem:
-                        salvar_estado_undo()
-                        st.session_state["ordem_customizada_map"][item["chave_linha"]] = nova_ordem
-                        houve_alteracao = True
+                    if idx_r < len(mils_escala_ord):
+                        item = mils_escala_ord[idx_r]
+                        nova_ordem = int(row.get("ORDEM", idx_r + 1))
+                        if st.session_state["ordem_customizada_map"].get(item["chave_linha"]) != nova_ordem:
+                            salvar_estado_undo()
+                            st.session_state["ordem_customizada_map"][item["chave_linha"]] = nova_ordem
+                            houve_alteracao = True
 
-                    for d, col_nome in colunas_dias_nomes:
-                        dia_str = f"{d:02d}"
-                        v_padrao = padronizar_entrada_quadro(str(row.get(col_nome, "")).strip())
-                        chave_cel = f"{item['id']}_{item['equipe']}_{m_ano}_{m_mes:02d}_{dia_str}"
-                        val_anterior = padronizar_entrada_quadro(st.session_state["grade_escala_lancamentos"].get(chave_cel, ""))
-                        
-                        if val_anterior != v_padrao:
-                            try: data_alvo = datetime.date(m_ano, m_mes, d)
-                            except ValueError: data_alvo = hoje
+                        for d, col_nome in colunas_dias_nomes:
+                            dia_str = f"{d:02d}"
+                            v_padrao = padronizar_entrada_quadro(str(row.get(col_nome, "")).strip())
+                            chave_cel = f"{item['id']}_{item['equipe']}_{m_ano}_{m_mes:02d}_{dia_str}"
+                            val_anterior = padronizar_entrada_quadro(st.session_state["grade_escala_lancamentos"].get(chave_cel, ""))
+                            
+                            if val_anterior != v_padrao:
+                                try: data_alvo = datetime.date(m_ano, m_mes, d)
+                                except ValueError: data_alvo = hoje
 
-                            if escala_fechada and not eh_admin and data_alvo < hoje:
-                                st.error(f"🔒 O dia {d:02d} já passou e não pode ser editado. Altere pelo Banco de Horas.")
-                                houve_alteracao = True
-                            else:
-                                status_aud, msg_aud = auditar_escalacao_militar(item['id'], m_ano, m_mes, d, v_padrao, st.session_state["grade_escala_lancamentos"])
-                                if status_aud == "BLOQUEADO":
-                                    st.error(f"🚨 Não foi possível alterar o militar {item['nome_guerra']} no dia {d:02d}. {msg_aud}")
+                                if escala_fechada and not eh_admin and data_alvo < hoje:
+                                    st.error(f"🔒 O dia {d:02d} já passou e não pode ser editado. Altere pelo Banco de Horas.")
                                     houve_alteracao = True
                                 else:
-                                    salvar_estado_undo()
-                                    if status_aud == "AVISO": st.warning(f"⚠️ Atenção ao militar {item['nome_guerra']} (Dia {d:02d}): {msg_aud}")
-                                    st.session_state["grade_escala_lancamentos"][chave_cel] = v_padrao
-                                    registrar_log_auditoria("Edição Direta em Tabela", f"Militar {item['nome_guerra']} dia {d:02d} alterado de '{val_anterior}' para '{v_padrao}'.")
-                                    houve_alteracao = True
+                                    status_aud, msg_aud = auditar_escalacao_militar(item['id'], m_ano, m_mes, d, v_padrao, st.session_state["grade_escala_lancamentos"])
+                                    if status_aud == "BLOQUEADO":
+                                        st.error(f"🚨 Não foi possível alterar o militar {item['nome_guerra']} no dia {d:02d}. {msg_aud}")
+                                        houve_alteracao = True
+                                    else:
+                                        salvar_estado_undo()
+                                        if status_aud == "AVISO": st.warning(f"⚠️ Atenção ao militar {item['nome_guerra']} (Dia {d:02d}): {msg_aud}")
+                                        st.session_state["grade_escala_lancamentos"][chave_cel] = v_padrao
+                                        registrar_log_auditoria("Edição Direta em Tabela", f"Militar {item['nome_guerra']} dia {d:02d} alterado de '{val_anterior}' para '{v_padrao}'.")
+                                        houve_alteracao = True
                             
                 if houve_alteracao:
                     st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
