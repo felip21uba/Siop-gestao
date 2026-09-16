@@ -287,7 +287,7 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
                         else:
                             if m_id not in st.session_state["militares_selecionados_ids"]:
                                 st.session_state["militares_selecionados_ids"].append(m_id)
-                        st.session_state["atualizar_quadro_passo5"] = True
+                        # REMOVIDO: Não dispara mais st.session_state["atualizar_quadro_passo5"] = True automaticamente
                         st.rerun()
 
 @st.fragment
@@ -328,22 +328,25 @@ def renderizar_fragmento_passo3():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 3. Botões de Ação Global
-    c_m1, c_m2, c_m3 = st.columns([1, 1, 1.2])
+    # 3. Botões de Ação Global (COM BOTÃO DE CONFIRMAÇÃO EXPLÍCITA AO PASSO 5)
+    c_m1, c_m2, c_m3, c_m4 = st.columns([1, 1, 1.5, 1.2])
     with c_m1:
         if st.button("✔ Marcar Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
             mils_visiveis = [m["id"] for m in st.session_state.get("militares_ativos_render", [])]
             st.session_state["militares_selecionados_ids"] = list(set(st.session_state.get("militares_selecionados_ids", []) + mils_visiveis))
-            st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
     with c_m2:
         if st.button("✖ Limpar Seleção", use_container_width=True, key="btn_desmarcar_todos_frag"):
             st.session_state["militares_selecionados_ids"] = []
-            st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
     with c_m3:
+        if st.button("⚡ Aplicar ao Quadro (Passo 5)", type="primary", use_container_width=True, key="btn_aplicar_quadro_frag"):
+            st.session_state["atualizar_quadro_passo5"] = True
+            st.toast("✅ Seleção confirmada! Vá ao Passo 5 e clique em Aplicar Lançamentos.", icon="🚀")
+            st.rerun()
+    with c_m4:
         if modo_exclusao:
-            if st.button("🗑️ Excluir Selecionados", type="primary", use_container_width=True, key="btn_excluir_lote_frag"):
+            if st.button("🗑️ Excluir Selecionados", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
                 abrir_modal_excluir_lote(excluir_lote_banco_e_memoria)
 
     if not militares:
@@ -360,28 +363,41 @@ def renderizar_fragmento_passo3():
     # 4. Layout dos Quadros com Busca Integrada e Alinhada
     col_quadro_esq, col_quadro_dir = st.columns(2, gap="medium")
 
-    # QUADRO ESQUERDO: Efetivo Filtrado + Busca Global acima do container
+    # QUADRO ESQUERDO: Efetivo Filtrado + Busca Global Flexível (Fix Erro 2)
     with col_quadro_esq:
         sel_ids_set = set(st.session_state.get('militares_selecionados_ids', []))
         nao_sel_pre = [m for m in militares_filtrados if m["id"] not in sel_ids_set]
 
         st.markdown(f"##### ⚪ Efetivo Filtrado ({len(nao_sel_pre)}):")
 
-        # CAIXA DE BUSCA GLOBAL (POSICIONADA ABAIXO DO TÍTULO E ACIMA DOS CARDS)
+        # CAIXA DE BUSCA GLOBAL
         termo_busca = st.text_input(
             "🔍 Busca Global no Efetivo:", 
             key="txt_busca_militar_p3_frag", 
             placeholder="Digite nome, número ou graduação..."
-        ).strip().upper()
+        ).strip()
         
         if termo_busca:
-            nao_sel_filtrados = [
-                m for m in nao_sel_pre 
-                if termo_busca in m.get("nome_guerra", "").upper() 
-                or termo_busca in m.get("nome_completo", "").upper() 
-                or termo_busca in m.get("num_policia", "").upper() 
-                or termo_busca in padronizar_graduacao(m.get("posto_grad", "")).upper()
-            ]
+            termo_norm = unicodedata.normalize('NFKD', str(termo_busca)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
+            termo_digits = re.sub(r'\D', '', termo_norm)
+
+            def atende_busca_flexivel(m):
+                ng = unicodedata.normalize('NFKD', str(m.get("nome_guerra", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
+                nc = unicodedata.normalize('NFKD', str(m.get("nome_completo", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
+                np = unicodedata.normalize('NFKD', str(m.get("num_policia", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
+                np_digits = re.sub(r'\D', '', np)
+                pg = padronizar_graduacao(m.get("posto_grad", "")).upper()
+
+                if termo_norm in ng or termo_norm in nc or termo_norm in np or termo_norm in pg:
+                    return True
+
+                if termo_digits and np_digits:
+                    if termo_digits in np_digits or np_digits in termo_digits:
+                        return True
+
+                return False
+
+            nao_sel_filtrados = [m for m in nao_sel_pre if atende_busca_flexivel(m)]
         else:
             nao_sel_filtrados = nao_sel_pre
 
