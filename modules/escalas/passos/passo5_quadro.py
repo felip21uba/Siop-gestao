@@ -22,15 +22,15 @@ SIGLAS_DIAS_NEUTROS = [
 
 @st.dialog("🛡️ Auditoria de Lançamento de Escala", width="large")
 def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendentes_descanso, val_final, item_sel, m_ano, m_mes):
-    """Pop-up unificado para ignorar sobreposições e confirmar descanso reduzido."""
+    """Pop-up unificado para informar sobreposições ignoradas e confirmar descanso reduzido."""
     st.markdown(f"### 👮‍♂️ Militar: **{militar_nome}**")
     
-    # 1. Exibição de Bloqueios/Sobreposições (Ignorados)
+    # 1. Exibição de Bloqueios/Sobreposições (Ignorados e mantidos com a escala original)
     if ignorados_bloqueados:
         st.error("🚨 **Lançamentos Ignorados (Sobreposição de Horários):**")
-        st.caption("Estes dias foram mantidos com a escala original pois o policial já possui serviço ativo no mesmo horário:")
+        st.caption("Os turnos abaixo NÃO foram aplicados pois o policial já possui serviço ativo no mesmo horário na outra equipe:")
         for b in ignorados_bloqueados:
-            st.markdown(f"• **Dia {b['dia']:02d}:** Conflito com a equipe **{b['equipe']}** ({b['horario']})")
+            st.markdown(f"• **Dia {b['dia']:02d}:** Já escalado na equipe **{b['equipe']}** ({b['horario']})")
         st.divider()
 
     # 2. Exibição de Alertas de Descanso Reduzido (Exige Confirmação)
@@ -63,7 +63,7 @@ def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendente
                 st.session_state.pop("auditoria_pendente_popup", None)
                 st.rerun()
     else:
-        st.success("✅ Os dias válidos foram aplicados com sucesso no quadro!")
+        st.success("✅ Os dias válidos e sem conflito foram aplicados com sucesso no quadro!")
         if st.button("OK, Fechar", type="primary", use_container_width=True):
             st.session_state.pop("auditoria_pendente_popup", None)
             st.rerun()
@@ -126,28 +126,27 @@ def padronizar_entrada_quadro(valor):
     return valor
 
 def extrair_datetime_de_string_turno(ano, mes, dia, str_horario):
-    """Parser universal de horários para auditoria de sobreposição."""
-    if not str_horario or str_horario in ["F", "D", "X", "DN", "FE", "LM", "DIS", "OFF", "DESCANSO", "FOLGA"]:
+    """Parser universal de horários para auditoria de sobreposição (suporta ADM e turnos compostos)."""
+    if not str_horario or str(str_horario).strip().upper() in ["F", "D", "X", "DN", "FE", "LM", "DIS", "OFF", "DESCANSO", "FOLGA", "NONE", "NAN"]:
         return None, None
 
     s = str(str_horario).upper().strip()
-    s_norm = s.replace("ÀS", " ÀS ").replace(" AS ", " ÀS ").replace("-", " ÀS ")
-    if "ÀS" not in s_norm: return None, None
+    m = re.findall(r'\d+', s)
+    if len(m) < 2:
+        return None, None
 
     try:
-        partes = s_norm.split("ÀS")
-        str_ini = partes[0].strip()
-        str_fim = partes[1].split("(")[0].strip()
+        h_i = int(m[0])
+        min_i = int(m[1]) if len(m) > 1 else 0
 
-        m_ini = re.findall(r'\d+', str_ini)
-        if not m_ini: return None, None
-        h_i = int(m_ini[0])
-        min_i = int(m_ini[1]) if len(m_ini) > 1 else 0
-
-        m_fim = re.findall(r'\d+', str_fim)
-        if not m_fim: return None, None
-        h_f = int(m_fim[0])
-        min_f = int(m_fim[1]) if len(m_fim) > 1 else 0
+        if len(m) >= 4:
+            h_f = int(m[-2])
+            min_f = int(m[-1])
+        elif len(m) >= 2:
+            h_f = int(m[1]) if len(m) == 2 else int(m[2])
+            min_f = int(m[2]) if len(m) == 3 else 0
+        else:
+            return None, None
 
         dt_ini = datetime.datetime(ano, mes, dia, h_i, min_i)
         if (h_f < h_i) or (h_f == h_i and min_f <= min_i):
@@ -164,30 +163,41 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade):
     dt_novo_ini, dt_novo_fim = extrair_datetime_de_string_turno(m_ano, m_mes, d_alvo, val_novo)
     if not dt_novo_ini: return "OK", "", {}
 
-    num_dias = calendar.monthrange(m_ano, m_mes)[1]
-    for d_ex in range(1, num_dias + 1):
-        prefixo_chave = f"{m_id}_"
-        for key_grade, val_ex in dict_grade.items():
-            if key_grade.startswith(prefixo_chave) and key_grade.endswith(f"_{m_ano}_{m_mes:02d}_{d_ex:02d}"):
-                if d_ex == d_alvo and val_ex == val_novo: continue
-                    
-                dt_ex_ini, dt_ex_fim = extrair_datetime_de_string_turno(m_ano, m_mes, d_ex, val_ex)
-                if not dt_ex_ini: continue
-                    
-                if dt_novo_ini < dt_ex_fim and dt_novo_fim > dt_ex_ini:
-                    partes_k = key_grade.split("_")
-                    eq_ex = partes_k[1] if len(partes_k) > 1 else "OUTRA"
-                    return "BLOQUEADO", f"Choque de Horário: Já escalado no dia {d_ex:02d} ({val_ex}) na equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex, "horario": val_ex}
+    prefixo_chave = f"{m_id}_"
+    for key_grade, val_ex in dict_grade.items():
+        if key_grade.startswith(prefixo_chave):
+            partes_k = key_grade.split("_")
+            if len(partes_k) >= 5:
+                try:
+                    d_ex = int(partes_k[-1])
+                    m_ex = int(partes_k[-2])
+                    a_ex = int(partes_k[-3])
+                    eq_ex = "_".join(partes_k[1:-3])
+                except ValueError:
+                    continue
 
-                if dt_novo_ini >= dt_ex_fim and d_ex == d_alvo:
-                    descanso = (dt_novo_ini - dt_ex_fim).total_seconds() / 3600.0
-                    if 0 <= descanso < 8.0:
-                        return "AVISO", f"Descanso reduzido para {descanso:.1f}h após o serviço do dia {d_ex:02d}.", {"dia": d_ex}
+                if a_ex == m_ano and m_ex == m_mes:
+                    if d_ex == d_alvo and val_ex == val_novo: 
+                        continue
                         
-                if dt_novo_fim <= dt_ex_ini and d_ex == d_alvo:
-                    descanso = (dt_ex_ini - dt_novo_fim).total_seconds() / 3600.0
-                    if 0 <= descanso < 8.0:
-                        return "AVISO", f"Descanso reduzido para {descanso:.1f}h antes do serviço do dia {d_ex:02d}.", {"dia": d_ex}
+                    dt_ex_ini, dt_ex_fim = extrair_datetime_de_string_turno(m_ano, m_mes, d_ex, val_ex)
+                    if not dt_ex_ini: 
+                        continue
+                        
+                    # Checagem de sobreposição de horário (mesmo parcial)
+                    if dt_novo_ini < dt_ex_fim and dt_novo_fim > dt_ex_ini:
+                        return "BLOQUEADO", f"Choque de Horário: Já escalado no dia {d_ex:02d} ({val_ex}) na equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex, "horario": val_ex}
+
+                    # Checagem de descanso interjornada reduzido (<8h)
+                    if dt_novo_ini >= dt_ex_fim and d_ex == d_alvo:
+                        descanso = (dt_novo_ini - dt_ex_fim).total_seconds() / 3600.0
+                        if 0 <= descanso < 8.0:
+                            return "AVISO", f"Descanso reduzido para {descanso:.1f}h após o serviço na equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex}
+                            
+                    if dt_novo_fim <= dt_ex_ini and d_ex == d_alvo:
+                        descanso = (dt_ex_ini - dt_novo_fim).total_seconds() / 3600.0
+                        if 0 <= descanso < 8.0:
+                            return "AVISO", f"Descanso reduzido para {descanso:.1f}h antes do serviço na equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex}
 
     return "OK", "", {}
 
@@ -384,7 +394,7 @@ def abrir_modal_importar_escala_excel():
 
 def renderizar_passo5():
     # Renderização da Janela Unificada de Auditoria caso existam pendências
-    if "auditoria_pendente_popup" in st.session_state:
+    if "auditoria_pendente_popup" in st.session_state and st.session_state["auditoria_pendente_popup"]:
         p = st.session_state["auditoria_pendente_popup"]
         abrir_modal_auditoria_unificada(
             p["militar_nome"], 
@@ -628,7 +638,7 @@ def renderizar_passo5():
                                 
                                 status_aud, msg_aud, detalhe_conf = auditar_escalacao_militar(item_sel["id"], m_ano, m_mes, d_a, val_final_p, st.session_state["grade_escala_lancamentos"])
 
-                                # IGNORA a sobreposição no segundo lançamento mantendo o original
+                                # IGNORA a sobreposição no segundo lançamento mantendo a escala original intacta
                                 if status_aud == "BLOQUEADO":
                                     ignorados_bloqueados.append({
                                         "dia": d_a,
@@ -720,12 +730,14 @@ def renderizar_passo5():
                 val_atual = st.session_state["grade_escala_lancamentos"].get(chave_celula, "F")
                 val_atual = padronizar_entrada_quadro(val_atual)
                 
+                # Leitura Cruzada de Empenho: Se estiver em branco/folga nesta equipe, checa se tem serviço ativo em outra
                 if val_atual in ["F", "", None]:
                     for pair_k in chaves_quadro:
                         if isinstance(pair_k, (tuple, list)) and len(pair_k) == 2:
                             if str(pair_k[0]) == str(m_id) and pair_k[1] != eq_nome:
                                 val_outra = st.session_state["grade_escala_lancamentos"].get(f"{m_id}_{pair_k[1]}_{m_ano}_{m_mes:02d}_{d:02d}")
-                                if val_outra and val_outra not in ["F", "D", "X", "", None]:
+                                dt_o_i, dt_o_f = extrair_datetime_de_string_turno(m_ano, m_mes, d, val_outra)
+                                if dt_o_i is not None:
                                     val_atual = "X"
                                     break
 
