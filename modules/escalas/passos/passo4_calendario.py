@@ -71,12 +71,10 @@ def renderizar_fragmento_passo4():
     with c_b1:
         if st.button("✔ Marcar Todos os Dias", use_container_width=True, key="btn_marcar_dias_frag"):
             st.session_state["dias_selecionados_passo4"] = list(range(1, num_dias_mes + 1))
-            st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
     with c_b2:
         if st.button("❌ Desmarcar Todos os Dias", use_container_width=True, key="btn_desmarcar_dias_frag"):
             st.session_state["dias_selecionados_passo4"] = []
-            st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -107,7 +105,6 @@ def renderizar_fragmento_passo4():
                     st.session_state["dias_selecionados_passo4"].remove(d)
                 else:
                     st.session_state["dias_selecionados_passo4"].append(d)
-                st.session_state["atualizar_quadro_passo5"] = True
                 st.rerun()
 
     qtd_dias_sel = len(st.session_state.get("dias_selecionados_passo4", []))
@@ -128,21 +125,10 @@ def renderizar_passo4(recalcular_matriz_passo5_func=None):
     if st.session_state.get("ultima_assinatura_p2") != assinatura_p2:
         st.session_state["dias_selecionados_passo4"] = calcular_dias_trabalho_ciclo(mod_ativa, m_ano, m_mes, num_dias)
         st.session_state["ultima_assinatura_p2"] = assinatura_p2
-        st.session_state["atualizar_quadro_passo5"] = True
 
     exp4 = st.expander("📌 PASSO 4: Calendário de Dias da Escala", expanded=True)
     with exp4:
         renderizar_fragmento_passo4()
-
-        st.divider()
-        c_app1, c_app2, c_app3 = st.columns([1, 2, 1])
-        with c_app2:
-            if st.button("🔄 Sincronizar e Re-Gerar Quadro com Dias Marcados", type="primary", use_container_width=True):
-                st.session_state["atualizar_quadro_passo5"] = True
-                if recalcular_matriz_passo5_func:
-                    recalcular_matriz_passo5_func()
-                st.success("✅ Escala e ciclo sincronizados com o Quadro Geral!")
-                st.rerun()
 
         bloqueios = st.session_state.get("lista_bloqueios_auditoria", [])
         alertas_descanso = st.session_state.get("lista_avisos_descanso", [])
