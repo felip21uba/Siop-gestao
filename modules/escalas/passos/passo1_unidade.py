@@ -30,21 +30,28 @@ def salvar_equipes_persistidas(lista):
         except Exception:
             pass
 
+def sincronizar_efetivo_equipe_ativa(eq_nome):
+    """Carrega no Passo 3 apenas os militares que pertencem à equipe selecionada no Passo 5."""
+    st.session_state["equipe_ativa"] = eq_nome
+    chaves = st.session_state.get("militares_no_quadro_chaves", [])
+    mils_da_equipe = [
+        str(pair[0]) for pair in chaves 
+        if isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[1]) == str(eq_nome)
+    ]
+    st.session_state["militares_selecionados_ids"] = mils_da_equipe
+
 def expurgar_equipe_em_cascata(eq_alvo):
     """Exclui a equipe e expurga seus lançamentos sem reatribuir militares automaticamente."""
     eq_alvo_str = str(eq_alvo).strip()
 
-    # 1. Remove da lista de equipes salvas
     if "lista_equipes" in st.session_state and eq_alvo_str in st.session_state["lista_equipes"]:
         st.session_state["lista_equipes"].remove(eq_alvo_str)
         salvar_equipes_persistidas(st.session_state["lista_equipes"])
 
-    # 2. Ajusta equipe ativa se a atual for a excluída
     if st.session_state.get("equipe_ativa") == eq_alvo_str:
         if st.session_state.get("lista_equipes"):
             st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
 
-    # 3. Remove exclusivamente os vínculos (militar, eq_alvo) do quadro
     chaves_atuais = st.session_state.get("militares_no_quadro_chaves", [])
     novas_chaves = []
     milit_ids_com_outras_equipes = set()
@@ -60,21 +67,14 @@ def expurgar_equipe_em_cascata(eq_alvo):
 
     st.session_state["militares_no_quadro_chaves"] = novas_chaves
 
-    # 4. Limpa da matriz todos os turnos gravados na equipe excluída
     grade = st.session_state.get("grade_escala_lancamentos", {})
     chaves_remover = [k for k in list(grade.keys()) if f"_{eq_alvo_str}_" in k]
     for k in chaves_remover:
         grade.pop(k, None)
     st.session_state["grade_escala_lancamentos"] = grade
 
-    # 5. Atualiza os selecionados globais removendo quem ficou sem equipe alguma
-    if "militares_selecionados_ids" in st.session_state:
-        st.session_state["militares_selecionados_ids"] = [
-            str(mid) for mid in st.session_state["militares_selecionados_ids"]
-            if str(mid) in milit_ids_com_outras_equipes
-        ]
+    sincronizar_efetivo_equipe_ativa(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
 
-    # 6. Executa o Auto-Save atômico no Supabase
     try:
         from modules.escalas.passos.passo5_quadro import executar_auto_save_banco
         executar_auto_save_banco()
@@ -137,7 +137,7 @@ def renderizar_passo1():
                     eh_ativa = (eq_nome == st.session_state.get("equipe_ativa"))
                     with cols[idx]:
                         if st.button(f"🛡️ {eq_nome}", key=f"btn_eq_p1_{eq_nome}", type="primary" if eh_ativa else "secondary", use_container_width=True):
-                            st.session_state["equipe_ativa"] = eq_nome
+                            sincronizar_efetivo_equipe_ativa(eq_nome)
                             st.rerun()
 
             st.markdown("<br>", unsafe_allow_html=True)
@@ -152,7 +152,7 @@ def renderizar_passo1():
                         if nova_equipe_input not in st.session_state["lista_equipes"]:
                             st.session_state["lista_equipes"].append(nova_equipe_input)
                             salvar_equipes_persistidas(st.session_state["lista_equipes"])
-                            st.session_state["equipe_ativa"] = nova_equipe_input
+                            sincronizar_efetivo_equipe_ativa(nova_equipe_input)
                             st.success(f"Equipe '{nova_equipe_input}' cadastrada e salva no banco!")
                             st.rerun()
 
