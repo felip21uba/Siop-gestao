@@ -30,7 +30,7 @@ def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendente
         st.error("🚨 **Lançamentos Ignorados (Sobreposição de Horários):**")
         st.caption("Os turnos abaixo NÃO foram aplicados pois o policial já possui serviço ativo no mesmo horário na outra equipe:")
         for b in ignorados_bloqueados:
-            st.markdown(f"• **Dia {b['dia']:02d}:** Já escalado na equipe **{b['equipe']}** ({b['horario']})")
+            st.markdown(f"• **Dia {b['dia']:02d}:** Conflito com a equipe **{b['equipe']}** ({b['horario']})")
         st.divider()
 
     # 2. Exibição de Alertas de Descanso Reduzido (Exige Confirmação)
@@ -166,17 +166,17 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade, 
     prefixo_chave = f"{m_id}_"
     for key_grade, val_ex in dict_grade.items():
         if key_grade.startswith(prefixo_chave):
-            partes_k = key_grade.split("_")
-            if len(partes_k) >= 5:
+            rem = key_grade[len(prefixo_chave):]
+            parts = rem.rsplit("_", 3)
+            if len(parts) == 4:
+                eq_ex = parts[0]
                 try:
-                    d_ex = int(partes_k[-1])
-                    m_ex = int(partes_k[-2])
-                    a_ex = int(partes_k[-3])
-                    eq_ex = "_".join(partes_k[1:-3])
+                    a_ex = int(parts[1])
+                    m_ex = int(parts[2])
+                    d_ex = int(parts[3])
                 except ValueError:
                     continue
 
-                # Ignora checagem na própria célula que está sendo editada
                 if eq_alvo and str(eq_ex) == str(eq_alvo) and d_ex == d_alvo:
                     continue
 
@@ -185,7 +185,7 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade, 
                     if not dt_ex_ini: 
                         continue
                         
-                    # Checagem de sobreposição de horário (sem isenções por texto igual)
+                    # Checagem de sobreposição de horário
                     if dt_novo_ini < dt_ex_fim and dt_novo_fim > dt_ex_ini:
                         return "BLOQUEADO", f"Choque de Horário: Já escalado no dia {d_ex:02d} ({val_ex}) na equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex, "horario": val_ex}
 
@@ -271,7 +271,7 @@ def carregar_escala_salva_banco():
         print(f"Aviso ao carregar escala salva: {ex}")
 
 def recalcular_escala_matriz():
-    """Calcula a sequência teórica apenas para a equipe ativa sem mexer nas demais."""
+    """Calcula a sequência teórica apenas para a equipe ativa e dispara pop-up em caso de bloqueio."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -317,14 +317,19 @@ def recalcular_escala_matriz():
     eh_sem_a_ini = "SEMANA A" in sem_dob_ini
     sem_iso_d1 = datetime.date(m_ano, m_mes, 1).isocalendar()[1]
     
+    bloqueios_acumulados = []
+    mils_todos = st.session_state.get("lista_militares", [])
+
     for pair in chaves_quadro:
         if not (isinstance(pair, (tuple, list)) and len(pair) == 2): continue
         m_id, eq_nome = str(pair[0]), str(pair[1])
         
-        # Isolamento Absoluto por Equipe: altera apenas a equipe ativa
         if eq_nome != eq_ativa:
             continue
         
+        m_obj = next((m for m in mils_todos if str(m.get("id")) == str(m_id)), None)
+        m_nome = f"{padronizar_graduacao(m_obj.get('posto_grad', 'SD'))} {m_obj.get('nome_guerra', 'MILITAR')}" if m_obj else "MILITAR"
+
         for d in range(1, num_dias + 1):
             chave = f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}"
             val_atual = grade.get(chave)
@@ -357,11 +362,29 @@ def recalcular_escala_matriz():
                     valor_dia = st.session_state.get("horario_sup_sex_sab", "18:00 às 00:00") if w in [4, 5] else st.session_state.get("horario_sup_dom_qui", "15:00 às 21:00")
                 else: valor_dia = "F"
 
-            status_aud, _, _ = auditar_escalacao_militar(m_id, m_ano, m_mes, d, valor_dia, grade, eq_alvo=eq_nome)
-            if status_aud == "BLOQUEADO": valor_dia = "X"
+            status_aud, _, detalhe_conf = auditar_escalacao_militar(m_id, m_ano, m_mes, d, valor_dia, grade, eq_alvo=eq_nome)
+            if status_aud == "BLOQUEADO": 
+                valor_dia = "X"
+                bloqueios_acumulados.append({
+                    "militar": m_nome,
+                    "dia": d,
+                    "equipe": detalhe_conf.get("equipe", "N/I"),
+                    "horario": detalhe_conf.get("horario", "N/I")
+                })
             grade[chave] = valor_dia
 
     st.session_state["grade_escala_lancamentos"] = grade
+
+    if bloqueios_acumulados:
+        st.session_state["auditoria_pendente_popup"] = {
+            "militar_nome": bloqueios_acumulados[0]["militar"],
+            "ignorados": bloqueios_acumulados,
+            "descanso": [],
+            "val_final": "X",
+            "item_sel": {},
+            "m_ano": m_ano,
+            "m_mes": m_mes
+        }
 
 @st.dialog("📥 Importar Escala Pronta via Excel", width="large")
 def abrir_modal_importar_escala_excel():
@@ -644,7 +667,6 @@ def renderizar_passo5():
                                 
                                 status_aud, msg_aud, detalhe_conf = auditar_escalacao_militar(item_sel["id"], m_ano, m_mes, d_a, val_final_p, st.session_state["grade_escala_lancamentos"], eq_alvo=item_sel["equipe"])
 
-                                # IGNORA a sobreposição no segundo lançamento mantendo a escala original intacta
                                 if status_aud == "BLOQUEADO":
                                     ignorados_bloqueados.append({
                                         "dia": d_a,
@@ -653,7 +675,6 @@ def renderizar_passo5():
                                     })
                                     continue
                                 
-                                # CAPTURA aviso de descanso interjornada para pedir confirmação
                                 elif status_aud == "AVISO":
                                     pendentes_descanso.append({
                                         "dia": d_a,
@@ -661,7 +682,6 @@ def renderizar_passo5():
                                     })
                                     continue
 
-                                # LANÇA os dias perfeitamente válidos imediatamente
                                 chave = f"{item_sel['id']}_{item_sel['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
                                 st.session_state["grade_escala_lancamentos"][chave] = val_final_p
                                 dias_aplicados.append(d_a)
@@ -671,7 +691,6 @@ def renderizar_passo5():
                                 registrar_log_auditoria("Ajuste Rápido de Turno", f"Militar {item_sel['nome_guerra']} dia(s) {dias_aplicados} alterado(s) para '{val_final_p}'.")
                                 executar_auto_save_banco()
 
-                            # Dispara janela modal única se houver sobreposições ignoradas ou descanso para confirmar
                             if ignorados_bloqueados or pendentes_descanso:
                                 st.session_state["auditoria_pendente_popup"] = {
                                     "militar_nome": f"{item_sel['posto_grad']} {item_sel['nome_guerra']}",
@@ -736,7 +755,7 @@ def renderizar_passo5():
                 val_atual = st.session_state["grade_escala_lancamentos"].get(chave_celula, "F")
                 val_atual = padronizar_entrada_quadro(val_atual)
                 
-                # Leitura Cruzada de Empenho: Se estiver em branco/folga nesta equipe, checa se tem serviço ativo em outra
+                # Leitura Cruzada de Empenho
                 if val_atual in ["F", "", None]:
                     for pair_k in chaves_quadro:
                         if isinstance(pair_k, (tuple, list)) and len(pair_k) == 2:
