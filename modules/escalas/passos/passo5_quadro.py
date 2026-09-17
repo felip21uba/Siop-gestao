@@ -25,6 +25,7 @@ def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendente
     """Pop-up unificado para informar sobreposições ignoradas e confirmar descanso reduzido."""
     st.markdown(f"### 👮‍♂️ Militar: **{militar_nome}**")
     
+    # 1. Exibição de Bloqueios/Sobreposições (Ignorados e mantidos com a escala original)
     if ignorados_bloqueados:
         st.error("🚨 **Lançamentos Ignorados (Sobreposição de Horários):**")
         st.caption("Os turnos abaixo NÃO foram aplicados pois o policial já possui serviço ativo no mesmo horário na outra equipe:")
@@ -32,6 +33,7 @@ def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendente
             st.markdown(f"• **Dia {b['dia']:02d}:** Já escalado na equipe **{b['equipe']}** ({b['horario']})")
         st.divider()
 
+    # 2. Exibição de Alertas de Descanso Reduzido (Exige Confirmação)
     if pendentes_descanso:
         st.warning("⚠️ **Aviso de Descanso Interjornada Insuficiente (< 8 Horas):**")
         st.caption("O lançamento gera intervalo de descanso reduzido nas seguintes datas:")
