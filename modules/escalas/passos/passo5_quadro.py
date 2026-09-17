@@ -159,7 +159,7 @@ def extrair_datetime_de_string_turno(ano, mes, dia, str_horario):
     except Exception:
         return None, None
 
-def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade):
+def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade, eq_alvo=None):
     dt_novo_ini, dt_novo_fim = extrair_datetime_de_string_turno(m_ano, m_mes, d_alvo, val_novo)
     if not dt_novo_ini: return "OK", "", {}
 
@@ -176,15 +176,16 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade):
                 except ValueError:
                     continue
 
+                # Ignora checagem na própria célula que está sendo editada
+                if eq_alvo and str(eq_ex) == str(eq_alvo) and d_ex == d_alvo:
+                    continue
+
                 if a_ex == m_ano and m_ex == m_mes:
-                    if d_ex == d_alvo and val_ex == val_novo: 
-                        continue
-                        
                     dt_ex_ini, dt_ex_fim = extrair_datetime_de_string_turno(m_ano, m_mes, d_ex, val_ex)
                     if not dt_ex_ini: 
                         continue
                         
-                    # Checagem de sobreposição de horário (mesmo parcial)
+                    # Checagem de sobreposição de horário (sem isenções por texto igual)
                     if dt_novo_ini < dt_ex_fim and dt_novo_fim > dt_ex_ini:
                         return "BLOQUEADO", f"Choque de Horário: Já escalado no dia {d_ex:02d} ({val_ex}) na equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex, "horario": val_ex}
 
@@ -270,10 +271,11 @@ def carregar_escala_salva_banco():
         print(f"Aviso ao carregar escala salva: {ex}")
 
 def recalcular_escala_matriz():
-    """Calcula a sequência teórica apenas quando o comando de aplicação é acionado."""
+    """Calcula a sequência teórica apenas para a equipe ativa sem mexer nas demais."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
+    eq_ativa = str(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
     chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
     dias_marcados_p4 = set(st.session_state.get("dias_selecionados_passo4", []))
     
@@ -317,7 +319,11 @@ def recalcular_escala_matriz():
     
     for pair in chaves_quadro:
         if not (isinstance(pair, (tuple, list)) and len(pair) == 2): continue
-        m_id, eq_nome = str(pair[0]), pair[1]
+        m_id, eq_nome = str(pair[0]), str(pair[1])
+        
+        # Isolamento Absoluto por Equipe: altera apenas a equipe ativa
+        if eq_nome != eq_ativa:
+            continue
         
         for d in range(1, num_dias + 1):
             chave = f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}"
@@ -351,7 +357,7 @@ def recalcular_escala_matriz():
                     valor_dia = st.session_state.get("horario_sup_sex_sab", "18:00 às 00:00") if w in [4, 5] else st.session_state.get("horario_sup_dom_qui", "15:00 às 21:00")
                 else: valor_dia = "F"
 
-            status_aud, _, _ = auditar_escalacao_militar(m_id, m_ano, m_mes, d, valor_dia, grade)
+            status_aud, _, _ = auditar_escalacao_militar(m_id, m_ano, m_mes, d, valor_dia, grade, eq_alvo=eq_nome)
             if status_aud == "BLOQUEADO": valor_dia = "X"
             grade[chave] = valor_dia
 
@@ -636,7 +642,7 @@ def renderizar_passo5():
                                 if escala_fechada and not eh_admin and data_alvo < hoje:
                                     continue
                                 
-                                status_aud, msg_aud, detalhe_conf = auditar_escalacao_militar(item_sel["id"], m_ano, m_mes, d_a, val_final_p, st.session_state["grade_escala_lancamentos"])
+                                status_aud, msg_aud, detalhe_conf = auditar_escalacao_militar(item_sel["id"], m_ano, m_mes, d_a, val_final_p, st.session_state["grade_escala_lancamentos"], eq_alvo=item_sel["equipe"])
 
                                 # IGNORA a sobreposição no segundo lançamento mantendo a escala original intacta
                                 if status_aud == "BLOQUEADO":
@@ -859,7 +865,7 @@ def renderizar_passo5():
                                     st.error(f"🔒 O dia {d:02d} já passou e não pode ser editado.")
                                     houve_alteracao = True
                                 else:
-                                    status_aud, msg_aud, detalhe_conf = auditar_escalacao_militar(item['id'], m_ano, m_mes, d, v_padrao, st.session_state["grade_escala_lancamentos"])
+                                    status_aud, msg_aud, detalhe_conf = auditar_escalacao_militar(item['id'], m_ano, m_mes, d, v_padrao, st.session_state["grade_escala_lancamentos"], eq_alvo=item['equipe'])
                                     
                                     if status_aud == "BLOQUEADO":
                                         st.session_state["auditoria_pendente_popup"] = {
