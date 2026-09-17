@@ -25,15 +25,13 @@ def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendente
     """Pop-up unificado para informar sobreposições ignoradas e confirmar descanso reduzido."""
     st.markdown(f"### 👮‍♂️ Militar: **{militar_nome}**")
     
-    # 1. Exibição de Bloqueios/Sobreposições (Ignorados e mantidos com a escala original)
     if ignorados_bloqueados:
         st.error("🚨 **Lançamentos Ignorados (Sobreposição de Horários):**")
         st.caption("Os turnos abaixo NÃO foram aplicados pois o policial já possui serviço ativo no mesmo horário na outra equipe:")
         for b in ignorados_bloqueados:
-            st.markdown(f"• **Dia {b['dia']:02d}:** Conflito com a equipe **{b['equipe']}** ({b['horario']})")
+            st.markdown(f"• **Dia {b['dia']:02d}:** Já escalado na equipe **{b['equipe']}** ({b['horario']})")
         st.divider()
 
-    # 2. Exibição de Alertas de Descanso Reduzido (Exige Confirmação)
     if pendentes_descanso:
         st.warning("⚠️ **Aviso de Descanso Interjornada Insuficiente (< 8 Horas):**")
         st.caption("O lançamento gera intervalo de descanso reduzido nas seguintes datas:")
@@ -47,12 +45,15 @@ def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendente
         with c_conf1:
             if st.button("✅ Confirmar Lançamento com Descanso Reduzido", type="primary", use_container_width=True):
                 salvar_estado_undo()
+                m_id_target = item_sel.get('id') if isinstance(item_sel, dict) else None
+                eq_target = item_sel.get('equipe') if isinstance(item_sel, dict) else None
+                
                 for a in pendentes_descanso:
                     d_a = a['dia']
-                    chave = f"{item_sel['id']}_{item_sel['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
-                    st.session_state["grade_escala_lancamentos"][chave] = val_final
+                    if m_id_target and eq_target:
+                        chave = f"{m_id_target}_{eq_target}_{m_ano}_{m_mes:02d}_{d_a:02d}"
+                        st.session_state["grade_escala_lancamentos"][chave] = val_final
                 
-                st.session_state.pop("auditoria_pendente_popup", None)
                 st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
                 registrar_log_auditoria("Descanso Reduzido Confirmado", f"Militar {militar_nome} escalado com descanso reduzido nos dias {[a['dia'] for a in pendentes_descanso]}.")
                 executar_auto_save_banco()
@@ -60,12 +61,10 @@ def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendente
                 
         with c_conf2:
             if st.button("❌ Manter Apenas os Dias Válidos", use_container_width=True):
-                st.session_state.pop("auditoria_pendente_popup", None)
                 st.rerun()
     else:
         st.success("✅ Os dias válidos e sem conflito foram aplicados com sucesso no quadro!")
         if st.button("OK, Fechar", type="primary", use_container_width=True):
-            st.session_state.pop("auditoria_pendente_popup", None)
             st.rerun()
 
 def salvar_estado_undo():
@@ -185,11 +184,9 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade, 
                     if not dt_ex_ini: 
                         continue
                         
-                    # Checagem de sobreposição de horário
                     if dt_novo_ini < dt_ex_fim and dt_novo_fim > dt_ex_ini:
                         return "BLOQUEADO", f"Choque de Horário: Já escalado no dia {d_ex:02d} ({val_ex}) na equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex, "horario": val_ex}
 
-                    # Checagem de descanso interjornada reduzido (<8h)
                     if dt_novo_ini >= dt_ex_fim and d_ex == d_alvo:
                         descanso = (dt_novo_ini - dt_ex_fim).total_seconds() / 3600.0
                         if 0 <= descanso < 8.0:
@@ -271,7 +268,7 @@ def carregar_escala_salva_banco():
         print(f"Aviso ao carregar escala salva: {ex}")
 
 def recalcular_escala_matriz():
-    """Calcula a sequência teórica apenas para a equipe ativa e dispara pop-up em caso de bloqueio."""
+    """RERELÊ O CICLO DO ZERO PARA A EQUIPE ATIVA, PRESERVANDO AFASTAMENTOS OFICIAIS."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -281,7 +278,19 @@ def recalcular_escala_matriz():
     
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
     grade = st.session_state.get("grade_escala_lancamentos", {})
-    
+
+    # ZERA OS TURNOS ANTERIORES DA EQUIPE ATIVA DO DIA 1 AO ÚLTIMO DIA DO MÊS
+    siglas_preservar = set(SIGLAS_DIAS_NEUTROS)
+    for pair in chaves_quadro:
+        if isinstance(pair, (tuple, list)) and len(pair) == 2:
+            m_id_k, eq_k = str(pair[0]), str(pair[1])
+            if eq_k == eq_ativa:
+                for d_k in range(1, num_dias + 1):
+                    k_cell = f"{m_id_k}_{eq_k}_{m_ano}_{m_mes:02d}_{d_k:02d}"
+                    v_cell = grade.get(k_cell, "")
+                    if v_cell and not any(sig in str(v_cell).upper() for sig in siglas_preservar):
+                        grade.pop(k_cell, None)
+
     h_avulso = st.session_state.get("horario_avulso_p2", "07:00 às 19:00")
     h_adm_norm = st.session_state.get("adm_h_norm", "08:00 às 12:00\n13:30 às 17:00")
     h_adm_qua = st.session_state.get("adm_h_qua", "08:30 às 13:00")
@@ -320,6 +329,7 @@ def recalcular_escala_matriz():
     bloqueios_acumulados = []
     mils_todos = st.session_state.get("lista_militares", [])
 
+    # RE-APLICA O CICLO DO DIA 1 AO ÚLTIMO DIA DO MÊS
     for pair in chaves_quadro:
         if not (isinstance(pair, (tuple, list)) and len(pair) == 2): continue
         m_id, eq_nome = str(pair[0]), str(pair[1])
@@ -333,7 +343,8 @@ def recalcular_escala_matriz():
         for d in range(1, num_dias + 1):
             chave = f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}"
             val_atual = grade.get(chave)
-            if val_atual and val_atual not in ["F", "", None]: continue
+            if val_atual and any(sig in str(val_atual).upper() for sig in siglas_preservar):
+                continue
             
             valor_dia = "F"
             if mod_nome == "Turno Único / Avulso":
@@ -422,9 +433,9 @@ def abrir_modal_importar_escala_excel():
             else: st.error(msg)
 
 def renderizar_passo5():
-    # Renderização da Janela Unificada de Auditoria caso existam pendências
+    # Renderização da Janela Unificada de Auditoria (POP IMEDIATAMENTE PARA NÃO RETER MEMÓRIA NA SESSÃO)
     if "auditoria_pendente_popup" in st.session_state and st.session_state["auditoria_pendente_popup"]:
-        p = st.session_state["auditoria_pendente_popup"]
+        p = st.session_state.pop("auditoria_pendente_popup")
         abrir_modal_auditoria_unificada(
             p["militar_nome"], 
             p["ignorados"], 
