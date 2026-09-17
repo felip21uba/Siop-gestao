@@ -366,7 +366,7 @@ def abrir_modal_importar_escala_excel():
                         key=f"inp_leg_dyn_{leg_code}"
                     )
         else:
-            st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão aplicados.")
+            st.success("✅ Nenhuma legenda não-convencional encontrada. Os horários padrão serão applied.")
 
         st.markdown("<br>", unsafe_allow_html=True)
         limpar_antes = st.checkbox("🧹 Limpar o quadro atual antes de importar (Substitui os dados da tela)", value=True)
@@ -387,7 +387,6 @@ def abrir_modal_importar_escala_excel():
                 st.error(msg)
 
 def renderizar_passo5():
-    # Inicializações defensivas e carregamento preventivo do efetivo
     if "militares_selecionados_ids" not in st.session_state:
         st.session_state["militares_selecionados_ids"] = []
     if "grade_escala_lancamentos" not in st.session_state:
@@ -413,22 +412,29 @@ def renderizar_passo5():
     ]
     st.session_state["militares_no_quadro_chaves"] = chaves_existentes
 
-    # ATUALIZAÇÃO RESTRITA: O quadro só é recalculado/gerado quando a ordem/comando for explicitamente acionada
+    # SINCRONIZAÇÃO RESTRITA: Acionada exclusivamente pelo botão "Aplicar ao Quadro"
     if st.session_state.get("atualizar_quadro_passo5", False):
-        sel_ids = st.session_state.get("militares_selecionados_ids", [])
-        eq_ativa = st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO")
-        chaves_set = set(chaves_existentes)
+        sel_ids = set(str(mid) for mid in st.session_state.get("militares_selecionados_ids", []))
+        eq_ativa = str(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
         
-        for m_id in sel_ids:
-            m_id_str = str(m_id)
-            tem_vinculo = any(str(pair[0]) == m_id_str for pair in chaves_existentes)
-            if not tem_vinculo:
-                novo_par = (m_id_str, str(eq_ativa))
-                if novo_par not in chaves_set:
-                    chaves_existentes.append(novo_par)
-                    chaves_set.add(novo_par)
+        novas_chaves = []
+        for pair in chaves_existentes:
+            if isinstance(pair, (tuple, list)) and len(pair) == 2:
+                m_id_s, eq_s = str(pair[0]), str(pair[1])
+                if eq_s == eq_ativa:
+                    if m_id_s in sel_ids:
+                        novas_chaves.append((m_id_s, eq_s))
+                else:
+                    novas_chaves.append((m_id_s, eq_s))
 
-        st.session_state["militares_no_quadro_chaves"] = chaves_existentes
+        chaves_set = set(novas_chaves)
+        for m_id_str in sel_ids:
+            par = (m_id_str, eq_ativa)
+            if par not in chaves_set:
+                novas_chaves.append(par)
+                chaves_set.add(par)
+
+        st.session_state["militares_no_quadro_chaves"] = novas_chaves
         recalcular_escala_matriz()
         st.session_state["atualizar_quadro_passo5"] = False
 
