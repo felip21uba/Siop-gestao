@@ -118,7 +118,7 @@ def renderizar_passo6():
     with st.expander("📌 PASSO 6: Visualização da Escala e Exportação Oficial", expanded=True):
         
         # ============================================================
-        # BLOCO 1: EXPANSÍVEL DE CONFIGURAÇÕES, REGRAS E ASSINATURAS
+        # BLOCO 1: EXPANSÍVEL DE CONFIGURAÇÕES, ASSINATURAS E IMPORTAÇÃO
         # ============================================================
         with st.expander("➕ ⚙️ Configurações de Emissão, Assinaturas e Importação Externa", expanded=False):
             c_cfg1, c_cfg2 = st.columns([2, 2], gap="large")
@@ -159,9 +159,12 @@ def renderizar_passo6():
                 st.text_input("Responsável pela Escala:", value=nome_resp_escala, disabled=True)
                 obs_escala = st.text_area("📝 Observações e Diretrizes P1:", placeholder="Digite instruções ou notas de rodapé...", height=80, key="p6_obs_texto")
 
-            st.divider()
-
-            # CONFIGURAÇÃO DE LEGENDAS
+        # ============================================================
+        # BLOCO 2: EXPANSÍVEL DO QUADRO OFICIAL (PDF & EXCEL)
+        # ============================================================
+        with st.expander("➕ 📄 Visualização Oficial do Quadro & Exportação PDF / Excel", expanded=True):
+            
+            # --- LEGENDA DENTRO DO QUADRO PDF ---
             turnos_encontrados = set()
             for d in range(1, num_dias_mes + 1):
                 for pair in chaves_quadro:
@@ -170,7 +173,7 @@ def renderizar_passo6():
                         if val and ("às" in str(val).lower() or "as" in str(val).lower()):
                             turnos_encontrados.add(val)
 
-            usar_legendas = st.checkbox("⚙️ Substituir horários por legendas (ex: T1, T2)", value=False, help="Substitui horários extensos por siglas no PDF/Excel.")
+            usar_legendas = st.checkbox("⚙️ Substituir horários por legendas no Quadro (ex: T1, T2)", value=False, help="Substitui horários extensos por siglas no PDF/Excel.")
             mapa_legendas = {}
             texto_legenda_final = ""
 
@@ -179,16 +182,13 @@ def renderizar_passo6():
                 cols_leg = st.columns(3)
                 for i, t in enumerate(sorted(turnos_encontrados)):
                     with cols_leg[i % 3]:
-                        mapa_legendas[t] = st.text_input(f"Legenda ({t}):", value=f"T{i+1}")
+                        mapa_legendas[t] = st.text_input(f"Legenda ({t}):", value=f"T{i+1}", key=f"leg_input_{i}")
                 
                 leg_str_list = [f"{v} = {k}" for k, v in mapa_legendas.items()]
                 texto_legenda_final = "LEGENDA DE TURNOS:   " + "   |   ".join(leg_str_list)
 
-        # ============================================================
-        # BLOCO 2: EXPANSÍVEL DO QUADRO OFICIAL (PDF & EXCEL)
-        # ============================================================
-        with st.expander("➕ 📄 Visualização Oficial do Quadro & Exportação PDF / Excel", expanded=True):
-            
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+
             mils_linhas_quadro = []
             for pair in chaves_quadro:
                 if isinstance(pair, (tuple, list)) and len(pair) == 2:
@@ -272,7 +272,7 @@ def renderizar_passo6():
                             
                         cell_content = ""
                         if val not in ["F", "D", "X", "", None]:
-                            if 'usar_legendas' in locals() and usar_legendas and val in mapa_legendas:
+                            if usar_legendas and val in mapa_legendas:
                                 val_display = mapa_legendas[val]
                                 cell_content = f'<div class="shift-badge">{val_display}</div>'
                                 linha_xls.append(str(val_display))
@@ -312,7 +312,7 @@ def renderizar_passo6():
             mes_ano_str = f"{m_mes:02d}/{m_ano}"
             
             bloco_legenda_html = ""
-            if 'texto_legenda_final' in locals() and texto_legenda_final:
+            if texto_legenda_final:
                 bloco_legenda_html = f"""
                 <div style="font-size: 10px; font-weight: bold; color: #b91c1c; text-align: left; margin-top: 10px;">
                     {texto_legenda_final}
