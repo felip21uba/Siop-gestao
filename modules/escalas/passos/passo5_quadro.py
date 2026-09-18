@@ -4,6 +4,7 @@ import calendar
 import pandas as pd
 import copy
 import re
+import streamlit.components.v1 as components
 from core.database import salvar_escala_mensal_supabase, supabase, carregar_militares_supabase
 from modules.escalas.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
@@ -219,7 +220,62 @@ def abrir_modal_importar_escala_excel():
                 executar_auto_save_banco()
                 st.rerun()
 
+# VISTA EXCLUSIVA PARA MONITOR SECUNDÁRIO (MODO POP-OUT / SEGUNDA TELA)
+def renderizar_modo_segunda_tela():
+    st.set_page_config(page_title="SIOP - Quadro Geral (Monitor Secundário)", layout="wide", initial_sidebar_state="collapsed")
+    m_mes, m_ano = st.session_state.get("mes_escala", datetime.date.today().month), st.session_state.get("ano_escala", datetime.date.today().year)
+    carregar_escala_salva_banco()
+    
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            header { display: none !important; }
+            .main .block-container { padding-top: 1rem !important; max-width: 100% !important; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    st.title("🖥️ Quadro Geral de Escala — Monitor Secundário")
+    st.caption(f"📍 Sincronizado em tempo real para {m_mes:02d}/{m_ano}")
+
+    num_dias = calendar.monthrange(m_ano, m_mes)[1]
+    mils_todos = st.session_state.get("lista_militares", [])
+    mils_linhas = [{"id": str(p[0]), "equipe": str(p[1]), "posto_grad": m.get("posto_grad", "SD"), "nome_guerra": m.get("nome_guerra", "MILITAR"), "num_policia": m.get("num_policia", ""), "chave_linha": f"{p[0]}_{p[1]}"} for p in st.session_state.get("militares_no_quadro_chaves", []) if len(p) == 2 for m in [next((x for x in mils_todos if str(x.get("id")) == str(p[0])), {})] if m]
+    mils_ord = sorted(mils_linhas, key=lambda x: (st.session_state.get("ordem_customizada_map", {}).get(x["chave_linha"], 99), PESOS_HIERARQUIA.get(padronizar_graduacao(x["posto_grad"]), 99), x["nome_guerra"]))
+
+    colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
+    matriz = []
+    for idx_r, item in enumerate(mils_ord):
+        m_id, eq, pg, ng, np = item["id"], item["equipe"], padronizar_graduacao(item["posto_grad"]), item["nome_guerra"], item["num_policia"]
+        linha = {"ORDEM": int(st.session_state.get("ordem_customizada_map", {}).get(item["chave_linha"], idx_r + 1)), "EQUIPE": eq, "Nº POLÍCIA": np, "MILITAR": f"{pg} {ng}"}
+        tot_h, neutros = 0.0, 0
+
+        for d, col_name in colunas_dias:
+            v = padronizar_entrada_quadro(st.session_state.get("grade_escala_lancamentos", {}).get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F"))
+            if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and extrair_datetime_de_string_turno(m_ano, m_mes, d, st.session_state.get("grade_escala_lancamentos", {}).get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}"))[0] for p in st.session_state.get("militares_no_quadro_chaves", [])): v = "X"
+            linha[col_name] = v
+            v_str = str(v).upper().strip()
+            if any(sig in set(v_str.replace("/", " ").split()) for sig in SIGLAS_DIAS_NEUTROS): neutros += 1
+            elif v_str not in ["", "F", "D", "X"]: tot_h += 12.0
+
+        cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
+        meta = max(0.0, (num_dias - neutros) * ((80.0 if cfg_bh.get("reduzida") else 160.0) / float(num_dias)))
+        exc = (tot_h + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta
+        linha["HORAS / META"] = f"⚠️ {tot_h:.1f}h / {meta:.1f}h (+{exc:.1f}h)" if exc > 0 else f"{tot_h:.1f}h / {meta:.1f}h"
+        matriz.append(linha)
+
+    df_escala = pd.DataFrame(matriz)
+    if not df_escala.empty:
+        st.dataframe(df_escala, use_container_width=True, hide_index=True, height=720)
+    else:
+        st.info("Nenhum militar cadastrado no Quadro Geral.")
+
 def renderizar_passo5():
+    # VERIFICA SE A REQUISIÇÃO PEDE MODO SEGUNDA TELA/POP-OUT
+    query_params = st.query_params
+    if query_params.get("modo_monitor") == "segunda_tela":
+        renderizar_modo_segunda_tela()
+        return
+
     if st.session_state.get("auditoria_pendente_popup"):
         p = st.session_state.pop("auditoria_pendente_popup")
         abrir_modal_auditoria_unificada(p["militar_nome"], p["ignorados"], p["descanso"], p["val_final"], p["item_sel"], p["m_ano"], p["m_mes"])
@@ -238,8 +294,19 @@ def renderizar_passo5():
     quadro_travado = st.session_state.get("toggle_trava_quadro", False)
     
     with st.expander("📌 PASSO 5: Quadro Mensal de Escalas e Carga Horária", expanded=True):
-        # NOTA DE CABEÇALHO BEM COMPACTA E DIRETA
-        st.caption(f"👮‍♂️ **Linhas Ativas:** `{len(st.session_state.get('militares_no_quadro_chaves', []))}` | 💡 *Legenda `X` = serviço em outra equipe.*")
+        c_i1, c_i2 = st.columns([3.2, 1.2])
+        with c_i1:
+            st.caption(f"👮‍♂️ **Linhas Ativas:** `{len(st.session_state.get('militares_no_quadro_chaves', []))}` | 💡 *Legenda `X` = serviço em outra equipe.*")
+        with c_i2:
+            # BOTÃO POP-OUT PARA ABRIR O QUADRO EM UMA SEGUNDA TELA/MONITOR
+            if st.button("🖥️ Segunda Tela (Pop-out)", type="secondary", use_container_width=True, key="btn_popout_2tela"):
+                js_popout = """
+                <script>
+                    var url = window.location.href.split('?')[0] + '?modo_monitor=segunda_tela';
+                    window.open(url, 'QuadroGeralSegundaTela', 'width=1280,height=800,scrollbars=yes,resizable=yes');
+                </script>
+                """
+                components.html(js_popout, height=0)
 
         if st.button("⚡ Aplicar Lançamentos e Atualizar Quadro", type="primary", use_container_width=True):
             st.session_state["atualizar_quadro_passo5"] = True
@@ -253,12 +320,11 @@ def renderizar_passo5():
         for idx, item in enumerate(mils_linhas): st.session_state["ordem_customizada_map"].setdefault(item["chave_linha"], idx + 1)
         mils_ord = sorted(mils_linhas, key=lambda x: (st.session_state["ordem_customizada_map"].get(x["chave_linha"], 99), PESOS_HIERARQUIA.get(padronizar_graduacao(x["posto_grad"]), 99), x["nome_guerra"]))
 
-        # PAINEL DE AJUSTE RÁPIDO (LOTE) COMPACTADO EM LINHA ÚNICA
+        # PAINEL DE AJUSTE RÁPIDO COMPACTADO EM LINHA ÚNICA
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote)", expanded=False):
             if mils_ord and not quadro_travado:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
                 
-                # LINHA 1: SELEÇÃO DE MILITARES, CALENDÁRIO E EVENTO
                 c_f1, c_f2, c_f3 = st.columns([3, 2.5, 2])
                 mils_sel_lote = c_f1.multiselect("Militar(es):", list(dict_mils.keys()), key="p5_lote_mils")
                 
@@ -273,7 +339,6 @@ def renderizar_passo5():
                 )
                 tipo_ev = c_f3.selectbox("Evento/Horário:", ["Horário Normal", "FE (Férias)", "LM (Licença)", "ATE (Atestado)", "D (Descanso)", "F (Folga)", "X (Outra Equipe)", "DN (Dia Neutro)", "DNT (Neutro Trab.)", "DIS (Dispensa)"], key="p5_tipo")
 
-                # LINHA 2: HORÁRIOS LADO A LADO + BOTÃO APLICAR NA MESMA LINHA
                 if "Horário Normal" in tipo_ev or "DNT" in tipo_ev:
                     c_h1, c_h2, c_btn = st.columns([1.5, 1.5, 3])
                     with c_h1:
