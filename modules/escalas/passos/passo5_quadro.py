@@ -220,12 +220,20 @@ def abrir_modal_importar_escala_excel():
                 executar_auto_save_banco()
                 st.rerun()
 
-# VISTA EXCLUSIVA PARA MONITOR SECUNDÁRIO (MODO POP-OUT / SEGUNDA TELA)
+# VISTA EXCLUSIVA E AUTÔNOMA PARA MONITOR SECUNDÁRIO (POP-OUT)
 def renderizar_modo_segunda_tela():
-    st.set_page_config(page_title="SIOP - Quadro Geral (Monitor Secundário)", layout="wide", initial_sidebar_state="collapsed")
-    m_mes, m_ano = st.session_state.get("mes_escala", datetime.date.today().month), st.session_state.get("ano_escala", datetime.date.today().year)
-    carregar_escala_salva_banco()
+    # Carrega militares do banco caso ainda não estejam em memória na nova sessão
+    if not st.session_state.get("lista_militares"):
+        m_banco = carregar_militares_supabase()
+        if m_banco:
+            st.session_state["lista_militares"] = m_banco
+
+    m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
+    m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     
+    # Força a busca direta no Supabase
+    carregar_escala_salva_banco()
+
     st.markdown("""
         <style>
             [data-testid="stSidebar"] { display: none !important; }
@@ -234,24 +242,37 @@ def renderizar_modo_segunda_tela():
         </style>
     """, unsafe_allow_html=True)
     
-    st.title("🖥️ Quadro Geral de Escala — Monitor Secundário")
-    st.caption(f"📍 Sincronizado em tempo real para {m_mes:02d}/{m_ano}")
+    c_head1, c_head2 = st.columns([3, 1])
+    with c_head1:
+        st.title("🖥️ Quadro Geral — Monitor Secundário")
+        st.caption(f"📍 Período: **{m_mes:02d}/{m_ano}** | Atualizado automaticamente")
+    with c_head2:
+        if st.button("🔄 Atualizar Quadro", type="primary", use_container_width=True):
+            st.rerun()
 
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
     mils_todos = st.session_state.get("lista_militares", [])
-    mils_linhas = [{"id": str(p[0]), "equipe": str(p[1]), "posto_grad": m.get("posto_grad", "SD"), "nome_guerra": m.get("nome_guerra", "MILITAR"), "num_policia": m.get("num_policia", ""), "chave_linha": f"{p[0]}_{p[1]}"} for p in st.session_state.get("militares_no_quadro_chaves", []) if len(p) == 2 for m in [next((x for x in mils_todos if str(x.get("id")) == str(p[0])), {})] if m]
+    chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
+
+    if not chaves_quadro:
+        st.info("💡 Nenhum militar escalado no quadro para este mês até o momento.")
+        return
+
+    mils_linhas = [{"id": str(p[0]), "equipe": str(p[1]), "posto_grad": m.get("posto_grad", "SD"), "nome_guerra": m.get("nome_guerra", "MILITAR"), "num_policia": m.get("num_policia", ""), "chave_linha": f"{p[0]}_{p[1]}"} for p in chaves_quadro if len(p) == 2 for m in [next((x for x in mils_todos if str(x.get("id")) == str(p[0])), {})] if m]
     mils_ord = sorted(mils_linhas, key=lambda x: (st.session_state.get("ordem_customizada_map", {}).get(x["chave_linha"], 99), PESOS_HIERARQUIA.get(padronizar_graduacao(x["posto_grad"]), 99), x["nome_guerra"]))
 
     colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
     matriz = []
+    grade = st.session_state.get("grade_escala_lancamentos", {})
+
     for idx_r, item in enumerate(mils_ord):
         m_id, eq, pg, ng, np = item["id"], item["equipe"], padronizar_graduacao(item["posto_grad"]), item["nome_guerra"], item["num_policia"]
-        linha = {"ORDEM": int(st.session_state.get("ordem_customizada_map", {}).get(item["chave_linha"], idx_r + 1)), "EQUIPE": eq, "Nº POLÍCIA": np, "MILITAR": f"{pg} {ng}"}
+        linha = {"EQUIPE": eq, "Nº POLÍCIA": np, "MILITAR": f"{pg} {ng}"}
         tot_h, neutros = 0.0, 0
 
         for d, col_name in colunas_dias:
-            v = padronizar_entrada_quadro(st.session_state.get("grade_escala_lancamentos", {}).get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F"))
-            if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and extrair_datetime_de_string_turno(m_ano, m_mes, d, st.session_state.get("grade_escala_lancamentos", {}).get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}"))[0] for p in st.session_state.get("militares_no_quadro_chaves", [])): v = "X"
+            v = padronizar_entrada_quadro(grade.get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F"))
+            if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and extrair_datetime_de_string_turno(m_ano, m_mes, d, grade.get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}"))[0] for p in chaves_quadro): v = "X"
             linha[col_name] = v
             v_str = str(v).upper().strip()
             if any(sig in set(v_str.replace("/", " ").split()) for sig in SIGLAS_DIAS_NEUTROS): neutros += 1
@@ -264,13 +285,10 @@ def renderizar_modo_segunda_tela():
         matriz.append(linha)
 
     df_escala = pd.DataFrame(matriz)
-    if not df_escala.empty:
-        st.dataframe(df_escala, use_container_width=True, hide_index=True, height=720)
-    else:
-        st.info("Nenhum militar cadastrado no Quadro Geral.")
+    st.dataframe(df_escala, use_container_width=True, hide_index=True, height=720)
 
 def renderizar_passo5():
-    # VERIFICA SE A REQUISIÇÃO PEDE MODO SEGUNDA TELA/POP-OUT
+    # 1. VERIFICAÇÃO IMEDIATA DE MODO SEGUNDA TELA / POP-OUT VIA PARÂMETRO DA URL
     query_params = st.query_params
     if query_params.get("modo_monitor") == "segunda_tela":
         renderizar_modo_segunda_tela()
@@ -298,12 +316,13 @@ def renderizar_passo5():
         with c_i1:
             st.caption(f"👮‍♂️ **Linhas Ativas:** `{len(st.session_state.get('militares_no_quadro_chaves', []))}` | 💡 *Legenda `X` = serviço em outra equipe.*")
         with c_i2:
-            # BOTÃO POP-OUT PARA ABRIR O QUADRO EM UMA SEGUNDA TELA/MONITOR
+            # BOTÃO DE POP-OUT DA SEGUNDA TELA DEDICADA
             if st.button("🖥️ Segunda Tela (Pop-out)", type="secondary", use_container_width=True, key="btn_popout_2tela"):
                 js_popout = """
                 <script>
-                    var url = window.location.href.split('?')[0] + '?modo_monitor=segunda_tela';
-                    window.open(url, 'QuadroGeralSegundaTela', 'width=1280,height=800,scrollbars=yes,resizable=yes');
+                    var currentUrl = window.location.href.split('?')[0];
+                    var popoutUrl = currentUrl + '?modo_monitor=segunda_tela';
+                    window.open(popoutUrl, 'QuadroGeralPopOut', 'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes');
                 </script>
                 """
                 components.html(js_popout, height=0)
