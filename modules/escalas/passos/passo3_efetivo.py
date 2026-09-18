@@ -17,7 +17,6 @@ PESOS_HIERARQUIA = {
 }
 
 def padronizar_graduacao(texto):
-    """Padroniza postos e graduações da PMMG sem confundir sargentos com soldados."""
     if texto is None or str(texto).strip().upper() in ["NONE", "NAN", "NULL", "<NA>", ""]:
         return "SD"
 
@@ -31,40 +30,32 @@ def padronizar_graduacao(texto):
         re.search(r"(^|\s)1\s*(SGT|SARGENTO|SARG|SARGTO)(\s|$)", t_clean)
         or re.search(r"(SGT|SARGENTO|SARG|SARGTO)\s*1(\s|$)", t_clean)
         or "PRIMEIRO SARGENTO" in t_clean
-    ):
-        return "1º SGT"
+    ): return "1º SGT"
 
     if (
         re.search(r"(^|\s)2\s*(SGT|SARGENTO|SARG|SARGTO)(\s|$)", t_clean)
         or re.search(r"(SGT|SARGENTO|SARG|SARGTO)\s*2(\s|$)", t_clean)
         or "SEGUNDO SARGENTO" in t_clean
-    ):
-        return "2º SGT"
+    ): return "2º SGT"
 
     if (
         re.search(r"(^|\s)3\s*(SGT|SARGENTO|SARG|SARGTO)(\s|$)", t_clean)
         or re.search(r"(SGT|SARGENTO|SARG|SARGTO)\s*3(\s|$)", t_clean)
         or "TERCEIRO SARGENTO" in t_clean
-    ):
-        return "3º SGT"
+    ): return "3º SGT"
 
     if re.search(r"1\s*SGT", t_clean): return "1º SGT"
     if re.search(r"2\s*SGT", t_clean): return "2º SGT"
     if re.search(r"3\s*SGT", t_clean): return "3º SGT"
 
-    if ("TEN" in t_clean and "CEL" in t_clean) or ("CORONEL" in t_clean and "TEN" in t_clean) or t_clean == "TC":
-        return "TEN CEL"
+    if ("TEN" in t_clean and "CEL" in t_clean) or ("CORONEL" in t_clean and "TEN" in t_clean) or t_clean == "TC": return "TEN CEL"
     if "CEL" in t_clean or "CORONEL" in t_clean: return "CEL"
     if "MAJ" in t_clean or "MAJOR" in t_clean: return "MAJ"
     if "CAP" in t_clean or "CAPITAO" in t_clean: return "CAP"
+    if "SUB TEN" in t_clean or "SUBTENENTE" in t_clean or t_clean in ("SUB", "ST"): return "SUB TEN"
 
-    if "SUB TEN" in t_clean or "SUBTENENTE" in t_clean or t_clean in ("SUB", "ST"):
-        return "SUB TEN"
-
-    if ("1" in t_clean and ("TEN" in t_clean or "TENENTE" in t_clean)) or "PRIMEIRO TENENTE" in t_clean:
-        return "1º TEN"
-    if ("2" in t_clean and ("TEN" in t_clean or "TENENTE" in t_clean)) or "SEGUNDO TENENTE" in t_clean:
-        return "2º TEN"
+    if ("1" in t_clean and ("TEN" in t_clean or "TENENTE" in t_clean)) or "PRIMEIRO TENENTE" in t_clean: return "1º TEN"
+    if ("2" in t_clean and ("TEN" in t_clean or "TENENTE" in t_clean)) or "SEGUNDO TENENTE" in t_clean: return "2º TEN"
     if "TENENTE" in t_clean or re.search(r"(^|\s)TEN(\s|$)", t_clean):
         if "1" in t_clean or "PRIMEIRO" in t_clean: return "1º TEN"
         if "2" in t_clean or "SEGUNDO" in t_clean: return "2º TEN"
@@ -73,16 +64,13 @@ def padronizar_graduacao(texto):
     if "ASP" in t_clean or "ASPIRANTE" in t_clean: return "ASP"
     if "CAD" in t_clean or "CADETE" in t_clean: return "CAD"
     if "AL OF" in t_clean or "ALUNO OFICIAL" in t_clean: return "AL OF"
-    if "SD AL" in t_clean or "AL SD" in t_clean or "ALUNO SD" in t_clean or "ALUNO SOLDADO" in t_clean:
-        return "SD AL"
-
+    if "SD AL" in t_clean or "AL SD" in t_clean or "ALUNO SD" in t_clean or "ALUNO SOLDADO" in t_clean: return "SD AL"
     if "CABO" in t_clean or t_clean == "CB" or " CB " in f" {t_clean} ": return "CB"
     if "SOLDADO" in t_clean or t_clean == "SD" or " SD " in f" {t_clean} ": return "SD"
 
     return t_raw
 
 def extrair_posto_grad_planilha(row):
-    """Extrai posto/graduação da linha de dados."""
     for k, v in row.items():
         k_norm = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
         if k_norm in ["POSTO/GRADUACAO", "POSTO / GRADUACAO", "POSTO_GRADUACAO", "POSTO_GRAD", "POSTO GRADUACAO", "GRADUACAO", "POSTO", "P/G", "GRAD"]:
@@ -95,7 +83,6 @@ def extrair_posto_grad_planilha(row):
     return "SD"
 
 def extrair_cidade_planilha(row):
-    """Extrai cidade/município da linha de dados."""
     for k, v in row.items():
         k_norm = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
         if any(p in k_norm for p in ["MUNICIPIO", "CIDADE", "LOCAL", "FRACAO", "DESTACAMENTO"]):
@@ -111,12 +98,10 @@ def extrair_cidade_planilha(row):
     return "N/I"
 
 def extrair_unidade_planilha(row):
-    """Extrai a unidade/lotação real da planilha respeitando as colunas NOME UNIDADE, LOTAÇÃO, etc."""
     chaves_prioritarias = [
         "NOME UNIDADE", "NOME_UNIDADE", "UNIDADE", "LOTAÇÃO", "LOTACAO",
         "NOME LOTACAO", "NOME_LOTACAO", "SUBUNIDADE", "SUB_UNIDADE", "OM", "CIA"
     ]
-    
     for chave in chaves_prioritarias:
         for k, v in row.items():
             k_clean = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
@@ -124,140 +109,72 @@ def extrair_unidade_planilha(row):
                 val_str = str(v).strip().upper()
                 if val_str and val_str not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]:
                     return val_str
-
-    for k, v in row.items():
-        k_norm = unicodedata.normalize('NFKD', str(k)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
-        if any(p in k_norm for p in ["UNIDADE", "SUBUNIDADE", "LOTAC", "LOTA", "DESTACAMENTO"]):
-            val_str = str(v).strip().upper()
-            if val_str and val_str not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]:
-                return val_str
-
     return "UNIDADE N/I"
 
 def remover_duplicados_militares(lista):
-    """Remove duplicados mantendo militares sem matricula e preservando ID."""
-    vistos_num = set()
-    vistos_id = set()
-    lista_unica = []
-
+    vistos_num, vistos_id, lista_unica = set(), set(), []
     for m in lista:
         m_id = str(m.get("id", "")).strip()
         num_pol = str(m.get("num_policia", "")).strip().upper()
-
-        if m_id and m_id in vistos_id:
-            continue
-
+        if m_id and m_id in vistos_id: continue
         if num_pol and num_pol not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]:
-            if num_pol in vistos_num:
-                continue
+            if num_pol in vistos_num: continue
             vistos_num.add(num_pol)
-
-        if m_id:
-            vistos_id.add(m_id)
-
+        if m_id: vistos_id.add(m_id)
         lista_unica.append(m)
-
     return lista_unica
-
-def atualizar_militar_banco_e_memoria(militar_editado):
-    m_id = str(militar_editado.get("id")).strip()
-    num_pol = str(militar_editado.get("num_policia")).strip().upper()
-    lista = st.session_state.get("lista_militares", [])
-    for idx, m in enumerate(lista):
-        if str(m.get("id")).strip() == m_id or str(m.get("num_policia")).strip().upper() == num_pol:
-            lista[idx] = militar_editado
-            break
-    st.session_state["lista_militares"] = lista
-    salvar_militares_supabase([militar_editado])
 
 def excluir_militar_banco_e_memoria(m_id, num_policia):
     m_id_str = str(m_id).strip()
     num_pol_str = str(num_policia).strip().upper()
     is_num_valido = num_pol_str and num_pol_str not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]
 
-    nova_lista = []
-    for m in st.session_state.get("lista_militares", []):
-        curr_id = str(m.get("id", "")).strip()
-        curr_num = str(m.get("num_policia", "")).strip().upper()
-
-        if curr_id == m_id_str:
-            continue
-        if is_num_valido and curr_num == num_pol_str:
-            continue
-
-        nova_lista.append(m)
-
-    st.session_state["lista_militares"] = nova_lista
-    st.session_state["militares_selecionados_ids"] = [
-        i for i in st.session_state.get("militares_selecionados_ids", []) 
-        if str(i).strip() != m_id_str
+    nova_lista = [
+        m for m in st.session_state.get("lista_militares", [])
+        if str(m.get("id", "")).strip() != m_id_str and (not is_num_valido or str(m.get("num_policia", "")).strip().upper() != num_pol_str)
     ]
+    st.session_state["lista_militares"] = nova_lista
+    st.session_state["militares_selecionados_ids"] = [i for i in st.session_state.get("militares_selecionados_ids", []) if str(i).strip() != m_id_str]
 
     if supabase:
         try:
-            if is_num_valido:
-                supabase.table("militares").delete().eq("num_policia", num_pol_str).execute()
-            else:
-                supabase.table("militares").delete().eq("id", m_id_str).execute()
-        except Exception:
-            pass
+            if is_num_valido: supabase.table("militares").delete().eq("num_policia", num_pol_str).execute()
+            else: supabase.table("militares").delete().eq("id", m_id_str).execute()
+        except Exception: pass
         st.cache_data.clear()
 
 def excluir_lote_banco_e_memoria(mils_para_excluir):
     ids_excluir = set(str(m.get("id")).strip() for m in mils_para_excluir if m.get("id"))
-    nums_excluir = set(
-        str(m.get("num_policia")).strip().upper() 
-        for m in mils_para_excluir 
-        if m.get("num_policia") and str(m.get("num_policia")).strip().upper() not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]
-    )
+    nums_excluir = set(str(m.get("num_policia")).strip().upper() for m in mils_para_excluir if m.get("num_policia") and str(m.get("num_policia")).strip().upper() not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""])
 
-    st.session_state["lista_militares"] = [
-        m for m in st.session_state.get("lista_militares", []) 
-        if str(m.get("id")).strip() not in ids_excluir 
-        and (not m.get("num_policia") or str(m.get("num_policia")).strip().upper() not in nums_excluir)
-    ]
-    st.session_state["militares_selecionados_ids"] = [
-        m_id for m_id in st.session_state.get("militares_selecionados_ids", []) 
-        if str(m_id).strip() not in ids_excluir
-    ]
+    st.session_state["lista_militares"] = [m for m in st.session_state.get("lista_militares", []) if str(m.get("id")).strip() not in ids_excluir and (not m.get("num_policia") or str(m.get("num_policia")).strip().upper() not in nums_excluir)]
+    st.session_state["militares_selecionados_ids"] = [m_id for m_id in st.session_state.get("militares_selecionados_ids", []) if str(m_id).strip() not in ids_excluir]
 
     if supabase:
         if nums_excluir:
-            try:
-                supabase.table("militares").delete().in_("num_policia", list(nums_excluir)).execute()
-            except Exception:
-                pass
+            try: supabase.table("militares").delete().in_("num_policia", list(nums_excluir)).execute()
+            except Exception: pass
         if ids_excluir:
-            try:
-                supabase.table("militares").delete().in_("id", list(ids_excluir)).execute()
-            except Exception:
-                pass
+            try: supabase.table("militares").delete().in_("id", list(ids_excluir)).execute()
+            except Exception: pass
         st.cache_data.clear()
 
 def tratar_num_policia_unificado(row):
     num_principal = str(row.get("NUMERO", row.get("NUMERO_POLICIA", row.get("MATRICULA", "")))).strip()
     digito = str(row.get("DV", row.get("DIGITO", row.get("VERIFICADOR", "")))).strip()
-    if num_principal.endswith(".0"):
-        num_principal = num_principal[:-2]
-    if digito.endswith(".0"):
-        digito = digito[:-2]
+    if num_principal.endswith(".0"): num_principal = num_principal[:-2]
+    if digito.endswith(".0"): digito = digito[:-2]
     num_clean, dv_clean = re.sub(r'\D', '', num_principal), re.sub(r'\D', '', digito)
-    if not num_clean:
-        return ""
+    if not num_clean: return ""
     if dv_clean and dv_clean.upper() != "NAN":
-        if "-" in num_principal and num_principal.endswith(f"-{dv_clean}"):
-            return num_clean
-        if len(num_clean) <= 5:
-            return f"{num_clean}{dv_clean}"
-        if len(num_clean) >= 6 and num_clean.endswith(dv_clean):
-            return num_clean
+        if "-" in num_principal and num_principal.endswith(f"-{dv_clean}"): return num_clean
+        if len(num_clean) <= 5: return f"{num_clean}{dv_clean}"
+        if len(num_clean) >= 6 and num_clean.endswith(dv_clean): return num_clean
         return f"{num_clean}{dv_clean}"
     return num_clean
 
 def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, prefixo_key):
-    if "militares_selecionados_ids" not in st.session_state:
-        st.session_state["militares_selecionados_ids"] = []
-
+    if "militares_selecionados_ids" not in st.session_state: st.session_state["militares_selecionados_ids"] = []
     max_colunas = 4
     for i in range(0, len(lista_mils), max_colunas):
         grupo_4 = lista_mils[i:i + max_colunas]
@@ -282,53 +199,29 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
                         st.rerun()
                     else:
                         if is_sel:
-                            if m_id in st.session_state["militares_selecionados_ids"]:
-                                st.session_state["militares_selecionados_ids"].remove(m_id)
+                            if m_id in st.session_state["militares_selecionados_ids"]: st.session_state["militares_selecionados_ids"].remove(m_id)
                         else:
-                            if m_id not in st.session_state["militares_selecionados_ids"]:
-                                st.session_state["militares_selecionados_ids"].append(m_id)
-                        # REMOVIDO: Não dispara mais st.session_state["atualizar_quadro_passo5"] = True automaticamente
+                            if m_id not in st.session_state["militares_selecionados_ids"]: st.session_state["militares_selecionados_ids"].append(m_id)
                         st.rerun()
 
 @st.fragment
 def renderizar_fragmento_passo3():
-    if "militares_selecionados_ids" not in st.session_state:
-        st.session_state["militares_selecionados_ids"] = []
+    if "militares_selecionados_ids" not in st.session_state: st.session_state["militares_selecionados_ids"] = []
 
     militares = remover_duplicados_militares(st.session_state.get("lista_militares", []))
     st.session_state["lista_militares"] = militares
 
-    # 1. Filtros Superiores (Graduação e Cidade/Fração)
-    c_grad, c_cid = st.columns(2)
-
-    with c_grad:
-        graduacoes_unicas = sorted(
-            list(set([padronizar_graduacao(m.get("posto_grad", "SD")) for m in militares])),
-            key=lambda x: PESOS_HIERARQUIA.get(x, 99)
-        )
-        graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
-
-    with c_cid:
-        cidades_unicas = sorted(list(set([
-            str(m.get("cidade", "N/I")).strip().upper() 
-            for m in militares 
-            if m.get("cidade") and str(m.get("cidade")).strip().upper() not in ["NONE", "NAN", "NULL", ""]
-        ])))
-        cidades_sel = st.multiselect("🏙️ Cidade / Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
-
-    # 2. Trava de Exclusão
+    # TRAVA DE EXCLUSÃO
     col_t1, col_t2 = st.columns([1.8, 3.2])
     with col_t1:
         modo_exclusao = st.toggle("🚨 Trava de Exclusão (Habilitar Exclusão)", value=False, key="toggle_modo_exclusao_frag")
     with col_t2:
-        if modo_exclusao:
-            st.warning("⚠️ **TRAVA DESBLOQUEADA:** Exclusão ativa no Quadro da Direita.")
-        else:
-            st.info("🔒 **TRAVA ATIVA (SEGURANÇA):** Exclusões bloqueadas.")
+        if modo_exclusao: st.warning("⚠️ **TRAVA DESBLOQUEADA:** Exclusão ativa no Quadro da Direita.")
+        else: st.info("🔒 **TRAVA ATIVA (SEGURANÇA):** Exclusões bloqueadas.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 3. Botões de Ação Global (COM BOTÃO DE CONFIRMAÇÃO EXPLÍCITA AO PASSO 5)
+    # BOTÕES DE AÇÃO GLOBAL
     c_m1, c_m2, c_m3, c_m4 = st.columns([1, 1, 1.5, 1.2])
     with c_m1:
         if st.button("✔ Marcar Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
@@ -345,38 +238,42 @@ def renderizar_fragmento_passo3():
             st.toast("✅ Seleção confirmada! Vá ao Passo 5 e clique em Aplicar Lançamentos.", icon="🚀")
             st.rerun()
     with c_m4:
-        if modo_exclusao:
-            if st.button("🗑️ Excluir Selecionados", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
-                abrir_modal_excluir_lote(excluir_lote_banco_e_memoria)
+        if modo_exclusao and st.button("🗑️ Excluir Selecionados", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
+            abrir_modal_excluir_lote(excluir_lote_banco_e_memoria)
 
     if not militares:
         st.info("💡 Nenhum militar cadastrado no momento.")
         return
 
-    # Pré-filtragem por Graduação e Cidade
-    militares_filtrados = militares
-    if graduacoes_sel:
-        militares_filtrados = [m for m in militares_filtrados if padronizar_graduacao(m.get("posto_grad", "SD")) in graduacoes_sel]
-    if cidades_sel:
-        militares_filtrados = [m for m in militares_filtrados if str(m.get("cidade", "N/I")).strip().upper() in cidades_sel]
+    graduacoes_unicas = sorted(list(set([padronizar_graduacao(m.get("posto_grad", "SD")) for m in militares])), key=lambda x: PESOS_HIERARQUIA.get(x, 99))
+    cidades_unicas = sorted(list(set([str(m.get("cidade", "N/I")).strip().upper() for m in militares if m.get("cidade") and str(m.get("cidade")).strip().upper() not in ["NONE", "NAN", "NULL", ""]])))
 
-    # 4. Layout dos Quadros com Busca Integrada e Alinhada
     col_quadro_esq, col_quadro_dir = st.columns(2, gap="medium")
 
-    # QUADRO ESQUERDO: Efetivo Filtrado + Busca Global Flexível (Fix Erro 2)
+    # QUADRO ESQUERDO: EFETIVO DISPONÍVEL (COM FILTROS EM LINHA)
     with col_quadro_esq:
         sel_ids_set = set(st.session_state.get('militares_selecionados_ids', []))
-        nao_sel_pre = [m for m in militares_filtrados if m["id"] not in sel_ids_set]
+        nao_sel_pre = [m for m in militares if m["id"] not in sel_ids_set]
 
-        st.markdown(f"##### ⚪ Efetivo Filtrado ({len(nao_sel_pre)}):")
+        # NOME ALTERADO PARA "Efetivo Disponível"
+        st.markdown(f"##### ⚪ Efetivo Disponível ({len(nao_sel_pre)}):")
 
-        # CAIXA DE BUSCA GLOBAL
-        termo_busca = st.text_input(
-            "🔍 Busca Global no Efetivo:", 
-            key="txt_busca_militar_p3_frag", 
-            placeholder="Digite nome, número ou graduação..."
-        ).strip()
-        
+        # FILTROS EM LINHA ABAIXO DO EFETIVO DISPONÍVEL
+        c_f1, c_f2, c_f3 = st.columns([1.5, 1.2, 1.2])
+        with c_f1:
+            termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag", placeholder="Nome, matrícula...").strip()
+        with c_f2:
+            graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
+        with c_f3:
+            cidades_sel = st.multiselect("🏙️ Cidade / Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
+
+        # APLICAÇÃO DOS FILTROS EM CASCATA
+        nao_sel_filtrados = nao_sel_pre
+        if graduacoes_sel:
+            nao_sel_filtrados = [m for m in nao_sel_filtrados if padronizar_graduacao(m.get("posto_grad", "SD")) in graduacoes_sel]
+        if cidades_sel:
+            nao_sel_filtrados = [m for m in nao_sel_filtrados if str(m.get("cidade", "N/I")).strip().upper() in cidades_sel]
+
         if termo_busca:
             termo_norm = unicodedata.normalize('NFKD', str(termo_busca)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
             termo_digits = re.sub(r'\D', '', termo_norm)
@@ -387,57 +284,35 @@ def renderizar_fragmento_passo3():
                 np = unicodedata.normalize('NFKD', str(m.get("num_policia", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
                 np_digits = re.sub(r'\D', '', np)
                 pg = padronizar_graduacao(m.get("posto_grad", "")).upper()
-
-                if termo_norm in ng or termo_norm in nc or termo_norm in np or termo_norm in pg:
-                    return True
-
-                if termo_digits and np_digits:
-                    if termo_digits in np_digits or np_digits in termo_digits:
-                        return True
-
+                if termo_norm in ng or termo_norm in nc or termo_norm in np or termo_norm in pg: return True
+                if termo_digits and np_digits and (termo_digits in np_digits or np_digits in termo_digits): return True
                 return False
 
-            nao_sel_filtrados = [m for m in nao_sel_pre if atende_busca_flexivel(m)]
-        else:
-            nao_sel_filtrados = nao_sel_pre
+            nao_sel_filtrados = [m for m in nao_sel_filtrados if atende_busca_flexivel(m)]
 
         st.session_state["militares_ativos_render"] = nao_sel_filtrados
-
-        nao_selecionados_ord = sorted(
-            nao_sel_filtrados, 
-            key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", ""))
-        )
+        nao_selecionados_ord = sorted(nao_sel_filtrados, key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", "")))
 
         with st.container(height=420, border=True):
-            if not nao_selecionados_ord:
-                st.caption("Nenhum militar pendente de seleção.")
-            else:
-                renderizar_grade_cards_4_colunas(nao_selecionados_ord, sel_ids_set, modo_exclusao, prefixo_key="col_disp")
+            if not nao_selecionados_ord: st.caption("Nenhum militar pendente de seleção.")
+            else: renderizar_grade_cards_4_colunas(nao_selecionados_ord, sel_ids_set, modo_exclusao, prefixo_key="col_disp")
 
-    # QUADRO DIREITO: Selecionados para a Escala
+    # QUADRO DIREITO: SELECIONADOS PARA A ESCALA
     with col_quadro_dir:
-        selecionados_ord = sorted(
-            [m for m in militares if m["id"] in sel_ids_set], 
-            key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", ""))
-        )
+        selecionados_ord = sorted([m for m in militares if m["id"] in sel_ids_set], key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", "")))
 
         st.markdown(f"##### 🟢 Selecionados para a Escala ({len(selecionados_ord)}):")
-        
-        # Compensador de altura transparente para alinhar perfeitamente com a busca da esquerda
         st.markdown("<div style='height: 68px;'></div>", unsafe_allow_html=True)
 
         with st.container(height=420, border=True):
-            if not selecionados_ord:
-                st.caption("Clique nos cards para mover para este quadro.")
-            else:
-                renderizar_grade_cards_4_colunas(selecionados_ord, sel_ids_set, modo_exclusao, prefixo_key="col_sel")
+            if not selecionados_ord: st.caption("Clique nos cards para mover para este quadro.")
+            else: renderizar_grade_cards_4_colunas(selecionados_ord, sel_ids_set, modo_exclusao, prefixo_key="col_sel")
 
     st.divider()
     renderizar_painel_afastamentos(militares, padronizar_graduacao, PESOS_HIERARQUIA)
 
 def renderizar_passo3():
-    if "militares_selecionados_ids" not in st.session_state:
-        st.session_state["militares_selecionados_ids"] = []
+    if "militares_selecionados_ids" not in st.session_state: st.session_state["militares_selecionados_ids"] = []
 
     if not st.session_state.get("militares_carregados", False):
         m_banco = carregar_militares_supabase()
@@ -448,65 +323,60 @@ def renderizar_passo3():
             for m_b in m_banco_unico:
                 m_b["posto_grad"] = padronizar_graduacao(m_b.get("posto_grad", "SD"))
                 m_b["peso"] = PESOS_HIERARQUIA.get(m_b["posto_grad"], 99)
-                
                 cid_exist = str(m_b.get("cidade", "")).strip().upper()
                 if not cid_exist or cid_exist in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]:
                     cid_ext = extrair_cidade_planilha(m_b)
                     if cid_ext and cid_ext != "N/I":
                         m_b["cidade"] = cid_ext
                         militares_para_atualizar_banco.append(m_b)
-                    else:
-                        m_b["cidade"] = "N/I"
-                else:
-                    m_b["cidade"] = cid_exist
+                    else: m_b["cidade"] = "N/I"
+                else: m_b["cidade"] = cid_exist
 
-            if militares_para_atualizar_banco:
-                salvar_militares_supabase(militares_para_atualizar_banco)
-
+            if militares_para_atualizar_banco: salvar_militares_supabase(militares_para_atualizar_banco)
             st.session_state["lista_militares"] = m_banco_unico
         else:
-            if "lista_militares" not in st.session_state:
-                st.session_state["lista_militares"] = []
+            if "lista_militares" not in st.session_state: st.session_state["lista_militares"] = []
         st.session_state["militares_carregados"] = True
 
     exp3 = st.expander("📌 PASSO 3: Gestão do Efetivo, Inserção e Seleção de Militares", expanded=True)
     with exp3:
-        c_b1, c_b2, c_b3, c_b4, c_b5 = st.columns([1.1, 1.2, 1.2, 1.2, 0.9])
-        with c_b1:
-            if st.button("📥 Carregar Planilha", use_container_width=True):
-                funcs_dict = {
-                    "padronizar_graduacao": padronizar_graduacao,
-                    "tratar_num_policia": tratar_num_policia_unificado,
-                    "extrair_posto_grad": extrair_posto_grad_planilha,
-                    "extrair_cidade": extrair_cidade_planilha,
-                    "extrair_unidade": extrair_unidade_planilha,
-                    "remover_duplicados": remover_duplicados_militares,
-                    "pesos": PESOS_HIERARQUIA
-                }
-                abrir_modal_upload_planilha(funcs_dict)
-        with c_b2:
-            if st.button("✏️ Editar em Planilha", type="primary", use_container_width=True):
-                abrir_modal_editar_efetivo_tabela(padronizar_graduacao, PESOS_HIERARQUIA)
-        with c_b3:
-            if st.button("💾 Salvar no Banco", use_container_width=True):
-                mils_atuais = st.session_state.get("lista_militares", [])
-                if mils_atuais:
-                    salvar_militares_supabase(mils_atuais)
-                    st.success(f"✅ {len(mils_atuais)} militar(es) e cidades gravados no Supabase!")
-                else:
-                    st.warning("Nenhum militar na lista para salvar.")
-        with c_b4:
-            if st.button("🔄 Recarregar Banco", use_container_width=True):
-                m_banco = carregar_militares_supabase()
-                if m_banco:
-                    m_banco_unico = remover_duplicados_militares(m_banco)
-                    st.session_state["lista_militares"] = m_banco_unico
-                    st.session_state["militares_carregados"] = True
-                    st.success(f"✅ {len(m_banco_unico)} militar(es) recarregado(s) do Supabase!")
-                    st.rerun()
-        with c_b5:
-            if st.button("➕ Militar", use_container_width=True):
-                abrir_modal_novo_militar(padronizar_graduacao, remover_duplicados_militares, PESOS_HIERARQUIA)
+        # OCULTA OS BOTÕES DE GESTÃO DA FOTO 2 DENTRO DE UM EXPANDER COM SÍMBOLO '+'
+        with st.expander("➕ Ferramentas de Gestão do Efetivo (Importar, Editar, Salvar)", expanded=False):
+            c_b1, c_b2, c_b3, c_b4, c_b5 = st.columns([1.1, 1.2, 1.2, 1.2, 0.9])
+            with c_b1:
+                if st.button("📥 Carregar Planilha", use_container_width=True):
+                    funcs_dict = {
+                        "padronizar_graduacao": padronizar_graduacao,
+                        "tratar_num_policia": tratar_num_policia_unificado,
+                        "extrair_posto_grad": extrair_posto_grad_planilha,
+                        "extrair_cidade": extrair_cidade_planilha,
+                        "extrair_unidade": extrair_unidade_planilha,
+                        "remover_duplicados": remover_duplicados_militares,
+                        "pesos": PESOS_HIERARQUIA
+                    }
+                    abrir_modal_upload_planilha(funcs_dict)
+            with c_b2:
+                if st.button("✏️ Editar em Planilha", type="primary", use_container_width=True):
+                    abrir_modal_editar_efetivo_tabela(padronizar_graduacao, PESOS_HIERARQUIA)
+            with c_b3:
+                if st.button("💾 Salvar no Banco", use_container_width=True):
+                    mils_atuais = st.session_state.get("lista_militares", [])
+                    if mils_atuais:
+                        salvar_militares_supabase(mils_atuais)
+                        st.success(f"✅ {len(mils_atuais)} militar(es) e cidades gravados no Supabase!")
+                    else: st.warning("Nenhum militar na lista para salvar.")
+            with c_b4:
+                if st.button("🔄 Recarregar Banco", use_container_width=True):
+                    m_banco = carregar_militares_supabase()
+                    if m_banco:
+                        m_banco_unico = remover_duplicados_militares(m_banco)
+                        st.session_state["lista_militares"] = m_banco_unico
+                        st.session_state["militares_carregados"] = True
+                        st.success(f"✅ {len(m_banco_unico)} militar(es) recarregado(s) do Supabase!")
+                        st.rerun()
+            with c_b5:
+                if st.button("➕ Militar", use_container_width=True):
+                    abrir_modal_novo_militar(padronizar_graduacao, remover_duplicados_militares, PESOS_HIERARQUIA)
 
         st.divider()
         renderizar_fragmento_passo3()

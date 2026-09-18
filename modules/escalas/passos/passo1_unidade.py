@@ -116,8 +116,8 @@ def renderizar_passo1():
         st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
 
     with st.expander("📌 PASSO 1: Configuração da Unidade, Brasão e Gestão de Equipes", expanded=True):
-        # 1. DADOS DA UNIDADE OPERACIONAL (AGORA CONTRAÍDO / FECHADO POR PADRÃO)
-        with st.expander("🏛️ Dados da Unidade Operacional & Brasão", expanded=False):
+        # 1. DADOS DA UNIDADE OPERACIONAL (USANDO SÍMBOLO '+')
+        with st.expander("➕ 🏛️ Dados da Unidade Operacional & Brasão", expanded=False):
             col_u1, col_u2, col_u3 = st.columns([2, 2, 1.2])
             with col_u1:
                 st.session_state["cfg_unidade"] = st.text_input("Unidade Operacional:", value=st.session_state.get("cfg_unidade", "21º BPM / 4ª RPM")).strip().upper()
@@ -131,7 +131,7 @@ def renderizar_passo1():
 
         st.divider()
 
-        # 2. GESTÃO DE EQUIPES E PORTFÓLIOS (VISÍVEL)
+        # 2. GESTÃO DE EQUIPES E PORTFÓLIOS
         st.markdown("#### 🛡️ Gestão de Equipes e Portfólios")
         col_equipes_disp, col_gestao = st.columns([3.5, 1.2], gap="large")
         
@@ -155,7 +155,6 @@ def renderizar_passo1():
 
         with col_gestao:
             st.markdown("<br>", unsafe_allow_html=True)
-            # BOTÃO SIMPLES '+' PARA CADASTRAR EQUIPE
             if st.button("➕ Cadastrar Nova Equipe", use_container_width=True, type="primary", key="btn_abrir_modal_add_eq"):
                 abrir_modal_nova_equipe()
 
