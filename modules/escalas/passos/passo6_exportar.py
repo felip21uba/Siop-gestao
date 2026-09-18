@@ -117,9 +117,6 @@ def renderizar_passo6():
 
     with st.expander("📌 PASSO 6: Visualização da Escala e Exportação Oficial", expanded=True):
         
-        # ============================================================
-        # BLOCO 1: EXPANSÍVEL DE CONFIGURAÇÕES, ASSINATURAS E IMPORTAÇÃO
-        # ============================================================
         with st.expander("➕ ⚙️ Configurações de Emissão, Assinaturas e Importação Externa", expanded=False):
             c_cfg1, c_cfg2 = st.columns([2, 2], gap="large")
             
@@ -153,18 +150,14 @@ def renderizar_passo6():
                 st.markdown("##### ✍️ Assinaturas & Observações")
                 cmt_cia = st.selectbox(
                     "Comandante da Cia / Pelotão:", 
-                    options=[f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else ["TEN CEL LOPES"], 
+                    options=[f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else ["TEN CEL LOPES"], 
                     key="p6_cmt_cia_sel"
                 )
                 st.text_input("Responsável pela Escala:", value=nome_resp_escala, disabled=True)
                 obs_escala = st.text_area("📝 Observações e Diretrizes P1:", placeholder="Digite instruções ou notas de rodapé...", height=80, key="p6_obs_texto")
 
-        # ============================================================
-        # BLOCO 2: EXPANSÍVEL DO QUADRO OFICIAL (PDF & EXCEL)
-        # ============================================================
         with st.expander("➕ 📄 Visualização Oficial do Quadro & Exportação PDF / Excel", expanded=True):
             
-            # --- LEGENDA DENTRO DO QUADRO PDF ---
             turnos_encontrados = set()
             for d in range(1, num_dias_mes + 1):
                 for pair in chaves_quadro:
@@ -197,7 +190,7 @@ def renderizar_passo6():
                         mils_linhas_quadro.append({
                             "id": pair[0], 
                             "equipe": pair[1], 
-                            "posto_grad": m_obj.get("posto_grad", "SD"), 
+                            "posto_grad": padronizar_graduacao(m_obj.get("posto_grad", "SD")), 
                             "nome_guerra": m_obj.get("nome_guerra", "MILITAR"), 
                             "num_policia": m_obj.get("num_policia", ""), 
                             "chave_linha": f"{pair[0]}_{pair[1]}"
@@ -429,7 +422,6 @@ def renderizar_passo6():
             components.html(html_documento, height=520, scrolling=True)
             st.divider()
 
-            # BOTÕES DE AÇÃO NA BASE DO QUADRO
             c_act1, c_act2 = st.columns(2)
             with c_act1:
                 bytes_xls = gerar_excel_escala(df_excel_export, unidade, subunidade, mes_ano_str, cmt_cia if 'cmt_cia' in locals() else 'COMANDANTE', nome_resp_escala, obs_escala if 'obs_escala' in locals() else '', texto_legenda_final)

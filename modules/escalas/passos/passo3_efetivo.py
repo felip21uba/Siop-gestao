@@ -21,32 +21,25 @@ def padronizar_graduacao(texto):
         return "SD"
 
     t_raw = str(texto).strip().upper()
-    t_pre = re.sub(r"([123])\s*[º°ª]", r"\1 ", t_raw)
+    t_pre = re.sub(r"([123])\s*[º°ª\.]?", r"\1 ", t_raw)
     t_norm = unicodedata.normalize("NFKD", t_pre).encode("ASCII", "ignore").decode("utf-8").upper().strip()
     t_clean = re.sub(r"[º°ª.\-]", " ", t_norm)
     t_clean = re.sub(r"\s+", " ", t_clean).strip()
 
-    if (
-        re.search(r"(^|\s)1\s*(SGT|SARGENTO|SARG|SARGTO)(\s|$)", t_clean)
-        or re.search(r"(SGT|SARGENTO|SARG|SARGTO)\s*1(\s|$)", t_clean)
-        or "PRIMEIRO SARGENTO" in t_clean
-    ): return "1º SGT"
+    if re.search(r"(^|\s)1\s*SGT", t_clean) or "1 SGT" in t_clean or "1SGT" in t_pre or "PRIMEIRO SARGENTO" in t_clean or "1º SGT" in t_raw or "1° SGT" in t_raw:
+        return "1º SGT"
 
-    if (
-        re.search(r"(^|\s)2\s*(SGT|SARGENTO|SARG|SARGTO)(\s|$)", t_clean)
-        or re.search(r"(SGT|SARGENTO|SARG|SARGTO)\s*2(\s|$)", t_clean)
-        or "SEGUNDO SARGENTO" in t_clean
-    ): return "2º SGT"
+    if re.search(r"(^|\s)2\s*SGT", t_clean) or "2 SGT" in t_clean or "2SGT" in t_pre or "SEGUNDO SARGENTO" in t_clean or "2º SGT" in t_raw or "2° SGT" in t_raw:
+        return "2º SGT"
 
-    if (
-        re.search(r"(^|\s)3\s*(SGT|SARGENTO|SARG|SARGTO)(\s|$)", t_clean)
-        or re.search(r"(SGT|SARGENTO|SARG|SARGTO)\s*3(\s|$)", t_clean)
-        or "TERCEIRO SARGENTO" in t_clean
-    ): return "3º SGT"
+    if re.search(r"(^|\s)3\s*SGT", t_clean) or "3 SGT" in t_clean or "3SGT" in t_pre or "TERCEIRO SARGENTO" in t_clean or "3º SGT" in t_raw or "3° SGT" in t_raw:
+        return "3º SGT"
 
-    if re.search(r"1\s*SGT", t_clean): return "1º SGT"
-    if re.search(r"2\s*SGT", t_clean): return "2º SGT"
-    if re.search(r"3\s*SGT", t_clean): return "3º SGT"
+    if "SGT" in t_clean or "SARGENTO" in t_clean:
+        if "1" in t_clean: return "1º SGT"
+        if "2" in t_clean: return "2º SGT"
+        if "3" in t_clean: return "3º SGT"
+        return "3º SGT"
 
     if ("TEN" in t_clean and "CEL" in t_clean) or ("CORONEL" in t_clean and "TEN" in t_clean) or t_clean == "TC": return "TEN CEL"
     if "CEL" in t_clean or "CORONEL" in t_clean: return "CEL"
@@ -160,17 +153,31 @@ def excluir_lote_banco_e_memoria(mils_para_excluir):
         st.cache_data.clear()
 
 def tratar_num_policia_unificado(row):
-    num_principal = str(row.get("NUMERO", row.get("NUMERO_POLICIA", row.get("MATRICULA", "")))).strip()
+    num_principal = str(row.get("NUMERO", row.get("NUMERO_POLICIA", row.get("MATRICULA", row.get("Nº POLÍCIA", ""))))).strip()
     digito = str(row.get("DV", row.get("DIGITO", row.get("VERIFICADOR", "")))).strip()
+    
     if num_principal.endswith(".0"): num_principal = num_principal[:-2]
     if digito.endswith(".0"): digito = digito[:-2]
-    num_clean, dv_clean = re.sub(r'\D', '', num_principal), re.sub(r'\D', '', digito)
-    if not num_clean: return ""
+    
+    num_clean = re.sub(r'\D', '', num_principal)
+    dv_clean = re.sub(r'\D', '', digito)
+    
+    if not num_clean: 
+        return ""
+    
+    if len(num_clean) == 5:
+        num_clean = num_clean.zfill(6)
+    
     if dv_clean and dv_clean.upper() != "NAN":
-        if "-" in num_principal and num_principal.endswith(f"-{dv_clean}"): return num_clean
-        if len(num_clean) <= 5: return f"{num_clean}{dv_clean}"
-        if len(num_clean) >= 6 and num_clean.endswith(dv_clean): return num_clean
+        if "-" in num_principal and num_principal.endswith(f"-{dv_clean}"): 
+            return num_clean
+        if len(num_clean) == 6: 
+            return f"{num_clean}{dv_clean}"
         return f"{num_clean}{dv_clean}"
+        
+    if len(num_clean) == 7:
+        return num_clean
+        
     return num_clean
 
 def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, prefixo_key):
@@ -218,7 +225,6 @@ def renderizar_fragmento_passo3():
     graduacoes_unicas = sorted(list(set([padronizar_graduacao(m.get("posto_grad", "SD")) for m in militares])), key=lambda x: PESOS_HIERARQUIA.get(x, 99))
     cidades_unicas = sorted(list(set([str(m.get("cidade", "N/I")).strip().upper() for m in militares if m.get("cidade") and str(m.get("cidade")).strip().upper() not in ["NONE", "NAN", "NULL", ""]])))
 
-    # 1. BARRA DE FERRAMENTAS & FILTROS DISTRIBUÍDOS FULL-WIDTH
     c_b1, c_f1, c_f2, c_f3, c_b2 = st.columns([1.2, 3.2, 2.2, 2.2, 1.2])
     with c_b1:
         st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -238,7 +244,6 @@ def renderizar_fragmento_passo3():
             st.session_state["militares_selecionados_ids"] = []
             st.rerun()
 
-    # LÓGICA DOS FILTROS EM CASCATA
     sel_ids_set = set(st.session_state.get('militares_selecionados_ids', []))
     nao_sel_pre = [m for m in militares if m["id"] not in sel_ids_set]
 
@@ -270,23 +275,19 @@ def renderizar_fragmento_passo3():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 2. QUADROS PERFEITAMENTE SIMÉTRICOS E ALINHADOS NO TOPO
     col_quadro_esq, col_quadro_dir = st.columns(2, gap="medium")
 
-    # QUADRO ESQUERDO: EFETIVO DISPONÍVEL
     with col_quadro_esq:
         st.markdown(f"##### ⚪ Efetivo Disponível ({len(nao_selecionados_ord)}):")
         with st.container(height=450, border=True):
             if not nao_selecionados_ord: st.caption("Nenhum militar pendente de seleção.")
             else: renderizar_grade_cards_4_colunas(nao_selecionados_ord, sel_ids_set, modo_exclusao=False, prefixo_key="col_disp")
 
-    # QUADRO DIREITO: SELECIONADOS PARA A ESCALA (COM A TRAVA E O BOTAO INTEGRADOS NO CABEÇALHO)
     with col_quadro_dir:
         c_head1, c_head2, c_head3 = st.columns([2.2, 1.8, 1.2])
         with c_head1:
             st.markdown(f"##### 🟢 Selecionados ({len(selecionados_ord)}):")
         with c_head2:
-            # TRAVA DE EXCLUSÃO COMPACTA INTEGRA COM CADEADO DINÂMICO
             modo_exclusao = st.toggle("🔓 Exclusão" if st.session_state.get("toggle_modo_exclusao_frag", False) else "🔒 Trava Ativa", value=False, key="toggle_modo_exclusao_frag")
         with c_head3:
             if modo_exclusao and st.button("🗑️ Lote", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
