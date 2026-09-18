@@ -22,6 +22,10 @@ SIGLAS_DIAS_NEUTROS = {
     "F", "D", "X", "FER", "DOM", "FERIADO", "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT"
 }
 
+# ============================================================
+# UTILITÁRIOS E PADRONIZAÇÃO
+# ============================================================
+
 def padronizar_entrada_quadro(valor):
     if valor is None or pd.isna(valor):
         return "F"
@@ -42,6 +46,10 @@ def salvar_estado_undo():
     })
     if len(st.session_state["pilha_undo"]) > 10:
         st.session_state["pilha_undo"].pop(0)
+
+# ============================================================
+# PERSISTÊNCIA NO BANCO DE DADOS
+# ============================================================
 
 def executar_auto_save_banco():
     try:
@@ -105,6 +113,48 @@ def carregar_escala_salva_banco():
         print(f"Aviso ao carregar do banco: {ex}")
         return False
 
+# ============================================================
+# TRAVAS DE AUDITORIA E SOBREPOSIÇÃO DE HORÁRIOS
+# ============================================================
+
+def verificar_trava_sobreposicao():
+    """Valida se há choques de horários para o mesmo militar em equipes/turnos no mesmo dia."""
+    grade = st.session_state.get("grade_escala_lancamentos", {})
+    chaves = st.session_state.get("militares_no_quadro_chaves", [])
+    mils = st.session_state.get("lista_militares", [])
+    m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
+    m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
+    num_dias = calendar.monthrange(m_ano, m_mes)[1]
+
+    bloqueios = []
+    
+    # Agrupa lançamentos por militar e dia
+    mils_map = {str(m.get("id")): f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils}
+    
+    for m_id, nome_mil in mils_map.items():
+        eqs_mil = [str(p[1]) for p in chaves if isinstance(p, (tuple, list)) and str(p[0]) == m_id]
+        if len(eqs_mil) > 1:
+            for d in range(1, num_dias + 1):
+                turnos_dia = []
+                for eq in eqs_mil:
+                    val = grade.get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F")
+                    val_str = str(val).upper().strip()
+                    if val_str not in ["F", "D", "X", "", "NONE", "NAN"]:
+                        turnos_dia.append((eq, val_str))
+                
+                if len(turnos_dia) > 1:
+                    eqs_txt = " e ".join([t[0] for t in turnos_dia])
+                    bloqueios.append({
+                        "militar": nome_mil,
+                        "mensagem": f"Conflito de escala no Dia {d:02d}/{m_mes:02d}: escalado simultaneamente em {eqs_txt}."
+                    })
+                    
+    st.session_state["lista_bloqueios_auditoria"] = bloqueios
+
+# ============================================================
+# CÁLCULO DA MATRIZ DA ESCALA (PASSO 1, 2, 3 E 4)
+# ============================================================
+
 def recalcular_escala_matriz():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
@@ -134,6 +184,7 @@ def recalcular_escala_matriz():
             for d in range(1, num_dias + 1):
                 k = f"{m_id}_{eq_ativa}_{m_ano}_{m_mes:02d}_{d:02d}"
                 
+                # Preserva os afastamentos lançados no Passo 3
                 if any(sig in str(grade.get(k, "")).upper() for sig in SIGLAS_DIAS_NEUTROS if sig not in ["F", "D", "X"]):
                     continue
 
@@ -169,6 +220,11 @@ def recalcular_escala_matriz():
                 grade[k] = valor_dia
 
     st.session_state["grade_escala_lancamentos"] = grade
+    verificar_trava_sobreposicao()
+
+# ============================================================
+# TELA PRINCIPAL (PASSO 5)
+# ============================================================
 
 def renderizar_passo5():
     params = st.query_params
@@ -186,6 +242,7 @@ def renderizar_passo5():
         carregar_escala_salva_banco()
         st.session_state["chave_escala_carregada"] = chave_periodo
 
+    # SÓ RECALCULA E ATUALIZA A MATRIZ QUANDO O BOTÃO "APLICAR LANÇAMENTOS" É CLICADO
     if st.session_state.get("atualizar_quadro_passo5", False):
         sel_ids = set(str(mid) for mid in st.session_state.get("militares_selecionados_ids", []))
         eq_ativa = str(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
@@ -198,6 +255,8 @@ def renderizar_passo5():
         recalcular_escala_matriz()
         executar_auto_save_banco()
         st.session_state["atualizar_quadro_passo5"] = False
+
+    verificar_trava_sobreposicao()
 
     militares = st.session_state.get("lista_militares") or carregar_militares_supabase() or []
     st.session_state["lista_militares"] = militares
@@ -235,7 +294,8 @@ def renderizar_passo5():
                 st.rerun()
 
         with col_link:
-            st.link_button("🖥️ Abrir 2ª Tela", "?espelho=true", use_container_width=True, help="Abre apenas o Quadro 5 em uma nova janela para o seu segundo monitor.")
+            url_espelho = f"?espelho=true&mes={m_mes}&ano={m_ano}"
+            st.link_button("🖥️ Abrir 2ª Tela", url_espelho, use_container_width=True, help="Abre apenas o Quadro 5 em uma nova janela para o seu segundo monitor.")
 
         num_dias = calendar.monthrange(m_ano, m_mes)[1]
         chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
@@ -333,15 +393,24 @@ def renderizar_passo5():
                 
                 linha[col_name] = v
                 v_str = str(v).upper().strip()
-                if any(sig in set(v_str.replace("/", " ").split()) for sig in SIGLAS_DIAS_NEUTROS): 
+                tokens_dia = set(v_str.replace("/", " ").split())
+                
+                # Contabilização exata de dias neutros/afastamentos para abater a meta
+                if any(sig in tokens_dia for sig in SIGLAS_DIAS_NEUTROS if sig not in ["F", "D", "X"]): 
                     neutros += 1
                 elif v_str not in ["", "F", "D", "X"]: 
                     tot_h += 12.0
 
+            # CÁLCULO EXATO DA META (BASE 160H OU 80H REDUZIDA DESCONTANDO DIAS NEUTROS)
             cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
-            meta = max(0.0, (num_dias - neutros) * ((80.0 if cfg_bh.get("reduzida") else 160.0) / float(num_dias)))
-            exc = (tot_h + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta
-            linha["HORAS / META"] = f"⚠️ {tot_h:.1f}h / {meta:.1f}h (+{exc:.1f}h)" if exc > 0 else f"{tot_h:.1f}h / {meta:.1f}h"
+            carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
+            taxa_diaria = carga_base_mes / float(num_dias)
+            
+            dias_efetivos = num_dias - neutros
+            meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
+            saldo_exc = (tot_h + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta_efetiva
+
+            linha["HORAS / META"] = f"⚠️ {tot_h:.0f}h / {meta_efetiva:.1f}h ({saldo_exc:+.1f}h)" if saldo_exc > 0 else f"{tot_h:.0f}h / {meta_efetiva:.1f}h ({saldo_exc:+.1f}h)"
             matriz.append(linha)
 
         df_escala = pd.DataFrame(matriz)
@@ -354,15 +423,14 @@ def renderizar_passo5():
                 height=450,
                 key="editor_escala_principal"
             )
-            alt = False
+            
+            # ATUALIZA APENAS A ORDEM DAS LINHAS OU EDIÇÕES MANUAIS SEM RERUN AUTOMÁTICO INDEVIDO
             for idx_r, row in df_ed.iterrows():
                 if idx_r < len(mils_ord):
                     it = mils_ord[idx_r]
-                    
                     if st.session_state["ordem_customizada_map"].get(it["chave_linha"]) != int(row.get("ORDEM", idx_r + 1)):
                         salvar_estado_undo()
                         st.session_state["ordem_customizada_map"][it["chave_linha"]] = int(row.get("ORDEM", idx_r + 1))
-                        alt = True
 
                     for d, col_name in colunas_dias:
                         vp = padronizar_entrada_quadro(str(row.get(col_name, "")).strip())
@@ -370,12 +438,8 @@ def renderizar_passo5():
                         if padronizar_entrada_quadro(grade.get(ck, "")) != vp:
                             salvar_estado_undo()
                             grade[ck] = vp
-                            alt = True
-
-            if alt:
-                st.session_state["grade_escala_lancamentos"] = grade
-                executar_auto_save_banco()
-                st.rerun()
+                            
+            st.session_state["grade_escala_lancamentos"] = grade
         else:
             st.info("💡 Clique em '⚡ Aplicar Lançamentos' para montar a escala com os militares selecionados.")
 
