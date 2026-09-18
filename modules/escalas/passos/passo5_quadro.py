@@ -127,7 +127,6 @@ def recalcular_escala_matriz():
     grade = st.session_state.get("grade_escala_lancamentos", {})
     dias_ativos = set(st.session_state.get("dias_selecionados_passo4", []))
     
-    # Horários configurados no Passo 2
     h_avulso = st.session_state.get("horario_avulso_p2", "07:00 às 19:00")
     h_adm_norm = st.session_state.get("adm_h_norm", "08:00 às 12:00\n13:30 às 17:00")
     h_adm_qua = st.session_state.get("adm_h_qua", "08:30 às 13:00")
@@ -197,7 +196,6 @@ def renderizar_passo5():
         carregar_escala_salva_banco()
         st.session_state["chave_escala_carregada"] = chave_periodo
 
-    # Ação acionada pelo botão de aplicação dos lançamentos
     if st.session_state.get("atualizar_quadro_passo5", False):
         sel_ids = set(str(mid) for mid in st.session_state.get("militares_selecionados_ids", []))
         eq_ativa = str(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
@@ -250,6 +248,70 @@ def renderizar_passo5():
 
         mils_ord = sorted(mils_linhas, key=lambda x: (st.session_state["ordem_customizada_map"].get(x["chave_linha"], 99), PESOS_HIERARQUIA.get(padronizar_graduacao(x["posto_grad"]), 99), x["nome_guerra"]))
 
+        # ============================================================
+        # ⚡ PAINEL DE AJUSTE RÁPIDO / LANÇAMENTO EM LOTE
+        # ============================================================
+        with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote)", expanded=False):
+            if mils_ord and not quadro_travado:
+                dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
+                
+                c_f1, c_f2, c_f3 = st.columns([3, 2.5, 2])
+                mils_sel_lote = c_f1.multiselect("Militar(es):", list(dict_mils.keys()), key="p5_lote_mils")
+                
+                dt_hoje = datetime.date(m_ano, m_mes, 1)
+                datas_sel = c_f2.date_input(
+                    "Selecione a(s) Data(s) no Calendário:", 
+                    value=(dt_hoje, dt_hoje), 
+                    min_value=datetime.date(m_ano, m_mes, 1), 
+                    max_value=datetime.date(m_ano, m_mes, num_dias), 
+                    format="DD/MM/YYYY", 
+                    key="p5_cal_picker"
+                )
+                tipo_ev = c_f3.selectbox("Evento/Horário:", ["Horário Normal", "FE (Férias)", "LM (Licença)", "ATE (Atestado)", "D (Descanso)", "F (Folga)", "X (Outra Equipe)", "DN (Dia Neutro)", "DNT (Neutro Trab.)", "DIS (Dispensa)"], key="p5_tipo")
+
+                if "Horário Normal" in tipo_ev or "DNT" in tipo_ev:
+                    c_h1, c_h2, c_btn = st.columns([1.5, 1.5, 3])
+                    with c_h1:
+                        h_i = st.time_input("Início:", datetime.time(7, 0), key="p5_h_ini")
+                    with c_h2:
+                        h_f = st.time_input("Fim:", datetime.time(19, 0), key="p5_h_fim")
+                    with c_btn:
+                        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                        btn_aplicar_lote = st.button("⚡ Aplicar Alteração Direta", type="primary", use_container_width=True, key="btn_aplicar_lote_norm")
+                    
+                    val_final_lote = f"{h_i.strftime('%H:%M')} às {h_f.strftime('%H:%M')}" + (" (DNT)" if "DNT" in tipo_ev else "")
+                else:
+                    val_final_lote = tipo_ev.split()[0]
+                    btn_aplicar_lote = st.button("⚡ Aplicar Alteração Direta", type="primary", use_container_width=True, key="btn_aplicar_lote_sigla")
+
+                if btn_aplicar_lote:
+                    dias_alvo = []
+                    if isinstance(datas_sel, (tuple, list)):
+                        d_start = datas_sel[0].day
+                        d_end = datas_sel[1].day if len(datas_sel) > 1 else d_start
+                        dias_alvo = list(range(d_start, d_end + 1))
+                    elif isinstance(datas_sel, datetime.date):
+                        dias_alvo = [datas_sel.day]
+
+                    if mils_sel_lote and dias_alvo:
+                        salvar_estado_undo()
+                        grade_tmp = st.session_state.get("grade_escala_lancamentos", {})
+                        cnt = 0
+                        for label in mils_sel_lote:
+                            it = dict_mils[label]
+                            for d_a in dias_alvo:
+                                ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
+                                grade_tmp[ck] = val_final_lote
+                                cnt += 1
+                        if cnt:
+                            st.session_state["grade_escala_lancamentos"] = grade_tmp
+                            executar_auto_save_banco()
+                            st.success(f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!")
+                            st.rerun()
+
+        # ============================================================
+        # DATA EDITOR PRINCIPAL
+        # ============================================================
         colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
         matriz = []
         grade = st.session_state.get("grade_escala_lancamentos", {})
@@ -262,7 +324,6 @@ def renderizar_passo5():
             for d, col_name in colunas_dias:
                 v = padronizar_entrada_quadro(grade.get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F"))
                 
-                # Identifica se o militar atua em outra equipe no mesmo dia
                 if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and grade.get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}") not in ["F", "D", "", None] for p in chaves_existentes if isinstance(p, (tuple, list)) and len(p) == 2):
                     v = "X"
                 
