@@ -211,7 +211,7 @@ def renderizar_fragmento_passo3():
     militares = remover_duplicados_militares(st.session_state.get("lista_militares", []))
     st.session_state["lista_militares"] = militares
 
-    # TRAVA DE EXCLUSÃO
+    # TRAVA DE EXCLUSÃO DE SEGURANÇA
     col_t1, col_t2 = st.columns([1.8, 3.2])
     with col_t1:
         modo_exclusao = st.toggle("🚨 Trava de Exclusão (Habilitar Exclusão)", value=False, key="toggle_modo_exclusao_frag")
@@ -220,26 +220,6 @@ def renderizar_fragmento_passo3():
         else: st.info("🔒 **TRAVA ATIVA (SEGURANÇA):** Exclusões bloqueadas.")
 
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # BOTÕES DE AÇÃO GLOBAL
-    c_m1, c_m2, c_m3, c_m4 = st.columns([1, 1, 1.5, 1.2])
-    with c_m1:
-        if st.button("✔ Marcar Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
-            mils_visiveis = [m["id"] for m in st.session_state.get("militares_ativos_render", [])]
-            st.session_state["militares_selecionados_ids"] = list(set(st.session_state.get("militares_selecionados_ids", []) + mils_visiveis))
-            st.rerun()
-    with c_m2:
-        if st.button("✖ Limpar Seleção", use_container_width=True, key="btn_desmarcar_todos_frag"):
-            st.session_state["militares_selecionados_ids"] = []
-            st.rerun()
-    with c_m3:
-        if st.button("⚡ Aplicar ao Quadro (Passo 5)", type="primary", use_container_width=True, key="btn_aplicar_quadro_frag"):
-            st.session_state["atualizar_quadro_passo5"] = True
-            st.toast("✅ Seleção confirmada! Vá ao Passo 5 e clique em Aplicar Lançamentos.", icon="🚀")
-            st.rerun()
-    with c_m4:
-        if modo_exclusao and st.button("🗑️ Excluir Selecionados", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
-            abrir_modal_excluir_lote(excluir_lote_banco_e_memoria)
 
     if not militares:
         st.info("💡 Nenhum militar cadastrado no momento.")
@@ -250,22 +230,30 @@ def renderizar_fragmento_passo3():
 
     col_quadro_esq, col_quadro_dir = st.columns(2, gap="medium")
 
-    # QUADRO ESQUERDO: EFETIVO DISPONÍVEL (COM FILTROS EM LINHA)
+    # QUADRO ESQUERDO: EFETIVO DISPONÍVEL
     with col_quadro_esq:
         sel_ids_set = set(st.session_state.get('militares_selecionados_ids', []))
         nao_sel_pre = [m for m in militares if m["id"] not in sel_ids_set]
 
-        # NOME ALTERADO PARA "Efetivo Disponível"
         st.markdown(f"##### ⚪ Efetivo Disponível ({len(nao_sel_pre)}):")
 
-        # FILTROS EM LINHA ABAIXO DO EFETIVO DISPONÍVEL
-        c_f1, c_f2, c_f3 = st.columns([1.5, 1.2, 1.2])
+        # BARRA DE FERRAMENTAS E FILTROS EM LINHA
+        c_b1, c_f1, c_f2, c_f3, c_b2 = st.columns([1.1, 1.8, 1.3, 1.3, 1.1])
+        with c_b1:
+            if st.button("✔ Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
+                mils_visiveis = [m["id"] for m in st.session_state.get("militares_ativos_render", [])]
+                st.session_state["militares_selecionados_ids"] = list(set(st.session_state.get("militares_selecionados_ids", []) + mils_visiveis))
+                st.rerun()
         with c_f1:
-            termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag", placeholder="Nome, matrícula...").strip()
+            termo_busca = st.text_input("🔍 Busca:", key="txt_busca_militar_p3_frag", placeholder="Nome, matrícula...").strip()
         with c_f2:
             graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
         with c_f3:
-            cidades_sel = st.multiselect("🏙️ Cidade / Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
+            cidades_sel = st.multiselect("🏙️ Cidade/Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
+        with c_b2:
+            if st.button("✖ Limpar", use_container_width=True, key="btn_desmarcar_todos_frag"):
+                st.session_state["militares_selecionados_ids"] = []
+                st.rerun()
 
         # APLICAÇÃO DOS FILTROS EM CASCATA
         nao_sel_filtrados = nao_sel_pre
@@ -302,7 +290,13 @@ def renderizar_fragmento_passo3():
         selecionados_ord = sorted([m for m in militares if m["id"] in sel_ids_set], key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", "")))
 
         st.markdown(f"##### 🟢 Selecionados para a Escala ({len(selecionados_ord)}):")
-        st.markdown("<div style='height: 68px;'></div>", unsafe_allow_html=True)
+        
+        c_ex1, c_ex2 = st.columns([1, 1])
+        with c_ex1:
+            if modo_exclusao and st.button("🗑️ Excluir Selecionados", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
+                abrir_modal_excluir_lote(excluir_lote_banco_e_memoria)
+        with c_ex2:
+            st.markdown("<div style='height: 38px;'></div>", unsafe_allow_html=True)
 
         with st.container(height=420, border=True):
             if not selecionados_ord: st.caption("Clique nos cards para mover para este quadro.")
@@ -340,7 +334,6 @@ def renderizar_passo3():
 
     exp3 = st.expander("📌 PASSO 3: Gestão do Efetivo, Inserção e Seleção de Militares", expanded=True)
     with exp3:
-        # OCULTA OS BOTÕES DE GESTÃO DA FOTO 2 DENTRO DE UM EXPANDER COM SÍMBOLO '+'
         with st.expander("➕ Ferramentas de Gestão do Efetivo (Importar, Editar, Salvar)", expanded=False):
             c_b1, c_b2, c_b3, c_b4, c_b5 = st.columns([1.1, 1.2, 1.2, 1.2, 0.9])
             with c_b1:
