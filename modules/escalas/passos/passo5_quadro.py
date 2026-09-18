@@ -220,6 +220,7 @@ def abrir_modal_importar_escala_excel():
                 executar_auto_save_banco()
                 st.rerun()
 
+# VISTA EXCLUSIVA E AUTÔNOMA PARA MONITOR SECUNDÁRIO (POP-OUT) COM AUTO-SYNC DE 5 SEGUNDOS
 def renderizar_modo_segunda_tela():
     if not st.session_state.get("lista_militares"):
         m_banco = carregar_militares_supabase()
@@ -228,6 +229,8 @@ def renderizar_modo_segunda_tela():
 
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
+    
+    # Busca estado atualizado do Supabase
     carregar_escala_salva_banco()
 
     st.markdown("""
@@ -238,12 +241,22 @@ def renderizar_modo_segunda_tela():
         </style>
     """, unsafe_allow_html=True)
     
+    # Timer JS para Auto-Sync automático a cada 5 segundos
+    components.html("""
+        <script>
+            setTimeout(function(){
+                window.location.reload(1);
+            }, 5000);
+        </script>
+    """, height=0)
+
     c_head1, c_head2 = st.columns([3, 1])
     with c_head1:
         st.title("🖥️ Quadro Geral — Monitor Secundário")
-        st.caption(f"📍 Período: **{m_mes:02d}/{m_ano}** | Atualizado automaticamente")
+        st.caption(f"📍 Período: **{m_mes:02d}/{m_ano}** | 🔄 *Sincronizando em tempo real com o Passo 5...*")
     with c_head2:
-        if st.button("🔄 Atualizar Quadro", type="primary", use_container_width=True):
+        if st.button("🔄 Atualizar Agora", type="primary", use_container_width=True, key="btn_force_refresh_2tela"):
+            carregar_escala_salva_banco()
             st.rerun()
 
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
