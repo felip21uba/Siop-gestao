@@ -49,7 +49,7 @@ def renderizar_passo7():
     usr_logado = st.session_state.get("usuario_dados", {})
     cargo_str = str(usr_logado.get("cargo_funcao", "")).upper()
     perfil_str = str(usr_logado.get("perfil", "")).upper()
-    eh_admin = "PROGRAMADOR" in cargo_str or "TESTADOR" in cargo_str or "ADMIN" in perfil_str or "DESENVOLVEDOR" in cargo_str
+    eh_admin = "PROGRAMADOR" in cargo_str or "TESTADOR" in cargo_str or "ADMIN" in perfil_str or "CMT_CIA" in perfil_str or "DESENVOLVEDOR" in cargo_str
 
     m_mes_atual = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
@@ -116,7 +116,7 @@ def renderizar_passo7():
                         st.error("🔒 Eventos passados não podem ser inseridos pois a escala já está homologada.")
                     else:
                         st.session_state["bh_lancamentos_avulsos"].append({
-                            "id_militar": mapa_select_mils[mil_label_sel], 
+                            "id_militar": str(mapa_select_mils[mil_label_sel]), 
                             "nome_militar": mil_label_sel, 
                             "data": data_av.strftime("%d/%m/%Y"), 
                             "tipo": tipo_av, 
@@ -148,7 +148,7 @@ def renderizar_passo7():
                         "Excluir": st.column_config.CheckboxColumn("🗑️ Remover", default=False)
                     },
                     hide_index=True, 
-                    width="stretch", 
+                    use_container_width=True, 
                     key="editor_del_avulsos_auto"
                 )
                 
@@ -207,20 +207,20 @@ def renderizar_passo7():
                     "Saldo Anterior (h)": st.column_config.NumberColumn("Saldo Anterior (h)", step=1.0, format="%.1f h")
                 },
                 hide_index=True,
-                width="stretch", 
+                use_container_width=True, 
                 key="editor_bh_auto"
             )
             
             houve_mudanca = False
             for m_id, row in df_editado.iterrows():
-                m_id = str(m_id)
+                m_id_str = str(m_id)
                 nova_cfg = {
                     "reduzida": bool(row["Carga Reduzida (80h)"]), 
                     "saldo_anterior": float(row["Saldo Anterior (h)"])
                 }
                 
-                if st.session_state["bh_configs"].get(m_id) != nova_cfg:
-                    st.session_state["bh_configs"][m_id] = nova_cfg
+                if st.session_state["bh_configs"].get(m_id_str) != nova_cfg:
+                    st.session_state["bh_configs"][m_id_str] = nova_cfg
                     houve_mudanca = True
                     
             if houve_mudanca: 
@@ -343,7 +343,7 @@ def renderizar_passo7():
                         return ''
                         
                 if not df_extrato.empty: 
-                    st.dataframe(df_extrato.style.map(colorir_saldo, subset=['SALDO PERÍODO', 'SALDO ANTERIOR', 'SALDO GERAL FINAL']), hide_index=True, width="stretch")
+                    st.dataframe(df_extrato.style.map(colorir_saldo, subset=['SALDO PERÍODO', 'SALDO ANTERIOR', 'SALDO GERAL FINAL']), hide_index=True, use_container_width=True)
                 
                 html_extrato_pdf = f"""
                 <!DOCTYPE html>
@@ -374,12 +374,12 @@ def renderizar_passo7():
 
                 c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1])
                 with c_btn1: 
-                    st.download_button("📥 Exportar Extrato (CSV)", data=df_extrato.to_csv(index=False).encode('utf-8'), file_name=f"Banco_Horas_{m_ano}.csv", mime="text/csv", width="stretch")
+                    st.download_button("📥 Exportar Extrato (CSV)", data=df_extrato.to_csv(index=False).encode('utf-8'), file_name=f"Banco_Horas_{m_ano}.csv", mime="text/csv", use_container_width=True)
                 with c_btn2: 
-                    if st.button("🖨️ Imprimir / PDF Oficial", width="stretch"):
+                    if st.button("🖨️ Imprimir / PDF Oficial", use_container_width=True):
                         st.html(f"{html_extrato_pdf}<script>window.print();</script>")
                 with c_btn3: 
-                    if st.button("💾 Fechar Período e Salvar", type="primary", width="stretch"): 
+                    if st.button("💾 Fechar Período e Salvar", type="primary", use_container_width=True): 
                         registrar_log_auditoria_local("Banco de Horas", "Gestor salvou o fechamento da apuração do banco de horas.")
                         executar_auto_save_banco_local()
                         st.success("Salvo com sucesso!")

@@ -70,7 +70,7 @@ def renderizar_passo2():
             mes_sel = st.selectbox("Mês da Escala:", lista_meses, index=mes_atual - 1, key="sel_mes_p2")
             st.session_state["mes_escala"] = lista_meses.index(mes_sel) + 1
         with col_a:
-            st.session_state["ano_escala"] = st.number_input("Ano da Escala:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year), key="sel_ano_p2")
+            st.session_state["ano_escala"] = int(st.number_input("Ano da Escala:", min_value=2024, max_value=2035, value=int(st.session_state.get("ano_escala", datetime.date.today().year)), key="sel_ano_p2"))
         with col_pt:
             st.selectbox("⏱️ Pré-Turno de Apresentação:", ["Sem Pré-Turno (0 min)", "Pré-Turno 15 min", "Pré-Turno 30 min (+0.5h)", "Pré-Turno 45 min"], index=2, key="sel_pre_turno_p2")
 
@@ -96,7 +96,6 @@ def renderizar_passo2():
         mod_atual = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
         st.info(f"📍 Modalidade Selecionada: **{mod_atual}**")
 
-        # PARAMETRIZAÇÃO DAS MODALIDADES
         if mod_atual == "Turno Único / Avulso":
             st.warning("👉 **Escolha os dias no Passo 4.** O Quadro do Passo 5 reflete exatamente os dias marcados.")
             c_h1, c_h2 = st.columns(2)
@@ -121,7 +120,6 @@ def renderizar_passo2():
             with col_a4:
                 opc_adm = st.radio("Padrão Seg,Ter,Qui,Sex:", ["08:00/17:00", "08:30/17:00"], key="radio_padr_adm")
 
-            # APLICANDO A QUEBRA DE LINHA (\n) NO HORÁRIO DA ADM
             if opc_adm == "08:30/17:00":
                 horario_normal_adm = f"08:30 às 12:00\n{adm2_ini.strftime('%H:%M')} às {adm2_fim.strftime('%H:%M')}"
             else:
