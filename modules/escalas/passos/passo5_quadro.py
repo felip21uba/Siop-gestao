@@ -146,7 +146,6 @@ def recalcular_escala_matriz():
             for d in range(1, num_dias + 1):
                 k = f"{m_id}_{eq_ativa}_{m_ano}_{m_mes:02d}_{d:02d}"
                 
-                # Preserva licenças e afastamentos regulamentares lançados no Passo 3
                 if any(sig in str(grade.get(k, "")).upper() for sig in SIGLAS_DIAS_NEUTROS if sig not in ["F", "D", "X"]):
                     continue
 
@@ -215,16 +214,19 @@ def renderizar_passo5():
     quadro_travado = st.session_state.get("toggle_trava_quadro", False)
 
     with st.expander("📌 PASSO 5: Quadro Mensal de Escalas e Carga Horária", expanded=True):
-        c1, c2 = st.columns([3, 1])
+        # BARRA DE TOPO COMPACTA E OTIMIZADA
+        c1, c2 = st.columns([1.8, 1.2], vertical_alignment="center")
         
         with c1:
-            st.caption(f"👮‍♂️ **Linhas Ativas no Quadro:** `{len(st.session_state.get('militares_no_quadro_chaves', []))}` | 💡 *Legenda `X` = serviço em outra equipe.*")
+            cnt_linhas = len(st.session_state.get('militares_no_quadro_chaves', []))
+            st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legenda `X` = serviço em outra equipe.*")
         
         with c2:
             if st.button("⚡ Aplicar Lançamentos e Atualizar Quadro", type="primary", use_container_width=True):
                 st.session_state["atualizar_quadro_passo5"] = True
                 st.rerun()
 
+        st.markdown("<div style='margin-top: -8px;'></div>", unsafe_allow_html=True)
         st.divider()
 
         num_dias = calendar.monthrange(m_ano, m_mes)[1]
@@ -376,9 +378,9 @@ def renderizar_passo5():
             st.info("💡 Clique em '⚡ Aplicar Lançamentos e Atualizar Quadro' para montar a escala com os militares selecionados.")
 
         # ============================================================
-        # BOTÕES DE AÇÃO: LIMPAR E SALVAR
+        # BOTÕES DE AÇÃO
         # ============================================================
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         c_act1, c_act2 = st.columns(2)
         
         with c_act1:
