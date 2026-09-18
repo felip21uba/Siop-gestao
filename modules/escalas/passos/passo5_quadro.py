@@ -214,20 +214,36 @@ def renderizar_passo5():
     quadro_travado = st.session_state.get("toggle_trava_quadro", False)
 
     with st.expander("📌 PASSO 5: Quadro Mensal de Escalas e Carga Horária", expanded=True):
-        # BARRA DE TOPO COMPACTA E OTIMIZADA
-        c1, c2 = st.columns([1.8, 1.2], vertical_alignment="center")
+        # INJEÇÃO CSS PARA RETIRAR TODO O ESPAÇAMENTO VERTICAL DESNECESSÁRIO
+        st.markdown(
+            """
+            <style>
+            .p5-header-container {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-top: -12px;
+                margin-bottom: 2px;
+            }
+            div[data-testid="stExpander"] div[data-testid="stVerticalBlock"] > div {
+                gap: 0.3rem !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # BARRA DE TOPO TOTALMENTE COMPACTADA
+        col_esq, col_btn = st.columns([2.5, 1.5], vertical_alignment="center")
         
-        with c1:
+        with col_esq:
             cnt_linhas = len(st.session_state.get('militares_no_quadro_chaves', []))
             st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legenda `X` = serviço em outra equipe.*")
         
-        with c2:
+        with col_btn:
             if st.button("⚡ Aplicar Lançamentos e Atualizar Quadro", type="primary", use_container_width=True):
                 st.session_state["atualizar_quadro_passo5"] = True
                 st.rerun()
-
-        st.markdown("<div style='margin-top: -8px;'></div>", unsafe_allow_html=True)
-        st.divider()
 
         num_dias = calendar.monthrange(m_ano, m_mes)[1]
         chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
