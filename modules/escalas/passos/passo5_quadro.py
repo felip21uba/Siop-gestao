@@ -260,7 +260,7 @@ def renderizar_passo5():
                 mils_sel_lote = c_f1.multiselect("Militar(es):", list(dict_mils.keys()), key="p5_lote_mils")
                 
                 dt_hoje = datetime.date(m_ano, m_mes, 1)
-                datas_sel = c_f2.date_input("Selecione a(s) Data(s) no Calendário:", value=(dt_hoje, dt_hoje), min_value=datetime.date(m_ano, m_mes, 1), max_value=datetime.date(m_ano, m_mes, calendar.monthrange(m_ano, m_mes)[1]), key="p5_cal_picker")
+                datas_sel = c_f2.date_input("Selecione a(s) Data(s) no Calendário:", value=(dt_hoje, dt_hoje), min_value=datetime.date(m_ano, m_mes, 1), max_value=datetime.date(m_ano, m_mes, calendar.monthrange(m_ano, m_mes)[1]), format="dd/mm/yyyy", key="p5_cal_picker")
                 tipo_ev = c_f3.selectbox("Evento/Horário:", ["Horário Normal", "FE (Férias)", "LM (Licença)", "ATE (Atestado)", "D (Descanso)", "F (Folga)", "X (Outra Equipe)", "DN (Dia Neutro)", "DNT (Neutro Trab.)", "DIS (Dispensa)"], key="p5_tipo")
 
                 if "Horário Normal" in tipo_ev or "DNT" in tipo_ev:
