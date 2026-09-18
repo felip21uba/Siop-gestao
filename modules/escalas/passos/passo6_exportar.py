@@ -8,17 +8,13 @@ import base64
 import streamlit.components.v1 as components
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
+from modules.escalas.passos.passo5_quadro import abrir_modal_importar_escala_excel
 
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
     "LTSP", "LM",
     "ATEST", "ATESTADO", "ATE",
     "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT"
-]
-
-lista_meses = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ]
 
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
@@ -33,7 +29,6 @@ CORES_EQUIPES = {
 }
 
 def obter_brasao_base64(url_padrao):
-    """Retorna a imagem do brasão local convertida para Base64 ou a URL remota de fallback."""
     caminho_local = "assets/brasao.png"
     if os.path.exists(caminho_local):
         try:
@@ -106,7 +101,6 @@ def renderizar_passo6():
     unidade = st.session_state.get("cfg_unidade", "UNIDADE OPERACIONAL")
     subunidade = st.session_state.get("cfg_subunidade", "PEL/COMPANHIA")
     
-    # Busca a imagem em Base64 (local) ou o link remoto
     img_brasao_cfg = st.session_state.get("cfg_brasao_url", URL_BRASAO_PADRAO)
     img_brasao = obter_brasao_base64(img_brasao_cfg)
     
@@ -124,6 +118,16 @@ def renderizar_passo6():
 
     exp6 = st.expander("📌 PASSO 6: Visualização da Escala e Exportação Oficial", expanded=True)
     with exp6:
+        # BOTAO DE IMPORTAÇÃO DE ESCALA VIA EXCEL AGORA POSICIONADO NO PASSO 6
+        c_exp1, c_exp2 = st.columns([3, 1])
+        with c_exp1:
+            st.caption("📥 **Importação Externa:** Caso já possua uma planilha de escala pronta em Excel, importe-a para o sistema.")
+        with c_exp2:
+            if st.button("📥 Importar Escala Pronta (Excel)", type="secondary", use_container_width=True):
+                abrir_modal_importar_escala_excel()
+
+        st.divider()
+
         with st.container(border=True):
             if escala_fechada:
                 st.error("🔒 **ESCALA HOMOLOGADA (AUDITORIA ATIVADA).**")

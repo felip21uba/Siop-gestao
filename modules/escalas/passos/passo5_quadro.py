@@ -238,9 +238,9 @@ def renderizar_passo5():
     quadro_travado = st.session_state.get("toggle_trava_quadro", False)
     
     with st.expander("📌 PASSO 5: Quadro Mensal de Escalas e Carga Horária", expanded=True):
-        c_i1, c_i2 = st.columns([3, 1])
-        c_i1.info(f"👮‍♂️ **Linhas Ativas:** `{len(st.session_state.get('militares_no_quadro_chaves', []))}` | 💡 *Legenda `X` indica serviço ativo em outra equipe.*")
-        if c_i2.button("📥 Importar Excel", type="primary", use_container_width=True): abrir_modal_importar_escala_excel()
+        # NOTA DE CABEÇALHO BEM COMPACTA E DIRETA
+        st.caption(f"👮‍♂️ **Linhas Ativas:** `{len(st.session_state.get('militares_no_quadro_chaves', []))}` | 💡 *Legenda `X` = serviço em outra equipe.*")
+
         if st.button("⚡ Aplicar Lançamentos e Atualizar Quadro", type="primary", use_container_width=True):
             st.session_state["atualizar_quadro_passo5"] = True
             st.rerun()
