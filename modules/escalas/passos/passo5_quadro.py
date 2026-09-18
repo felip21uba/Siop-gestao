@@ -23,7 +23,7 @@ SIGLAS_DIAS_NEUTROS = {
 }
 
 # ============================================================
-# UTILITÁRIOS E PARSER DE HORÁRIOS
+# UTILITÁRIOS, PARSER E MOTOR DE CÁLCULO DE HORAS
 # ============================================================
 
 def padronizar_entrada_quadro(valor):
@@ -41,12 +41,11 @@ def padronizar_entrada_quadro(valor):
 def extrair_intervalos_horarios(texto_celula, data_ref):
     """
     Extrai intervalos (datetime_inicio, datetime_fim) de qualquer texto de turno.
-    Ex: '08:00 às 12:00\n13:30 às 17:00' -> retorna 2 intervalos datetime no dia data_ref.
+    Ex: '08:00 às 12:00\n13:30 às 17:00' -> retorna intervalos no dia data_ref.
     """
     if not texto_celula or str(texto_celula).strip().upper() in SIGLAS_DIAS_NEUTROS:
         return []
 
-    # Busca padrões do tipo 'HH:MM às HH:MM' ou 'HH:MM-HH:MM' ou 'HH:MM as HH:MM'
     padrao = re.findall(r'(\d{1,2}:\d{2})\s*(?:ÀS|AS|-|A)\s*(\d{1,2}:\d{2})', str(texto_celula).upper())
     intervalos = []
 
@@ -58,7 +57,6 @@ def extrair_intervalos_horarios(texto_celula, data_ref):
             dt_ini = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h_ini_p[0], h_ini_p[1])
             dt_fim = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h_fim_p[0], h_fim_p[1])
 
-            # Se o horário final for menor/igual ao inicial, o turno vira a noite (dia seguinte)
             if dt_fim <= dt_ini:
                 dt_fim += datetime.timedelta(days=1)
 
@@ -67,6 +65,45 @@ def extrair_intervalos_horarios(texto_celula, data_ref):
             continue
 
     return intervalos
+
+def calcular_horas_efetivas_turno(texto_celula, data_ref, eh_supervisao=False):
+    """
+    Calcula as horas efetivas de um turno considerando:
+    1. Hora reduzida noturna entre 23h e 05h (+10 min por hora relógio).
+    2. Supervisão: Horas presenciais + 15 min (0.25h) por hora restante do ciclo de 24h.
+    """
+    intervalos = extrair_intervalos_horarios(texto_celula, data_ref)
+    if not intervalos:
+        return 0.0
+
+    horas_presenciais_efetivas = 0.0
+    minutos_presenciais_reais = 0.0
+
+    for dt_ini, dt_fim in intervalos:
+        dt_curr = dt_ini
+        while dt_curr < dt_fim:
+            dt_next = dt_curr + datetime.timedelta(minutes=1)
+            minutos_presenciais_reais += 1.0
+
+            # Verifica se está no intervalo noturno (23:00 às 05:00)
+            hora_atual = dt_curr.hour
+            is_noturno = (hora_atual >= 23 or hora_atual < 5)
+
+            # Se for noturno, ganha +10 min a cada 60 min (fator 70/60 = 1.1666667)
+            fator_minuto = (70.0 / 60.0) if is_noturno else 1.0
+            horas_presenciais_efetivas += (1.0 / 60.0) * fator_minuto
+
+            dt_curr = dt_next
+
+    # CÁLCULO DA SUPERVISÃO (PRESENCIAL + SOBREAVISO)
+    if eh_supervisao or "SUPERVISÃO" in str(texto_celula).upper():
+        horas_presenciais_reais = minutos_presenciais_reais / 60.0
+        horas_sobreaviso_restantes = max(0.0, 24.0 - horas_presenciais_reais)
+        # Cada hora de sobreaviso vale 15 minutos (0.25h)
+        credito_sobreaviso = horas_sobreaviso_restantes * 0.25
+        return horas_presenciais_efetivas + credito_sobreaviso
+
+    return horas_presenciais_efetivas
 
 def salvar_estado_undo():
     st.session_state.setdefault("pilha_undo", []).append({
@@ -148,9 +185,7 @@ def carregar_escala_salva_banco():
 # ============================================================
 
 def verificar_trava_sobreposicao():
-    """
-    Calcula conflitos reais de horário e descansos menores que a janela regulamentar.
-    """
+    """Calcula conflitos reais de horário e descansos menores que a janela regulamentar."""
     grade = st.session_state.get("grade_escala_lancamentos", {})
     chaves = st.session_state.get("militares_no_quadro_chaves", [])
     mils = st.session_state.get("lista_militares", [])
@@ -164,7 +199,6 @@ def verificar_trava_sobreposicao():
     mils_map = {str(m.get("id")): f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')}" for m in mils}
 
     for m_id, nome_mil in mils_map.items():
-        # Coleta todos os turnos ocupados pelo militar ao longo de todo o mês
         todos_intervalos_mil = []
 
         for d in range(1, num_dias + 1):
@@ -183,17 +217,16 @@ def verificar_trava_sobreposicao():
                         "texto_raw": str(val).strip()
                     })
 
-        # 1. TESTE DE SOBREPOSIÇÃO DIRETA (CHOQUE DE HORÁRIOS NO MESMO DIA OU DIAS CONSECUTIVOS)
+        # 1. TESTE DE SOBREPOSIÇÃO DIRETA (CHOQUE DE HORÁRIOS)
         for i in range(len(todos_intervalos_mil)):
             for j in range(i + 1, len(todos_intervalos_mil)):
                 t1 = todos_intervalos_mil[i]
                 t2 = todos_intervalos_mil[j]
 
-                # Ha sobreposição se (Inicio1 < Fim2) e (Fim1 > Inicio2)
                 if (t1["inicio"] < t2["fim"]) and (t1["fim"] > t2["inicio"]):
                     bloqueios.append({
                         "militar": nome_mil,
-                        "mensagem": f"Choque de horário no Dia {t1['dia']:02d}/{m_mes:02d}: {t1['equipe']} ({t1['texto_raw']}) e {t2['equipe']} ({t2['texto_raw']}) se sobrepõem!"
+                        "mensagem": f"Choque no Dia {t1['dia']:02d}/{m_mes:02d}: {t1['equipe']} ({t1['texto_raw']}) e {t2['equipe']} ({t2['texto_raw']}) se sobrepõem!"
                     })
 
         # 2. TESTE DE DESCANSO INTERJORNADA (< 6 HORAS ENTRE TURNOS)
@@ -202,13 +235,12 @@ def verificar_trava_sobreposicao():
             atual = todos_intervalos_ord[i]
             proximo = todos_intervalos_ord[i + 1]
 
-            # Se o segundo turno inicia após o fim do primeiro
             if proximo["inicio"] >= atual["fim"]:
                 diferenca_horas = (proximo["inicio"] - atual["fim"]).total_seconds() / 3600.0
                 if diferenca_horas < 6.0:
                     avisos_descanso.append({
                         "militar": nome_mil,
-                        "mensagem": f"Descanso insuficiente de {diferenca_horas:.1f}h entre o turno do dia {atual['dia']:02d} e o turno do dia {proximo['dia']:02d} (mínimo exigido: 6h)."
+                        "mensagem": f"Descanso de apenas {diferenca_horas:.1f}h entre o dia {atual['dia']:02d} e o dia {proximo['dia']:02d} (mínimo: 6h)."
                     })
 
     st.session_state["lista_bloqueios_auditoria"] = bloqueios
@@ -361,16 +393,31 @@ def renderizar_passo5():
             url_espelho = f"?espelho=true&mes={m_mes}&ano={m_ano}"
             st.link_button("🖥️ Abrir 2ª Tela", url_espelho, use_container_width=True, help="Abre apenas o Quadro 5 em uma nova janela para o seu segundo monitor.")
 
-        # ALERTA VISÍVEL SE HOUVER CONFLITO DE AUDITORIA
-        if bloqueios:
-            st.error("🚨 **BLOQUEIO DE AUDITORIA (SOBREPOSIÇÃO DE HORÁRIOS DETECTADA):**")
-            for b in bloqueios:
-                st.write(f"• **{b['militar']}**: {b['mensagem']}")
+        # QUADRO DE AVISOS E IMPEDIMENTOS FECHÁVEL COM ÍCONES
+        ocultar_avisos = st.session_state.get("ocultar_avisos_auditoria_p5", False)
 
-        if avisos_descanso:
-            st.warning("⚠️ **ALERTA DE DESCANSO INTERJORNADA (< 6 HORAS):**")
-            for a in avisos_descanso:
-                st.write(f"• **{a['militar']}**: {a['mensagem']}")
+        if (bloqueios or avisos_descanso) and not ocultar_avisos:
+            st.markdown("---")
+            c_head_av, c_btn_fechar = st.columns([4, 1])
+            with c_head_av:
+                st.markdown("##### 🚨 Quadro de Auditoria da Escala:")
+            with c_btn_fechar:
+                if st.button("✖ Fechar Avisos", type="secondary", use_container_width=True, key="btn_fechar_avisos_p5"):
+                    st.session_state["ocultar_avisos_auditoria_p5"] = True
+                    st.rerun()
+
+            if bloqueios:
+                for b in bloqueios:
+                    st.error(f"❌ **IMPEDIMENTO ({b['militar']}):** {b['mensagem']}")
+
+            if avisos_descanso:
+                for a in avisos_descanso:
+                    st.warning(f"😴 **ALERTA DE DESCANSO ({a['militar']}):** {a['mensagem']}")
+            st.markdown("---")
+        elif ocultar_avisos and (bloqueios or avisos_descanso):
+            if st.button("🔔 Exibir Avisos de Auditoria Ocultos", type="secondary"):
+                st.session_state["ocultar_avisos_auditoria_p5"] = False
+                st.rerun()
 
         num_dias = calendar.monthrange(m_ano, m_mes)[1]
         chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
@@ -448,6 +495,7 @@ def renderizar_passo5():
                         if cnt:
                             st.session_state["grade_escala_lancamentos"] = grade_tmp
                             executar_auto_save_banco()
+                            st.session_state["ocultar_avisos_auditoria_p5"] = False
                             st.success(f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!")
                             st.rerun()
 
@@ -473,7 +521,9 @@ def renderizar_passo5():
                 if any(sig in tokens_dia for sig in SIGLAS_DIAS_NEUTROS if sig not in ["F", "D", "X"]): 
                     neutros += 1
                 elif v_str not in ["", "F", "D", "X"]: 
-                    tot_h += 12.0
+                    dt_ref_dia = datetime.date(m_ano, m_mes, d)
+                    eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in v_str)
+                    tot_h += calcular_horas_efetivas_turno(v_str, dt_ref_dia, eh_supervisao=eh_sup)
 
             cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
             carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
@@ -483,7 +533,7 @@ def renderizar_passo5():
             meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
             saldo_exc = (tot_h + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta_efetiva
 
-            linha["HORAS / META"] = f"⚠️ {tot_h:.0f}h / {meta_efetiva:.1f}h ({saldo_exc:+.1f}h)" if saldo_exc > 0 else f"{tot_h:.0f}h / {meta_efetiva:.1f}h ({saldo_exc:+.1f}h)"
+            linha["HORAS / META"] = f"⚠️ {tot_h:.1f}h / {meta_efetiva:.1f}h ({saldo_exc:+.1f}h)" if saldo_exc > 0 else f"{tot_h:.1f}h / {meta_efetiva:.1f}h ({saldo_exc:+.1f}h)"
             matriz.append(linha)
 
         df_escala = pd.DataFrame(matriz)
@@ -523,6 +573,7 @@ def renderizar_passo5():
                 salvar_estado_undo()
                 st.session_state["grade_escala_lancamentos"] = {}
                 st.session_state["militares_no_quadro_chaves"] = []
+                st.session_state["ocultar_avisos_auditoria_p5"] = False
                 executar_auto_save_banco()
                 st.success("🧹 Quadro limpo com sucesso!")
                 st.rerun()
