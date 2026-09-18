@@ -32,7 +32,7 @@ def salvar_equipes_persistidas(lista):
 
 def sincronizar_efetivo_equipe_ativa(eq_nome):
     """Carrega no Passo 3 apenas os militares que pertencem à equipe selecionada no Passo 5."""
-    st.session_state["equipe_ativa"] = eq_nome
+    st.session_state["equipe_ativa"] = str(eq_nome)
     chaves = st.session_state.get("militares_no_quadro_chaves", [])
     mils_da_equipe = [
         str(pair[0]) for pair in chaves 
@@ -116,7 +116,6 @@ def renderizar_passo1():
         st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
 
     with st.expander("📌 PASSO 1: Configuração da Unidade, Brasão e Gestão de Equipes", expanded=True):
-        # 1. DADOS DA UNIDADE OPERACIONAL (USANDO SÍMBOLO '+')
         with st.expander("➕ 🏛️ Dados da Unidade Operacional & Brasão", expanded=False):
             col_u1, col_u2, col_u3 = st.columns([2, 2, 1.2])
             with col_u1:
@@ -131,7 +130,6 @@ def renderizar_passo1():
 
         st.divider()
 
-        # 2. GESTÃO DE EQUIPES E PORTFÓLIOS
         st.markdown("#### 🛡️ Gestão de Equipes e Portfólios")
         col_equipes_disp, col_gestao = st.columns([3.5, 1.2], gap="large")
         
