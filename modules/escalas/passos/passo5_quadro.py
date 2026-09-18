@@ -187,6 +187,12 @@ def recalcular_escala_matriz():
 # ============================================================
 
 def renderizar_passo5():
+    # SE A REQUISIÇÃO FOR PARA EXIBIR A SEGUNDA TELA AUTÔNOMA
+    if st.session_state.get("exibir_segunda_tela_p5", False):
+        from modules.escalas.passos.passo5_segunda_tela import renderizar_segunda_tela_passo5
+        renderizar_segunda_tela_passo5()
+        return
+
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
 
@@ -214,7 +220,6 @@ def renderizar_passo5():
     quadro_travado = st.session_state.get("toggle_trava_quadro", False)
 
     with st.expander("📌 PASSO 5: Quadro Mensal de Escalas e Carga Horária", expanded=True):
-        # INJEÇÃO CSS PARA RETIRAR TODO O ESPAÇAMENTO VERTICAL DESNECESSÁRIO
         st.markdown(
             """
             <style>
@@ -233,16 +238,21 @@ def renderizar_passo5():
             unsafe_allow_html=True
         )
 
-        # BARRA DE TOPO TOTALMENTE COMPACTADA
-        col_esq, col_btn = st.columns([2.5, 1.5], vertical_alignment="center")
+        # BARRA DE TOPO COM O BOTÃO DE SEGUNDA TELA
+        col_esq, col_btn, col_2tela = st.columns([2.0, 1.2, 0.8], vertical_alignment="center")
         
         with col_esq:
             cnt_linhas = len(st.session_state.get('militares_no_quadro_chaves', []))
             st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legenda `X` = serviço em outra equipe.*")
         
         with col_btn:
-            if st.button("⚡ Aplicar Lançamentos e Atualizar Quadro", type="primary", use_container_width=True):
+            if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True):
                 st.session_state["atualizar_quadro_passo5"] = True
+                st.rerun()
+
+        with col_2tela:
+            if st.button("📺 2ª Tela", type="secondary", use_container_width=True, help="Abre este Quadro em um Monitor Secundário"):
+                st.session_state["exibir_segunda_tela_p5"] = True
                 st.rerun()
 
         num_dias = calendar.monthrange(m_ano, m_mes)[1]
