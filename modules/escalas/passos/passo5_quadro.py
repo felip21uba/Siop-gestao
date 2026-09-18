@@ -140,7 +140,6 @@ def recalcular_escala_matriz():
     )
     sem_iso_d1 = datetime.date(m_ano, m_mes, 1).isocalendar()[1]
 
-    # Processa os militares adicionados para a equipe ativa
     for pair in st.session_state.get("militares_no_quadro_chaves", []):
         if isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[1]) == eq_ativa:
             m_id = str(pair[0])
@@ -148,7 +147,7 @@ def recalcular_escala_matriz():
             for d in range(1, num_dias + 1):
                 k = f"{m_id}_{eq_ativa}_{m_ano}_{m_mes:02d}_{d:02d}"
                 
-                # Respeita afastamentos preexistentes (FE, LM, ATE, etc) do Passo 3
+                # Preserva licenças e afastamentos regulamentares lançados no Passo 3
                 if any(sig in str(grade.get(k, "")).upper() for sig in SIGLAS_DIAS_NEUTROS if sig not in ["F", "D", "X"]):
                     continue
 
@@ -198,12 +197,11 @@ def renderizar_passo5():
         carregar_escala_salva_banco()
         st.session_state["chave_escala_carregada"] = chave_periodo
 
-    # Lógica ao Clicar no Botão de Aplicação dos Passos 1 a 4
+    # Ação acionada pelo botão de aplicação dos lançamentos
     if st.session_state.get("atualizar_quadro_passo5", False):
         sel_ids = set(str(mid) for mid in st.session_state.get("militares_selecionados_ids", []))
         eq_ativa = str(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
         
-        # Sincroniza militares selecionados no Passo 3 para a equipe do Passo 1
         st.session_state["militares_no_quadro_chaves"] = [
             (str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []) 
             if isinstance(p, (tuple, list)) and len(p) == 2 and (str(p[1]) != eq_ativa or str(p[0]) in sel_ids)
@@ -215,6 +213,8 @@ def renderizar_passo5():
 
     militares = st.session_state.get("lista_militares") or carregar_militares_supabase() or []
     st.session_state["lista_militares"] = militares
+
+    quadro_travado = st.session_state.get("toggle_trava_quadro", False)
 
     with st.expander("📌 PASSO 5: Quadro Mensal de Escalas e Carga Horária", expanded=True):
         c1, c2 = st.columns([3, 1])
@@ -262,8 +262,8 @@ def renderizar_passo5():
             for d, col_name in colunas_dias:
                 v = padronizar_entrada_quadro(grade.get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F"))
                 
-                # Checa se o militar trabalha em outra equipe no mesmo dia para marcar X
-                if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and grade.get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}") not in ["F", "D", "", None] for p in chaves_existentes):
+                # Identifica se o militar atua em outra equipe no mesmo dia
+                if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and grade.get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}") not in ["F", "D", "", None] for p in chaves_existentes if isinstance(p, (tuple, list)) and len(p) == 2):
                     v = "X"
                 
                 linha[col_name] = v
@@ -294,13 +294,11 @@ def renderizar_passo5():
                 if idx_r < len(mils_ord):
                     it = mils_ord[idx_r]
                     
-                    # Atualiza a ordem customizada das linhas
                     if st.session_state["ordem_customizada_map"].get(it["chave_linha"]) != int(row.get("ORDEM", idx_r + 1)):
                         salvar_estado_undo()
                         st.session_state["ordem_customizada_map"][it["chave_linha"]] = int(row.get("ORDEM", idx_r + 1))
                         alt = True
 
-                    # Atualiza os lançamentos das células editadas
                     for d, col_name in colunas_dias:
                         vp = padronizar_entrada_quadro(str(row.get(col_name, "")).strip())
                         ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d:02d}"
@@ -315,3 +313,23 @@ def renderizar_passo5():
                 st.rerun()
         else:
             st.info("💡 Clique em '⚡ Aplicar Lançamentos e Atualizar Quadro' para montar a escala com os militares selecionados.")
+
+        # ============================================================
+        # BOTÕES DE AÇÃO: LIMPAR E SALVAR
+        # ============================================================
+        st.markdown("<br>", unsafe_allow_html=True)
+        c_act1, c_act2 = st.columns(2)
+        
+        with c_act1:
+            if st.button("🧹 Limpar Todo o Quadro", use_container_width=True, disabled=quadro_travado):
+                salvar_estado_undo()
+                st.session_state["grade_escala_lancamentos"] = {}
+                st.session_state["militares_no_quadro_chaves"] = []
+                executar_auto_save_banco()
+                st.success("🧹 Quadro limpo com sucesso!")
+                st.rerun()
+
+        with c_act2:
+            if st.button("💾 Salvar Rascunho no Banco", type="primary", use_container_width=True):
+                if executar_auto_save_banco():
+                    st.success("✅ Rascunho da escala salvo no Supabase com sucesso!")
