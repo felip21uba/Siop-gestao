@@ -2,6 +2,7 @@ import streamlit as st
 from modules.escalas.passos.passo1_unidade import renderizar_passo1
 from modules.escalas.passos.passo2_turno import renderizar_passo2
 from modules.escalas.passos.passo3_efetivo import renderizar_passo3, padronizar_graduacao, PESOS_HIERARQUIA
+from modules.escalas.passos.passo3_ferias_anual import renderizar_modulo_ferias_anual
 from modules.escalas.passos.passo4_calendario import renderizar_passo4
 from modules.escalas.passos.passo5_quadro import renderizar_passo5
 from modules.escalas.passos.passo6_exportar import renderizar_passo6
@@ -19,6 +20,7 @@ def exibir_modulo_escalas():
         renderizar_passo1()
         renderizar_passo2()
         renderizar_passo3()
+        renderizar_modulo_ferias_anual()
         renderizar_passo4(recalcular_matriz_passo5)
         renderizar_passo5()
         renderizar_passo6()
@@ -29,6 +31,8 @@ def exibir_modulo_escalas():
         renderizar_passo2()
     elif passo_ativo == "PASSO 3: Efetivo & Ausências":
         renderizar_passo3()
+    elif passo_ativo == "FÉRIAS ANUAIS: Mapeamento":
+        renderizar_modulo_ferias_anual()
     elif passo_ativo == "PASSO 4: Matriz Mensal":
         renderizar_passo4(recalcular_matriz_passo5)
     elif passo_ativo == "PASSO 5: Quadro Geral":
