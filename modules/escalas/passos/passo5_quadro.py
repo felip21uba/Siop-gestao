@@ -220,45 +220,10 @@ def abrir_modal_importar_escala_excel():
                 executar_auto_save_banco()
                 st.rerun()
 
-# VISTA EXCLUSIVA E AUTÔNOMA PARA MONITOR SECUNDÁRIO (POP-OUT) COM AUTO-SYNC DE 5 SEGUNDOS
-def renderizar_modo_segunda_tela():
-    if not st.session_state.get("lista_militares"):
-        m_banco = carregar_militares_supabase()
-        if m_banco:
-            st.session_state["lista_militares"] = m_banco
-
-    m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
-    m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
-    
-    # Busca estado atualizado do Supabase
+# FRAGMENTO DE SINCRONIZAÇÃO DA SEGUNDA TELA (AUTO-REFRESH A CADA 3 SEGUNDOS)
+@st.fragment(run_every=3)
+def renderizar_fragmento_segunda_tela(m_ano, m_mes):
     carregar_escala_salva_banco()
-
-    st.markdown("""
-        <style>
-            [data-testid="stSidebar"] { display: none !important; }
-            header { display: none !important; }
-            .main .block-container { padding-top: 1rem !important; max-width: 100% !important; }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    # Timer JS para Auto-Sync automático a cada 5 segundos
-    components.html("""
-        <script>
-            setTimeout(function(){
-                window.location.reload(1);
-            }, 5000);
-        </script>
-    """, height=0)
-
-    c_head1, c_head2 = st.columns([3, 1])
-    with c_head1:
-        st.title("🖥️ Quadro Geral — Monitor Secundário")
-        st.caption(f"📍 Período: **{m_mes:02d}/{m_ano}** | 🔄 *Sincronizando em tempo real com o Passo 5...*")
-    with c_head2:
-        if st.button("🔄 Atualizar Agora", type="primary", use_container_width=True, key="btn_force_refresh_2tela"):
-            carregar_escala_salva_banco()
-            st.rerun()
-
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
     mils_todos = st.session_state.get("lista_militares", [])
     chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
@@ -294,7 +259,36 @@ def renderizar_modo_segunda_tela():
         matriz.append(linha)
 
     df_escala = pd.DataFrame(matriz)
-    st.dataframe(df_escala, use_container_width=True, hide_index=True, height=720)
+    st.dataframe(df_escala, use_container_width=True, hide_index=True, height=680)
+
+# VISTA EXCLUSIVA E AUTÔNOMA PARA MONITOR SECUNDÁRIO (POP-OUT)
+def renderizar_modo_segunda_tela():
+    if not st.session_state.get("lista_militares"):
+        m_banco = carregar_militares_supabase()
+        if m_banco:
+            st.session_state["lista_militares"] = m_banco
+
+    m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
+    m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
+
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            header { display: none !important; }
+            .main .block-container { padding-top: 1rem !important; max-width: 100% !important; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    c_head1, c_head2 = st.columns([3, 1])
+    with c_head1:
+        st.title("🖥️ Quadro Geral — Monitor Secundário")
+        st.caption(f"📍 Período: **{m_mes:02d}/{m_ano}** | 🟢 *Sincronização em tempo real ativa.*")
+    with c_head2:
+        if st.button("🔄 Atualizar Agora", type="primary", use_container_width=True, key="btn_force_refresh_2tela"):
+            carregar_escala_salva_banco()
+            st.rerun()
+
+    renderizar_fragmento_segunda_tela(m_ano, m_mes)
 
 def renderizar_passo5():
     query_params = st.query_params
@@ -315,6 +309,7 @@ def renderizar_passo5():
         sel_ids, eq_ativa = set(str(mid) for mid in st.session_state.get("militares_selecionados_ids", [])), str(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
         st.session_state["militares_no_quadro_chaves"] = [(str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []) if str(p[1]) != eq_ativa or str(p[0]) in sel_ids] + [(mid, eq_ativa) for mid in sel_ids if (mid, eq_ativa) not in set((str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []))]
         recalcular_escala_matriz()
+        executar_auto_save_banco()
         st.session_state["atualizar_quadro_passo5"] = False
 
     quadro_travado = st.session_state.get("toggle_trava_quadro", False)
@@ -329,6 +324,7 @@ def renderizar_passo5():
         with col_btn_app:
             if st.button("⚡ Aplicar Lançamentos e Atualizar Quadro", type="primary", use_container_width=True, key="btn_atualizar_quadro_p5_linha"):
                 st.session_state["atualizar_quadro_passo5"] = True
+                executar_auto_save_banco()
                 st.rerun()
                 
         with col_btn_pop:
