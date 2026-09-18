@@ -4,6 +4,7 @@ import calendar
 import pandas as pd
 import copy
 import re
+import time
 import streamlit.components.v1 as components
 from core.database import salvar_escala_mensal_supabase, supabase, carregar_militares_supabase
 from modules.escalas.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
@@ -23,26 +24,26 @@ def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendente
         st.divider()
 
     if pendentes_descanso:
-        st.warning("⚠️ **Aviso de Descanso Interjornada Insuficiente (< 8 Horas):**")
+        st.warning("⚠️ **Aviso de Descanso Interjornada Insuficiente / Empenho Curto (< 8h Descanso / < 6h Empenho):**")
         for a in pendentes_descanso:
             st.markdown(f"• **Dia {a['dia']:02d}:** {a['mensagem']}")
         c_conf1, c_conf2 = st.columns(2)
         with c_conf1:
-            if st.button("✅ Confirmar Lançamento com Descanso Reduzido", type="primary", use_container_width=True):
+            if st.button("✅ Confirmar Lançamento com Alerta", type="primary", use_container_width=True):
                 salvar_estado_undo()
                 m_id, eq = item_sel.get('id'), item_sel.get('equipe')
                 for a in pendentes_descanso:
                     if m_id and eq:
                         st.session_state["grade_escala_lancamentos"][f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{a['dia']:02d}"] = val_final
                 st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
-                registrar_log_auditoria("Descanso Reduzido Confirmado", f"Militar {militar_nome} escalado com descanso reduzido.")
+                registrar_log_auditoria("Alerta Confirmado", f"Militar {militar_nome} escalado com aviso de intervalo/empenho.")
                 executar_auto_save_banco()
                 st.rerun()
         with c_conf2:
             if st.button("❌ Manter Apenas os Dias Válidos", use_container_width=True):
                 st.rerun()
     else:
-        st.success("✅ Os dias válidos e sem conflito foram aplicados com sucesso!")
+        st.success("✅ Os dias válidos e sem conflito foram applied com sucesso!")
         if st.button("OK, Fechar", type="primary", use_container_width=True):
             st.rerun()
 
@@ -102,6 +103,11 @@ def extrair_datetime_de_string_turno(ano, mes, dia, str_horario):
 def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade, eq_alvo=None):
     dt_novo_ini, dt_novo_fim = extrair_datetime_de_string_turno(m_ano, m_mes, d_alvo, val_novo)
     if not dt_novo_ini: return "OK", "", {}
+    
+    duracao_empenho = (dt_novo_fim - dt_novo_ini).total_seconds() / 3600.0
+    if 0 < duracao_empenho < 6.0:
+        return "AVISO", f"Empenho de apenas {duracao_empenho:.1f}h (recomendado mínimo de 6h).", {"dia": d_alvo, "equipe": eq_alvo}
+
     prefixo = f"{m_id}_"
     for k, val_ex in dict_grade.items():
         if k.startswith(prefixo):
@@ -112,19 +118,22 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade, 
                     dt_ex_ini, dt_ex_fim = extrair_datetime_de_string_turno(m_ano, m_mes, d_ex, val_ex)
                     if dt_ex_ini and dt_novo_ini < dt_ex_fim and dt_novo_fim > dt_ex_ini:
                         return "BLOQUEADO", f"Choque de Horário no dia {d_ex:02d} ({val_ex}) na equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex, "horario": val_ex}
-                    if dt_ex_ini and d_ex == d_alvo:
+                    if dt_ex_ini:
                         desc = (dt_novo_ini - dt_ex_fim if dt_novo_ini >= dt_ex_fim else dt_ex_ini - dt_novo_fim).total_seconds() / 3600.0
                         if 0 <= desc < 8.0:
-                            return "AVISO", f"Descanso reduzido para {desc:.1f}h na equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex}
+                            return "AVISO", f"Descanso interjornada reduzido para {desc:.1f}h em relação à equipe {eq_ex}.", {"dia": d_ex, "equipe": eq_ex}
     return "OK", "", {}
 
 def executar_auto_save_banco():
     m_mes, m_ano = st.session_state.get("mes_escala", datetime.date.today().month), st.session_state.get("ano_escala", datetime.date.today().year)
     usr = st.session_state.get("usuario_dados", {})
+    ts_versao = int(time.time() * 1000)
+    
     salvar_escala_mensal_supabase(
         ano=m_ano, mes=m_mes, equipe_nome=st.session_state.get("equipe_ativa", "GERAL"),
         modalidade=st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso"),
         matriz_dados={
+            "ts_versao": ts_versao,
             "grade_escala_lancamentos": st.session_state.get("grade_escala_lancamentos", {}),
             "militares_no_quadro_chaves": [(str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []) if len(p) == 2],
             "ordem_customizada_map": st.session_state.get("ordem_customizada_map", {}),
@@ -138,7 +147,7 @@ def executar_auto_save_banco():
     st.session_state["exibir_toast_autosave"] = True
 
 def carregar_escala_salva_banco():
-    if not supabase: return
+    if not supabase: return {}
     m_mes, m_ano = st.session_state.get("mes_escala", datetime.date.today().month), st.session_state.get("ano_escala", datetime.date.today().year)
     try:
         res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", m_ano).eq("mes", m_mes).execute()
@@ -151,10 +160,13 @@ def carregar_escala_salva_banco():
             st.session_state["dias_selecionados_passo4"] = md.get("dias_selecionados_passo4", [])
             st.session_state["horario_avulso_p2"] = md.get("horario_avulso_p2", "07:00 às 19:00")
             st.session_state["militares_no_quadro_chaves"] = [(str(p[0]), str(p[1])) for p in md.get("militares_no_quadro_chaves", []) if len(p) == 2]
+            return md
         else:
             st.session_state["grade_escala_lancamentos"], st.session_state["militares_no_quadro_chaves"] = {}, []
-        st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
-    except Exception as ex: print(f"Aviso carregar: {ex}")
+            return {}
+    except Exception as ex: 
+        print(f"Aviso carregar: {ex}")
+        return {}
 
 def recalcular_escala_matriz():
     m_mes, m_ano = st.session_state.get("mes_escala", datetime.date.today().month), st.session_state.get("ano_escala", datetime.date.today().year)
@@ -174,7 +186,7 @@ def recalcular_escala_matriz():
     seq_72 = {"Fase 1 (Dia)": [st.session_state.get("c72_h_dia", "06:00 às 18:00"), st.session_state.get("c72_h_noite", "18:00 às 06:00"), "D", "D", "F"]}.get(st.session_state.get("c72_fase_ini", "Fase 1 (Dia)"), ["06:00 às 18:00", "18:00 às 06:00", "D", "D", "F"])
     sem_iso_d1 = datetime.date(m_ano, m_mes, 1).isocalendar()[1]
 
-    bloqueios = []
+    bloqueios, avisos_lista = [], []
     for pair in st.session_state.get("militares_no_quadro_chaves", []):
         if len(pair) == 2 and str(pair[1]) == eq_ativa:
             m_id = str(pair[0])
@@ -194,14 +206,18 @@ def recalcular_escala_matriz():
                     eh_sem_a = ((datetime.date(m_ano, m_mes, d).isocalendar()[1] - sem_iso_d1) % 2 == 0) if "SEMANA A" in st.session_state.get("dob_sem_ini", "SEMANA A") else ((datetime.date(m_ano, m_mes, d).isocalendar()[1] - sem_iso_d1) % 2 != 0)
                     valor_dia = (st.session_state.get("dob_h_sq", "14:00 às 00:00") if w in [0, 1, 2, 3] else (st.session_state.get("dob_h_ss", "18:00 às 04:00") if w in [4, 5] else st.session_state.get("dob_h_dom", "18:00 às 02:00"))) if ((eh_sem_a and w in [0, 2, 5, 6]) or (not eh_sem_a and w in [1, 3, 4])) else "F"
 
-                status, _, det = auditar_escalacao_militar(m_id, m_ano, m_mes, d, valor_dia, grade, eq_alvo=eq_ativa)
+                status, msg_a, det = auditar_escalacao_militar(m_id, m_ano, m_mes, d, valor_dia, grade, eq_alvo=eq_ativa)
                 if status == "BLOQUEADO": 
                     valor_dia = "X"
                     bloqueios.append({"militar": m_nome, "dia": d, "equipe": det.get("equipe", "N/I"), "horario": det.get("horario", "N/I")})
+                elif status == "AVISO":
+                    avisos_lista.append({"militar": m_nome, "dia": d, "mensagem": msg_a})
+
                 grade[k] = valor_dia
 
     st.session_state["grade_escala_lancamentos"] = grade
-    if bloqueios: st.session_state["auditoria_pendente_popup"] = {"militar_nome": bloqueios[0]["militar"], "ignorados": bloqueios, "descanso": [], "val_final": "X", "item_sel": {}, "m_ano": m_ano, "m_mes": m_mes}
+    if bloqueios or avisos_lista: 
+        st.session_state["auditoria_pendente_popup"] = {"militar_nome": "Ajuste de Escala", "ignorados": bloqueios, "descanso": avisos_lista, "val_final": "X", "item_sel": {}, "m_ano": m_ano, "m_mes": m_mes}
 
 @st.dialog("📥 Importar Escala Pronta via Excel", width="large")
 def abrir_modal_importar_escala_excel():
@@ -220,24 +236,30 @@ def abrir_modal_importar_escala_excel():
                 executar_auto_save_banco()
                 st.rerun()
 
-# FRAGMENTO DE SINCRONIZAÇÃO DA SEGUNDA TELA (AUTO-REFRESH A CADA 3 SEGUNDOS)
-@st.fragment(run_every=3)
+# FRAGMENTO DE SINCRONIZAÇÃO DA SEGUNDA TELA (CONSULTA DIRETA DO SUPABASE A CADA 2 SEG)
+@st.fragment(run_every=2)
 def renderizar_fragmento_segunda_tela(m_ano, m_mes):
-    carregar_escala_salva_banco()
+    md = carregar_escala_salva_banco()
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
     mils_todos = st.session_state.get("lista_militares", [])
-    chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
+    if not mils_todos:
+        mils_todos = carregar_militares_supabase() or []
+        st.session_state["lista_militares"] = mils_todos
+
+    chaves_quadro = md.get("militares_no_quadro_chaves", [])
 
     if not chaves_quadro:
-        st.info("💡 Nenhum militar escalado no quadro para este mês até o momento.")
+        st.info("💡 Nenhum militar/equipe aplicado no quadro para este mês até o momento.")
         return
 
     mils_linhas = [{"id": str(p[0]), "equipe": str(p[1]), "posto_grad": m.get("posto_grad", "SD"), "nome_guerra": m.get("nome_guerra", "MILITAR"), "num_policia": m.get("num_policia", ""), "chave_linha": f"{p[0]}_{p[1]}"} for p in chaves_quadro if len(p) == 2 for m in [next((x for x in mils_todos if str(x.get("id")) == str(p[0])), {})] if m]
-    mils_ord = sorted(mils_linhas, key=lambda x: (st.session_state.get("ordem_customizada_map", {}).get(x["chave_linha"], 99), PESOS_HIERARQUIA.get(padronizar_graduacao(x["posto_grad"]), 99), x["nome_guerra"]))
+    
+    ordem_map = md.get("ordem_customizada_map", {})
+    mils_ord = sorted(mils_linhas, key=lambda x: (ordem_map.get(x["chave_linha"], 99), PESOS_HIERARQUIA.get(padronizar_graduacao(x["posto_grad"]), 99), x["nome_guerra"]))
 
     colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
     matriz = []
-    grade = st.session_state.get("grade_escala_lancamentos", {})
+    grade = md.get("grade_escala_lancamentos", {})
 
     for idx_r, item in enumerate(mils_ord):
         m_id, eq, pg, ng, np = item["id"], item["equipe"], padronizar_graduacao(item["posto_grad"]), item["nome_guerra"], item["num_policia"]
@@ -252,22 +274,17 @@ def renderizar_fragmento_segunda_tela(m_ano, m_mes):
             if any(sig in set(v_str.replace("/", " ").split()) for sig in SIGLAS_DIAS_NEUTROS): neutros += 1
             elif v_str not in ["", "F", "D", "X"]: tot_h += 12.0
 
-        cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
+        cfg_bh = md.get("bh_configs", {}).get(str(m_id), {})
         meta = max(0.0, (num_dias - neutros) * ((80.0 if cfg_bh.get("reduzida") else 160.0) / float(num_dias)))
-        exc = (tot_h + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta
+        ajuste_saldo = md.get("ajuste_saldo_map", {}).get(str(m_id), 0.0)
+        exc = (tot_h + float(ajuste_saldo)) - meta
         linha["HORAS / META"] = f"⚠️ {tot_h:.1f}h / {meta:.1f}h (+{exc:.1f}h)" if exc > 0 else f"{tot_h:.1f}h / {meta:.1f}h"
         matriz.append(linha)
 
     df_escala = pd.DataFrame(matriz)
     st.dataframe(df_escala, use_container_width=True, hide_index=True, height=680)
 
-# VISTA EXCLUSIVA E AUTÔNOMA PARA MONITOR SECUNDÁRIO (POP-OUT)
 def renderizar_modo_segunda_tela():
-    if not st.session_state.get("lista_militares"):
-        m_banco = carregar_militares_supabase()
-        if m_banco:
-            st.session_state["lista_militares"] = m_banco
-
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
 
@@ -282,7 +299,7 @@ def renderizar_modo_segunda_tela():
     c_head1, c_head2 = st.columns([3, 1])
     with c_head1:
         st.title("🖥️ Quadro Geral — Monitor Secundário")
-        st.caption(f"📍 Período: **{m_mes:02d}/{m_ano}** | 🟢 *Sincronização em tempo real ativa.*")
+        st.caption(f"📍 Período: **{m_mes:02d}/{m_ano}** | 🟢 *Sincronização Ativa.*")
     with c_head2:
         if st.button("🔄 Atualizar Agora", type="primary", use_container_width=True, key="btn_force_refresh_2tela"):
             carregar_escala_salva_banco()
@@ -305,13 +322,9 @@ def renderizar_passo5():
         carregar_escala_salva_banco()
         st.session_state["chave_escala_carregada"] = f"{m_ano}_{m_mes:02d}"
 
-    # LÓGICA DE MONTAGEM DO QUADRO: SÓ MONTA LINHAS QUANDO HOUVER CLICK EXPLÍCITO NO BOTÃO APLICAR
     if st.session_state.get("atualizar_quadro_passo5", False):
         sel_ids, eq_ativa = set(str(mid) for mid in st.session_state.get("militares_selecionados_ids", [])), str(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
-        
-        # Garante que só haverá chaves registradas se houverem militares selecionados no Passo 3
         st.session_state["militares_no_quadro_chaves"] = [(str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []) if str(p[1]) != eq_ativa or str(p[0]) in sel_ids] + [(mid, eq_ativa) for mid in sel_ids if (mid, eq_ativa) not in set((str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []))]
-        
         recalcular_escala_matriz()
         executar_auto_save_banco()
         st.session_state["atualizar_quadro_passo5"] = False
@@ -345,8 +358,6 @@ def renderizar_passo5():
 
         num_dias = calendar.monthrange(m_ano, m_mes)[1]
         mils_todos = st.session_state.get("lista_militares", [])
-        
-        # SÓ CARREGA AS LINHAS SE REALMENTE EXISTIREM MILITARES/EQUIPES ESCALADOS NO QUADRO
         chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
         mils_linhas = [{"id": str(p[0]), "equipe": str(p[1]), "posto_grad": m.get("posto_grad", "SD"), "nome_guerra": m.get("nome_guerra", "MILITAR"), "num_policia": m.get("num_policia", ""), "chave_linha": f"{p[0]}_{p[1]}"} for p in chaves_existentes if len(p) == 2 for m in [next((x for x in mils_todos if str(x.get("id")) == str(p[0])), {})] if m]
 
