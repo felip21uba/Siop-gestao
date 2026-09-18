@@ -12,22 +12,7 @@ def recalcular_matriz_passo5():
     st.session_state["atualizar_quadro_passo5"] = True
 
 def exibir_modulo_escalas():
-    # LISTA DE PASSOS PARA A BARRA LATERAL
-    opcoes_passos = [
-        "VISUALIZAR TODOS",
-        "PASSO 1: Unidade & Equipes",
-        "PASSO 2: Turno & Horários",
-        "PASSO 3: Efetivo & Ausências",
-        "PASSO 4: Matriz Mensal",
-        "PASSO 5: Quadro Geral",
-        "PASSO 6: Exportação & Auditoria",
-        "PASSO 7: Banco de Horas",
-        "PASSO 8: Férias Anuais"
-    ]
-    
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 📌 Módulo de Escalas")
-    passo_ativo = st.sidebar.radio("Selecione a Etapa:", opcoes_passos, key="passo_escala_ativo")
+    passo_ativo = st.session_state.get("passo_escala_ativo", "VISUALIZAR TODOS")
     
     st.title("📅 Módulo de Gestão de Escalas")
     
