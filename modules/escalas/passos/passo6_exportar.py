@@ -8,7 +8,6 @@ import base64
 import streamlit.components.v1 as components
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
-from modules.escalas.passos.passo5_quadro import abrir_modal_importar_escala_excel
 
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
@@ -118,13 +117,16 @@ def renderizar_passo6():
 
     exp6 = st.expander("📌 PASSO 6: Visualização da Escala e Exportação Oficial", expanded=True)
     with exp6:
-        # BOTAO DE IMPORTAÇÃO DE ESCALA VIA EXCEL AGORA POSICIONADO NO PASSO 6
         c_exp1, c_exp2 = st.columns([3, 1])
         with c_exp1:
             st.caption("📥 **Importação Externa:** Caso já possua uma planilha de escala pronta em Excel, importe-a para o sistema.")
         with c_exp2:
             if st.button("📥 Importar Escala Pronta (Excel)", type="secondary", use_container_width=True):
-                abrir_modal_importar_escala_excel()
+                try:
+                    from modules.escalas.passos.passo5_quadro import abrir_modal_importar_escala_excel
+                    abrir_modal_importar_escala_excel()
+                except ImportError:
+                    st.error("A funcionalidade de importação de Excel está em atualização no Passo 5.")
 
         st.divider()
 
