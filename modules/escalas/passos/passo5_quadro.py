@@ -305,9 +305,13 @@ def renderizar_passo5():
         carregar_escala_salva_banco()
         st.session_state["chave_escala_carregada"] = f"{m_ano}_{m_mes:02d}"
 
+    # LÓGICA DE MONTAGEM DO QUADRO: SÓ MONTA LINHAS QUANDO HOUVER CLICK EXPLÍCITO NO BOTÃO APLICAR
     if st.session_state.get("atualizar_quadro_passo5", False):
         sel_ids, eq_ativa = set(str(mid) for mid in st.session_state.get("militares_selecionados_ids", [])), str(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
+        
+        # Garante que só haverá chaves registradas se houverem militares selecionados no Passo 3
         st.session_state["militares_no_quadro_chaves"] = [(str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []) if str(p[1]) != eq_ativa or str(p[0]) in sel_ids] + [(mid, eq_ativa) for mid in sel_ids if (mid, eq_ativa) not in set((str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []))]
+        
         recalcular_escala_matriz()
         executar_auto_save_banco()
         st.session_state["atualizar_quadro_passo5"] = False
@@ -341,7 +345,10 @@ def renderizar_passo5():
 
         num_dias = calendar.monthrange(m_ano, m_mes)[1]
         mils_todos = st.session_state.get("lista_militares", [])
-        mils_linhas = [{"id": str(p[0]), "equipe": str(p[1]), "posto_grad": m.get("posto_grad", "SD"), "nome_guerra": m.get("nome_guerra", "MILITAR"), "num_policia": m.get("num_policia", ""), "chave_linha": f"{p[0]}_{p[1]}"} for p in st.session_state.get("militares_no_quadro_chaves", []) if len(p) == 2 for m in [next((x for x in mils_todos if str(x.get("id")) == str(p[0])), {})] if m]
+        
+        # SÓ CARREGA AS LINHAS SE REALMENTE EXISTIREM MILITARES/EQUIPES ESCALADOS NO QUADRO
+        chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
+        mils_linhas = [{"id": str(p[0]), "equipe": str(p[1]), "posto_grad": m.get("posto_grad", "SD"), "nome_guerra": m.get("nome_guerra", "MILITAR"), "num_policia": m.get("num_policia", ""), "chave_linha": f"{p[0]}_{p[1]}"} for p in chaves_existentes if len(p) == 2 for m in [next((x for x in mils_todos if str(x.get("id")) == str(p[0])), {})] if m]
 
         st.session_state.setdefault("ordem_customizada_map", {})
         for idx, item in enumerate(mils_linhas): st.session_state["ordem_customizada_map"].setdefault(item["chave_linha"], idx + 1)
@@ -419,7 +426,7 @@ def renderizar_passo5():
 
             for d, col_name in colunas_dias:
                 v = padronizar_entrada_quadro(st.session_state["grade_escala_lancamentos"].get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F"))
-                if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and extrair_datetime_de_string_turno(m_ano, m_mes, d, st.session_state["grade_escala_lancamentos"].get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}"))[0] for p in st.session_state.get("militares_no_quadro_chaves", [])): v = "X"
+                if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and extrair_datetime_de_string_turno(m_ano, m_mes, d, st.session_state["grade_escala_lancamentos"].get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}"))[0] for p in chaves_existentes): v = "X"
                 linha[col_name] = v
                 v_str = str(v).upper().strip()
                 if any(sig in set(v_str.replace("/", " ").split()) for sig in SIGLAS_DIAS_NEUTROS): neutros += 1
@@ -453,6 +460,8 @@ def renderizar_passo5():
             if alt:
                 st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
                 executar_auto_save_banco(); st.rerun()
+        elif df_escala.empty:
+            st.info("💡 Clique em '⚡ Aplicar Lançamentos e Atualizar Quadro' para montar a escala com os militares selecionados.")
 
         c_act1, c_act2 = st.columns(2)
         with c_act1:
