@@ -211,15 +211,13 @@ def renderizar_fragmento_passo3():
     militares = remover_duplicados_militares(st.session_state.get("lista_militares", []))
     st.session_state["lista_militares"] = militares
 
-    # TRAVA DE EXCLUSÃO DE SEGURANÇA
+    # 1. TRAVA DE EXCLUSÃO
     col_t1, col_t2 = st.columns([1.8, 3.2])
     with col_t1:
         modo_exclusao = st.toggle("🚨 Trava de Exclusão (Habilitar Exclusão)", value=False, key="toggle_modo_exclusao_frag")
     with col_t2:
         if modo_exclusao: st.warning("⚠️ **TRAVA DESBLOQUEADA:** Exclusão ativa no Quadro da Direita.")
         else: st.info("🔒 **TRAVA ATIVA (SEGURANÇA):** Exclusões bloqueadas.")
-
-    st.markdown("<br>", unsafe_allow_html=True)
 
     if not militares:
         st.info("💡 Nenhum militar cadastrado no momento.")
@@ -228,78 +226,79 @@ def renderizar_fragmento_passo3():
     graduacoes_unicas = sorted(list(set([padronizar_graduacao(m.get("posto_grad", "SD")) for m in militares])), key=lambda x: PESOS_HIERARQUIA.get(x, 99))
     cidades_unicas = sorted(list(set([str(m.get("cidade", "N/I")).strip().upper() for m in militares if m.get("cidade") and str(m.get("cidade")).strip().upper() not in ["NONE", "NAN", "NULL", ""]])))
 
+    st.markdown("---")
+
+    # 2. BARRA DE FERRAMENTAS & FILTROS EM LARGURA TOTAL (FULL-WIDTH)
+    c_b1, c_f1, c_f2, c_f3, c_b2, c_ex = st.columns([1.1, 2.0, 1.4, 1.4, 1.1, 1.4])
+    with c_b1:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("✔ Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
+            mils_visiveis = [m["id"] for m in st.session_state.get("militares_ativos_render", [])]
+            st.session_state["militares_selecionados_ids"] = list(set(st.session_state.get("militares_selecionados_ids", []) + mils_visiveis))
+            st.rerun()
+    with c_f1:
+        termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag", placeholder="Nome, matrícula...").strip()
+    with c_f2:
+        graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
+    with c_f3:
+        cidades_sel = st.multiselect("🏙️ Cidade/Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
+    with c_b2:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if st.button("✖ Limpar", use_container_width=True, key="btn_desmarcar_todos_frag"):
+            st.session_state["militares_selecionados_ids"] = []
+            st.rerun()
+    with c_ex:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+        if modo_exclusao and st.button("🗑️ Excluir Selecionados", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
+            abrir_modal_excluir_lote(excluir_lote_banco_e_memoria)
+
+    # LÓGICA DOS FILTROS EM CASCATA
+    sel_ids_set = set(st.session_state.get('militares_selecionados_ids', []))
+    nao_sel_pre = [m for m in militares if m["id"] not in sel_ids_set]
+
+    nao_sel_filtrados = nao_sel_pre
+    if graduacoes_sel:
+        nao_sel_filtrados = [m for m in nao_sel_filtrados if padronizar_graduacao(m.get("posto_grad", "SD")) in graduacoes_sel]
+    if cidades_sel:
+        nao_sel_filtrados = [m for m in nao_sel_filtrados if str(m.get("cidade", "N/I")).strip().upper() in cidades_sel]
+
+    if termo_busca:
+        termo_norm = unicodedata.normalize('NFKD', str(termo_busca)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
+        termo_digits = re.sub(r'\D', '', termo_norm)
+
+        def atende_busca_flexivel(m):
+            ng = unicodedata.normalize('NFKD', str(m.get("nome_guerra", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
+            nc = unicodedata.normalize('NFKD', str(m.get("nome_completo", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
+            np = unicodedata.normalize('NFKD', str(m.get("num_policia", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
+            np_digits = re.sub(r'\D', '', np)
+            pg = padronizar_graduacao(m.get("posto_grad", "")).upper()
+            if termo_norm in ng or termo_norm in nc or termo_norm in np or termo_norm in pg: return True
+            if termo_digits and np_digits and (termo_digits in np_digits or np_digits in termo_digits): return True
+            return False
+
+        nao_sel_filtrados = [m for m in nao_sel_filtrados if atende_busca_flexivel(m)]
+
+    st.session_state["militares_ativos_render"] = nao_sel_filtrados
+    nao_selecionados_ord = sorted(nao_sel_filtrados, key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", "")))
+    selecionados_ord = sorted([m for m in militares if m["id"] in sel_ids_set], key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", "")))
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 3. QUADROS PERFEITAMENTE SIMÉTRICOS E ALINHADOS NO TOPO
     col_quadro_esq, col_quadro_dir = st.columns(2, gap="medium")
 
     # QUADRO ESQUERDO: EFETIVO DISPONÍVEL
     with col_quadro_esq:
-        sel_ids_set = set(st.session_state.get('militares_selecionados_ids', []))
-        nao_sel_pre = [m for m in militares if m["id"] not in sel_ids_set]
-
-        st.markdown(f"##### ⚪ Efetivo Disponível ({len(nao_sel_pre)}):")
-
-        # BARRA DE FERRAMENTAS E FILTROS EM LINHA
-        c_b1, c_f1, c_f2, c_f3, c_b2 = st.columns([1.1, 1.8, 1.3, 1.3, 1.1])
-        with c_b1:
-            if st.button("✔ Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
-                mils_visiveis = [m["id"] for m in st.session_state.get("militares_ativos_render", [])]
-                st.session_state["militares_selecionados_ids"] = list(set(st.session_state.get("militares_selecionados_ids", []) + mils_visiveis))
-                st.rerun()
-        with c_f1:
-            termo_busca = st.text_input("🔍 Busca:", key="txt_busca_militar_p3_frag", placeholder="Nome, matrícula...").strip()
-        with c_f2:
-            graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
-        with c_f3:
-            cidades_sel = st.multiselect("🏙️ Cidade/Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
-        with c_b2:
-            if st.button("✖ Limpar", use_container_width=True, key="btn_desmarcar_todos_frag"):
-                st.session_state["militares_selecionados_ids"] = []
-                st.rerun()
-
-        # APLICAÇÃO DOS FILTROS EM CASCATA
-        nao_sel_filtrados = nao_sel_pre
-        if graduacoes_sel:
-            nao_sel_filtrados = [m for m in nao_sel_filtrados if padronizar_graduacao(m.get("posto_grad", "SD")) in graduacoes_sel]
-        if cidades_sel:
-            nao_sel_filtrados = [m for m in nao_sel_filtrados if str(m.get("cidade", "N/I")).strip().upper() in cidades_sel]
-
-        if termo_busca:
-            termo_norm = unicodedata.normalize('NFKD', str(termo_busca)).encode('ASCII', 'ignore').decode('utf-8').upper().strip()
-            termo_digits = re.sub(r'\D', '', termo_norm)
-
-            def atende_busca_flexivel(m):
-                ng = unicodedata.normalize('NFKD', str(m.get("nome_guerra", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
-                nc = unicodedata.normalize('NFKD', str(m.get("nome_completo", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
-                np = unicodedata.normalize('NFKD', str(m.get("num_policia", ""))).encode('ASCII', 'ignore').decode('utf-8').upper()
-                np_digits = re.sub(r'\D', '', np)
-                pg = padronizar_graduacao(m.get("posto_grad", "")).upper()
-                if termo_norm in ng or termo_norm in nc or termo_norm in np or termo_norm in pg: return True
-                if termo_digits and np_digits and (termo_digits in np_digits or np_digits in termo_digits): return True
-                return False
-
-            nao_sel_filtrados = [m for m in nao_sel_filtrados if atende_busca_flexivel(m)]
-
-        st.session_state["militares_ativos_render"] = nao_sel_filtrados
-        nao_selecionados_ord = sorted(nao_sel_filtrados, key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", "")))
-
-        with st.container(height=420, border=True):
+        st.markdown(f"##### ⚪ Efetivo Disponível ({len(nao_selecionados_ord)}):")
+        with st.container(height=450, border=True):
             if not nao_selecionados_ord: st.caption("Nenhum militar pendente de seleção.")
             else: renderizar_grade_cards_4_colunas(nao_selecionados_ord, sel_ids_set, modo_exclusao, prefixo_key="col_disp")
 
     # QUADRO DIREITO: SELECIONADOS PARA A ESCALA
     with col_quadro_dir:
-        selecionados_ord = sorted([m for m in militares if m["id"] in sel_ids_set], key=lambda x: (PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), x.get("nome_guerra", "")))
-
         st.markdown(f"##### 🟢 Selecionados para a Escala ({len(selecionados_ord)}):")
-        
-        c_ex1, c_ex2 = st.columns([1, 1])
-        with c_ex1:
-            if modo_exclusao and st.button("🗑️ Excluir Selecionados", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
-                abrir_modal_excluir_lote(excluir_lote_banco_e_memoria)
-        with c_ex2:
-            st.markdown("<div style='height: 38px;'></div>", unsafe_allow_html=True)
-
-        with st.container(height=420, border=True):
-            if not selecionados_ord: st.caption("Clique nos cards para mover para este quadro.")
+        with st.container(height=450, border=True):
+            if not selecionados_ord: st.caption("Clique nos cards da esquerda para mover para este quadro.")
             else: renderizar_grade_cards_4_colunas(selecionados_ord, sel_ids_set, modo_exclusao, prefixo_key="col_sel")
 
     st.divider()
