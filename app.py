@@ -106,6 +106,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 🖥️ VERIFICAÇÃO ANTECIPADA DO MODO POP-OUT / SEGUNDA TELA (ISENÇÃO DE LOGIN DEDICADA)
+query_params = st.query_params
+if query_params.get("modo_monitor") == "segunda_tela":
+    from modules.escalas.passos.passo5_quadro import renderizar_modo_segunda_tela
+    renderizar_modo_segunda_tela()
+    st.stop()
+
 # 2. Inicialização do Estado de Sessão
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -656,7 +663,7 @@ with st.sidebar:
                         "PASSO 5: Quadro Geral",
                         "PASSO 6: Exportação & Auditoria",
                         "PASSO 7: Banco de Horas",
-                        "PASSO 8: Férias Anuais"  # <--- INCLUÍDO O PASSO 8 AQUI
+                        "PASSO 8: Férias Anuais"
                     ],
                     key="subnav_escalas_unique_nav",
                     label_visibility="collapsed"
