@@ -260,15 +260,22 @@ def renderizar_passo5():
                 mils_sel_lote = c_f1.multiselect("Militar(es):", list(dict_mils.keys()), key="p5_lote_mils")
                 
                 dt_hoje = datetime.date(m_ano, m_mes, 1)
-                datas_sel = c_f2.date_input("Selecione a(s) Data(s) no Calendário:", value=(dt_hoje, dt_hoje), min_value=datetime.date(m_ano, m_mes, 1), max_value=datetime.date(m_ano, m_mes, calendar.monthrange(m_ano, m_mes)[1]), format="dd/mm/yyyy", key="p5_cal_picker")
-                tipo_ev = c_f3.selectbox("Evento/Horário:", ["Horário Normal", "FE (Férias)", "LM (Licença)", "ATE (Atestado)", "D (Descanso)", "F (Folga)", "X (Outra Equipe)", "DN (Dia Neutro)", "DNT (Neutro Trab.)", "DIS (Dispensa)"], key="p5_tipo")
+datas_sel = c_f2.date_input(
+    "Selecione a(s) Data(s) no Calendário:", 
+    value=(dt_hoje, dt_hoje), 
+    min_value=datetime.date(m_ano, m_mes, 1), 
+    max_value=datetime.date(m_ano, m_mes, calendar.monthrange(m_ano, m_mes)[1]), 
+    format="DD/MM/YYYY", 
+    key="p5_cal_picker"
+)
+tipo_ev = c_f3.selectbox("Evento/Horário:", ["Horário Normal", "FE (Férias)", "LM (Licença)", "ATE (Atestado)", "D (Descanso)", "F (Folga)", "X (Outra Equipe)", "DN (Dia Neutro)", "DNT (Neutro Trab.)", "DIS (Dispensa)"], key="p5_tipo")
 
-                if "Horário Normal" in tipo_ev or "DNT" in tipo_ev:
+if "Horário Normal" in tipo_ev or "DNT" in tipo_ev:
                     h_i, h_f = st.time_input("Início:", datetime.time(7, 0)), st.time_input("Fim:", datetime.time(19, 0))
                     val_final = f"{h_i.strftime('%H:%M')} às {h_f.strftime('%H:%M')}" + (" (DNT)" if "DNT" in tipo_ev else "")
-                else: val_final = tipo_ev.split()[0]
+else: val_final = tipo_ev.split()[0]
 
-                if st.button("⚡ Aplicar Alteração Direta", type="primary", use_container_width=True):
+if st.button("⚡ Aplicar Alteração Direta", type="primary", use_container_width=True):
                     dias_alvo = []
                     if isinstance(datas_sel, (tuple, list)):
                         d_start = datas_sel[0].day
@@ -296,9 +303,9 @@ def renderizar_passo5():
                             st.session_state["auditoria_pendente_popup"] = {"militar_nome": "Lote", "ignorados": bloq, "descanso": avisos, "val_final": val_final, "item_sel": {}, "m_ano": m_ano, "m_mes": m_mes}
                         st.rerun()
 
-        colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
-        matriz = []
-        for idx_r, item in enumerate(mils_ord):
+colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
+matriz = []
+for idx_r, item in enumerate(mils_ord):
             m_id, eq, pg, ng, np = item["id"], item["equipe"], padronizar_graduacao(item["posto_grad"]), item["nome_guerra"], item["num_policia"]
             linha = {"ORDEM": int(st.session_state["ordem_customizada_map"].get(item["chave_linha"], idx_r + 1)), "EQUIPE": eq, "Nº POLÍCIA": np, "MILITAR": f"{pg} {ng}"}
             tot_h, neutros = 0.0, 0
@@ -317,8 +324,8 @@ def renderizar_passo5():
             linha["HORAS / META"] = f"⚠️ {tot_h:.1f}h / {meta:.1f}h (+{exc:.1f}h)" if exc > 0 else f"{tot_h:.1f}h / {meta:.1f}h"
             matriz.append(linha)
 
-        df_escala = pd.DataFrame(matriz)
-        if not df_escala.empty and not quadro_travado:
+df_escala = pd.DataFrame(matriz)
+if not df_escala.empty and not quadro_travado:
             df_ed = st.data_editor(df_escala, use_container_width=True, hide_index=True, height=450, key=f"editor_v{st.session_state['quadro_versao']}")
             alt = False
             for idx_r, row in df_ed.iterrows():
@@ -340,11 +347,11 @@ def renderizar_passo5():
                 st.session_state["quadro_versao"] = st.session_state.get("quadro_versao", 0) + 1
                 executar_auto_save_banco(); st.rerun()
 
-        c_act1, c_act2 = st.columns(2)
-        with c_act1:
+c_act1, c_act2 = st.columns(2)
+with c_act1:
             if st.button("🧹 Limpar Todo o Quadro", use_container_width=True, disabled=quadro_travado):
                 salvar_estado_undo(); st.session_state["grade_escala_lancamentos"], st.session_state["militares_no_quadro_chaves"] = {}, []
                 executar_auto_save_banco(); st.rerun()
-        with c_act2:
+with c_act2:
             if st.button("💾 Salvar Rascunho no Banco", type="primary", use_container_width=True):
                 executar_auto_save_banco(); st.success("✅ Salvo com sucesso!")

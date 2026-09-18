@@ -12,20 +12,22 @@ def recalcular_matriz_passo5():
     st.session_state["atualizar_quadro_passo5"] = True
 
 def exibir_modulo_escalas():
-    # MENU LATERAL STREAMLIT
+    # LISTA DE PASSOS PARA A BARRA LATERAL
     opcoes_passos = [
         "VISUALIZAR TODOS",
         "PASSO 1: Unidade & Equipes",
         "PASSO 2: Turno & Horários",
         "PASSO 3: Efetivo & Ausências",
-        "FÉRIAS ANUAIS: Mapeamento",  # <--- INCLUÍDO NA BARRA LATERAL
         "PASSO 4: Matriz Mensal",
         "PASSO 5: Quadro Geral",
         "PASSO 6: Exportação & Auditoria",
-        "PASSO 7: Banco de Horas"
+        "PASSO 7: Banco de Horas",
+        "PASSO 8: Férias Anuais"  # <--- PASSO 8 ADICIONADO
     ]
     
-    passo_ativo = st.sidebar.radio("📌 Navegação do Módulo:", opcoes_passos, key="passo_escala_ativo")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📌 Módulo de Escalas")
+    passo_ativo = st.sidebar.radio("Selecione a Etapa:", opcoes_passos, key="passo_escala_ativo")
     
     st.title("📅 Módulo de Gestão de Escalas")
     
@@ -33,19 +35,17 @@ def exibir_modulo_escalas():
         renderizar_passo1()
         renderizar_passo2()
         renderizar_passo3()
-        renderizar_modulo_ferias_anual()
         renderizar_passo4(recalcular_matriz_passo5)
         renderizar_passo5()
         renderizar_passo6()
         renderizar_passo7()
+        renderizar_modulo_ferias_anual()
     elif passo_ativo == "PASSO 1: Unidade & Equipes":
         renderizar_passo1()
     elif passo_ativo == "PASSO 2: Turno & Horários":
         renderizar_passo2()
     elif passo_ativo == "PASSO 3: Efetivo & Ausências":
         renderizar_passo3()
-    elif passo_ativo == "FÉRIAS ANUAIS: Mapeamento":
-        renderizar_modulo_ferias_anual()
     elif passo_ativo == "PASSO 4: Matriz Mensal":
         renderizar_passo4(recalcular_matriz_passo5)
     elif passo_ativo == "PASSO 5: Quadro Geral":
@@ -54,3 +54,5 @@ def exibir_modulo_escalas():
         renderizar_passo6()
     elif passo_ativo == "PASSO 7: Banco de Horas":
         renderizar_passo7()
+    elif passo_ativo == "PASSO 8: Férias Anuais":
+        renderizar_modulo_ferias_anual()
