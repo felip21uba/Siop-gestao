@@ -105,12 +105,11 @@ def carregar_ferias_supabase(ano=None, mes=None, busca=""):
     except Exception: return []
 
 def renderizar_modulo_ferias_anual():
-    # RETÂNGULO PRINCIPAL DO PASSO 8
-    with st.container(border=True):
-        st.markdown("### 🏖️ PASSO 8: Mapeamento Anual de Férias & Indisponibilidade")
+    # PASSO 8 RETRÁTIL PADRONIZADO (IGUAL AO PASSO 7)
+    with st.expander("📌 PASSO 8: Mapeamento Anual de Férias & Indisponibilidade", expanded=False):
         st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados para alertar sobre indisponibilidades na escala mensal.")
 
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
 
         # SUB-EXPANDER 1: IMPORTAÇÃO
         with st.expander("➕ 📥 Importação Segura via PDF ou Texto Copiado", expanded=False):
@@ -163,7 +162,7 @@ def renderizar_modulo_ferias_anual():
                     else: st.error(msg)
 
         # SUB-EXPANDER 2: CONSULTA DO BANCO
-        with st.expander("➕ 🔍 Consulta e Gestão do Mapeamento Anual de Férias", expanded=True):
+        with st.expander("➕ 🔍 Consulta e Gestão do Mapeamento Anual de Férias", expanded=False):
             c_f1, c_f2, c_f3 = st.columns(3)
             ano_sel = c_f1.number_input("Ano:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year))
             meses_nomes = ["Todos", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
