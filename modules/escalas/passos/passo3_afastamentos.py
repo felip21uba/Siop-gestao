@@ -24,7 +24,6 @@ def renderizar_painel_afastamentos(militares, padronizar_graduacao_func, pesos_d
             c_af1, c_af2, c_af3, c_af4 = st.columns([3.5, 2.5, 2, 2])
             
             with c_af1:
-                # MULTI-SELEÇÃO DE MILITARES NO PASSO 3
                 mils_sel_labels = st.multiselect(
                     "Militar(es):", 
                     options=list(mapa_select_mils_afast.keys()),
@@ -44,9 +43,9 @@ def renderizar_painel_afastamentos(militares, padronizar_graduacao_func, pesos_d
                     ]
                 )
             with c_af3:
-                dt_inicio = st.date_input("Data Início:", datetime.date.today(), key="p3_dt_ini")
+                dt_inicio = st.date_input("Data Início:", datetime.date.today(), format="DD/MM/YYYY", key="p3_dt_ini")
             with c_af4:
-                dt_fim = st.date_input("Data Fim:", datetime.date.today(), key="p3_dt_fim")
+                dt_fim = st.date_input("Data Fim:", datetime.date.today(), format="DD/MM/YYYY", key="p3_dt_fim")
 
             obs_afast = st.text_input("Observação / Publicação BG / Nota do Comando:")
 
@@ -100,8 +99,8 @@ def renderizar_painel_afastamentos(militares, padronizar_graduacao_func, pesos_d
                 column_config={
                     "nome_militar": st.column_config.TextColumn("Militar", disabled=True),
                     "sigla": st.column_config.TextColumn("Código", disabled=True),
-                    "dt_inicio": st.column_config.TextColumn("Início", disabled=True),
-                    "dt_fim": st.column_config.TextColumn("Fim", disabled=True),
+                    "dt_inicio": st.column_config.TextColumn("Início (DD/MM/YYYY)", disabled=True),
+                    "dt_fim": st.column_config.TextColumn("Fim (DD/MM/YYYY)", disabled=True),
                     "obs": st.column_config.TextColumn("Observação", disabled=True),
                     "Excluir": st.column_config.CheckboxColumn("🗑️ Remover", default=False)
                 },

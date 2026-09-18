@@ -1,17 +1,15 @@
 import streamlit as st
 import datetime
 import re
-import uuid
 import pandas as pd
 from core.database import supabase
 
-MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # Limite rígido de 5MB
+MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # Limite de 5MB
 
 def validar_e_sanitizar_pdf_bytes(file_bytes):
-    """Inspeção de segurança contra uploads maliciosos (Magic Bytes, tamanho e scripts)."""
+    """Verificação de segurança contra uploads maliciosos."""
     if len(file_bytes) > MAX_FILE_SIZE_BYTES:
         return False, "🚨 Arquivo excede o tamanho máximo permitido de 5MB."
-
     if not file_bytes.startswith(b"%PDF-"):
         return False, "🚨 Arquivo inválido. O cabeçalho binário não corresponde a um PDF autêntico."
 
@@ -19,18 +17,16 @@ def validar_e_sanitizar_pdf_bytes(file_bytes):
     for p in padroes_maliciosos:
         if p in file_bytes:
             return False, "🚨 Arquivo bloqueado pelas travas de segurança: contém scripts executáveis."
-
     return True, "OK"
 
 def sanitizar_texto(texto):
-    """Previne CSV/Formula Injection e remove caracteres nulos."""
     if not texto: return ""
     s = str(texto).strip()
     if s.startswith(('=', '+', '-', '@')): s = "'" + s
     return re.sub(r'[\x00-\x1f\x7f-\x9f]', '', s).upper()
 
 def extrair_registros_ferias_texto(texto_bruto):
-    """Suporta padrões como '10 dias a partir de 02/02/2027' ou '02/02/2027 a 12/02/2027'."""
+    """Extrai férias a partir de padrões como '10 dias a partir de 02/02/2027' ou '02/02/2027 a 12/02/2027'."""
     registros = []
     linhas = texto_bruto.split("\n")
 
@@ -39,7 +35,7 @@ def extrair_registros_ferias_texto(texto_bruto):
         if not linha_clean: continue
 
         m_num = re.search(r'\b\d{6,7}\b', linha_clean)
-        num_pol = m_num.group(0) if m_num else "N/I"
+        num_pol = m_num.group(0) if m_num else ""
 
         m_intervalo = re.search(r'(\d{2}/\d{2}/\d{4})\s*(?:A|À|-|ATE)\s*(\d{2}/\d{2}/\d{4})', linha_clean)
         m_dias_partir = re.search(r'(\d+)\s*DIAS?\s*(?:A\s*PARTIR\s*DE|A\s*CONTAR\s*DE)\s*(\d{2}/\d{2}/\d{4})', linha_clean)
@@ -59,44 +55,59 @@ def extrair_registros_ferias_texto(texto_bruto):
             except ValueError: pass
 
         if dt_i and dt_f:
+            qtd_dias_calculada = (dt_f - dt_i).days + 1
             registros.append({
-                "id": uuid.uuid4().hex[:8],
                 "num_policia": num_pol,
-                "linha_bruta": linha_clean,
+                "nome_militar": linha_clean[:60],
                 "dt_inicio": dt_i.strftime("%d/%m/%Y"),
                 "dt_fim": dt_f.strftime("%d/%m/%Y"),
+                "dias_qtd": qtd_dias_calculada,
                 "ano": dt_i.year,
-                "mes": dt_i.month
+                "mes": dt_i.month,
+                "nota_publicacao": linha_clean
             })
-
     return registros
 
-def carregar_ferias_anual_banco():
-    if "plano_ferias_anual" not in st.session_state:
-        st.session_state["plano_ferias_anual"] = []
-        if supabase:
-            try:
-                res = supabase.table("configuracoes_sistema").select("valor").eq("chave", "plano_ferias_anual").execute()
-                if res.data and len(res.data) > 0:
-                    import json
-                    st.session_state["plano_ferias_anual"] = json.loads(res.data[0]["valor"])
-            except Exception: pass
-
-def salvar_ferias_anual_banco():
-    if supabase:
+def salvar_ferias_supabase_lote(lista_registros):
+    if supabase and lista_registros:
         try:
-            import json
-            supabase.table("configuracoes_sistema").upsert({
-                "chave": "plano_ferias_anual",
-                "valor": json.dumps(st.session_state["plano_ferias_anual"])
-            }).execute()
-        except Exception: pass
+            # Converter DD/MM/YYYY para YYYY-MM-DD para compatibilidade SQL
+            registros_db = []
+            for r in lista_registros:
+                item = r.copy()
+                item["dt_inicio"] = datetime.datetime.strptime(r["dt_inicio"], "%d/%m/%Y").strftime("%Y-%m-%d")
+                item["dt_fim"] = datetime.datetime.strptime(r["dt_fim"], "%d/%m/%Y").strftime("%Y-%m-%d")
+                registros_db.append(item)
+                
+            supabase.table("plano_ferias_anual").insert(registros_db).execute()
+            return True, "✅ Registros salvos com sucesso no Supabase!"
+        except Exception as ex:
+            return False, f"Erro ao salvar no banco: {ex}"
+    return False, "Banco Supabase indisponível."
+
+def carregar_ferias_supabase(ano=None, mes=None, busca=""):
+    if not supabase: return []
+    try:
+        query = supabase.table("plano_ferias_anual").select("*")
+        if ano: query = query.eq("ano", ano)
+        if mes and mes != 0: query = query.eq("mes", mes)
+        res = query.order("dt_inicio").execute()
+        
+        dados = res.data or []
+        for d in dados:
+            if d.get("dt_inicio") and "-" in str(d["dt_inicio"]):
+                d["dt_inicio"] = datetime.datetime.strptime(str(d["dt_inicio"]), "%Y-%m-%d").strftime("%d/%m/%Y")
+            if d.get("dt_fim") and "-" in str(d["dt_fim"]):
+                d["dt_fim"] = datetime.datetime.strptime(str(d["dt_fim"]), "%Y-%m-%d").strftime("%d/%m/%Y")
+
+        if busca:
+            dados = [d for d in dados if busca in str(d.get("num_policia", "")) or busca in str(d.get("nota_publicacao", "")).upper()]
+        return dados
+    except Exception: return []
 
 def renderizar_modulo_ferias_anual():
-    carregar_ferias_anual_banco()
-
-    st.markdown("### 🏖️ Mapeamento Anual de Férias & Indisponibilidade")
-    st.caption("Cadastre ou importe o plano anual. O Passo 5 consultará esta base para preencher 'FE' e aplicar o bloqueio de véspera.")
+    st.markdown("### 🏖️ PASSO 8: Mapeamento Anual de Férias & Indisponibilidade")
+    st.caption("Cadastre ou importe a escala anual de férias. O Passo 5 verificará automaticamente estes registros e bloqueará serviços na véspera.")
 
     with st.expander("📥 Importação Segura via PDF ou Texto Copiado", expanded=False):
         c_up1, c_up2 = st.columns(2)
@@ -135,54 +146,53 @@ def renderizar_modulo_ferias_anual():
 
         if st.session_state.get("temp_ferias_extraidas"):
             st.divider()
-            st.markdown("##### 🔍 Confirme os registros para salvar no Mapeamento Anual:")
-            df_temp = pd.DataFrame(st.session_state["temp_ferias_extraidas"])[["num_policia", "dt_inicio", "dt_fim", "linha_bruta"]]
+            st.markdown("##### 🔍 Confirme os registros antes de gravar no Supabase:")
+            df_temp = pd.DataFrame(st.session_state["temp_ferias_extraidas"])[["num_policia", "dt_inicio", "dt_fim", "dias_qtd", "nota_publicacao"]]
             st.dataframe(df_temp, use_container_width=True, hide_index=True)
             
             if st.button("💾 Gravar no Mapeamento Anual do Banco", type="primary", use_container_width=True):
-                st.session_state["plano_ferias_anual"].extend(st.session_state["temp_ferias_extraidas"])
-                salvar_ferias_anual_banco()
-                st.session_state.pop("temp_ferias_extraidas", None)
-                st.success("✅ Férias salvas no banco!")
-                st.rerun()
+                ok, msg = salvar_ferias_supabase_lote(st.session_state["temp_ferias_extraidas"])
+                if ok:
+                    st.session_state.pop("temp_ferias_extraidas", None)
+                    st.success(msg)
+                    st.rerun()
+                else: st.error(msg)
 
     st.divider()
     st.markdown("#### 🔍 Consulta do Mapeamento Anual")
 
     c_f1, c_f2, c_f3 = st.columns(3)
-    with c_f1: ano_sel = st.number_input("Ano:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year))
-    with c_f2:
-        meses_nomes = ["Todos", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-        mes_filtro = st.selectbox("Mês:", meses_nomes)
-    with c_f3: busca_militar = st.text_input("Buscar Militar / Nº Polícia:", placeholder="Digite nome ou número...").strip().upper()
+    ano_sel = c_f1.number_input("Ano:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year))
+    meses_nomes = ["Todos", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+    mes_filtro_nome = c_f2.selectbox("Mês:", meses_nomes)
+    mes_num = meses_nomes.index(mes_filtro_nome)
+    busca_militar = c_f3.text_input("Buscar Militar / Nº Polícia:", placeholder="Digite o número ou nota...").strip().upper()
 
-    plano_lista = st.session_state.get("plano_ferias_anual", [])
-    if plano_lista:
-        df_p = pd.DataFrame(plano_lista)
-        if ano_sel: df_p = df_p[df_p["ano"] == ano_sel]
-        if mes_filtro != "Todos": df_p = df_p[df_p["mes"] == meses_nomes.index(mes_filtro)]
-        if busca_militar: df_p = df_p[df_p["linha_bruta"].str.contains(busca_militar, na=False) | df_p["num_policia"].str.contains(busca_militar, na=False)]
+    registros_banco = carregar_ferias_supabase(ano=ano_sel, mes=mes_num, busca=busca_militar)
 
+    if registros_banco:
+        df_p = pd.DataFrame(registros_banco)
         st.markdown(f"📊 **{len(df_p)} registro(s) localizado(s):**")
         df_p["Excluir"] = False
         df_edit = st.data_editor(
-            df_p[["num_policia", "dt_inicio", "dt_fim", "linha_bruta", "Excluir"]],
+            df_p[["id", "num_policia", "dt_inicio", "dt_fim", "dias_qtd", "nota_publicacao", "Excluir"]],
             column_config={
+                "id": None,
                 "num_policia": "Nº Polícia",
-                "dt_inicio": "Data Início",
-                "dt_fim": "Data Fim",
-                "linha_bruta": "Detalhamento",
+                "dt_inicio": "Data Início (DD/MM/YYYY)",
+                "dt_fim": "Data Fim (DD/MM/YYYY)",
+                "dias_qtd": "Dias",
+                "nota_publicacao": "Nota / Publicação",
                 "Excluir": st.column_config.CheckboxColumn("🗑️ Remover")
             },
-            hide_index=True,
-            use_container_width=True,
-            key="editor_plano_anual_ferias"
+            hide_index=True, use_container_width=True, key="editor_plano_anual_ferias"
         )
 
         if any(df_edit["Excluir"]):
-            indices_manter = [i for i in range(len(df_edit)) if not df_edit.iloc[i]["Excluir"]]
-            st.session_state["plano_ferias_anual"] = [st.session_state["plano_ferias_anual"][idx] for idx in indices_manter]
-            salvar_ferias_anual_banco()
-            st.success("Atualizado!")
-            st.rerun()
-    else: st.info("Nenhuma férias cadastrada para o período selecionado.")
+            ids_deletar = df_edit[df_edit["Excluir"]]["id"].tolist()
+            if supabase and ids_deletar:
+                for id_del in ids_deletar:
+                    supabase.table("plano_ferias_anual").delete().eq("id", id_del).execute()
+                st.success("Registro(s) removido(s) com sucesso!")
+                st.rerun()
+    else: st.info("Nenhuma férias cadastrada no banco para o período selecionado.")

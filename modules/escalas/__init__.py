@@ -22,7 +22,7 @@ def exibir_modulo_escalas():
         "PASSO 5: Quadro Geral",
         "PASSO 6: Exportação & Auditoria",
         "PASSO 7: Banco de Horas",
-        "PASSO 8: Férias Anuais"  # <--- PASSO 8 ADICIONADO
+        "PASSO 8: Férias Anuais"
     ]
     
     st.sidebar.markdown("---")
