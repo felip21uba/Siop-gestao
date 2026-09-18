@@ -655,7 +655,8 @@ with st.sidebar:
                         "PASSO 4: Matriz Mensal",
                         "PASSO 5: Quadro Geral",
                         "PASSO 6: Exportação & Auditoria",
-                        "PASSO 7: Banco de Horas"
+                        "PASSO 7: Banco de Horas",
+                        "PASSO 8: Férias Anuais"  # <--- INCLUÍDO O PASSO 8 AQUI
                     ],
                     key="subnav_escalas_unique_nav",
                     label_visibility="collapsed"
