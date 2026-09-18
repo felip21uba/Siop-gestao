@@ -211,14 +211,6 @@ def renderizar_fragmento_passo3():
     militares = remover_duplicados_militares(st.session_state.get("lista_militares", []))
     st.session_state["lista_militares"] = militares
 
-    # 1. TRAVA DE EXCLUSÃO
-    col_t1, col_t2 = st.columns([1.8, 3.2])
-    with col_t1:
-        modo_exclusao = st.toggle("🚨 Trava de Exclusão (Habilitar Exclusão)", value=False, key="toggle_modo_exclusao_frag")
-    with col_t2:
-        if modo_exclusao: st.warning("⚠️ **TRAVA DESBLOQUEADA:** Exclusão ativa no Quadro da Direita.")
-        else: st.info("🔒 **TRAVA ATIVA (SEGURANÇA):** Exclusões bloqueadas.")
-
     if not militares:
         st.info("💡 Nenhum militar cadastrado no momento.")
         return
@@ -226,10 +218,8 @@ def renderizar_fragmento_passo3():
     graduacoes_unicas = sorted(list(set([padronizar_graduacao(m.get("posto_grad", "SD")) for m in militares])), key=lambda x: PESOS_HIERARQUIA.get(x, 99))
     cidades_unicas = sorted(list(set([str(m.get("cidade", "N/I")).strip().upper() for m in militares if m.get("cidade") and str(m.get("cidade")).strip().upper() not in ["NONE", "NAN", "NULL", ""]])))
 
-    st.markdown("---")
-
-    # 2. BARRA DE FERRAMENTAS & FILTROS EM LARGURA TOTAL (FULL-WIDTH)
-    c_b1, c_f1, c_f2, c_f3, c_b2, c_ex = st.columns([1.1, 2.0, 1.4, 1.4, 1.1, 1.4])
+    # 1. BARRA DE FERRAMENTAS & FILTROS DISTRIBUÍDOS FULL-WIDTH
+    c_b1, c_f1, c_f2, c_f3, c_b2 = st.columns([1.2, 3.2, 2.2, 2.2, 1.2])
     with c_b1:
         st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
         if st.button("✔ Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
@@ -237,7 +227,7 @@ def renderizar_fragmento_passo3():
             st.session_state["militares_selecionados_ids"] = list(set(st.session_state.get("militares_selecionados_ids", []) + mils_visiveis))
             st.rerun()
     with c_f1:
-        termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag", placeholder="Nome, matrícula...").strip()
+        termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag", placeholder="Digite nome, matrícula...").strip()
     with c_f2:
         graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
     with c_f3:
@@ -247,10 +237,6 @@ def renderizar_fragmento_passo3():
         if st.button("✖ Limpar", use_container_width=True, key="btn_desmarcar_todos_frag"):
             st.session_state["militares_selecionados_ids"] = []
             st.rerun()
-    with c_ex:
-        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        if modo_exclusao and st.button("🗑️ Excluir Selecionados", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
-            abrir_modal_excluir_lote(excluir_lote_banco_e_memoria)
 
     # LÓGICA DOS FILTROS EM CASCATA
     sel_ids_set = set(st.session_state.get('militares_selecionados_ids', []))
@@ -284,7 +270,7 @@ def renderizar_fragmento_passo3():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 3. QUADROS PERFEITAMENTE SIMÉTRICOS E ALINHADOS NO TOPO
+    # 2. QUADROS PERFEITAMENTE SIMÉTRICOS E ALINHADOS NO TOPO
     col_quadro_esq, col_quadro_dir = st.columns(2, gap="medium")
 
     # QUADRO ESQUERDO: EFETIVO DISPONÍVEL
@@ -292,11 +278,20 @@ def renderizar_fragmento_passo3():
         st.markdown(f"##### ⚪ Efetivo Disponível ({len(nao_selecionados_ord)}):")
         with st.container(height=450, border=True):
             if not nao_selecionados_ord: st.caption("Nenhum militar pendente de seleção.")
-            else: renderizar_grade_cards_4_colunas(nao_selecionados_ord, sel_ids_set, modo_exclusao, prefixo_key="col_disp")
+            else: renderizar_grade_cards_4_colunas(nao_selecionados_ord, sel_ids_set, modo_exclusao=False, prefixo_key="col_disp")
 
-    # QUADRO DIREITO: SELECIONADOS PARA A ESCALA
+    # QUADRO DIREITO: SELECIONADOS PARA A ESCALA (COM A TRAVA E O BOTAO INTEGRADOS NO CABEÇALHO)
     with col_quadro_dir:
-        st.markdown(f"##### 🟢 Selecionados para a Escala ({len(selecionados_ord)}):")
+        c_head1, c_head2, c_head3 = st.columns([2.2, 1.8, 1.2])
+        with c_head1:
+            st.markdown(f"##### 🟢 Selecionados ({len(selecionados_ord)}):")
+        with c_head2:
+            # TRAVA DE EXCLUSÃO COMPACTA INTEGRA COM CADEADO DINÂMICO
+            modo_exclusao = st.toggle("🔓 Exclusão" if st.session_state.get("toggle_modo_exclusao_frag", False) else "🔒 Trava Ativa", value=False, key="toggle_modo_exclusao_frag")
+        with c_head3:
+            if modo_exclusao and st.button("🗑️ Lote", type="secondary", use_container_width=True, key="btn_excluir_lote_frag"):
+                abrir_modal_excluir_lote(excluir_lote_banco_e_memoria)
+
         with st.container(height=450, border=True):
             if not selecionados_ord: st.caption("Clique nos cards da esquerda para mover para este quadro.")
             else: renderizar_grade_cards_4_colunas(selecionados_ord, sel_ids_set, modo_exclusao, prefixo_key="col_sel")
