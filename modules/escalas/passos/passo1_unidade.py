@@ -53,18 +53,10 @@ def expurgar_equipe_em_cascata(eq_alvo):
             st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
 
     chaves_atuais = st.session_state.get("militares_no_quadro_chaves", [])
-    novas_chaves = []
-    milit_ids_com_outras_equipes = set()
-
-    for pair in chaves_atuais:
-        if isinstance(pair, (tuple, list)) and len(pair) == 2:
-            m_id_s, eq_n_s = str(pair[0]), str(pair[1])
-            if eq_n_s == eq_alvo_str:
-                continue
-            else:
-                novas_chaves.append((m_id_s, eq_n_s))
-                milit_ids_com_outras_equipes.add(m_id_s)
-
+    novas_chaves = [
+        (str(pair[0]), str(pair[1])) for pair in chaves_atuais 
+        if isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[1]) != eq_alvo_str
+    ]
     st.session_state["militares_no_quadro_chaves"] = novas_chaves
 
     grade = st.session_state.get("grade_escala_lancamentos", {})
@@ -81,10 +73,25 @@ def expurgar_equipe_em_cascata(eq_alvo):
     except Exception as ex:
         print(f"Aviso ao salvar auto save no expurgo: {ex}")
 
+@st.dialog("➕ Cadastrar Nova Equipe", width="medium")
+def abrir_modal_nova_equipe():
+    with st.form("form_inserir_equipe_p1_modal", clear_on_submit=True):
+        nova_equipe_input = st.text_input("Nome da Nova Equipe:", placeholder="Ex: TM ALPHA, GEPAR, CPU...").strip().upper()
+        btn_salvar_eq = st.form_submit_button("💾 Inserir Equipe", type="primary", use_container_width=True)
+        if btn_salvar_eq and nova_equipe_input:
+            if nova_equipe_input not in st.session_state["lista_equipes"]:
+                st.session_state["lista_equipes"].append(nova_equipe_input)
+                salvar_equipes_persistidas(st.session_state["lista_equipes"])
+                sincronizar_efetivo_equipe_ativa(nova_equipe_input)
+                st.success(f"✅ Equipe '{nova_equipe_input}' cadastrada e salva no banco!")
+                st.rerun()
+            else:
+                st.warning("⚠️ Esta equipe já está cadastrada.")
+
 @st.dialog("🗑️ Gerenciar e Excluir Equipes", width="medium")
 def abrir_modal_excluir_equipes():
     st.markdown("##### ⚠️ Clique na lixeira ao lado da equipe para removê-la:")
-    st.warning("⚠️ **Atenção:** Ao remover uma equipe, todos os seus turnos serão expurgados da escala. Militares alocados exclusivamente a ela serão removidos do quadro.")
+    st.warning("⚠️ **Atenção:** Ao remover uma equipe, todos os seus turnos serão expurgados da escala.")
     
     carregar_equipes_persistidas()
     equipes = st.session_state["lista_equipes"]
@@ -108,23 +115,26 @@ def renderizar_passo1():
     if "equipe_ativa" not in st.session_state or st.session_state["equipe_ativa"] not in st.session_state["lista_equipes"]:
         st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
 
-    exp1 = st.expander("📌 PASSO 1: Configuração da Unidade, Brasão e Gestão de Equipes", expanded=True)
-    with exp1:
-        st.markdown("#### 🏛️ Dados da Unidade Operacional")
-        col_u1, col_u2, col_u3 = st.columns([2, 2, 1.2])
-        with col_u1:
-            st.session_state["cfg_unidade"] = st.text_input("Unidade Operacional:", value=st.session_state.get("cfg_unidade", "21º BPM / 4ª RPM")).strip().upper()
-            st.session_state["cfg_subunidade"] = st.text_input("Subunidade / Cia:", value=st.session_state.get("cfg_subunidade", "35ª CIA PM / UBÁ")).strip().upper()
-        with col_u2:
-            st.session_state["cfg_brasao_url"] = st.text_input("URL do Brasão / Logo:", value=st.session_state.get("cfg_brasao_url", "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png")).strip()
-        with col_u3:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("💾 Salvar Dados da Unidade", use_container_width=True, type="primary"):
-                st.success("✅ Configurações salvas!")
+    with st.expander("📌 PASSO 1: Configuração da Unidade, Brasão e Gestão de Equipes", expanded=True):
+        # 1. DADOS DA UNIDADE OPERACIONAL (AGORA CONTRAÍDO / FECHADO POR PADRÃO)
+        with st.expander("🏛️ Dados da Unidade Operacional & Brasão", expanded=False):
+            col_u1, col_u2, col_u3 = st.columns([2, 2, 1.2])
+            with col_u1:
+                st.session_state["cfg_unidade"] = st.text_input("Unidade Operacional:", value=st.session_state.get("cfg_unidade", "21º BPM / 4ª RPM")).strip().upper()
+                st.session_state["cfg_subunidade"] = st.text_input("Subunidade / Cia:", value=st.session_state.get("cfg_subunidade", "35ª CIA PM / UBÁ")).strip().upper()
+            with col_u2:
+                st.session_state["cfg_brasao_url"] = st.text_input("URL do Brasão / Logo:", value=st.session_state.get("cfg_brasao_url", "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png")).strip()
+            with col_u3:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("💾 Salvar Dados", use_container_width=True, type="primary"):
+                    st.success("✅ Configurações salvas!")
 
         st.divider()
+
+        # 2. GESTÃO DE EQUIPES E PORTFÓLIOS (VISÍVEL)
         st.markdown("#### 🛡️ Gestão de Equipes e Portfólios")
         col_equipes_disp, col_gestao = st.columns([3.5, 1.2], gap="large")
+        
         with col_equipes_disp:
             st.markdown("**Selecione a equipe ativa para os lançamentos:**")
             equipes = st.session_state.get("lista_equipes", ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP"])
@@ -144,17 +154,10 @@ def renderizar_passo1():
             st.success(f"📍 Equipe Ativa no Momento: **{st.session_state.get('equipe_ativa')}**")
 
         with col_gestao:
-            with st.expander("➕ **Cadastrar Nova Equipe**", expanded=False):
-                with st.form("form_inserir_equipe_p1", clear_on_submit=True):
-                    nova_equipe_input = st.text_input("Nome da Nova Equipe", placeholder="Ex: TM ALPHA, GEPAR").strip().upper()
-                    btn_salvar_eq = st.form_submit_button("💾 Inserir Equipe")
-                    if btn_salvar_eq and nova_equipe_input:
-                        if nova_equipe_input not in st.session_state["lista_equipes"]:
-                            st.session_state["lista_equipes"].append(nova_equipe_input)
-                            salvar_equipes_persistidas(st.session_state["lista_equipes"])
-                            sincronizar_efetivo_equipe_ativa(nova_equipe_input)
-                            st.success(f"Equipe '{nova_equipe_input}' cadastrada e salva no banco!")
-                            st.rerun()
+            st.markdown("<br>", unsafe_allow_html=True)
+            # BOTÃO SIMPLES '+' PARA CADASTRAR EQUIPE
+            if st.button("➕ Cadastrar Nova Equipe", use_container_width=True, type="primary", key="btn_abrir_modal_add_eq"):
+                abrir_modal_nova_equipe()
 
             if st.button("🗑️ Excluir Equipes", use_container_width=True, key="btn_abrir_modal_del_eq"):
                 abrir_modal_excluir_equipes()
