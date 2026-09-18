@@ -4,7 +4,6 @@ import calendar
 import pandas as pd
 import copy
 import re
-import time
 import streamlit.components.v1 as components
 from core.database import salvar_escala_mensal_supabase, supabase, carregar_militares_supabase
 from modules.escalas.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_graduacao
@@ -43,7 +42,7 @@ def abrir_modal_auditoria_unificada(militar_nome, ignorados_bloqueados, pendente
             if st.button("❌ Manter Apenas os Dias Válidos", use_container_width=True):
                 st.rerun()
     else:
-        st.success("✅ Os dias válidos e sem conflito foram applied com sucesso!")
+        st.success("✅ Os dias válidos e sem conflito foram aplicados com sucesso!")
         if st.button("OK, Fechar", type="primary", use_container_width=True):
             st.rerun()
 
@@ -127,13 +126,10 @@ def auditar_escalacao_militar(m_id, m_ano, m_mes, d_alvo, val_novo, dict_grade, 
 def executar_auto_save_banco():
     m_mes, m_ano = st.session_state.get("mes_escala", datetime.date.today().month), st.session_state.get("ano_escala", datetime.date.today().year)
     usr = st.session_state.get("usuario_dados", {})
-    ts_versao = int(time.time() * 1000)
-    
     salvar_escala_mensal_supabase(
         ano=m_ano, mes=m_mes, equipe_nome=st.session_state.get("equipe_ativa", "GERAL"),
         modalidade=st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso"),
         matriz_dados={
-            "ts_versao": ts_versao,
             "grade_escala_lancamentos": st.session_state.get("grade_escala_lancamentos", {}),
             "militares_no_quadro_chaves": [(str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []) if len(p) == 2],
             "ordem_customizada_map": st.session_state.get("ordem_customizada_map", {}),
@@ -236,18 +232,14 @@ def abrir_modal_importar_escala_excel():
                 executar_auto_save_banco()
                 st.rerun()
 
-# FRAGMENTO DE SINCRONIZAÇÃO DA SEGUNDA TELA (CONSULTA DIRETA DO SUPABASE A CADA 2 SEG)
+# FRAGMENTO DE AUTO-REFRESH DO POP-UP DO MONITOR SECUNDÁRIO
 @st.fragment(run_every=2)
 def renderizar_fragmento_segunda_tela(m_ano, m_mes):
     md = carregar_escala_salva_banco()
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
-    mils_todos = st.session_state.get("lista_militares", [])
-    if not mils_todos:
-        mils_todos = carregar_militares_supabase() or []
-        st.session_state["lista_militares"] = mils_todos
+    mils_todos = st.session_state.get("lista_militares") or carregar_militares_supabase() or []
 
     chaves_quadro = md.get("militares_no_quadro_chaves", [])
-
     if not chaves_quadro:
         st.info("💡 Nenhum militar/equipe aplicado no quadro para este mês até o momento.")
         return
@@ -299,15 +291,18 @@ def renderizar_modo_segunda_tela():
     c_head1, c_head2 = st.columns([3, 1])
     with c_head1:
         st.title("🖥️ Quadro Geral — Monitor Secundário")
-        st.caption(f"📍 Período: **{m_mes:02d}/{m_ano}** | 🟢 *Sincronização Ativa.*")
+        st.caption(f"📍 Período: **{m_mes:02d}/{m_ano}** | 🟢 *Sincronização em tempo real ativa.*")
     with c_head2:
-        if st.button("🔄 Atualizar Agora", type="primary", use_container_width=True, key="btn_force_refresh_2tela"):
+        if st.button("🔄 Atualizar Quadro", type="primary", use_container_width=True, key="btn_force_refresh_2tela"):
             carregar_escala_salva_banco()
             st.rerun()
 
     renderizar_fragmento_segunda_tela(m_ano, m_mes)
 
 def renderizar_passo5():
+    # INICIALIZAÇÃO DE SEGURANÇA CONTRA KEYERROR
+    st.session_state.setdefault("quadro_versao", 0)
+
     query_params = st.query_params
     if query_params.get("modo_monitor") == "segunda_tela":
         renderizar_modo_segunda_tela()
@@ -451,7 +446,18 @@ def renderizar_passo5():
 
         df_escala = pd.DataFrame(matriz)
         if not df_escala.empty and not quadro_travado:
-            df_ed = st.data_editor(df_escala, use_container_width=True, hide_index=True, height=450, key=f"editor_v{st.session_state['quadro_versao']}")
+            # O data_editor deve possuir uma chave ESTÁVEL durante a vida do widget.
+            # A versão dinâmica (editor_v0, editor_v1, ...) podia deixar estados
+            # internos incompatíveis no Streamlit e provocar KeyError.
+            editor_key = "editor_escala_principal"
+
+            df_ed = st.data_editor(
+                df_escala,
+                use_container_width=True,
+                hide_index=True,
+                height=450,
+                key=editor_key
+            )
             alt = False
             for idx_r, row in df_ed.iterrows():
                 if idx_r < len(mils_ord):
