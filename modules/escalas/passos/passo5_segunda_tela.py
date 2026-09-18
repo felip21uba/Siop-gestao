@@ -2,7 +2,7 @@ import streamlit as st
 import datetime
 import calendar
 import pandas as pd
-import copy
+import time
 
 from core.database import (
     supabase,
@@ -33,7 +33,6 @@ def padronizar_entrada_quadro_espelho(valor):
     return str(valor).strip()
 
 def carregar_dados_banco_espelho(m_ano, m_mes):
-    """Leitura autônoma e segura diretamente do Supabase sem alterar sessão principal."""
     if not supabase:
         return {}, []
     try:
@@ -51,47 +50,25 @@ def carregar_dados_banco_espelho(m_ano, m_mes):
     return {}, []
 
 def renderizar_segunda_tela_passo5():
-    """Módulo 100% Autônomo para Espelhamento e Visualização Expandida do Passo 5."""
-    st.set_page_config(page_title="SIOP - Espelho da Escala (Segunda Tela)", layout="wide")
-    
-    # Injeção de estilo para maximizar visualização em telas secundárias
+    """Espelho 100% limpo focado exclusivamente na visualização do Quadro 5."""
     st.markdown(
         """
         <style>
-        .stApp { margin: 0; padding: 0; }
-        div[data-testid="stToolbar"] { visibility: hidden; }
-        footer { visibility: hidden; }
-        .block-container { padding-top: 1rem; padding-bottom: 0rem; }
+        #MainMenu {visibility: hidden;}
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+        .block-container { padding: 0.5rem 1rem 0rem 1rem !important; }
         </style>
         """,
         unsafe_allow_html=True
     )
 
-    # BARRA SUPERIOR DE CONTROLE AUTÔNOMO
-    c_t1, c_t2, c_t3, c_t4 = st.columns([2.5, 1.5, 1.5, 1.5], vertical_alignment="center")
-    
-    with c_t1:
-        st.markdown("### 🖥️ SIOP - Painel de Monitoramento (Segunda Tela)")
-    
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     
-    with c_t2:
-        fonte_dados = st.radio("Fonte dos Dados:", ["Memória Viva (Sessão)", "Supabase (Nuvem)"], horizontal=True, key="p5_espelho_fonte")
-    
-    with c_t3:
-        auto_refresh = st.toggle("🔄 Auto-Atualizar (5s)", value=False, key="p5_espelho_refresh")
+    grade, chaves_existentes = carregar_dados_banco_espelho(m_ano, m_mes)
 
-    with c_t4:
-        if st.button("⚡ Atualizar Agora", type="primary", use_container_width=True):
-            st.rerun()
-
-    st.divider()
-
-    # OBTER DADOS SEGUNDO A FONTE ESCOLHIDA
-    if "Supabase" in fonte_dados:
-        grade, chaves_existentes = carregar_dados_banco_espelho(m_ano, m_mes)
-    else:
+    if not grade:
         grade = st.session_state.get("grade_escala_lancamentos", {})
         chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
 
@@ -156,21 +133,17 @@ def renderizar_segunda_tela_passo5():
     df_escala = pd.DataFrame(matriz)
 
     if not df_escala.empty:
-        # Exibição otimizada para monitor secundário (apenas leitura de alto contraste)
         st.dataframe(
             df_escala,
             use_container_width=True,
             hide_index=True,
-            height=680
+            height=750
         )
     else:
         st.info("💡 Nenhuma escala ativa carregada para exibição no momento.")
 
-    # REFRESH AUTOMÁTICO SE ATIVADO
-    if auto_refresh:
-        import time
-        time.sleep(5)
-        st.rerun()
+    time.sleep(3)
+    st.rerun()
 
 if __name__ == "__main__":
     renderizar_segunda_tela_passo5()

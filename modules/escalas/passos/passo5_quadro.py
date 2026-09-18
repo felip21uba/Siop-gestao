@@ -22,10 +22,6 @@ SIGLAS_DIAS_NEUTROS = {
     "F", "D", "X", "FER", "DOM", "FERIADO", "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT"
 }
 
-# ============================================================
-# UTILITÁRIOS E PADRONIZAÇÃO
-# ============================================================
-
 def padronizar_entrada_quadro(valor):
     if valor is None or pd.isna(valor):
         return "F"
@@ -46,10 +42,6 @@ def salvar_estado_undo():
     })
     if len(st.session_state["pilha_undo"]) > 10:
         st.session_state["pilha_undo"].pop(0)
-
-# ============================================================
-# PERSISTÊNCIA NO BANCO DE DADOS
-# ============================================================
 
 def executar_auto_save_banco():
     try:
@@ -112,10 +104,6 @@ def carregar_escala_salva_banco():
     except Exception as ex:
         print(f"Aviso ao carregar do banco: {ex}")
         return False
-
-# ============================================================
-# CÁLCULO DA MATRIZ DA ESCALA (PASSO 1, 2, 3 E 4)
-# ============================================================
 
 def recalcular_escala_matriz():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
@@ -182,13 +170,10 @@ def recalcular_escala_matriz():
 
     st.session_state["grade_escala_lancamentos"] = grade
 
-# ============================================================
-# TELA PRINCIPAL (PASSO 5)
-# ============================================================
-
 def renderizar_passo5():
-    # SE A REQUISIÇÃO FOR PARA EXIBIR A SEGUNDA TELA AUTÔNOMA
-    if st.session_state.get("exibir_segunda_tela_p5", False):
+    params = st.query_params
+    val_espelho = str(params.get("espelho", "")).lower()
+    if val_espelho in ["true", "['true']"]:
         from modules.escalas.passos.passo5_segunda_tela import renderizar_segunda_tela_passo5
         renderizar_segunda_tela_passo5()
         return
@@ -238,8 +223,7 @@ def renderizar_passo5():
             unsafe_allow_html=True
         )
 
-        # BARRA DE TOPO COM O BOTÃO DE SEGUNDA TELA
-        col_esq, col_btn, col_2tela = st.columns([2.0, 1.2, 0.8], vertical_alignment="center")
+        col_esq, col_btn, col_link = st.columns([2.0, 1.2, 0.8], vertical_alignment="center")
         
         with col_esq:
             cnt_linhas = len(st.session_state.get('militares_no_quadro_chaves', []))
@@ -250,10 +234,8 @@ def renderizar_passo5():
                 st.session_state["atualizar_quadro_passo5"] = True
                 st.rerun()
 
-        with col_2tela:
-            if st.button("📺 2ª Tela", type="secondary", use_container_width=True, help="Abre este Quadro em um Monitor Secundário"):
-                st.session_state["exibir_segunda_tela_p5"] = True
-                st.rerun()
+        with col_link:
+            st.link_button("🖥️ Abrir 2ª Tela", "?espelho=true", use_container_width=True, help="Abre apenas o Quadro 5 em uma nova janela para o seu segundo monitor.")
 
         num_dias = calendar.monthrange(m_ano, m_mes)[1]
         chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
@@ -276,9 +258,6 @@ def renderizar_passo5():
 
         mils_ord = sorted(mils_linhas, key=lambda x: (st.session_state["ordem_customizada_map"].get(x["chave_linha"], 99), PESOS_HIERARQUIA.get(padronizar_graduacao(x["posto_grad"]), 99), x["nome_guerra"]))
 
-        # ============================================================
-        # ⚡ PAINEL DE AJUSTE RÁPIDO / LANÇAMENTO EM LOTE
-        # ============================================================
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote)", expanded=False):
             if mils_ord and not quadro_travado:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
@@ -337,9 +316,6 @@ def renderizar_passo5():
                             st.success(f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!")
                             st.rerun()
 
-        # ============================================================
-        # DATA EDITOR PRINCIPAL
-        # ============================================================
         colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
         matriz = []
         grade = st.session_state.get("grade_escala_lancamentos", {})
@@ -401,11 +377,8 @@ def renderizar_passo5():
                 executar_auto_save_banco()
                 st.rerun()
         else:
-            st.info("💡 Clique em '⚡ Aplicar Lançamentos e Atualizar Quadro' para montar a escala com os militares selecionados.")
+            st.info("💡 Clique em '⚡ Aplicar Lançamentos' para montar a escala com os militares selecionados.")
 
-        # ============================================================
-        # BOTÕES DE AÇÃO
-        # ============================================================
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         c_act1, c_act2 = st.columns(2)
         
