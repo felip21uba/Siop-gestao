@@ -85,21 +85,17 @@ def calcular_horas_efetivas_turno(texto_celula, data_ref, eh_supervisao=False):
             dt_next = dt_curr + datetime.timedelta(minutes=1)
             minutos_presenciais_reais += 1.0
 
-            # Verifica se está no intervalo noturno (23:00 às 05:00)
             hora_atual = dt_curr.hour
             is_noturno = (hora_atual >= 23 or hora_atual < 5)
 
-            # Se for noturno, ganha +10 min a cada 60 min (fator 70/60 = 1.1666667)
             fator_minuto = (70.0 / 60.0) if is_noturno else 1.0
             horas_presenciais_efetivas += (1.0 / 60.0) * fator_minuto
 
             dt_curr = dt_next
 
-    # CÁLCULO DA SUPERVISÃO (PRESENCIAL + SOBREAVISO)
     if eh_supervisao or "SUPERVISÃO" in str(texto_celula).upper():
         horas_presenciais_reais = minutos_presenciais_reais / 60.0
         horas_sobreaviso_restantes = max(0.0, 24.0 - horas_presenciais_reais)
-        # Cada hora de sobreaviso vale 15 minutos (0.25h)
         credito_sobreaviso = horas_sobreaviso_restantes * 0.25
         return horas_presenciais_efetivas + credito_sobreaviso
 
@@ -186,6 +182,10 @@ def carregar_escala_salva_banco():
 
 def verificar_trava_sobreposicao():
     """Calcula conflitos reais de horário e descansos menores que a janela regulamentar."""
+    # Se o utilizador fechou os avisos manualmente, não força a reavaliação até novo evento
+    if st.session_state.get("limpar_avisos_manual", False):
+        return
+
     grade = st.session_state.get("grade_escala_lancamentos", {})
     chaves = st.session_state.get("militares_no_quadro_chaves", [])
     mils = st.session_state.get("lista_militares", [])
@@ -314,6 +314,7 @@ def recalcular_escala_matriz():
                 grade[k] = valor_dia
 
     st.session_state["grade_escala_lancamentos"] = grade
+    st.session_state["limpar_avisos_manual"] = False
     verificar_trava_sobreposicao()
 
 # ============================================================
@@ -387,23 +388,25 @@ def renderizar_passo5():
         with col_btn:
             if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True):
                 st.session_state["atualizar_quadro_passo5"] = True
+                st.session_state["limpar_avisos_manual"] = False
                 st.rerun()
 
         with col_link:
             url_espelho = f"?espelho=true&mes={m_mes}&ano={m_ano}"
             st.link_button("🖥️ Abrir 2ª Tela", url_espelho, use_container_width=True, help="Abre apenas o Quadro 5 em uma nova janela para o seu segundo monitor.")
 
-        # QUADRO DE AVISOS E IMPEDIMENTOS FECHÁVEL COM ÍCONES
-        ocultar_avisos = st.session_state.get("ocultar_avisos_auditoria_p5", False)
-
-        if (bloqueios or avisos_descanso) and not ocultar_avisos:
+        # QUADRO DE AVISOS E IMPEDIMENTOS COM AÇÃO DE LIMPEZA DEFINITIVA
+        if (bloqueios or avisos_descanso) and not st.session_state.get("limpar_avisos_manual", False):
             st.markdown("---")
             c_head_av, c_btn_fechar = st.columns([4, 1])
             with c_head_av:
                 st.markdown("##### 🚨 Quadro de Auditoria da Escala:")
             with c_btn_fechar:
-                if st.button("✖ Fechar Avisos", type="secondary", use_container_width=True, key="btn_fechar_avisos_p5"):
-                    st.session_state["ocultar_avisos_auditoria_p5"] = True
+                if st.button("✖ Fechar Avisos", type="secondary", use_container_width=True, key="btn_limpar_avisos_p5"):
+                    st.session_state["lista_bloqueios_auditoria"] = []
+                    st.session_state["lista_avisos_descanso"] = []
+                    st.session_state["limpar_avisos_manual"] = True
+                    st.toast("🧹 Avisos de auditoria limpos!", icon="✅")
                     st.rerun()
 
             if bloqueios:
@@ -414,10 +417,6 @@ def renderizar_passo5():
                 for a in avisos_descanso:
                     st.warning(f"😴 **ALERTA DE DESCANSO ({a['militar']}):** {a['mensagem']}")
             st.markdown("---")
-        elif ocultar_avisos and (bloqueios or avisos_descanso):
-            if st.button("🔔 Exibir Avisos de Auditoria Ocultos", type="secondary"):
-                st.session_state["ocultar_avisos_auditoria_p5"] = False
-                st.rerun()
 
         num_dias = calendar.monthrange(m_ano, m_mes)[1]
         chaves_existentes = st.session_state.get("militares_no_quadro_chaves", [])
@@ -495,7 +494,7 @@ def renderizar_passo5():
                         if cnt:
                             st.session_state["grade_escala_lancamentos"] = grade_tmp
                             executar_auto_save_banco()
-                            st.session_state["ocultar_avisos_auditoria_p5"] = False
+                            st.session_state["limpar_avisos_manual"] = False
                             st.success(f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!")
                             st.rerun()
 
@@ -573,7 +572,9 @@ def renderizar_passo5():
                 salvar_estado_undo()
                 st.session_state["grade_escala_lancamentos"] = {}
                 st.session_state["militares_no_quadro_chaves"] = []
-                st.session_state["ocultar_avisos_auditoria_p5"] = False
+                st.session_state["lista_bloqueios_auditoria"] = []
+                st.session_state["lista_avisos_descanso"] = []
+                st.session_state["limpar_avisos_manual"] = False
                 executar_auto_save_banco()
                 st.success("🧹 Quadro limpo com sucesso!")
                 st.rerun()
