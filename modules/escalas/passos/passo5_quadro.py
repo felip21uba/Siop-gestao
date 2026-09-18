@@ -262,9 +262,9 @@ def renderizar_passo5():
             if st.button("🖥️ Segunda Tela (Pop-out)", type="secondary", use_container_width=True, key="btn_popout_2tela"):
                 js_popout = """
                 <script>
-                    var currentUrl = window.location.href.split('?')[0];
-                    var popoutUrl = currentUrl + '?modo_monitor=segunda_tela';
-                    window.open(popoutUrl, 'QuadroGeralPopOut', 'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes');
+                    var baseUrl = window.top.location.href.split('?')[0];
+                    var popoutUrl = baseUrl + '?modo_monitor=segunda_tela';
+                    window.top.open(popoutUrl, 'QuadroGeralPopOut', 'width=1280,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes');
                 </script>
                 """
                 components.html(js_popout, height=0)
