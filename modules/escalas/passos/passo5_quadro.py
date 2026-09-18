@@ -253,9 +253,12 @@ def renderizar_passo5():
         for idx, item in enumerate(mils_linhas): st.session_state["ordem_customizada_map"].setdefault(item["chave_linha"], idx + 1)
         mils_ord = sorted(mils_linhas, key=lambda x: (st.session_state["ordem_customizada_map"].get(x["chave_linha"], 99), PESOS_HIERARQUIA.get(padronizar_graduacao(x["posto_grad"]), 99), x["nome_guerra"]))
 
+        # PAINEL DE AJUSTE RÁPIDO (LOTE) COMPACTADO EM LINHA ÚNICA
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote)", expanded=False):
             if mils_ord and not quadro_travado:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
+                
+                # LINHA 1: SELEÇÃO DE MILITARES, CALENDÁRIO E EVENTO
                 c_f1, c_f2, c_f3 = st.columns([3, 2.5, 2])
                 mils_sel_lote = c_f1.multiselect("Militar(es):", list(dict_mils.keys()), key="p5_lote_mils")
                 
@@ -270,13 +273,23 @@ def renderizar_passo5():
                 )
                 tipo_ev = c_f3.selectbox("Evento/Horário:", ["Horário Normal", "FE (Férias)", "LM (Licença)", "ATE (Atestado)", "D (Descanso)", "F (Folga)", "X (Outra Equipe)", "DN (Dia Neutro)", "DNT (Neutro Trab.)", "DIS (Dispensa)"], key="p5_tipo")
 
+                # LINHA 2: HORÁRIOS LADO A LADO + BOTÃO APLICAR NA MESMA LINHA
                 if "Horário Normal" in tipo_ev or "DNT" in tipo_ev:
-                    h_i, h_f = st.time_input("Início:", datetime.time(7, 0)), st.time_input("Fim:", datetime.time(19, 0))
+                    c_h1, c_h2, c_btn = st.columns([1.5, 1.5, 3])
+                    with c_h1:
+                        h_i = st.time_input("Início:", datetime.time(7, 0), key="p5_h_ini")
+                    with c_h2:
+                        h_f = st.time_input("Fim:", datetime.time(19, 0), key="p5_h_fim")
+                    with c_btn:
+                        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                        btn_aplicar_lote = st.button("⚡ Aplicar Alteração Direta", type="primary", use_container_width=True, key="btn_aplicar_lote_norm")
+                    
                     val_final = f"{h_i.strftime('%H:%M')} às {h_f.strftime('%H:%M')}" + (" (DNT)" if "DNT" in tipo_ev else "")
-                else: 
+                else:
                     val_final = tipo_ev.split()[0]
+                    btn_aplicar_lote = st.button("⚡ Aplicar Alteração Direta", type="primary", use_container_width=True, key="btn_aplicar_lote_sigla")
 
-                if st.button("⚡ Aplicar Alteração Direta", type="primary", use_container_width=True):
+                if btn_aplicar_lote:
                     dias_alvo = []
                     if isinstance(datas_sel, (tuple, list)):
                         d_start = datas_sel[0].day
