@@ -184,10 +184,6 @@ def carregar_escala_salva_banco():
 # ============================================================
 
 def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
-    """
-    Auditoria ISOLADA por militar.
-    Varre estritamente militar por militar, agrupando todos os seus turnos no mês.
-    """
     if st.session_state.get("limpar_avisos_manual", False) and not dias_filtro:
         st.session_state["lista_bloqueios_auditoria"] = []
         st.session_state["lista_avisos_descanso"] = []
@@ -203,7 +199,6 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
 
-    # Mapeia militares por ID
     mils_map = {
         str(m.get("id")).strip(): f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')}"
         for m in mils if m.get("id")
@@ -216,11 +211,9 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
 
     dias_alvo = dias_filtro if dias_filtro else list(range(1, num_dias + 1))
 
-    # REGRA DE OURO: VARRE MILITAR POR MILITAR ISOLADAMENTE
     for m_id_alvo, nome_mil in mils_alvo_map.items():
         todos_intervalos_militar = []
 
-        # Puxa turnos EXCLUSIVAMENTE do militar m_id_alvo
         for d in range(1, num_dias + 1):
             dt_ref = datetime.date(m_ano, m_mes, d)
             
@@ -249,7 +242,6 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
         if not todos_intervalos_militar:
             continue
 
-        # 1. CHECA CHOQUE DE HORÁRIOS ENTRE TURNOS DO MESMO MILITAR
         for i in range(len(todos_intervalos_militar)):
             for j in range(i + 1, len(todos_intervalos_militar)):
                 t1 = todos_intervalos_militar[i]
@@ -258,14 +250,12 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
                 if dias_filtro and (t1["dia"] not in dias_alvo and t2["dia"] not in dias_alvo):
                     continue
 
-                # Choque real de horários
                 if (t1["inicio"] < t2["fim"]) and (t1["fim"] > t2["inicio"]):
                     bloqueios.append({
                         "militar": nome_mil,
                         "mensagem": f"Choque no Dia {t1['dia']:02d}/{m_mes:02d}: Lançamento [{t1['equipe']}] ({t1['texto_raw']}) e [{t2['equipe']}] ({t2['texto_raw']}) se sobrepõem no mesmo horário!"
                     })
 
-        # 2. CHECA DESCANSO INTERJORNADA < 6H ENTRE TURNOS DO MESMO MILITAR
         intervalos_ordenados = sorted(todos_intervalos_militar, key=lambda x: x["inicio"])
         for i in range(len(intervalos_ordenados) - 1):
             atual = intervalos_ordenados[i]
@@ -355,7 +345,6 @@ def recalcular_escala_matriz():
     verificar_trava_sobreposicao()
 
 def abrir_segunda_janela_popup(m_mes, m_ano):
-    """Abre o Espelho em uma nova janela popup flutuante sem sair da tela principal."""
     url_espelho = f"espelho?mes={m_mes}&ano={m_ano}"
     components.html(
         f"""
@@ -397,8 +386,6 @@ def renderizar_passo5():
         st.session_state["militares_no_quadro_chaves"] = [p for p in existentes if (p[1] != eq_ativa or p[0] in sel_ids)] + [(mid, eq_ativa) for mid in sel_ids if (mid, eq_ativa) not in existentes_set]
         st.session_state["limpar_avisos_manual"] = False
         recalcular_escala_matriz()
-        
-        # AUTO SAVE NO SUPABASE PARA ATUALIZAR O ESPELHO
         executar_auto_save_banco()
         st.session_state["atualizar_quadro_passo5"] = False
 
@@ -433,8 +420,6 @@ def renderizar_passo5():
                 st.session_state["atualizar_quadro_passo5"] = True
                 st.session_state["limpar_avisos_manual"] = False
                 recalcular_escala_matriz()
-                
-                # GARANTE GRAVAÇÃO IMEDIATA NO SUPABASE AO APLICAR
                 executar_auto_save_banco()
                 st.rerun()
 
@@ -490,11 +475,19 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
-        with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote)", expanded=False):
+        # ============================================================
+        # PAINEL DE AJUSTE RÁPIDO COM OPÇÃO DE REMOÇÃO DE EQUIPE/LINHA
+        # ============================================================
+        with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote / Remoção)", expanded=False):
             if mils_ord and not quadro_travado:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
-                c_f1, c_f2, c_f3 = st.columns([3, 2.5, 2])
-                mils_sel_lote = c_f1.multiselect("Militar(es):", list(dict_mils.keys()), key="p5_lote_mils")
+                
+                # Agrupa também por Equipes para permitir remoção coletiva
+                equipes_no_quadro = sorted(list(set(m['equipe'] for m in mils_ord)))
+                opcoes_selecao_mils = [f"--- TODA A EQUIPE: {eq} ---" for eq in equipes_no_quadro] + list(dict_mils.keys())
+
+                c_f1, c_f2, c_f3 = st.columns([3, 2.5, 2.5])
+                mils_sel_lote = c_f1.multiselect("Militar(es) ou Equipe(s):", opcoes_selecao_mils, key="p5_lote_mils")
                 dt_hoje = datetime.date(m_ano, m_mes, 1)
 
                 datas_sel = c_f2.date_input(
@@ -505,11 +498,23 @@ def renderizar_passo5():
                     format="DD/MM/YYYY",
                     key="p5_cal_picker"
                 )
-                tipo_ev = c_f3.selectbox(
-                    "Evento/Horário:",
-                    ["Horário Normal", "FE (Férias)", "LM (Licença)", "ATE (Atestado)", "D (Descanso)", "F (Folga)", "X (Outra Equipe)", "DN (Dia Neutro)", "DNT (Neutro Trab.)", "DIS (Dispensa)"],
-                    key="p5_tipo"
-                )
+                
+                opcoes_eventos = [
+                    "Horário Normal", 
+                    "FE (Férias)", 
+                    "LM (Licença)", 
+                    "ATE (Atestado)", 
+                    "D (Descanso)", 
+                    "F (Folga)", 
+                    "X (Outra Equipe)", 
+                    "DN (Dia Neutro)", 
+                    "DNT (Neutro Trab.)", 
+                    "DIS (Dispensa)",
+                    "❌ [REMOVER DA EQUIPE]",
+                    "🧹 [LIMPAR HORÁRIOS DA LINHA]"
+                ]
+
+                tipo_ev = c_f3.selectbox("Evento / Ação:", opcoes_eventos, key="p5_tipo")
 
                 if "Horário Normal" in tipo_ev or "DNT" in tipo_ev:
                     c_h1, c_h2, c_btn = st.columns([1.5, 1.5, 3])
@@ -534,28 +539,57 @@ def renderizar_passo5():
                     elif isinstance(datas_sel, datetime.date):
                         dias_alvo = [datas_sel.day]
 
-                    if mils_sel_lote and dias_alvo:
+                    if mils_sel_lote:
                         salvar_estado_undo()
                         grade_tmp = st.session_state.get("grade_escala_lancamentos", {})
-                        cnt = 0
-                        mids_lote = [str(dict_mils[label]["id"]).strip() for label in mils_sel_lote]
+                        chaves_tmp = list(st.session_state.get("militares_no_quadro_chaves", []))
+                        
+                        mils_efetivos_alvo = []
+                        for sel_item in mils_sel_lote:
+                            if sel_item.startswith("--- TODA A EQUIPE:"):
+                                eq_nome_alvo = sel_item.replace("--- TODA A EQUIPE:", "").replace("---", "").strip()
+                                mils_efetivos_alvo.extend([m for m in mils_ord if m["equipe"] == eq_nome_alvo])
+                            elif sel_item in dict_mils:
+                                mils_efetivos_alvo.append(dict_mils[sel_item])
 
-                        for label in mils_sel_lote:
-                            it = dict_mils[label]
-                            for d_a in dias_alvo:
-                                ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
-                                grade_tmp[ck] = val_final_lote
+                        cnt = 0
+                        mids_lote = [str(it["id"]).strip() for it in mils_efetivos_alvo]
+
+                        # AÇÃO 1: REMOVER LINHA/EQUIPE COMPLETA DO QUADRO
+                        if "[REMOVER" in tipo_ev:
+                            for it in mils_efetivos_alvo:
+                                pair_rem = (str(it["id"]), str(it["equipe"]))
+                                chaves_tmp = [p for p in chaves_tmp if not (isinstance(p, (tuple, list)) and str(p[0]) == pair_rem[0] and str(p[1]) == pair_rem[1])]
+                                for d_a in range(1, num_dias + 1):
+                                    grade_tmp.pop(f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}", None)
                                 cnt += 1
+                            st.session_state["militares_no_quadro_chaves"] = chaves_tmp
+                            msg_sucesso = f"✅ {cnt} linha(s) de equipe removida(s) com sucesso do Quadro!"
+
+                        # AÇÃO 2: LIMPAR APENAS OS HORÁRIOS NOS DIAS SELECIONADOS
+                        elif "[LIMPAR" in tipo_ev:
+                            for it in mils_efetivos_alvo:
+                                for d_a in dias_alvo:
+                                    ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
+                                    grade_tmp[ck] = "F"
+                                    cnt += 1
+                            msg_sucesso = f"✅ Horários limpos em {cnt} célula(s) com sucesso!"
+
+                        # AÇÃO 3: LANÇAMENTO NORMAL DE HORÁRIO OU SIGLA
+                        else:
+                            for it in mils_efetivos_alvo:
+                                for d_a in dias_alvo:
+                                    ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
+                                    grade_tmp[ck] = val_final_lote
+                                    cnt += 1
+                            msg_sucesso = f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!"
+
                         if cnt:
                             st.session_state["grade_escala_lancamentos"] = grade_tmp
-                            
-                            # SALVA NO BANCO PARA ATUALIZAR O ESPELHO
                             executar_auto_save_banco()
                             st.session_state["limpar_avisos_manual"] = False
-                            
-                            # AUDITORIA INDIVIDUAL
                             verificar_trava_sobreposicao(dias_filtro=dias_alvo, militares_filtro=mids_lote)
-                            st.success(f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!")
+                            st.success(msg_sucesso)
                             st.rerun()
 
         colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
