@@ -103,15 +103,29 @@ def renderizar_passo6():
     img_brasao_cfg = st.session_state.get("cfg_brasao_url", URL_BRASAO_PADRAO)
     img_brasao = obter_brasao_base64(img_brasao_cfg)
     
+    mils_todos = st.session_state.get("lista_militares", [])
     usr_logado = st.session_state.get("usuario_dados", {})
-    nome_resp_escala = f"{usr_logado.get('cargo_funcao', 'PROGRAMADOR / TESTADOR')} {usr_logado.get('nome_guerra', 'DESENVOLVEDOR')}".strip()
     
+    # ------------------------------------------------------------
+    # LEITURA UNIFICADA DIRETO DA TABELA MILITARES
+    # ------------------------------------------------------------
+    mat_usr = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
+    mil_usr_obj = next((m for m in mils_todos if str(m.get("num_policia")).strip().replace("-", "") == mat_usr.replace("-", "")), None)
+    
+    if mil_usr_obj:
+        pg_usr = padronizar_graduacao(mil_usr_obj.get("posto_grad"))
+        ng_usr = mil_usr_obj.get("nome_guerra", "OPERADOR").strip().upper()
+        nome_resp_escala = f"{pg_usr} {ng_usr}"
+    else:
+        cargo_raw = usr_logado.get('cargo_funcao') or usr_logado.get('posto_grad') or 'ESCALANTE'
+        ng_usr = usr_logado.get('nome_guerra', 'OPERADOR').strip().upper()
+        nome_resp_escala = f"{padronizar_graduacao(cargo_raw)} {ng_usr}"
+
     cargo_str = str(usr_logado.get("cargo_funcao", "")).upper()
     perfil_str = str(usr_logado.get("perfil", "")).upper()
     eh_programador_ou_admin = "PROGRAMADOR" in cargo_str or "TESTADOR" in cargo_str or "ADMIN" in perfil_str or "DESENVOLVEDOR" in cargo_str
 
     chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
-    mils_todos = st.session_state.get("lista_militares", [])
     grade_lancamentos = st.session_state.get("grade_escala_lancamentos", {})
     escala_fechada = st.session_state.get("escala_fechada_auditoria", False)
 
@@ -185,12 +199,12 @@ def renderizar_passo6():
             mils_linhas_quadro = []
             for pair in chaves_quadro:
                 if isinstance(pair, (tuple, list)) and len(pair) == 2:
-                    m_obj = next((m for m in mils_todos if str(m.get("id")) == str(pair[0])), None)
+                    m_obj = next((m for m in mils_todos if str(m.get("id")).strip() == str(pair[0]).strip()), None)
                     if m_obj:
                         mils_linhas_quadro.append({
-                            "id": pair[0], 
+                            "id": str(pair[0]).strip(), 
                             "equipe": pair[1], 
-                            "posto_grad": padronizar_graduacao(m_obj.get("posto_grad", "SD")), 
+                            "posto_grad": padronizar_graduacao(m_obj.get("posto_grad")), 
                             "nome_guerra": m_obj.get("nome_guerra", "MILITAR"), 
                             "num_policia": m_obj.get("num_policia", ""), 
                             "chave_linha": f"{pair[0]}_{pair[1]}"
