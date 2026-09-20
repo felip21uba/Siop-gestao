@@ -4,6 +4,7 @@ import calendar
 import pandas as pd
 import copy
 import re
+import streamlit.components.v1 as components
 
 from core.database import (
     salvar_escala_mensal_supabase,
@@ -179,14 +180,13 @@ def carregar_escala_salva_banco():
         return False
 
 # ============================================================
-# AUDITORIA E TRAVAS DE SOBREPOSIÇÃO INDIVIDUAL
+# AUDITORIA E TRAVAS DE SOBREPOSIÇÃO ESTREITAMENTE POR MILITAR
 # ============================================================
 
 def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
     """
-    Auditoria individual por militar:
-    Se dias_filtro e militares_filtro forem passados (ex: Ajuste Rápido), 
-    avalia ESTRITAMENTE esses dias e militares alterados.
+    Auditoria ISOLADA por militar.
+    Varre estritamente militar por militar, agrupando todos os seus turnos no mês.
     """
     if st.session_state.get("limpar_avisos_manual", False) and not dias_filtro:
         st.session_state["lista_bloqueios_auditoria"] = []
@@ -203,23 +203,24 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
 
+    # Mapeia militares por ID
     mils_map = {
         str(m.get("id")).strip(): f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')}"
         for m in mils if m.get("id")
     }
 
-    # Se houver filtro de militares (no Ajuste Rápido), avalia apenas eles
     if militares_filtro:
         mils_alvo_map = {k: v for k, v in mils_map.items() if k in militares_filtro}
     else:
         mils_alvo_map = mils_map
 
-    # Se houver filtro de dias (no Ajuste Rápido), avalia apenas os dias envolvidos
     dias_alvo = dias_filtro if dias_filtro else list(range(1, num_dias + 1))
 
+    # REGRA DE OURO: VARRE MILITAR POR MILITAR ISOLADAMENTE
     for m_id_alvo, nome_mil in mils_alvo_map.items():
         todos_intervalos_militar = []
 
+        # Puxa turnos EXCLUSIVAMENTE do militar m_id_alvo
         for d in range(1, num_dias + 1):
             dt_ref = datetime.date(m_ano, m_mes, d)
             
@@ -248,23 +249,23 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
         if not todos_intervalos_militar:
             continue
 
-        # 1. TESTE DE SOBREPOSIÇÃO / CHOQUE
+        # 1. CHECA CHOQUE DE HORÁRIOS ENTRE TURNOS DO MESMO MILITAR
         for i in range(len(todos_intervalos_militar)):
             for j in range(i + 1, len(todos_intervalos_militar)):
                 t1 = todos_intervalos_militar[i]
                 t2 = todos_intervalos_militar[j]
 
-                # Se estiver filtrado por dia, exige que pelo menos um dos turnos envolvidos esteja nos dias alterados
                 if dias_filtro and (t1["dia"] not in dias_alvo and t2["dia"] not in dias_alvo):
                     continue
 
+                # Choque real de horários
                 if (t1["inicio"] < t2["fim"]) and (t1["fim"] > t2["inicio"]):
                     bloqueios.append({
                         "militar": nome_mil,
                         "mensagem": f"Choque no Dia {t1['dia']:02d}/{m_mes:02d}: Lançamento [{t1['equipe']}] ({t1['texto_raw']}) e [{t2['equipe']}] ({t2['texto_raw']}) se sobrepõem no mesmo horário!"
                     })
 
-        # 2. TESTE DE DESCANSO INTERJORNADA (< 6H)
+        # 2. CHECA DESCANSO INTERJORNADA < 6H ENTRE TURNOS DO MESMO MILITAR
         intervalos_ordenados = sorted(todos_intervalos_militar, key=lambda x: x["inicio"])
         for i in range(len(intervalos_ordenados) - 1):
             atual = intervalos_ordenados[i]
@@ -353,6 +354,27 @@ def recalcular_escala_matriz():
     st.session_state["limpar_avisos_manual"] = False
     verificar_trava_sobreposicao()
 
+def abrir_segunda_janela_popup(m_mes, m_ano):
+    """Abre o Espelho em uma nova janela popup flutuante sem sair da tela principal."""
+    url_espelho = f"espelho?mes={m_mes}&ano={m_ano}"
+    components.html(
+        f"""
+        <script>
+        const url = "{url_espelho}";
+        const largura = Math.min(screen.availWidth, 1800);
+        const altura = Math.min(screen.availHeight, 1000);
+        const esquerda = Math.max(0, screen.availWidth - largura) / 2;
+        const topo = Math.max(0, screen.availHeight - altura) / 2;
+        window.open(
+            url,
+            "SIOP_QUADRO_5_ESPELHO",
+            "width=" + largura + ",height=" + altura + ",left=" + esquerda + ",top=" + topo + ",resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no,status=no"
+        );
+        </script>
+        """,
+        height=0
+    )
+
 # ============================================================
 # TELA PRINCIPAL (PASSO 5)
 # ============================================================
@@ -375,6 +397,8 @@ def renderizar_passo5():
         st.session_state["militares_no_quadro_chaves"] = [p for p in existentes if (p[1] != eq_ativa or p[0] in sel_ids)] + [(mid, eq_ativa) for mid in sel_ids if (mid, eq_ativa) not in existentes_set]
         st.session_state["limpar_avisos_manual"] = False
         recalcular_escala_matriz()
+        
+        # AUTO SAVE NO SUPABASE PARA ATUALIZAR O ESPELHO
         executar_auto_save_banco()
         st.session_state["atualizar_quadro_passo5"] = False
 
@@ -398,7 +422,7 @@ def renderizar_passo5():
             unsafe_allow_html=True
         )
 
-        col_esq, col_btn = st.columns([3.0, 1.0], vertical_alignment="center")
+        col_esq, col_btn, col_link = st.columns([2.0, 1.2, 0.8], vertical_alignment="center")
 
         with col_esq:
             cnt_linhas = len(st.session_state.get("militares_no_quadro_chaves", []))
@@ -408,7 +432,15 @@ def renderizar_passo5():
             if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True):
                 st.session_state["atualizar_quadro_passo5"] = True
                 st.session_state["limpar_avisos_manual"] = False
+                recalcular_escala_matriz()
+                
+                # GARANTE GRAVAÇÃO IMEDIATA NO SUPABASE AO APLICAR
+                executar_auto_save_banco()
                 st.rerun()
+
+        with col_link:
+            if st.button("🖥️ Abrir 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
+                abrir_segunda_janela_popup(m_mes, m_ano)
 
         # QUADRO DE AUDITORIA DE AVISOS E TRAVAS
         if (bloqueios or avisos_descanso) and not st.session_state.get("limpar_avisos_manual", False):
@@ -516,10 +548,12 @@ def renderizar_passo5():
                                 cnt += 1
                         if cnt:
                             st.session_state["grade_escala_lancamentos"] = grade_tmp
+                            
+                            # SALVA NO BANCO PARA ATUALIZAR O ESPELHO
                             executar_auto_save_banco()
                             st.session_state["limpar_avisos_manual"] = False
                             
-                            # AUDITORIA RESTRITA APENAS AOS DIAS E MILITARES DO AJUSTE RÁPIDO
+                            # AUDITORIA INDIVIDUAL
                             verificar_trava_sobreposicao(dias_filtro=dias_alvo, militares_filtro=mids_lote)
                             st.success(f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!")
                             st.rerun()
