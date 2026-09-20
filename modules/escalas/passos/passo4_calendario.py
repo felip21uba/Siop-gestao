@@ -129,16 +129,3 @@ def renderizar_passo4(recalcular_matriz_passo5_func=None):
     exp4 = st.expander("📌 PASSO 4: Calendário de Dias da Escala", expanded=True)
     with exp4:
         renderizar_fragmento_passo4()
-
-        bloqueios = st.session_state.get("lista_bloqueios_auditoria", [])
-        alertas_descanso = st.session_state.get("lista_avisos_descanso", [])
-
-        if bloqueios:
-            st.error("🚨 **Lançamentos Bloqueados (Sobreposição de Horários):**")
-            for b in bloqueios:
-                st.write(f"• **{b['militar']}**: {b['mensagem']}")
-
-        if alertas_descanso:
-            st.warning("⚠️ **Alertas de Auditoria (Descanso Interjornada < 8 Horas):**")
-            for a in alertas_descanso:
-                st.write(f"• **{a['militar']}**: {a['mensagem']}")
