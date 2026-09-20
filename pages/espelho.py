@@ -1,0 +1,1 @@
+from modules.escalas.passos.passo5_espelho import *
