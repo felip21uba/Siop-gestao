@@ -8,6 +8,7 @@ import base64
 import streamlit.components.v1 as components
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
+from modules.escalas.passos.passo5_quadro import verificar_trava_sobreposicao
 
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
@@ -106,9 +107,6 @@ def renderizar_passo6():
     mils_todos = st.session_state.get("lista_militares", [])
     usr_logado = st.session_state.get("usuario_dados", {})
     
-    # ------------------------------------------------------------
-    # LEITURA UNIFICADA DIRETO DA TABELA MILITARES
-    # ------------------------------------------------------------
     mat_usr = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
     mil_usr_obj = next((m for m in mils_todos if str(m.get("num_policia")).strip().replace("-", "") == mat_usr.replace("-", "")), None)
     
@@ -146,9 +144,47 @@ def renderizar_passo6():
                 else:
                     st.success("🔓 **ESCALA ABERTA (MODO RASCUNHO)**")
                     st.caption("Ao terminar o planejamento do mês, feche a escala para ativar a auditoria diária.")
+                    
+                    # BOTÃO DE HOMOLOGAÇÃO COM APLICAÇÃO DA AUDITORIA INDIVIDUAL
                     if st.button("🔒 Encerrar e Homologar Escala", type="primary", use_container_width=True):
-                        st.session_state["escala_fechada_auditoria"] = True
-                        st.rerun()
+                        st.session_state["limpar_avisos_manual"] = False
+                        verificar_trava_sobreposicao()
+                        
+                        bloqueios_p6 = st.session_state.get("lista_bloqueios_auditoria", [])
+                        avisos_descanso_p6 = st.session_state.get("lista_avisos_descanso", [])
+                        
+                        if bloqueios_p6 or avisos_descanso_p6:
+                            st.error("🚨 **A homologação foi interrompida devido a pendências de auditoria na escala!**")
+                        else:
+                            st.session_state["escala_fechada_auditoria"] = True
+                            st.success("✅ Escala homologada e encerrada com sucesso!")
+                            st.rerun()
+
+                # PAINEL DE EXIBIÇÃO DE ERROS SE HOUVER IMPEDIMENTOS NA TENTATIVA DE HOMOLOGAÇÃO
+                bloqueios_p6 = st.session_state.get("lista_bloqueios_auditoria", [])
+                avisos_descanso_p6 = st.session_state.get("lista_avisos_descanso", [])
+                
+                if (bloqueios_p6 or avisos_descanso_p6) and not st.session_state.get("limpar_avisos_manual", False):
+                    st.markdown("---")
+                    c_head_av, c_btn_fechar = st.columns([3, 1.2])
+                    with c_head_av:
+                        st.markdown("##### 🚨 Pendências de Auditoria:")
+                    with c_btn_fechar:
+                        if st.button("✖ OK / Entendido", type="secondary", use_container_width=True, key="btn_limpar_avisos_p6"):
+                            st.session_state["lista_bloqueios_auditoria"] = []
+                            st.session_state["lista_avisos_descanso"] = []
+                            st.session_state["limpar_avisos_manual"] = True
+                            st.toast("🧹 Avisos cientes!", icon="✅")
+                            st.rerun()
+
+                    if bloqueios_p6:
+                        for b in bloqueios_p6:
+                            st.error(f"❌ **IMPEDIMENTO ({b['militar']}):** {b['mensagem']}")
+
+                    if avisos_descanso_p6:
+                        for a in avisos_descanso_p6:
+                            st.warning(f"⚠️ **ALERTA DE DESCANSO < 6H ({a['militar']}):** {a['mensagem']}")
+                    st.markdown("---")
 
                 st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
                 st.markdown("##### 📥 Importação Externa")
