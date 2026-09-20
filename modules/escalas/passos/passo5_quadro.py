@@ -504,15 +504,6 @@ def renderizar_passo5():
                 mils_sel_lote = c_f1.multiselect("Militar(es) ou Equipe(s):", opcoes_selecao_mils, key="p5_lote_mils")
                 dt_hoje = datetime.date(m_ano, m_mes, 1)
 
-                datas_sel = c_f2.date_input(
-                    "Selecione a(s) Data(s) no Calendário:",
-                    value=(dt_hoje, dt_hoje),
-                    min_value=datetime.date(m_ano, m_mes, 1),
-                    max_value=datetime.date(m_ano, m_mes, num_dias),
-                    format="DD/MM/YYYY",
-                    key="p5_cal_picker"
-                )
-                
                 opcoes_eventos = [
                     "Horário Normal", 
                     "FE (Férias)", 
@@ -529,6 +520,22 @@ def renderizar_passo5():
                 ]
 
                 tipo_ev = c_f3.selectbox("Evento / Ação:", opcoes_eventos, key="p5_tipo")
+
+                # Se for a opção de limpar horários da linha, desabilita a necessidade do seletor de datas
+                eh_limpeza_linha = "[LIMPAR" in tipo_ev
+
+                if eh_limpeza_linha:
+                    c_f2.caption("📅 *Ação aplicada automaticamente a todos os dias do mês.*")
+                    datas_sel = (datetime.date(m_ano, m_mes, 1), datetime.date(m_ano, m_mes, num_dias))
+                else:
+                    datas_sel = c_f2.date_input(
+                        "Selecione a(s) Data(s) no Calendário:",
+                        value=(dt_hoje, dt_hoje),
+                        min_value=datetime.date(m_ano, m_mes, 1),
+                        max_value=datetime.date(m_ano, m_mes, num_dias),
+                        format="DD/MM/YYYY",
+                        key="p5_cal_picker"
+                    )
 
                 if "Horário Normal" in tipo_ev or "DNT" in tipo_ev:
                     c_h1, c_h2, c_btn = st.columns([1.5, 1.5, 3])
@@ -579,13 +586,14 @@ def renderizar_passo5():
                             st.session_state["militares_no_quadro_chaves"] = chaves_tmp
                             msg_sucesso = f"✅ {cnt} linha(s) de equipe removida(s) com sucesso do Quadro!"
 
+                        # LIMPEZA COMPLETA DA LINHA (TODOS OS DIAS COM STRING VAZIA "")
                         elif "[LIMPAR" in tipo_ev:
                             for it in mils_efetivos_alvo:
-                                for d_a in dias_alvo:
+                                for d_a in range(1, num_dias + 1):
                                     ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
-                                    grade_tmp[ck] = "F"
+                                    grade_tmp.pop(ck, None) # Elimina a chave da memória
                                     cnt += 1
-                            msg_sucesso = f"✅ Horários limpos em {cnt} célula(s) com sucesso!"
+                            msg_sucesso = f"✅ Linha(s) completamente limpa(s) para todos os dias do mês!"
 
                         else:
                             for it in mils_efetivos_alvo:
@@ -593,7 +601,7 @@ def renderizar_passo5():
                                     ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
                                     grade_tmp[ck] = val_final_lote
                                     cnt += 1
-                            msg_sucesso = f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!"
+                            msg_sucesso = f"✅ Alteração applied a {cnt} célula(s) com sucesso!"
 
                         if cnt:
                             st.session_state["grade_escala_lancamentos"] = grade_tmp
@@ -613,9 +621,15 @@ def renderizar_passo5():
             tot_h, neutros = 0.0, 0
 
             for d, col_name in colunas_dias:
-                v = padronizar_entrada_quadro(grade.get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F"))
-                if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and grade.get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}") not in ["F", "D", "", None] for p in chaves_existentes if isinstance(p, (tuple, list)) and len(p) == 2):
-                    v = "X"
+                val_bruto = grade.get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "")
+                
+                # Se a chave não existir ou estiver vazia, exibe string vazia no grid
+                if val_bruto == "":
+                    v = ""
+                else:
+                    v = padronizar_entrada_quadro(val_bruto)
+                    if v in ["F", "", None] and any(str(p[0]) == str(m_id) and p[1] != eq and grade.get(f"{m_id}_{p[1]}_{m_ano}_{m_mes:02d}_{d:02d}") not in ["F", "D", "", None] for p in chaves_existentes if isinstance(p, (tuple, list)) and len(p) == 2):
+                        v = "X"
 
                 linha[col_name] = v
                 v_str = str(v).upper().strip()
@@ -665,11 +679,14 @@ def renderizar_passo5():
                     alterou_quadro = True
 
                 for d, col_name in colunas_dias:
-                    vp = padronizar_entrada_quadro(str(row.get(col_name, "")).strip())
+                    val_editado = str(row.get(col_name, "")).strip()
                     ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d:02d}"
-                    if padronizar_entrada_quadro(grade.get(ck, "")) != vp:
+                    if grade.get(ck, "") != val_editado:
                         salvar_estado_undo()
-                        grade[ck] = vp
+                        if val_editado == "":
+                            grade.pop(ck, None)
+                        else:
+                            grade[ck] = padronizar_entrada_quadro(val_editado)
                         alterou_quadro = True
 
             st.session_state["grade_escala_lancamentos"] = grade
