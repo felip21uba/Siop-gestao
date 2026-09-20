@@ -137,7 +137,7 @@ def executar_auto_save_banco():
         salvar_escala_mensal_supabase(
             ano=m_ano,
             mes=m_mes,
-            equipe_nome=st.session_state.get("equipe_ativa", "GERAL"),
+            equipe_nome="GERAL",
             modalidade=st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso"),
             matriz_dados=matriz_dados,
             elaborado_por="GESTOR",
@@ -212,7 +212,8 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
     dias_alvo = dias_filtro if dias_filtro else list(range(1, num_dias + 1))
 
     for m_id_alvo, nome_mil in mils_alvo_map.items():
-        todos_intervalos_militar = []
+        sub_intervalos_militar = []
+        blocos_turnos_militar = []
 
         for d in range(1, num_dias + 1):
             dt_ref = datetime.date(m_ano, m_mes, d)
@@ -230,22 +231,37 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
                     continue
 
                 intervalos = extrair_intervalos_horarios(val_clean, dt_ref)
-                for inter in intervalos:
-                    todos_intervalos_militar.append({
+                if intervalos:
+                    for inter in intervalos:
+                        sub_intervalos_militar.append({
+                            "dia": d,
+                            "equipe": eq,
+                            "inicio": inter[0],
+                            "fim": inter[1],
+                            "texto_raw": val_clean
+                        })
+                    
+                    h_inicio_bloco = min(i[0] for i in intervalos)
+                    h_fim_bloco = max(i[1] for i in intervalos)
+                    blocos_turnos_militar.append({
                         "dia": d,
                         "equipe": eq,
-                        "inicio": inter[0],
-                        "fim": inter[1],
+                        "inicio": h_inicio_bloco,
+                        "fim": h_fim_bloco,
                         "texto_raw": val_clean
                     })
 
-        if not todos_intervalos_militar:
+        if not sub_intervalos_militar:
             continue
 
-        for i in range(len(todos_intervalos_militar)):
-            for j in range(i + 1, len(todos_intervalos_militar)):
-                t1 = todos_intervalos_militar[i]
-                t2 = todos_intervalos_militar[j]
+        # 1. TESTE DE SOBREPOSIÇÃO / CHOQUE REAL DE HORÁRIOS
+        for i in range(len(sub_intervalos_militar)):
+            for j in range(i + 1, len(sub_intervalos_militar)):
+                t1 = sub_intervalos_militar[i]
+                t2 = sub_intervalos_militar[j]
+
+                if t1["dia"] == t2["dia"] and t1["equipe"] == t2["equipe"]:
+                    continue
 
                 if dias_filtro and (t1["dia"] not in dias_alvo and t2["dia"] not in dias_alvo):
                     continue
@@ -256,10 +272,11 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
                         "mensagem": f"Choque no Dia {t1['dia']:02d}/{m_mes:02d}: Lançamento [{t1['equipe']}] ({t1['texto_raw']}) e [{t2['equipe']}] ({t2['texto_raw']}) se sobrepõem no mesmo horário!"
                     })
 
-        intervalos_ordenados = sorted(todos_intervalos_militar, key=lambda x: x["inicio"])
-        for i in range(len(intervalos_ordenados) - 1):
-            atual = intervalos_ordenados[i]
-            proximo = intervalos_ordenados[i + 1]
+        # 2. TESTE DE DESCANSO INTERJORNADA (< 6H) ENTRE TURNOS DISTINTOS
+        turnos_ordenados = sorted(blocos_turnos_militar, key=lambda x: x["inicio"])
+        for i in range(len(turnos_ordenados) - 1):
+            atual = turnos_ordenados[i]
+            proximo = turnos_ordenados[i + 1]
 
             if dias_filtro and (atual["dia"] not in dias_alvo and proximo["dia"] not in dias_alvo):
                 continue
@@ -475,14 +492,11 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
-        # ============================================================
-        # PAINEL DE AJUSTE RÁPIDO COM OPÇÃO DE REMOÇÃO DE EQUIPE/LINHA
-        # ============================================================
+        # PAINEL DE AJUSTE RÁPIDO NO QUADRO
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote / Remoção)", expanded=False):
             if mils_ord and not quadro_travado:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
                 
-                # Agrupa também por Equipes para permitir remoção coletiva
                 equipes_no_quadro = sorted(list(set(m['equipe'] for m in mils_ord)))
                 opcoes_selecao_mils = [f"--- TODA A EQUIPE: {eq} ---" for eq in equipes_no_quadro] + list(dict_mils.keys())
 
@@ -555,7 +569,6 @@ def renderizar_passo5():
                         cnt = 0
                         mids_lote = [str(it["id"]).strip() for it in mils_efetivos_alvo]
 
-                        # AÇÃO 1: REMOVER LINHA/EQUIPE COMPLETA DO QUADRO
                         if "[REMOVER" in tipo_ev:
                             for it in mils_efetivos_alvo:
                                 pair_rem = (str(it["id"]), str(it["equipe"]))
@@ -566,7 +579,6 @@ def renderizar_passo5():
                             st.session_state["militares_no_quadro_chaves"] = chaves_tmp
                             msg_sucesso = f"✅ {cnt} linha(s) de equipe removida(s) com sucesso do Quadro!"
 
-                        # AÇÃO 2: LIMPAR APENAS OS HORÁRIOS NOS DIAS SELECIONADOS
                         elif "[LIMPAR" in tipo_ev:
                             for it in mils_efetivos_alvo:
                                 for d_a in dias_alvo:
@@ -575,7 +587,6 @@ def renderizar_passo5():
                                     cnt += 1
                             msg_sucesso = f"✅ Horários limpos em {cnt} célula(s) com sucesso!"
 
-                        # AÇÃO 3: LANÇAMENTO NORMAL DE HORÁRIO OU SIGLA
                         else:
                             for it in mils_efetivos_alvo:
                                 for d_a in dias_alvo:
