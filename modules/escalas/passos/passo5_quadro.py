@@ -182,8 +182,13 @@ def carregar_escala_salva_banco():
 # AUDITORIA E TRAVAS DE SOBREPOSIÇÃO INDIVIDUAL
 # ============================================================
 
-def verificar_trava_sobreposicao():
-    if st.session_state.get("limpar_avisos_manual", False):
+def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
+    """
+    Auditoria individual por militar:
+    Se dias_filtro e militares_filtro forem passados (ex: Ajuste Rápido), 
+    avalia ESTRITAMENTE esses dias e militares alterados.
+    """
+    if st.session_state.get("limpar_avisos_manual", False) and not dias_filtro:
         st.session_state["lista_bloqueios_auditoria"] = []
         st.session_state["lista_avisos_descanso"] = []
         return
@@ -203,7 +208,16 @@ def verificar_trava_sobreposicao():
         for m in mils if m.get("id")
     }
 
-    for m_id_alvo, nome_mil in mils_map.items():
+    # Se houver filtro de militares (no Ajuste Rápido), avalia apenas eles
+    if militares_filtro:
+        mils_alvo_map = {k: v for k, v in mils_map.items() if k in militares_filtro}
+    else:
+        mils_alvo_map = mils_map
+
+    # Se houver filtro de dias (no Ajuste Rápido), avalia apenas os dias envolvidos
+    dias_alvo = dias_filtro if dias_filtro else list(range(1, num_dias + 1))
+
+    for m_id_alvo, nome_mil in mils_alvo_map.items():
         todos_intervalos_militar = []
 
         for d in range(1, num_dias + 1):
@@ -234,10 +248,15 @@ def verificar_trava_sobreposicao():
         if not todos_intervalos_militar:
             continue
 
+        # 1. TESTE DE SOBREPOSIÇÃO / CHOQUE
         for i in range(len(todos_intervalos_militar)):
             for j in range(i + 1, len(todos_intervalos_militar)):
                 t1 = todos_intervalos_militar[i]
                 t2 = todos_intervalos_militar[j]
+
+                # Se estiver filtrado por dia, exige que pelo menos um dos turnos envolvidos esteja nos dias alterados
+                if dias_filtro and (t1["dia"] not in dias_alvo and t2["dia"] not in dias_alvo):
+                    continue
 
                 if (t1["inicio"] < t2["fim"]) and (t1["fim"] > t2["inicio"]):
                     bloqueios.append({
@@ -245,10 +264,14 @@ def verificar_trava_sobreposicao():
                         "mensagem": f"Choque no Dia {t1['dia']:02d}/{m_mes:02d}: Lançamento [{t1['equipe']}] ({t1['texto_raw']}) e [{t2['equipe']}] ({t2['texto_raw']}) se sobrepõem no mesmo horário!"
                     })
 
+        # 2. TESTE DE DESCANSO INTERJORNADA (< 6H)
         intervalos_ordenados = sorted(todos_intervalos_militar, key=lambda x: x["inicio"])
         for i in range(len(intervalos_ordenados) - 1):
             atual = intervalos_ordenados[i]
             proximo = intervalos_ordenados[i + 1]
+
+            if dias_filtro and (atual["dia"] not in dias_alvo and proximo["dia"] not in dias_alvo):
+                continue
 
             if proximo["inicio"] >= atual["fim"]:
                 diferenca_horas = (proximo["inicio"] - atual["fim"]).total_seconds() / 3600.0
@@ -375,7 +398,6 @@ def renderizar_passo5():
             unsafe_allow_html=True
         )
 
-        # TOPO COM APENAS 2 COLUNAS (SEM BOTÃO DE 2ª TELA)
         col_esq, col_btn = st.columns([3.0, 1.0], vertical_alignment="center")
 
         with col_esq:
@@ -484,6 +506,8 @@ def renderizar_passo5():
                         salvar_estado_undo()
                         grade_tmp = st.session_state.get("grade_escala_lancamentos", {})
                         cnt = 0
+                        mids_lote = [str(dict_mils[label]["id"]).strip() for label in mils_sel_lote]
+
                         for label in mils_sel_lote:
                             it = dict_mils[label]
                             for d_a in dias_alvo:
@@ -494,7 +518,9 @@ def renderizar_passo5():
                             st.session_state["grade_escala_lancamentos"] = grade_tmp
                             executar_auto_save_banco()
                             st.session_state["limpar_avisos_manual"] = False
-                            verificar_trava_sobreposicao()
+                            
+                            # AUDITORIA RESTRITA APENAS AOS DIAS E MILITARES DO AJUSTE RÁPIDO
+                            verificar_trava_sobreposicao(dias_filtro=dias_alvo, militares_filtro=mids_lote)
                             st.success(f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!")
                             st.rerun()
 
