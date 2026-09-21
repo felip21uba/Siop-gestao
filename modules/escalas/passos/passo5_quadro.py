@@ -172,7 +172,7 @@ def carregar_escala_salva_banco():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
 
     try:
-        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", m_ano).eq("mes", m_mes).execute()
+        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", m_ano).eq("mes", m_mes).order("updated_at", desc=True).limit(1).execute()
         if res and res.data:
             md = res.data[0].get("matriz_dados", {})
             st.session_state["grade_escala_lancamentos"] = md.get("grade_escala_lancamentos", {})
@@ -387,9 +387,10 @@ def abrir_segunda_janela_popup(m_mes, m_ano):
         const altura = Math.min(screen.availHeight, 1000);
         const esquerda = Math.max(0, screen.availWidth - largura) / 2;
         const topo = Math.max(0, screen.availHeight - altura) / 2;
+        const popName = "SIOP_ESPELHO_" + new Date().getTime();
         window.open(
             url,
-            "SIOP_QUADRO_5_ESPELHO",
+            popName,
             "width=" + largura + ",height=" + altura + ",left=" + esquerda + ",top=" + topo + ",resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no,status=no"
         );
         </script>
@@ -475,7 +476,7 @@ def renderizar_passo5():
             if st.button("🖥️ 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
                 abrir_segunda_janela_popup(m_mes, m_ano)
 
-        # QUADRO DE AUDITORIA DE AVISOS E TRAVAS (EXIBE AS MENSAGENS EM CASO DE CANCELAMENTO)
+        # QUADRO DE AUDITORIA DE AVISOS E TRAVAS
         if (bloqueios or avisos_descanso) and not st.session_state.get("limpar_avisos_manual", False):
             st.markdown("---")
             c_head_av, c_btn_fechar = st.columns([4, 1])
