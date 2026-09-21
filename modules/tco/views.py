@@ -18,10 +18,9 @@ from modules.tco.database import salvar_material_supabase, atualizar_material_su
 from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergencia
 from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registrar_aceite_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
-from modules.tco.views_meus_bens import renderizar_aba_meus_bens
 
 # =============================================================================
-# INJEÇÃO DO CSS PERSONALIZADO
+# INJEÇÃO DO CSS PERSONALIZADO (AZUL E MARROM COM TEXTO AJUSTADO)
 # =============================================================================
 def injetar_css_cards_alternados():
     st.markdown("""
@@ -31,28 +30,33 @@ def injetar_css_cards_alternados():
 
     .card-blue {
       background-color: #0c1938;
-      border: 1.5px solid #1e6091;
+      border: 2px solid #1e6091;
       border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
       color: #e2e8f0 !important;
     }
     .card-blue b, .card-blue strong { color: #ffffff !important; }
 
     .card-brown {
       background-color: #9e8652;
-      border: 1.5px solid #7a663b;
+      border: 2px solid #7a663b;
       border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
       color: #000000 !important;
     }
-    .card-brown strong, .card-brown b, .card-brown small { color: #000000 !important; }
+    .card-brown .card-title,
+    .card-brown .status-text,
+    .card-brown strong,
+    .card-brown b,
+    .card-brown small,
+    .card-brown i { color: #000000 !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # =============================================================================
-# HELPERS AUXILIARES
+# HELPER DE EXTRAÇÃO E MONTAGEM DINÂMICA DE CREDS POR CIA / BATALHÃO
 # =============================================================================
 def extrair_unidade_mae_creds(str_unidade):
     if not str_unidade or not isinstance(str_unidade, str):
@@ -202,27 +206,6 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
         ponto_cadeia = f"🎒 <b>Em Custódia Física de:</b> {tag_destaque(bem.get('fiel_depositario_atual', 'N/I'))} ({bem.get('unidade_posse_atual', 'N/I')})"
         
     return ponto_cadeia, texto_tempo, e_alerta_4dias, dias_num
-
-def aplicar_filtros_bens(lista_bens, reds_q="", autor_q="", militar_q="", unidade_q="", data_q=None):
-    resultado = []
-    for b in lista_bens:
-        if reds_q and reds_q.lower() not in str(b.get("num_reds", "")).lower():
-            continue
-        if autor_q and autor_q.lower() not in str(b.get("autores", "")).lower():
-            continue
-        militares_vinculados = f"{b.get('fiel_depositario_atual', '')} {b.get('remetente_ultimo', '')} {b.get('destinatario_pendente', '')}"
-        if militar_q and militar_q.lower() not in militares_vinculados.lower():
-            continue
-        unidades_vinculadas = f"{b.get('unidade_posse_atual', '')} {b.get('unidade_remetente', '')} {b.get('unidade_destinatario_pendente', '')}"
-        if unidade_q and unidade_q != "TODAS AS UNIDADES" and unidade_q.lower() not in unidades_vinculadas.lower():
-            continue
-        if data_q:
-            data_str = data_q.strftime("%Y-%m-%d")
-            datas_item = f"{b.get('data_ingestao', '')} {b.get('data_posse_atual', '')} {b.get('data_envio_tramite', '')}"
-            if data_str not in datas_item:
-                continue
-        resultado.append(b)
-    return resultado
 
 def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", periodo_q=None):
     resultado = []
@@ -513,385 +496,8 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA 2: MEUS MATERIAIS EM CUSTÓDIA (REESTRUTURADO: EXPANSÍVEL POR REDS)
+# ABA PAINEL CREDS-TCO
 # =============================================================================
-def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    injetar_css_cards_alternados()
-
-    st.markdown(f"#### 🎒 Materiais em Custódia de: **{nome_militar_atual}**")
-
-    # 1. FILTROS DE BUSCA (Nº REDS, Data e Destinatário)
-    with st.expander("🔍 **Filtros de Pesquisa na Custódia**", expanded=False):
-        c_f1, c_f2, c_f3 = st.columns(3)
-        with c_f1:
-            q_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-000484967", key="meus_f_reds").strip()
-        with c_f2:
-            q_dest = st.text_input("Destinatário / Encaminhamento:", placeholder="Ex: CREDS TCO - 35ª CIA", key="meus_f_dest").strip()
-        with c_f3:
-            q_data = st.date_input("Data de Ingestão / Encaminhamento:", value=None, key="meus_f_data")
-
-    # Filtra os materiais do militar ativo
-    meus_bens = [b for b in all_bens_banco if b.get("fiel_depositario_atual") == nome_militar_atual or b.get("remetente_ultimo") == nome_militar_atual]
-
-    # Aplicação dos Filtros do Usuário
-    bens_filtrados = []
-    for b in meus_bens:
-        if q_reds and q_reds.lower() not in str(b.get("num_reds", "")).lower():
-            continue
-        dest_str = f"{b.get('destinatario_pendente', '')} {b.get('fase_destinacao', '')} {b.get('unidade_posse_atual', '')}"
-        if q_dest and q_dest.lower() not in dest_str.lower():
-            continue
-        if q_data:
-            data_sel_str = q_data.strftime("%Y-%m-%d")
-            data_item_str = str(b.get("data_posse_atual", "")) + str(b.get("data_ingestao", ""))
-            if data_sel_str not in data_item_str:
-                continue
-        bens_filtrados.append(b)
-
-    if not bens_filtrados:
-        st.info("Nenhum material encontrado sob sua custódia com os parâmetros informados.")
-        return
-
-    # Agrupamento dos bens por REDS
-    reds_agrupados = {}
-    for b in bens_filtrados:
-        r_num = str(b.get("num_reds", "SEM REDS")).strip()
-        if r_num not in reds_agrupados:
-            reds_agrupados[r_num] = []
-        reds_agrupados[r_num].append(b)
-
-    # Ordena os REDSs pelo mais recente e limita aos últimos 10
-    reds_ordenados = sorted(
-        reds_agrupados.items(),
-        key=lambda x: max([b.get("data_ingestao") or b.get("data_posse_atual") or "" for b in x[1]]),
-        reverse=True
-    )[:10]
-
-    st.caption(f"Exibindo os **{len(reds_ordenados)} último(s) REDS** ativos:")
-
-    # 2. RENDERIZAÇÃO DOS EXPANDERS POR REDS
-    for idx_r, (reds_codigo, itens_reds) in enumerate(reds_ordenados):
-        primeiro_item = itens_reds[0]
-        
-        # Formatação das informações do Cabeçalho do REDS
-        data_bruta = primeiro_item.get("data_ingestao") or primeiro_item.get("data_posse_atual") or ""
-        try:
-            data_fmt = pd.to_datetime(data_bruta).strftime("%d/%m/%Y") if data_bruta else "Data N/I"
-        except Exception:
-            data_fmt = str(data_bruta)[:10] if data_bruta else "Data N/I"
-
-        autor_fmt = primeiro_item.get("autores") or "AUTOR NÃO INFORMADO"
-        
-        # Destinatário e Data de Encaminhamento
-        destinacao_fmt = primeiro_item.get("destinatario_pendente") or primeiro_item.get("fase_destinacao") or "Com Fiel Depositário"
-        dt_envio_raw = primeiro_item.get("data_envio_tramite") or primeiro_item.get("data_posse_atual") or ""
-        try:
-            dt_envio_fmt = pd.to_datetime(dt_envio_raw).strftime("%d/%m/%Y %H:%M") if dt_envio_raw else ""
-        except Exception:
-            dt_envio_fmt = str(dt_envio_raw)[:16] if dt_envio_raw else ""
-
-        encaminhamento_str = f"{destinacao_fmt}" + (f" ({dt_envio_fmt})" if dt_envio_fmt else "")
-
-        # Rótulo em destaque do Expander (REDS, Data, Autor e Encaminhamento)
-        label_expander = f"📄 REDS: {reds_codigo} | Data: {data_fmt} | Autor: {autor_fmt} | Encaminhado: {encaminhamento_str} ({len(itens_reds)} item/ns)"
-
-        with st.expander(label_expander, expanded=(idx_r == 0)):
-            for idx_i, item_bem in enumerate(itens_reds):
-                e_marrom = (idx_i % 2 != 0)
-                classe_card = "card-brown" if e_marrom else "card-blue"
-
-                midias = item_bem.get("midias_anexas") or []
-                str_midias = f"📎 <b>{len(midias)} mídia(s) anexa(s)</b>" if midias else "Nenhuma mídia anexa"
-
-                ponto_cad, tempo_str, alerta_4d, _ = obter_status_gargalo_e_tempo(item_bem, e_marrom=e_marrom)
-
-                # O código id_bem NÃO APARECE visualmente aqui
-                html_card = f"""
-                <div class="{classe_card}">
-                    📦 Material: <b>{item_bem.get('descricao', 'N/I')}</b><br/>
-                    🔒 Lacre: <b>{item_bem.get('involucro_lacre', 'SEM LACRE')}</b> | Qtd: <b>{item_bem.get('quantidade', '1.0')} {item_bem.get('unidade_medida', 'UN')}</b> | {str_midias}<br/>
-                    📍 Status: {ponto_cad} | ⏱️ Tempo: <b>{tempo_str}</b>
-                </div>
-                """
-                st.markdown(html_card, unsafe_allow_html=True)
-
-                c_a1, c_a2 = st.columns([4, 1])
-                with c_a2:
-                    if st.button("✏️ Editar / Anexar", key=f"btn_edit_meu_bem_{item_bem['id_bem']}_{idx_r}_{idx_i}", use_container_width=True):
-                        abrir_modal_edicao_material(item_bem, nome_militar_atual, unidade_militar_atual)
-
-# =============================================================================
-# DEMAIS ABAS (TRAMITAÇÃO, PAINEL CREDS, AUDITORIA, GESTORES)
-# =============================================================================
-def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    injetar_css_cards_alternados()
-    st.markdown("#### 🔄 Tramitação Multi-Unidades & Aceite Parcial")
-    
-    unidades_creds_destino = obter_lista_creds_dinamica()
-    meus_bens = [b for b in all_bens_banco if b.get("fiel_depositario_atual") == nome_militar_atual and b.get("status_tramite") == "Em Custódia"]
-
-    with st.expander("🔍 **Filtros de Pesquisa na Tramitação**", expanded=True):
-        f3_col1, f3_col2, f3_col3, f3_col4 = st.columns(4)
-        with f3_col1:
-            f3_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-000484967", key="f3_reds").strip()
-        with f3_col2:
-            f3_autor = st.text_input("Nome do Autor:", placeholder="Ex: DOUGLAS", key="f3_autor").strip()
-        with f3_col3:
-            f3_militar = st.text_input("Militar / Custodiante:", placeholder="Ex: ALEXANDRINO", key="f3_militar").strip()
-        with f3_col4:
-            f3_unidade = st.selectbox("Unidade Fiel Depósito:", ["TODAS AS UNIDADES"] + [u for u in unidades_creds_destino if "✏️" not in u], key="f3_unidade")
-
-    meus_bens_filtrados = aplicar_filtros_bens(meus_bens, f3_reds, f3_autor, f3_militar, f3_unidade)
-    
-    mils_todos = carregar_militares_supabase()
-    nomes_mils_base = [f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else ["CB MORAES", "SD VINICIUS", "SGT SILVA"]
-    opcoes_destinatarios_geral = unidades_creds_destino + [n for n in nomes_mils_base if n != nome_militar_atual]
-
-    with st.container(border=True):
-        st.markdown("##### 📤 1. Encaminhar Materiais em LOTE")
-        st.caption("Envie um ou múltiplos materiais para o CREDS TCO da Companhia/Batalhão ou para outro militar específico.")
-
-        bens_disp = {
-            f"REDS: {b['num_reds']} - {b['descricao']} (Lacre: {b.get('involucro_lacre', 'N/I')})": b['id_bem'] 
-            for b in meus_bens_filtrados
-        }
-
-        if bens_disp:
-            itens_selecionados_keys = st.multiselect(
-                "Selecione o(s) Material(is) para Tramitar:",
-                options=list(bens_disp.keys()),
-                key="ms_materiais_transf_v35"
-            )
-            
-            c_tr1, c_tr2 = st.columns(2)
-            with c_tr1:
-                destinatario_sel = st.selectbox("Selecione o Destino (CREDS Cia ou Militar):", opcoes_destinatarios_geral, key="sel_destinatario_v35")
-                destino_final_tram = destinatario_sel
-                if destinatario_sel == "✏️ Outro CREDS / Digitar Manualmente":
-                    destino_final_tram = st.text_input("Digite o Nome do CREDS de Destino:", placeholder="Ex: CREDS TCO - 285ª CIA TM").strip().upper()
-
-            with c_tr2:
-                unidade_dest_sel = st.text_input("Unidade Responsável:", value=unidade_militar_atual).strip().upper()
-            
-            obs_transf = st.text_input("Observações Gerais da Tramitação:", key="txt_obs_transf_v35", placeholder="Ex: Encaminhado para o depósito do CREDS TCO da Cia")
-            qtd_sel_envio = len(itens_selecionados_keys)
-            
-            btn_tramitar = st.button(
-                f"📤 Tramitar {qtd_sel_envio} Material(is) Selecionado(s)", 
-                type="primary", 
-                disabled=(qtd_sel_envio == 0),
-                key="btn_tramitar_lote_v35",
-                use_container_width=True
-            )
-
-            if btn_tramitar:
-                now_iso = datetime.datetime.now().isoformat()
-                sucessos = 0
-                
-                for key_item in itens_selecionados_keys:
-                    id_bem_alvo = bens_disp[key_item]
-                    bem_obj = next(b for b in all_bens_banco if b["id_bem"] == id_bem_alvo)
-                    
-                    upd_data = {
-                        "status_tramite": "Pendente Aceite",
-                        "remetente_ultimo": nome_militar_atual,
-                        "unidade_remetente": unidade_militar_atual,
-                        "destinatario_pendente": destino_final_tram,
-                        "unidade_destinatario_pendente": unidade_dest_sel,
-                        "data_envio_tramite": now_iso,
-                        "obs_tramite": obs_transf
-                    }
-                    
-                    if atualizar_material_supabase(id_bem_alvo, upd_data):
-                        registrar_log_supabase({
-                            "data_hora": now_iso,
-                            "num_reds": bem_obj["num_reds"],
-                            "bem_id": id_bem_alvo,
-                            "acao": "SOLICITAÇÃO DE TRAMITAÇÃO EM LOTE",
-                            "origem": nome_militar_atual,
-                            "unidade_origem": unidade_militar_atual,
-                            "destino": destino_final_tram,
-                            "unidade_destino": unidade_dest_sel,
-                            "detalhe": f"Encaminhado para {destino_final_tram} ({unidade_dest_sel}). Obs: {obs_transf}"
-                        })
-                        sucessos += 1
-
-                st.success(f"Tramitação de {sucessos} material(is) registrada com sucesso!")
-                st.rerun()
-        else:
-            st.info("Nenhum material sob sua custódia disponível para tramitação com os filtros atuais.")
-
-    st.divider()
-
-    usr_logado = st.session_state.get("usuario_dados", {})
-    perfil_creds_usr = str(usr_logado.get("perfil_creds", "TROPA")).upper()
-    perfil_usr = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
-    cargo_usr = str(usr_logado.get("cargo_funcao", "")).upper()
-    
-    eh_gestor_creds = perfil_creds_usr in ["GESTOR_UNIDADE", "GESTOR_CIA", "OPERADOR"] or "CREDS" in perfil_usr or "PROGRAMADOR" in cargo_usr or "ADMIN" in perfil_usr
-
-    with st.container(border=True):
-        st.markdown("##### 📥 2. Recebimento de Custódia")
-        st.caption("Confira os materiais direcionados a você ou à caixa do CREDS TCO da sua Companhia.")
-
-        pendentes_para_mim = []
-        for b in all_bens_banco:
-            if b.get("status_tramite") == "Pendente Aceite":
-                dest_p = str(b.get("destinatario_pendente", ""))
-                if dest_p == nome_militar_atual or (eh_gestor_creds and "CREDS" in dest_p):
-                    pendentes_para_mim.append(b)
-
-        pendentes_filtrados = aplicar_filtros_bens(pendentes_para_mim, f3_reds, f3_autor, f3_militar, f3_unidade)
-
-        if pendentes_filtrados:
-            df_pend = pd.DataFrame(pendentes_filtrados)
-            if "receber" not in df_pend.columns:
-                df_pend.insert(0, "receber", True)
-
-            df_editado_rec = st.data_editor(
-                df_pend[["receber", "num_reds", "descricao", "involucro_lacre", "remetente_ultimo", "unidade_remetente", "obs_tramite"]],
-                column_config={
-                    "receber": st.column_config.CheckboxColumn("✅ Receber?", default=True, width="small"),
-                    "num_reds": st.column_config.TextColumn("Nº REDS", disabled=True, width="medium"),
-                    "descricao": st.column_config.TextColumn("Descrição do Material", disabled=True, width="large"),
-                    "involucro_lacre": st.column_config.TextColumn("Nº Lacre", disabled=True, width="medium"),
-                    "remetente_ultimo": st.column_config.TextColumn("Remetente", disabled=True, width="medium"),
-                    "unidade_remetente": st.column_config.TextColumn("Unidade Origem", disabled=True, width="medium"),
-                    "obs_tramite": st.column_config.TextColumn("Obs Envio", disabled=True, width="medium")
-                },
-                hide_index=True,
-                use_container_width=True,
-                key="editor_pendentes_rec_v35"
-            )
-
-            itens_aceitar = df_editado_rec[df_editado_rec["receber"] == True]
-            itens_recusar = df_editado_rec[df_editado_rec["receber"] == False]
-
-            qtd_aceitar = len(itens_aceitar)
-            qtd_recusar = len(itens_recusar)
-
-            col_acc1, col_acc2 = st.columns(2)
-            with col_acc1:
-                btn_aceitar_selecionados = st.button(
-                    f"✅ Confirmar Recebimento ({qtd_aceitar} item/ns)",
-                    type="primary",
-                    disabled=(qtd_aceitar == 0),
-                    use_container_width=True,
-                    key="btn_acc_sel_v35"
-                )
-
-            with col_acc2:
-                btn_recusar_desmarcados = st.button(
-                    f"⚠️ Registrar Divergência / Recusa nos Não Marcados ({qtd_recusar} item/ns)",
-                    disabled=(qtd_recusar == 0),
-                    use_container_width=True,
-                    key="btn_rec_des_v35"
-                )
-
-            if btn_aceitar_selecionados:
-                now_iso = datetime.datetime.now().isoformat()
-                sucessos_acc = 0
-
-                for idx_a, row_a in itens_aceitar.iterrows():
-                    p_orig = pendentes_filtrados[idx_a]
-                    id_bem_acc = p_orig["id_bem"]
-                    
-                    orig = p_orig.get('remetente_ultimo') or p_orig.get('fiel_depositario_atual')
-                    orig_unid = p_orig.get('unidade_remetente') or p_orig.get('unidade_posse_atual')
-
-                    upd_data = {
-                        "fiel_depositario_atual": nome_militar_atual,
-                        "unidade_posse_atual": unidade_militar_atual,
-                        "data_posse_atual": now_iso,
-                        "status_tramite": "Em Custódia",
-                        "destinatario_pendente": None,
-                        "unidade_destinatario_pendente": None,
-                        "data_envio_tramite": None
-                    }
-
-                    if atualizar_material_supabase(id_bem_acc, upd_data):
-                        registrar_log_supabase({
-                            "data_hora": now_iso,
-                            "num_reds": p_orig["num_reds"],
-                            "bem_id": id_bem_acc,
-                            "acao": "ACEITE DE CUSTÓDIA FÍSICA",
-                            "origem": orig,
-                            "unidade_origem": orig_unid,
-                            "destino": nome_militar_atual,
-                            "unidade_destino": unidade_militar_atual,
-                            "detalhe": f"Aceite de custódia confirmado por {nome_militar_atual} na unidade {unidade_militar_atual}."
-                        })
-                        sucessos_acc += 1
-
-                st.success(f"{sucessos_acc} material(is) incorporado(s) à sua custódia física!")
-                st.rerun()
-
-            if btn_recusar_desmarcados:
-                st.warning("⚠️ Informe o motivo e a justificativa para a recusa dos itens desmarcados:")
-                with st.form("form_motivo_recusa_lote_v35"):
-                    motivo_lote = st.selectbox(
-                        "Motivo da Divergência:",
-                        [
-                            "Invólucro / Lacre Violado ou Rompido",
-                            "Quantidade do Material Menor que a Declarada",
-                            "Material Avariado / Danificado",
-                            "Objeto Incompatível com a Descrição",
-                            "Material Ausente / Não Entregue pelo Remetente"
-                        ]
-                    )
-                    justificativa_lote = st.text_area("Justificativa Detalhada (Mínimo 10 caracteres):", placeholder="Descreva o motivo da não aceitação deste material...")
-                    btn_confirmar_recusa_lote = st.form_submit_button("🚨 Confirmar Recusa/Divergência", type="primary", use_container_width=True)
-
-                    if btn_confirmar_recusa_lote:
-                        if not justificativa_lote or len(justificativa_lote.strip()) < 10:
-                            st.error("A justificativa detalhada é obrigatória.")
-                        else:
-                            now_iso = datetime.datetime.now().isoformat()
-                            now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-                            sucessos_div = 0
-
-                            for idx_r, row_r in itens_recusar.iterrows():
-                                p_orig = pendentes_filtrados[idx_r]
-                                id_bem_rec = p_orig["id_bem"]
-                                
-                                origem_remetente = p_orig.get("remetente_ultimo") or p_orig.get("fiel_depositario_atual")
-                                unidade_remetente = p_orig.get("unidade_remetente") or p_orig.get("unidade_posse_atual")
-
-                                dados_div = {
-                                    "motivo": motivo_lote,
-                                    "justificativa": justificativa_lote.strip(),
-                                    "registrado_por": nome_militar_atual,
-                                    "unidade": unidade_militar_atual,
-                                    "data_hora": now_str,
-                                    "remetente_origem": origem_remetente,
-                                    "unidade_remetente": unidade_remetente
-                                }
-
-                                upd_data = {
-                                    "status_tramite": "Divergência Registrada",
-                                    "dados_divergencia": dados_div
-                                }
-
-                                if atualizar_material_supabase(id_bem_rec, upd_data):
-                                    registrar_log_supabase({
-                                        "data_hora": now_iso,
-                                        "num_reds": p_orig["num_reds"],
-                                        "bem_id": id_bem_rec,
-                                        "acao": "REGISTRO DE DIVERGÊNCIA / RECUSA",
-                                        "origem": origem_remetente,
-                                        "unidade_origem": unidade_remetente,
-                                        "destino": nome_militar_atual,
-                                        "unidade_destino": unidade_militar_atual,
-                                        "detalhe": f"MOTIVO: {motivo_lote} | JUSTIFICATIVA: {justificativa_lote.strip()}"
-                                    })
-                                    sucessos_div += 1
-
-                            st.success(f"Divergência registrada para {sucessos_div} material(is)!")
-                            st.rerun()
-
-        else:
-            st.info("Nenhuma transferência pendente de aceite para você ou para o CREDS TCO da sua Cia.")
-
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Custódia")
@@ -1015,6 +621,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         """
         st.markdown(html_item, unsafe_allow_html=True)
 
+# =============================================================================
+# ABA TRILHA DE AUDITORIA
+# =============================================================================
 def renderizar_aba_logs(all_logs_banco):
     st.markdown("#### 📜 Trilha de Auditoria Imutável da Custódia (Supabase)")
     
@@ -1050,6 +659,9 @@ def renderizar_aba_logs(all_logs_banco):
     else:
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
+# =============================================================================
+# ABA DESIGNAÇÃO DE GESTORES
+# =============================================================================
 def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
     usr_logado = st.session_state.get("usuario_dados", {})
     eh_autorizado = usuario_eh_gestor_creds(usr_logado)
