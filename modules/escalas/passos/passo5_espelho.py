@@ -27,12 +27,23 @@ def carregar_escala_direto_supabase(m_ano, m_mes):
     if not supabase:
         return {}, [], {}, {}
     try:
-        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", m_ano).eq("mes", m_mes).execute()
+        # Busca estritamente a última versão atualizada da escala no banco
+        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", m_ano).eq("mes", m_mes).order("updated_at", desc=True).limit(1).execute()
         if res and res.data:
             md = res.data[0].get("matriz_dados", {})
             grade = md.get("grade_escala_lancamentos", {})
             chaves_raw = md.get("militares_no_quadro_chaves", [])
-            chaves = [(str(p[0]), str(p[1])) for p in chaves_raw if isinstance(p, (tuple, list)) and len(p) == 2]
+            
+            # Filtro para eliminar chaves duplicadas na memória
+            chaves = []
+            vistas = set()
+            for p in chaves_raw:
+                if isinstance(p, (tuple, list)) and len(p) == 2:
+                    pair_str = f"{p[0]}_{p[1]}"
+                    if pair_str not in vistas:
+                        vistas.add(pair_str)
+                        chaves.append((str(p[0]), str(p[1])))
+
             bh_cfg = md.get("bh_configs", {})
             ordem_map = md.get("ordem_customizada_map", {})
             return grade, chaves, bh_cfg, ordem_map
@@ -72,18 +83,25 @@ def renderizar_modo_segunda_tela():
     militares = carregar_militares_supabase() or []
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
 
-    mils_linhas = [
-        {
-            "id": str(p[0]),
-            "equipe": str(p[1]),
-            "posto_grad": m.get("posto_grad", "SD"),
-            "nome_guerra": m.get("nome_guerra", "MILITAR"),
-            "num_policia": m.get("num_policia", ""),
-            "chave_linha": f"{p[0]}_{p[1]}"
-        }
-        for p in chaves_existentes if isinstance(p, (tuple, list)) and len(p) == 2
-        for m in [next((x for x in militares if str(x.get("id")) == str(p[0])), {})] if m
-    ]
+    # Elimina militares duplicados na montagem do quadro
+    mils_linhas = []
+    mats_vistas = set()
+
+    for p in chaves_existentes:
+        if isinstance(p, (tuple, list)) and len(p) == 2:
+            chave_uniqua = f"{p[0]}_{p[1]}"
+            if chave_uniqua not in mats_vistas:
+                m_obj = next((x for x in militares if str(x.get("id")) == str(p[0])), None)
+                if m_obj:
+                    mats_vistas.add(chave_uniqua)
+                    mils_linhas.append({
+                        "id": str(p[0]),
+                        "equipe": str(p[1]),
+                        "posto_grad": m_obj.get("posto_grad", "SD"),
+                        "nome_guerra": m_obj.get("nome_guerra", "MILITAR"),
+                        "num_policia": m_obj.get("num_policia", ""),
+                        "chave_linha": chave_uniqua
+                    })
 
     mils_ord = sorted(
         mils_linhas, 
@@ -124,7 +142,7 @@ def renderizar_modo_segunda_tela():
     else:
         st.info("💡 Nenhuma escala localizada no Supabase para este período.")
 
-    # Atualização via JavaScript (A cada 3 segundos) - Evita a tela "Zzzz"
+    # Atualização automática a cada 3 segundos sem hibernar o servidor
     components.html(
         """
         <script>
