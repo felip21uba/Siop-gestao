@@ -8,3 +8,4 @@ pillow
 reportlab
 xlsxwriter
 openpyxl
+python-docx

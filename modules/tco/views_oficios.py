@@ -5,21 +5,19 @@ from core.database import supabase
 from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
 from modules.tco.storage import upload_oficio_pdf_supabase, deletar_arquivo_storage_supabase
 from modules.tco.pdf_generator import gerar_pdf_oficio
+from modules.tco.docx_generator import gerar_docx_oficio
 
 def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    """Renderiza a aba 'Ofícios' com blocos delimitados (retângulos) e repositório de 2ª via."""
+    """Renderiza a aba 'Ofícios' com atualização dinâmica dos REDSs no teor do texto e exportação PDF/DOCX."""
     st.markdown("#### 📄 Gerador Oficial de Ofícios de Encaminhamento & Repositório de Expedidos")
 
     tab_emissao, tab_repositorio = st.tabs([
-        "📝 Emitir Novo Ofício (PDF)", 
+        "📝 Emitir Novo Ofício (PDF / Word)", 
         "📜 Repositório de Ofícios Expedidos"
     ])
 
-    # -------------------------------------------------------------------------
-    # TAB 1: EMISSÃO DE OFÍCIO COM RETÂNGULOS DELIMITADOS (CONTAINERS)
-    # -------------------------------------------------------------------------
     with tab_emissao:
-        st.caption("Emita expedientes oficiais de custódia contendo materiais de um único REDS ou múltiplos REDSs unificados.")
+        st.caption("Emita expedientes oficiais contendo materiais de um único REDS ou múltiplos REDSs unificados.")
 
         if not all_bens_banco:
             st.info("Nenhum material cadastrado no banco para gerar ofício.")
@@ -99,7 +97,7 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
 
                     orgao_destino = st.text_input("Órgão / Destino:", value=orgao_padrao, key="txt_orgao_dest_oficio").strip().upper()
 
-            # 🔲 RETÂNGULO 3: DADOS DO OFÍCIO E EXPEDIENTE
+            # 🔲 RETÂNGULO 3: DADOS DO OFÍCIO E EXPEDIENTE (PUXA OS REDS AUTOMATICAMENTE)
             with st.container(border=True):
                 st.markdown("##### 📝 3. Dados do Ofício e Texto do Expediente")
                 
@@ -110,7 +108,9 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                 with c_of2:
                     pa_oficio = st.text_input("Nº do Processo Administrativo (P.A.) / Protocolo:", placeholder="Ex: P.A. 104/2026", key="txt_pa_oficio_gen").strip().upper()
 
-                reds_listados_str = ", ".join(sorted(list(set([str(m['num_reds']) for m in materiais_selecionados])))) if materiais_selecionados else "N/I"
+                # 💡 EXTRAÇÃO DINÂMICA DA LISTA DE REDS SELECIONADOS
+                lista_reds_unicos = sorted(list(set([str(m['num_reds']) for m in materiais_selecionados if m.get('num_reds')])))
+                reds_listados_str = ", ".join(lista_reds_unicos) if lista_reds_unicos else "[SELECIONE OS MATERIAIS NO PASSO 1]"
                 
                 corpo_padrao = (
                     f"Cumprimentando-o(a) cordialmente, encaminho a Vossa Excelência/Senhoria o(s) material(is) apreendido(s) "
@@ -120,11 +120,11 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                     f"e registrado(s), garantindo a preservação da Cadeia de Custódia nos termos do Artigo 158-A e seguintes do Código de Processo Penal."
                 )
                 
-                corpo_texto = st.text_area("Teor do Expediente:", value=corpo_padrao, height=140, key="txt_corpo_oficio_gen")
+                corpo_texto = st.text_area("Teor do Expediente (Editável):", value=corpo_padrao, height=150, key="txt_corpo_oficio_gen")
 
-            # 🔲 RETÂNGULO 4: EMISSOR E FINALIZAÇÃO
+            # 🔲 RETÂNGULO 4: EMISSOR E OPÇÕES DE EXPORTAÇÃO (PDF E WORD)
             with st.container(border=True):
-                st.markdown("##### ✍️ 4. Emissor / Responsável")
+                st.markdown("##### ✍️ 4. Emissor & Opções de Exportação")
                 
                 c_em1, c_em2 = st.columns(2)
                 with c_em1:
@@ -133,9 +133,17 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                     emissor_cargo = st.text_input("Cargo / Função:", value="RESPONSÁVEL PELA CUSTÓDIA / CREDS", key="txt_emissor_cargo_oficio").strip().upper()
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                btn_gerar = st.button("🚀 Gerar, Fazer Backup e Baixar Ofício com QR Code (PDF)", type="primary", disabled=(not materiais_selecionados), key="btn_gerar_oficio_final", use_container_width=True)
+                
+                col_exp1, col_exp2 = st.columns(2)
 
-                if btn_gerar:
+                with col_exp1:
+                    btn_gerar_pdf = st.button("📄 Gerar e Baixar em PDF (Oficial)", type="primary", disabled=(not materiais_selecionados), key="btn_gerar_oficio_pdf", use_container_width=True)
+
+                with col_exp2:
+                    btn_gerar_docx = st.button("📝 Gerar e Baixar em DOCX (Word Editável)", disabled=(not materiais_selecionados), key="btn_gerar_oficio_docx", use_container_width=True)
+
+                # AÇÃO DE EMISSÃO EM PDF
+                if btn_gerar_pdf:
                     if not destinatario_nome or not destinatario_cargo or not corpo_texto:
                         st.error("⚠️ Preencha os campos de Destinatário e Teor do Expediente.")
                     else:
@@ -155,12 +163,10 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                         now_iso = datetime.datetime.now().isoformat()
                         first_reds = materiais_selecionados[0]["num_reds"] if materiais_selecionados else "N/I"
                         
-                        # Upload para Backup no Storage
                         res_storage = upload_oficio_pdf_supabase(pdf_bytes, num_oficio, first_reds)
                         url_pdf = res_storage.get("url_publica") if res_storage else None
                         caminho_st = res_storage.get("caminho_storage") if res_storage else None
 
-                        # Atualiza fase e documento autorizador dos materiais vinculados
                         for m_item in materiais_selecionados:
                             atualizar_material_supabase(m_item["id_bem"], {
                                 "fase_destinacao": f"Encaminhado ({orgao_destino})",
@@ -172,17 +178,17 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                                 "num_reds": m_item["num_reds"],
                                 "bem_id": m_item["id_bem"],
                                 "web_origem": "SIOP_TCO",
-                                "acao": "EMISSÃO DE OFÍCIO DE ENCAMINHAMENTO",
+                                "acao": "EMISSÃO DE OFÍCIO DE ENCAMINHAMENTO (PDF)",
                                 "origem": nome_militar_atual,
                                 "unidade_origem": unidade_militar_atual,
                                 "destino": orgao_destino,
                                 "unidade_destino": "Órgão Externo",
-                                "detalhe": f"GERADO {num_oficio} | Dest: {destinatario_nome} | SHA-256: {hash_sha} | URL: {url_pdf or 'N/I'} | ST_PATH: {caminho_st or 'N/I'}"
+                                "detalhe": f"GERADO {num_oficio} | Dest: {destinatario_nome} | SHA-256: {hash_sha} | URL: {url_pdf or 'N/I'}"
                             })
 
-                        st.success("✅ Ofício gerado com sucesso! Backup do PDF salvo no repositório.")
+                        st.success("✅ Ofício PDF gerado e registrado na Cadeia de Custódia!")
                         st.download_button(
-                            label="📥 Clique para Baixar a 1ª Via do Ofício (PDF)",
+                            label="📥 Clique para Baixar o PDF Oficial",
                             data=pdf_bytes,
                             file_name=f"{num_oficio.replace(' ', '_')}.pdf",
                             mime="application/pdf",
@@ -191,8 +197,36 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                             use_container_width=True
                         )
 
+                # AÇÃO DE EMISSÃO EM DOCX (WORD)
+                if btn_gerar_docx:
+                    if not destinatario_nome or not destinatario_cargo or not corpo_texto:
+                        st.error("⚠️ Preencha os campos de Destinatário e Teor do Expediente.")
+                    else:
+                        docx_bytes = gerar_docx_oficio(
+                            num_oficio=num_oficio,
+                            destinatario_nome=destinatario_nome,
+                            destinatario_cargo=destinatario_cargo,
+                            orgao_destino=orgao_destino,
+                            lista_materiais=materiais_selecionados,
+                            pa_oficio=pa_oficio,
+                            corpo_texto=corpo_texto,
+                            emissor_nome=emissor_nome,
+                            emissor_cargo=emissor_cargo,
+                            emissor_unidade=unidade_militar_atual
+                        )
+
+                        st.success("✅ Minuta em Word (.docx) gerada com sucesso!")
+                        st.download_button(
+                            label="📥 Clique para Baixar o Ficheiro Word (.docx)",
+                            data=docx_bytes,
+                            file_name=f"{num_oficio.replace(' ', '_')}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key="btn_dl_oficio_docx_out",
+                            use_container_width=True
+                        )
+
     # -------------------------------------------------------------------------
-    # TAB 2: REPOSITÓRIO DE OFÍCIOS EXPEDIDOS (RETÂNGULOS INDIVIDUALIZADOS)
+    # TAB 2: REPOSITÓRIO E SEGUNDA VIA DE OFÍCIOS EXPEDIDOS
     # -------------------------------------------------------------------------
     with tab_repositorio:
         st.markdown("##### 📂 Repositório Digital de Ofícios Emitidos (Backup Permanente)")
@@ -226,7 +260,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                 except Exception:
                     dt_fmt = str(dt_raw)[:16]
 
-                # 🔲 RETÂNGULO VISUAL INDIVIDUAL PARA CADA EXPEDIENTE
                 with st.container(border=True):
                     c_rep1, c_rep2 = st.columns([3.5, 1.5])
                     
