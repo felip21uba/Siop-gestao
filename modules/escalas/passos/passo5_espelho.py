@@ -30,8 +30,8 @@ def carregar_escala_direto_supabase(m_ano, m_mes):
         mes_int = int(m_mes)
         ano_int = int(m_ano)
         
-        # Busca a escala gravada atualizada
-        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", ano_int).eq("mes", mes_int).execute()
+        # Pega rigorosamente a ÚLTIMA LINHA alterada ou gravada no banco para este mes/ano
+        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", ano_int).eq("mes", mes_int).order("id", desc=True).limit(1).execute()
         
         if res and res.data and len(res.data) > 0:
             md = res.data[0].get("matriz_dados", {})
@@ -153,7 +153,7 @@ def renderizar_modo_segunda_tela():
     else:
         st.info("💡 Nenhuma escala localizada no Supabase para este período.")
 
-    # Ouvinte de Eventos do Navegador (Escuta a mensagem enviada pelo Passo 5 quando você clica em Aplicar)
+    # Listener do BroadcastChannel do navegador (Atualiza na hora em que o botão Aplicar é clicado)
     components.html(
         """
         <script>
