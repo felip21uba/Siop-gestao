@@ -51,7 +51,7 @@ def renderizar_modulo_tco():
     all_bens_banco = carregar_materiais_supabase()
     all_logs_banco = carregar_logs_supabase()
 
-    # 📌 ESTRUTURA DE ABAS HORIZONTAIS LOGO ABAIXO DO CARD MÓDULO (TIPO A FOTO)
+    # 📌 ABAS HORIZONTAIS LOGO ABAIXO DO CARD
     tab_import, tab_meus, tab_tram, tab_oficios, tab_creds, tab_auditoria, tab_gestores = st.tabs([
         "📥 Importar REDS",
         "🎒 Meus Materiais",
