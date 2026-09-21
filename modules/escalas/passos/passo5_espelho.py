@@ -27,14 +27,17 @@ def carregar_escala_direto_supabase(m_ano, m_mes):
     if not supabase:
         return {}, [], {}, {}
     try:
-        # Busca estritamente a última versão atualizada da escala no banco
-        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", m_ano).eq("mes", m_mes).order("updated_at", desc=True).limit(1).execute()
-        if res and res.data:
+        # Tenta a busca convertendo o mês para inteiro e garantindo compatibilidade
+        mes_int = int(m_mes)
+        ano_int = int(m_ano)
+        
+        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", ano_int).eq("mes", mes_int).execute()
+        
+        if res and res.data and len(res.data) > 0:
             md = res.data[0].get("matriz_dados", {})
             grade = md.get("grade_escala_lancamentos", {})
             chaves_raw = md.get("militares_no_quadro_chaves", [])
             
-            # Filtro para eliminar chaves duplicadas na memória
             chaves = []
             vistas = set()
             for p in chaves_raw:
@@ -48,7 +51,7 @@ def carregar_escala_direto_supabase(m_ano, m_mes):
             ordem_map = md.get("ordem_customizada_map", {})
             return grade, chaves, bh_cfg, ordem_map
     except Exception as ex:
-        print(f"Erro no espelho autônomo: {ex}")
+        st.error(f"Erro ao ler banco no Espelho: {ex}")
     return {}, [], {}, {}
 
 def renderizar_modo_segunda_tela():
@@ -67,14 +70,24 @@ def renderizar_modo_segunda_tela():
     )
 
     params = st.query_params
+    
+    # Tratamento rigoroso de conversão de query_params para inteiros
+    raw_mes = params.get("mes", datetime.date.today().month)
+    raw_ano = params.get("ano", datetime.date.today().year)
+
+    if isinstance(raw_mes, list):
+        raw_mes = raw_mes[0]
+    if isinstance(raw_ano, list):
+        raw_ano = raw_ano[0]
+
     try:
-        m_mes = int(params.get("mes", datetime.date.today().month))
-    except Exception:
+        m_mes = int(raw_mes)
+    except (ValueError, TypeError):
         m_mes = datetime.date.today().month
 
     try:
-        m_ano = int(params.get("ano", datetime.date.today().year))
-    except Exception:
+        m_ano = int(raw_ano)
+    except (ValueError, TypeError):
         m_ano = datetime.date.today().year
 
     st.markdown(f"### 🖥️ ESPELHO DA ESCALA - QUADRO 5 ({m_mes:02d}/{m_ano})")
@@ -83,7 +96,6 @@ def renderizar_modo_segunda_tela():
     militares = carregar_militares_supabase() or []
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
 
-    # Elimina militares duplicados na montagem do quadro
     mils_linhas = []
     mats_vistas = set()
 
@@ -142,7 +154,6 @@ def renderizar_modo_segunda_tela():
     else:
         st.info("💡 Nenhuma escala localizada no Supabase para este período.")
 
-    # Atualização automática a cada 3 segundos sem hibernar o servidor
     components.html(
         """
         <script>
