@@ -686,9 +686,27 @@ with st.sidebar:
                 st.session_state["modulo_ativo"] = "MINHA_ESCALA"
                 st.rerun()
 
+        # MÓDULO TCO COM SUBNAVEGAÇÃO DIRETA NA BARRA LATERAL
         if st.button("📦 Módulo TCO / Custódia", key="k_btn_mod_tco_nav", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
             st.session_state["modulo_ativo"] = "TCO"
             st.rerun()
+
+        if modulo_ativo == "TCO":
+            subnav_tco_sel = st.radio(
+                "Submenu TCO:",
+                [
+                    "📥 Importar REDS",
+                    "🎒 Meus Materiais",
+                    "🔄 Tramitação",
+                    "📄 Ofícios",
+                    "🏛️ Painel CREDS",
+                    "📜 Auditoria",
+                    "👥 Gestores"
+                ],
+                key="subnav_tco_sidebar_unique",
+                label_visibility="collapsed"
+            )
+            st.session_state["subnav_tco"] = subnav_tco_sel
 
         if st.button("⚖️ Módulo Procedimentos", key="k_btn_mod_procedimentos_nav", use_container_width=True, type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
             st.session_state["modulo_ativo"] = "PROCEDIMENTOS"
@@ -702,8 +720,6 @@ with st.sidebar:
         if st.button("🛡️ Governança & Segurança", key="k_btn_mod_governanca_nav", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
             st.session_state["modulo_ativo"] = "GOVERNANCA"
             st.rerun()
-
-    st.divider()
 
     # 4. MURAL DE AVISOS
     qtd_novas_mensagens = 0 
