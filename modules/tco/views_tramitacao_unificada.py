@@ -6,35 +6,45 @@ from modules.tco.modais import abrir_modal_edicao_material
 from modules.tco.views import obter_lista_creds_dinamica, injetar_css_cards_alternados
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    """Módulo unificado de Custódia e Tramitação Granular e Visual por REDS."""
+    """Módulo unificado de Custódia e Tramitação com trava estrita de aceite e janela de cancelamento de 24h."""
     injetar_css_cards_alternados()
 
     st.markdown(f"#### 🎒 Gestão de Custódia & Tramitação de: **{nome_militar_atual}**")
 
-    # Lista de Destinatários Elegíveis
+    # 1. LISTA COMPLETA DE DESTINATÁRIOS INSTITUCIONAIS, CREDS E MILITARES
+    destinatarios_institucionais = [
+        "🏛️ PCMG / DELEGACIA DE POLÍCIA CIVIL",
+        "🔬 PERÍCIA TÉCNICA / PERITO",
+        "⚖️ JECRIM / JUIZADO ESPECIAL / FÓRUM"
+    ]
+    
     unidades_creds_destino = obter_lista_creds_dinamica()
     mils_todos = st.session_state.get("lista_militares", [])
     nomes_mils_base = [f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else []
     
-    opcoes_destinatarios_todas = unidades_creds_destino + [n for n in nomes_mils_base if n != nome_militar_atual]
+    opcoes_destinatarios_todas = (
+        destinatarios_institucionais + 
+        [u for u in unidades_creds_destino if "✏️" not in u] + 
+        [n for n in nomes_mils_base if n != nome_militar_atual]
+    )
 
-    # 1. FILTROS DE PESQUISA
+    # 2. FILTROS DE PESQUISA
     with st.expander("🔍 **Filtros de Pesquisa na Custódia**", expanded=False):
         c_f1, c_f2, c_f3 = st.columns(3)
         with c_f1:
             q_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-000484967", key="f_uni_reds").strip()
         with c_f2:
-            q_dest = st.text_input("Destinatário / Encaminhamento:", placeholder="Ex: CREDS TCO", key="f_uni_dest").strip()
+            q_dest = st.text_input("Destinatário / Encaminhamento:", placeholder="Ex: CREDS ou PCMG", key="f_uni_dest").strip()
         with c_f3:
             q_data = st.date_input("Data de Ingestão / Tramitação:", value=None, key="f_uni_data")
 
-    # Filtra materiais sob posse do militar
+    # Filtra materiais relacionados ao militar ativo
     meus_bens = [
         b for b in all_bens_banco 
         if b.get("fiel_depositario_atual") == nome_militar_atual or b.get("remetente_ultimo") == nome_militar_atual
     ]
 
-    # Aplica os filtros
+    # Aplicação dos Filtros
     bens_filtrados = []
     for b in meus_bens:
         if q_reds and q_reds.lower() not in str(b.get("num_reds", "")).lower():
@@ -61,16 +71,16 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
             reds_agrupados[r_num] = []
         reds_agrupados[r_num].append(b)
 
-    # Ordena pelos últimos 10 REDSs
+    # Ordena pelos últimos 10 REDSs mais recentes
     reds_ordenados = sorted(
         reds_agrupados.items(),
         key=lambda x: max([b.get("data_ingestao") or b.get("data_posse_atual") or "" for b in x[1]]),
         reverse=True
     )[:10]
 
-    st.caption(f"Exibindo os **{len(reds_ordenados)} último(s) REDS** ativos para tramitação:")
+    st.caption(f"Exibindo os **{len(reds_ordenados)} último(s) REDS** ativos:")
 
-    # 2. RENDERIZAÇÃO POR EXPANDERS DE REDS
+    # 3. RENDERIZAÇÃO POR EXPANDERS DE REDS
     for idx_r, (reds_codigo, itens_reds) in enumerate(reds_ordenados):
         primeiro_item = itens_reds[0]
         
@@ -88,41 +98,118 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         with st.expander(label_expander, expanded=(idx_r == 0)):
             st.markdown("##### 📦 Materiais Vinculados a este REDS:")
 
-            # ESTADO LOCAL DE MONTAGEM DO BLOCO DE TRAMITAÇÃO
+            # ESTADO DO CARRINHO LOCAL
             chave_carrinho = f"carrinho_tramitacao_{reds_codigo}"
             if chave_carrinho not in st.session_state:
                 st.session_state[chave_carrinho] = []
 
-            # 1. LISTA LIMPA DOS ITENS COM BOTAO EDITAR À FRENTE
+            ids_no_carrinho = [i["id_bem"] for bloco in st.session_state[chave_carrinho] for i in bloco["itens"]]
+            itens_livres_para_envio = []
+
+            # 4. RENDERIZAÇÃO DA LISTA DOS ITENS
             for idx_i, item_bem in enumerate(itens_reds):
                 id_bem_key = item_bem["id_bem"]
                 midias = item_bem.get("midias_anexas") or []
                 str_midias = f"📎 <b>{len(midias)} foto(s) anexa(s)</b>" if midias else "Sem mídias"
+                
+                status_tramite = item_bem.get("status_tramite", "Em Custódia")
+                remetente_ult = item_bem.get("remetente_ultimo")
+                dest_pendente = item_bem.get("destinatario_pendente")
+                dt_envio_str = item_bem.get("data_envio_tramite")
 
-                c_info, c_btn_ed = st.columns([4, 1])
+                # O material está pendente de aceite pelo destinatário?
+                eh_pendente_aceite = (status_tramite == "Pendente Aceite" and remetente_ult == nome_militar_atual)
+                
+                # O material já foi aceito e incorporado pelo novo destinatário?
+                eh_ja_aceito = (status_tramite == "Em Custódia" and remetente_ult == nome_militar_atual and item_bem.get("fiel_depositario_atual") != nome_militar_atual)
+
+                # Regra dos 24h para cancelamento (SOMENTE SE NÃO TIVER SIDO ACEITO AINDA)
+                pode_cancelar_24h = False
+                horas_decorridas = 999
+                if eh_pendente_aceite and dt_envio_str:
+                    try:
+                        dt_envio_obj = pd.to_datetime(dt_envio_str)
+                        delta = datetime.datetime.now() - dt_envio_obj.to_pydatetime().replace(tzinfo=None)
+                        horas_decorridas = delta.total_seconds() / 3600.0
+                        if horas_decorridas <= 24.0:
+                            pode_cancelar_24h = True
+                    except Exception:
+                        pass
+
+                c_info, c_status_btn = st.columns([3.8, 1.2])
 
                 with c_info:
-                    st.markdown(
-                        f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
-                        f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>", 
-                        unsafe_allow_html=True
-                    )
+                    if eh_pendente_aceite:
+                        st.markdown(
+                            f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
+                            f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>  \n"
+                            f"⏳ <span style='color: #F59E0B; font-weight: bold;'>ENVIADO / AGUARDANDO ACEITE DE: {dest_pendente}</span> *(Envio há {horas_decorridas:.1f}h)*", 
+                            unsafe_allow_html=True
+                        )
+                    elif eh_ja_aceito:
+                        st.markdown(
+                            f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
+                            f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>  \n"
+                            f"🔒 <span style='color: #4ADE80; font-weight: bold;'>ACEITO E INCORPORADO POR: {item_bem.get('fiel_depositario_atual')} ({item_bem.get('unidade_posse_atual')})</span>", 
+                            unsafe_allow_html=True
+                        )
+                    elif id_bem_key in ids_no_carrinho:
+                        st.markdown(
+                            f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
+                            f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>  \n"
+                            f"📌 <span style='color: #60A5FA; font-weight: bold;'>SELECIONADO NO QUADRO DE ENVIO ABAIXO</span>", 
+                            unsafe_allow_html=True
+                        )
+                    else:
+                        itens_livres_para_envio.append(item_bem)
+                        st.markdown(
+                            f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
+                            f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>", 
+                            unsafe_allow_html=True
+                        )
 
-                with c_btn_ed:
-                    if st.button("✏️ Editar", key=f"btn_ed_clean_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
-                        abrir_modal_edicao_material(item_bem, nome_militar_atual, unidade_militar_atual)
+                with c_status_btn:
+                    if eh_pendente_aceite:
+                        if pode_cancelar_24h:
+                            if st.button("↩️ Cancelar Envio", key=f"btn_canc_24h_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True, help="Cancela o envio e retorna a posse do bem para você (permitido até o aceite ou limite de 24h)."):
+                                now_iso = datetime.datetime.now().isoformat()
+                                upd_cancelar = {
+                                    "status_tramite": "Em Custódia",
+                                    "fiel_depositario_atual": nome_militar_atual,
+                                    "unidade_posse_atual": unidade_militar_atual,
+                                    "destinatario_pendente": None,
+                                    "unidade_destinatario_pendente": None,
+                                    "data_envio_tramite": None
+                                }
+                                if atualizar_material_supabase(id_bem_key, upd_cancelar):
+                                    registrar_log_supabase({
+                                        "data_hora": now_iso,
+                                        "num_reds": reds_codigo,
+                                        "bem_id": id_bem_key,
+                                        "acao": "CANCELAMENTO DE TRAMITAÇÃO (PRE-ACEITE 24H)",
+                                        "origem": nome_militar_atual,
+                                        "unidade_origem": unidade_militar_atual,
+                                        "destino": nome_militar_atual,
+                                        "unidade_destino": unidade_militar_atual,
+                                        "detalhe": f"Envio cancelado antes do aceite pelo remetente dentro da janela de 24h. Posse retornada para {nome_militar_atual}."
+                                    })
+                                    st.toast("Envio cancelado com sucesso! Posse do bem retornada.", icon="✅")
+                                    st.rerun()
+                        else:
+                            st.caption("🔒 Prazo 24h expirado.")
+                    elif eh_ja_aceito:
+                        st.caption("🔒 Custódia Aceita.")
+                    else:
+                        if st.button("✏️ Editar", key=f"btn_ed_uni_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
+                            abrir_modal_edicao_material(item_bem, nome_militar_atual, unidade_militar_atual)
 
                 st.markdown("<hr style='margin: 4px 0; border-color: #334155;'>", unsafe_allow_html=True)
 
-            # 2. PAINEL DE ATRIBUIÇÃO DE DESTINATÁRIO E SELEÇÃO
-            st.markdown("---")
-            st.markdown("##### 🏛️ Encaminhamento e Atribuição de Destino:")
+            # 5. ÁREA DE MONTAGEM DO QUADRO DE DESTINAÇÃO
+            if itens_livres_para_envio:
+                st.markdown("---")
+                st.markdown("##### 🏛️ Encaminhar Materiais Disponíveis:")
 
-            # Filtra itens que ainda não foram adicionados ao quadro resumo
-            ids_ja_adicionados = [i["id_bem"] for bloco in st.session_state[chave_carrinho] for i in bloco["itens"]]
-            itens_disponiveis = [b for b in itens_reds if b["id_bem"] not in ids_ja_adicionados]
-
-            if itens_disponiveis:
                 col_dest1, col_dest2 = st.columns([2, 2.5])
 
                 with col_dest1:
@@ -135,10 +222,10 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                 with col_dest2:
                     mapa_opcoes_mats = {
                         f"Item {itens_reds.index(b)+1}: {b['descricao']}": b 
-                        for b in itens_disponiveis
+                        for b in itens_livres_para_envio
                     }
                     mats_escolhidos_keys = st.multiselect(
-                        "Selecione o(s) Material(is) para este destinatário:",
+                        "Selecione o(s) Material(is) para este destino:",
                         options=["-- TODOS OS MATERIAIS DISPONÍVEIS --"] + list(mapa_opcoes_mats.keys()),
                         key=f"ms_mats_sel_{reds_codigo}_{idx_r}"
                     )
@@ -150,7 +237,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                             st.warning("⚠️ Selecione ao menos um material para adicionar.")
                         else:
                             if "-- TODOS OS MATERIAIS DISPONÍVEIS --" in mats_escolhidos_keys:
-                                objetos_alvo = list(itens_disponiveis)
+                                objetos_alvo = list(itens_livres_para_envio)
                             else:
                                 objetos_alvo = [mapa_opcoes_mats[k] for k in mats_escolhidos_keys if k in mapa_opcoes_mats]
 
@@ -160,13 +247,11 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                             })
                             st.toast("Materiais adicionados ao Quadro de Envio!", icon="✅")
                             st.rerun()
-            else:
-                st.success("🎉 Todos os materiais deste REDS já foram distribuídos no Quadro de Envio abaixo!")
 
-            # 3. QUADRO RESUMO DOS ENVIOS MONTADOS
+            # 6. QUADRO RESUMO E CONFIRMAÇÃO FINAL DA TRAMITAÇÃO
             if st.session_state[chave_carrinho]:
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("##### 📋 Quadro Resumo de Transferência deste REDS:")
+                st.markdown("##### 📋 Quadro Resumo de Transferência deste REDS (Rascunho do Envio):")
 
                 for idx_b, bloco in enumerate(st.session_state[chave_carrinho]):
                     with st.container(border=True):
@@ -240,5 +325,5 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
 
                     if sucessos_tram > 0:
                         st.session_state[chave_carrinho] = []
-                        st.success(f"✅ Tramitação de {sucessos_tram} material(is) do REDS {reds_codigo} confirmada com sucesso!")
+                        st.success(f"✅ Envio confirmado! {sucessos_tram} material(is) do REDS {reds_codigo} foram encaminhados com sucesso!")
                         st.rerun()
