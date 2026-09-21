@@ -35,10 +35,10 @@ def gerar_docx_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_d
 
     doc.add_paragraph("─" * 55).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # Metadados do Ofício
+    # Metadados do Ofício (Ajustado para REFERÊNCIA e data em DD/MM/AAAA)
     p_meta = doc.add_paragraph()
     p_meta.add_run(f"OFÍCIO Nº: {num_oficio}\n").bold = True
-    p_meta.add_run(f"REF. P.A. / PROTOCOLO: {pa_oficio if pa_oficio else 'N/A'}\n").bold = True
+    p_meta.add_run(f"REFERÊNCIA: {pa_oficio if pa_oficio else 'N/A'}\n").bold = True
     p_meta.add_run(f"DATA DE EMISSÃO: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n").bold = True
 
     # Destinatário
