@@ -18,6 +18,7 @@ from modules.tco.database import salvar_material_supabase, atualizar_material_su
 from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergencia
 from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registrar_aceite_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
+from modules.tco.views_meus_bens import renderizar_aba_meus_bens
 
 # =============================================================================
 # INJEÇÃO DO CSS PERSONALIZADO
