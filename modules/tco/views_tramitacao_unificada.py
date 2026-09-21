@@ -6,7 +6,7 @@ from modules.tco.modais import abrir_modal_edicao_material
 from modules.tco.views import obter_lista_creds_dinamica, injetar_css_cards_alternados
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    """Módulo unificado de Custódia e Tramitação Granular por REDS."""
+    """Módulo unificado de Custódia e Tramitação Granular e Visual por REDS."""
     injetar_css_cards_alternados()
 
     st.markdown(f"#### 🎒 Gestão de Custódia & Tramitação de: **{nome_militar_atual}**")
@@ -16,7 +16,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
     mils_todos = st.session_state.get("lista_militares", [])
     nomes_mils_base = [f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else []
     
-    opcoes_destinatarios_todas = ["Manter em Minha Custódia"] + unidades_creds_destino + [n for n in nomes_mils_base if n != nome_militar_atual]
+    opcoes_destinatarios_todas = unidades_creds_destino + [n for n in nomes_mils_base if n != nome_militar_atual]
 
     # 1. FILTROS DE PESQUISA
     with st.expander("🔍 **Filtros de Pesquisa na Custódia**", expanded=False):
@@ -28,7 +28,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         with c_f3:
             q_data = st.date_input("Data de Ingestão / Tramitação:", value=None, key="f_uni_data")
 
-    # Filtra materiais que estão sob posse do militar ou enviados por ele
+    # Filtra materiais sob posse do militar
     meus_bens = [
         b for b in all_bens_banco 
         if b.get("fiel_depositario_atual") == nome_militar_atual or b.get("remetente_ultimo") == nome_militar_atual
@@ -87,110 +87,158 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
 
         with st.expander(label_expander, expanded=(idx_r == 0)):
             st.markdown("##### 📦 Materiais Vinculados a este REDS:")
-            st.caption("Você pode desempenhar a destinação **individual por item** ou aplicar para **todos do REDS**.")
 
-            # Atalho de Aplicação em Bloco para todo o REDS
-            c_blk1, c_blk2 = st.columns([3, 1.5])
-            with c_blk1:
-                destino_bloco = st.selectbox(
-                    "Aplicar mesmo destino para TODOS os itens deste REDS:",
-                    options=["-- Selecionar Destino em Bloco --"] + opcoes_destinatarios_todas[1:],
-                    key=f"sb_bloco_dest_{reds_codigo}_{idx_r}"
-                )
-            with c_blk2:
-                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-                btn_aplicar_bloco = st.button("⚡ Aplicar ao REDS", key=f"btn_blk_{reds_codigo}_{idx_r}", use_container_width=True)
+            # ESTADO LOCAL DE MONTAGEM DO BLOCO DE TRAMITAÇÃO
+            chave_carrinho = f"carrinho_tramitacao_{reds_codigo}"
+            if chave_carrinho not in st.session_state:
+                st.session_state[chave_carrinho] = []
 
-            if btn_aplicar_bloco and destino_bloco != "-- Selecionar Destino em Bloco --":
-                for item in itens_reds:
-                    st.session_state[f"dest_item_{item['id_bem']}"] = destino_bloco
-                st.toast("Destino em bloco selecionado para a lista abaixo!", icon="✅")
-
-            st.divider()
-
-            # Renderização Granular Item por Item
-            destinos_finais_mapeados = {}
-            
+            # 1. LISTA LIMPA DOS ITENS COM BOTAO EDITAR À FRENTE
             for idx_i, item_bem in enumerate(itens_reds):
                 id_bem_key = item_bem["id_bem"]
                 midias = item_bem.get("midias_anexas") or []
                 str_midias = f"📎 <b>{len(midias)} foto(s) anexa(s)</b>" if midias else "Sem mídias"
 
-                c_item1, c_item2, c_item3 = st.columns([3, 2, 1])
+                c_info, c_btn_ed = st.columns([4, 1])
 
-                with c_item1:
-                    st.markdown(f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
-                                f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>", 
-                                unsafe_allow_html=True)
-
-                with c_item2:
-                    # Chave de estado individual para cada material
-                    key_dest_item = f"dest_item_{id_bem_key}"
-                    dest_atual_item = st.session_state.get(key_dest_item, "Manter em Minha Custódia")
-
-                    idx_pref = opcoes_destinatarios_todas.index(dest_atual_item) if dest_atual_item in opcoes_destinatarios_todas else 0
-
-                    dest_escolhido = st.selectbox(
-                        "Destino deste material:",
-                        options=opcoes_destinatarios_todas,
-                        index=idx_pref,
-                        key=key_dest_item,
-                        label_visibility="collapsed"
+                with c_info:
+                    st.markdown(
+                        f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
+                        f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>", 
+                        unsafe_allow_html=True
                     )
-                    destinos_finais_mapeados[id_bem_key] = dest_escolhido
 
-                with c_item3:
-                    if st.button("✏️ Editar", key=f"btn_ed_uni_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
+                with c_btn_ed:
+                    if st.button("✏️ Editar", key=f"btn_ed_clean_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
                         abrir_modal_edicao_material(item_bem, nome_militar_atual, unidade_militar_atual)
 
-                st.markdown("<hr style='margin: 6px 0; border-color: #334155;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 4px 0; border-color: #334155;'>", unsafe_allow_html=True)
 
-            # Botão Único de Confirmação de Tramitação do REDS
-            st.markdown("<br>", unsafe_allow_html=True)
-            obs_tram_reds = st.text_input("Observação da Tramitação deste REDS:", placeholder="Ex: Encaminhado para o depósito CREDS TCO da Cia", key=f"obs_uni_{reds_codigo}_{idx_r}")
-            
-            btn_confirmar_tramitacao = st.button(
-                f"🚀 Confirmar Envio e Tramitar Materiais do REDS {reds_codigo}",
-                type="primary",
-                key=f"btn_conf_tram_{reds_codigo}_{idx_r}",
-                use_container_width=True
-            )
+            # 2. PAINEL DE ATRIBUIÇÃO DE DESTINATÁRIO E SELEÇÃO
+            st.markdown("---")
+            st.markdown("##### 🏛️ Encaminhamento e Atribuição de Destino:")
 
-            if btn_confirmar_tramitacao:
-                now_iso = datetime.datetime.now().isoformat()
-                sucessos_tram = 0
+            # Filtra itens que ainda não foram adicionados ao quadro resumo
+            ids_ja_adicionados = [i["id_bem"] for bloco in st.session_state[chave_carrinho] for i in bloco["itens"]]
+            itens_disponiveis = [b for b in itens_reds if b["id_bem"] not in ids_ja_adicionados]
 
-                for item_bem in itens_reds:
-                    id_bem_target = item_bem["id_bem"]
-                    destino_definido = destinos_finais_mapeados.get(id_bem_target, "Manter em Minha Custódia")
+            if itens_disponiveis:
+                col_dest1, col_dest2 = st.columns([2, 2.5])
 
-                    if destino_definido != "Manter em Minha Custódia":
-                        upd_data = {
-                            "status_tramite": "Pendente Aceite",
-                            "remetente_ultimo": nome_militar_atual,
-                            "unidade_remetente": unidade_militar_atual,
-                            "destinatario_pendente": destino_definido,
-                            "unidade_destinatario_pendente": unidade_militar_atual,
-                            "data_envio_tramite": now_iso,
-                            "obs_tramite": obs_tram_reds
-                        }
+                with col_dest1:
+                    destinatario_selecionado = st.selectbox(
+                        "Selecione o Destinatário:",
+                        options=opcoes_destinatarios_todas,
+                        key=f"sb_dest_sel_{reds_codigo}_{idx_r}"
+                    )
 
-                        if atualizar_material_supabase(id_bem_target, upd_data):
-                            registrar_log_supabase({
-                                "data_hora": now_iso,
-                                "num_reds": reds_codigo,
-                                "bem_id": id_bem_target,
-                                "acao": "SOLICITAÇÃO DE TRAMITAÇÃO GRANULAR",
-                                "origem": nome_militar_atual,
-                                "unidade_origem": unidade_militar_atual,
-                                "destino": destino_definido,
-                                "unidade_destino": unidade_militar_atual,
-                                "detalhe": f"Material '{item_bem.get('descricao')}' tramitado para {destino_definido}. Obs: {obs_tram_reds}"
+                with col_dest2:
+                    mapa_opcoes_mats = {
+                        f"Item {itens_reds.index(b)+1}: {b['descricao']}": b 
+                        for b in itens_disponiveis
+                    }
+                    mats_escolhidos_keys = st.multiselect(
+                        "Selecione o(s) Material(is) para este destinatário:",
+                        options=["-- TODOS OS MATERIAIS DISPONÍVEIS --"] + list(mapa_opcoes_mats.keys()),
+                        key=f"ms_mats_sel_{reds_codigo}_{idx_r}"
+                    )
+
+                c_btn_add, _ = st.columns([2, 3])
+                with c_btn_add:
+                    if st.button("➕ Adicionar ao Quadro de Envio", key=f"btn_add_carrinho_{reds_codigo}_{idx_r}", use_container_width=True):
+                        if not mats_escolhidos_keys:
+                            st.warning("⚠️ Selecione ao menos um material para adicionar.")
+                        else:
+                            if "-- TODOS OS MATERIAIS DISPONÍVEIS --" in mats_escolhidos_keys:
+                                objetos_alvo = list(itens_disponiveis)
+                            else:
+                                objetos_alvo = [mapa_opcoes_mats[k] for k in mats_escolhidos_keys if k in mapa_opcoes_mats]
+
+                            st.session_state[chave_carrinho].append({
+                                "destinatario": destinatario_selecionado,
+                                "itens": objetos_alvo
                             })
-                            sucessos_tram += 1
+                            st.toast("Materiais adicionados ao Quadro de Envio!", icon="✅")
+                            st.rerun()
+            else:
+                st.success("🎉 Todos os materiais deste REDS já foram distribuídos no Quadro de Envio abaixo!")
 
-                if sucessos_tram > 0:
-                    st.success(f"✅ Tramitação de {sucessos_tram} material(is) do REDS {reds_codigo} confirmada com sucesso!")
-                    st.rerun()
-                else:
-                    st.warning("Nenhum material do REDS teve destino alterado para tramitação.")
+            # 3. QUADRO RESUMO DOS ENVIOS MONTADOS
+            if st.session_state[chave_carrinho]:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("##### 📋 Quadro Resumo de Transferência deste REDS:")
+
+                for idx_b, bloco in enumerate(st.session_state[chave_carrinho]):
+                    with st.container(border=True):
+                        col_quad1, col_quad2 = st.columns([4, 1])
+                        with col_quad1:
+                            st.markdown(f"🏛️ **Destino:** <span style='color: #4ADE80; font-weight: bold;'>{bloco['destinatario']}</span>", unsafe_allow_html=True)
+                            for it_b in bloco["itens"]:
+                                idx_orig = itens_reds.index(it_b) + 1
+                                st.caption(f"• **Item {idx_orig}:** {it_b['descricao']} (Lacre: {it_b.get('involucro_lacre', 'N/I')})")
+                        
+                        with col_quad2:
+                            if st.button("🗑️ Remover", key=f"btn_rem_blk_{reds_codigo}_{idx_r}_{idx_b}", use_container_width=True):
+                                st.session_state[chave_carrinho].pop(idx_b)
+                                st.rerun()
+
+                st.markdown("<br>", unsafe_allow_html=True)
+                obs_tram_reds = st.text_input(
+                    "Observação Geral da Tramitação deste REDS:", 
+                    placeholder="Ex: Encaminhado para o depósito CREDS TCO da Cia", 
+                    key=f"obs_uni_{reds_codigo}_{idx_r}"
+                )
+
+                col_conf_b1, col_conf_b2 = st.columns([2, 1])
+                with col_conf_b1:
+                    btn_confirmar_tramitacao = st.button(
+                        f"🚀 Confirmar Envio e Tramitar Materiais do REDS {reds_codigo}",
+                        type="primary",
+                        key=f"btn_conf_tram_{reds_codigo}_{idx_r}",
+                        use_container_width=True
+                    )
+
+                with col_conf_b2:
+                    if st.button("🧹 Limpar Quadro", key=f"btn_reset_carrinho_{reds_codigo}_{idx_r}", use_container_width=True):
+                        st.session_state[chave_carrinho] = []
+                        st.rerun()
+
+                if btn_confirmar_tramitacao:
+                    now_iso = datetime.datetime.now().isoformat()
+                    sucessos_tram = 0
+
+                    for bloco in st.session_state[chave_carrinho]:
+                        destino_final = bloco["destinatario"]
+
+                        for item_bem in bloco["itens"]:
+                            id_bem_target = item_bem["id_bem"]
+
+                            upd_data = {
+                                "status_tramite": "Pendente Aceite",
+                                "remetente_ultimo": nome_militar_atual,
+                                "unidade_remetente": unidade_militar_atual,
+                                "destinatario_pendente": destino_final,
+                                "unidade_destinatario_pendente": unidade_militar_atual,
+                                "data_envio_tramite": now_iso,
+                                "obs_tramite": obs_tram_reds
+                            }
+
+                            if atualizar_material_supabase(id_bem_target, upd_data):
+                                registrar_log_supabase({
+                                    "data_hora": now_iso,
+                                    "num_reds": reds_codigo,
+                                    "bem_id": id_bem_target,
+                                    "web_origem": "SIOP_TCO",
+                                    "acao": "SOLICITAÇÃO DE TRAMITAÇÃO GRANULAR",
+                                    "origem": nome_militar_atual,
+                                    "unidade_origem": unidade_militar_atual,
+                                    "destino": destino_final,
+                                    "unidade_destino": unidade_militar_atual,
+                                    "detalhe": f"Material '{item_bem.get('descricao')}' tramitado para {destino_final}. Obs: {obs_tram_reds}"
+                                })
+                                sucessos_tram += 1
+
+                    if sucessos_tram > 0:
+                        st.session_state[chave_carrinho] = []
+                        st.success(f"✅ Tramitação de {sucessos_tram} material(is) do REDS {reds_codigo} confirmada com sucesso!")
+                        st.rerun()
