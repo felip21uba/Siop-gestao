@@ -144,7 +144,7 @@ def gerar_excel_panoramico_tco(lista_bens_filtrados):
             "Fase / Destinação Final": str(b.get("fase_destinacao", "N/I")),
             "Status do Trâmite": str(b.get("status_tramite", "N/I")),
             "Tempo Imóvel (Dias)": dias_num,
-            "Data Importação REDS": dt_ing_fmt
+            "Data Importação REDS (DD/MM/AAAA)": dt_ing_fmt
         })
 
     df_exp = pd.DataFrame(dados_excel)
@@ -234,7 +234,52 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", peri
     return resultado
 
 # =============================================================================
-# ABA 1: IMPORTAR REDS & MÍDIAS
+# TRAVA E VALIDAÇÃO DE DUPLICIDADE POR NÚMERO DE REDS
+# =============================================================================
+@st.dialog("🚨 REDS Já Cadastrado na Custódia")
+def modal_alerta_reds_duplicado(num_reds, data_cadastrado, cadastrado_por):
+    """Exibe pop-up de alerta quando há tentativa de reimportação do mesmo Nº de REDS."""
+    st.warning(f"**Atenção:** Os materiais do **REDS Nº {num_reds}** já foram inseridos anteriormente no Supabase.")
+    st.markdown(
+        f"📅 **Data do Cadastro (DD/MM/AAAA):** `{data_cadastrado}`  \n"
+        f"👤 **Cadastrado Por:** `{cadastrado_por}`"
+    )
+    st.info("Esta verificação é feita estritamente pelo Número do REDS para evitar duplicidade de registros na Cadeia de Custódia.")
+    
+    col_m1, col_m2 = st.columns(2)
+    with col_m1:
+        if st.button("⚠️ Confirmar e Inserir Novamente", type="primary", use_container_width=True):
+            st.session_state["confirmou_duplicidade_reds"] = True
+            st.rerun()
+    with col_m2:
+        if st.button("❌ Cancelar Operação", use_container_width=True):
+            st.session_state["temp_reds_extraido"] = None
+            st.session_state["confirmou_duplicidade_reds"] = False
+            st.rerun()
+
+def verificar_existencia_reds_banco(num_reds):
+    """Consulta no Supabase se já existem materiais registrados para este Nº de REDS e formata em DD/MM/AAAA HH:MM."""
+    if not supabase or not num_reds or num_reds == "N/A":
+        return False, None, None
+
+    try:
+        res = supabase.table("tco_materiais").select("created_at, fiel_depositario_atual").eq("num_reds", str(num_reds).strip()).execute()
+        if res.data and len(res.data) > 0:
+            item = res.data[0]
+            dt_raw = item.get("created_at", "")
+            try:
+                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                dt_fmt = str(dt_raw)[:16]
+            
+            operador = item.get("fiel_depositario_atual", "Operador Anterior")
+            return True, dt_fmt, operador
+        return False, None, None
+    except Exception:
+        return False, None, None
+
+# =============================================================================
+# ABA 1: IMPORTAR REDS & MÍDIAS (FORMATO DD/MM/AAAA HH:MM)
 # =============================================================================
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -257,7 +302,12 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                         with st.spinner("Mapeando recibo do JECRIM, relator, natureza e invólucro do material..."):
                             dados_reds = extrair_dados_reds_pdf(arquivo_pdf)
                             st.session_state["temp_reds_extraido"] = dados_reds
-                            st.success("Leitura do REDS concluída!")
+                            
+                            existe_reds, dt_cad, op_cad = verificar_existencia_reds_banco(dados_reds["num_reds"])
+                            if existe_reds and not st.session_state.get("confirmou_duplicidade_reds", False):
+                                modal_alerta_reds_duplicado(dados_reds["num_reds"], dt_cad, op_cad)
+                            else:
+                                st.success("Leitura do REDS concluída!")
             else:
                 st.caption("Aguardando upload de arquivo PDF...")
 
@@ -279,38 +329,42 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                         if not man_reds or not man_desc:
                             st.error("⚠️ Preencha o Nº do REDS e a Descrição do Material.")
                         else:
-                            if not st.session_state["temp_reds_extraido"]:
-                                st.session_state["temp_reds_extraido"] = {
-                                    "num_reds": man_reds,
-                                    "data_registro": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                    "data_fato": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                    "natureza": "INSERÇÃO MANUAL / TCO",
-                                    "local": "N/I",
-                                    "redator": nome_militar_atual,
-                                    "unidade_jecrim": unidade_militar_atual,
-                                    "autores": [man_autor] if man_autor else ["AUTOR NÃO INFORMADO"],
-                                    "resumo_fato": "Material incluído manualmente pelo operador.",
-                                    "materiais": [],
-                                    "hash_pdf": "INSERÇÃO MANUAL"
-                                }
+                            existe_reds_man, dt_cad_m, op_cad_m = verificar_existencia_reds_banco(man_reds)
+                            if existe_reds_man and not st.session_state.get("confirmou_duplicidade_reds", False):
+                                modal_alerta_reds_duplicado(man_reds, dt_cad_m, op_cad_m)
+                            else:
+                                if not st.session_state["temp_reds_extraido"]:
+                                    st.session_state["temp_reds_extraido"] = {
+                                        "num_reds": man_reds,
+                                        "data_registro": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                        "data_fato": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                        "natureza": "INSERÇÃO MANUAL / TCO",
+                                        "local": "N/I",
+                                        "redator": nome_militar_atual,
+                                        "unidade_jecrim": unidade_militar_atual,
+                                        "autores": [man_autor] if man_autor else ["AUTOR NÃO INFORMADO"],
+                                        "resumo_fato": "Material incluído manualmente pelo operador.",
+                                        "materiais": [],
+                                        "hash_pdf": "INSERÇÃO MANUAL"
+                                    }
 
-                            str_item_num = str(len(st.session_state["temp_reds_extraido"]["materiais"]) + 1)
-                            inv_final = man_inv if man_inv else f"SEM LACRE (ITEM {str_item_num})"
+                                str_item_num = str(len(st.session_state["temp_reds_extraido"]["materiais"]) + 1)
+                                inv_final = man_inv if man_inv else f"SEM LACRE (ITEM {str_item_num})"
 
-                            st.session_state["temp_reds_extraido"]["materiais"].append({
-                                "remover": False,
-                                "item_num": str_item_num,
-                                "env_nr": "1",
-                                "autor": man_autor if man_autor else "AUTOR NÃO INFORMADO",
-                                "situacao": "APREENDIDO",
-                                "descricao": man_desc,
-                                "quantidade": man_qtd,
-                                "unidade": man_unid,
-                                "involucro": inv_final,
-                                "destinatario_reds": "JECRIM"
-                            })
-                            st.success(f"Item '{man_desc}' adicionado!")
-                            st.rerun()
+                                st.session_state["temp_reds_extraido"]["materiais"].append({
+                                    "remover": False,
+                                    "item_num": str_item_num,
+                                    "env_nr": "1",
+                                    "autor": man_autor if man_autor else "AUTOR NÃO INFORMADO",
+                                    "situacao": "APREENDIDO",
+                                    "descricao": man_desc,
+                                    "quantidade": man_qtd,
+                                    "unidade": man_unid,
+                                    "involucro": inv_final,
+                                    "destinatario_reds": "JECRIM"
+                                })
+                                st.success(f"Item '{man_desc}' adicionado!")
+                                st.rerun()
 
     if st.session_state.get("temp_reds_extraido"):
         d = st.session_state["temp_reds_extraido"]
@@ -321,7 +375,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
             
             c1, c2 = st.columns(2)
             with c1:
-                st.markdown(f"• **Data Registro:** {d['data_registro']}")
+                st.markdown(f"• **Data Registro (DD/MM/AAAA):** {d['data_registro']}")
                 st.markdown(f"• **Data/Hora Fato:** {d['data_fato']}")
                 st.markdown(f"• **Unidade Destino:** {d['unidade_jecrim']}")
             with c2:
@@ -393,6 +447,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 
             if btn_limpar:
                 st.session_state["temp_reds_extraido"] = None
+                st.session_state["confirmou_duplicidade_reds"] = False
                 st.rerun()
 
             if btn_confirmar:
@@ -481,6 +536,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                         "data_hora": now_iso,
                         "num_reds": d["num_reds"],
                         "bem_id": id_bem_unico,
+                        "web_origem": "SIOP_TCO",
                         "acao": "IMPORTAÇÃO / CUSTÓDIA INICIAL",
                         "origem": f"REDS JECRIM (Relator: {d['redator']})",
                         "unidade_origem": unidade_militar_atual,
@@ -490,6 +546,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                     })
 
                 del st.session_state["temp_reds_extraido"]
+                st.session_state["confirmou_duplicidade_reds"] = False
                 st.success("Materiais selecionados salvos com sucesso no Supabase!")
                 st.rerun()
 
@@ -518,8 +575,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             dt_hoje = datetime.date.today()
             dt_30d = dt_hoje - datetime.timedelta(days=30)
             periodo_datas = st.date_input(
-                "Período de Entrada (Início e Fim):",
+                "Período de Entrada (DD/MM/AAAA):",
                 value=(dt_30d, dt_hoje),
+                format="DD/MM/YYYY",
                 key="range_datas_creds"
             )
 
@@ -622,7 +680,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.markdown(html_item, unsafe_allow_html=True)
 
 # =============================================================================
-# ABA TRILHA DE AUDITORIA
+# ABA TRILHA DE AUDITORIA (DATAS FORMATADAS EM DD/MM/AAAA HH:MM)
 # =============================================================================
 def renderizar_aba_logs(all_logs_banco):
     st.markdown("#### 📜 Trilha de Auditoria Imutável da Custódia (Supabase)")
@@ -640,7 +698,7 @@ def renderizar_aba_logs(all_logs_banco):
             if usar_f5_data:
                 dt_hoje = datetime.date.today()
                 dt_30d = dt_hoje - datetime.timedelta(days=30)
-                f5_periodo = st.date_input("Período (Início e Fim):", value=(dt_30d, dt_hoje), key="f5_periodo_logs")
+                f5_periodo = st.date_input("Período (DD/MM/AAAA):", value=(dt_30d, dt_hoje), format="DD/MM/YYYY", key="f5_periodo_logs")
             else:
                 f5_periodo = None
 
