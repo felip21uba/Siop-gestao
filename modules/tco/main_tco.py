@@ -7,7 +7,7 @@ from modules.tco.views import (
     renderizar_aba_gestores_creds
 )
 from modules.tco.views_tramitacao_unificada import renderizar_aba_custodia_tramitacao_unificada
-from modules.tco.pdf_generator import renderizar_aba_gerador_oficios
+from modules.tco.views_oficios import renderizar_aba_gerador_oficios
 from modules.tco.compliance import (
     verificar_aceite_compliance_supabase,
     exibir_modal_termo_compliance,
@@ -15,7 +15,7 @@ from modules.tco.compliance import (
 )
 
 def renderizar_modulo_tco():
-    """Ponto de entrada do Módulo TCO / Custódia no SIOP com abas unificadas na horizontal."""
+    """Ponto de entrada do Módulo TCO / Custódia no SIOP com abas na horizontal."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
