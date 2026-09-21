@@ -20,7 +20,7 @@ from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registra
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
 # =============================================================================
-# INJEÇÃO DO CSS PERSONALIZADO (AZUL E MARROM COM TEXTO AJUSTADO)
+# INJEÇÃO DO CSS PERSONALIZADO
 # =============================================================================
 def injetar_css_cards_alternados():
     st.markdown("""
@@ -30,33 +30,28 @@ def injetar_css_cards_alternados():
 
     .card-blue {
       background-color: #0c1938;
-      border: 2px solid #1e6091;
+      border: 1.5px solid #1e6091;
       border-radius: 8px;
-      padding: 14px 18px;
-      margin-bottom: 12px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
       color: #e2e8f0 !important;
     }
     .card-blue b, .card-blue strong { color: #ffffff !important; }
 
     .card-brown {
       background-color: #9e8652;
-      border: 2px solid #7a663b;
+      border: 1.5px solid #7a663b;
       border-radius: 8px;
-      padding: 14px 18px;
-      margin-bottom: 12px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
       color: #000000 !important;
     }
-    .card-brown .card-title,
-    .card-brown .status-text,
-    .card-brown strong,
-    .card-brown b,
-    .card-brown small,
-    .card-brown i { color: #000000 !important; }
+    .card-brown strong, .card-brown b, .card-brown small { color: #000000 !important; }
     </style>
     """, unsafe_allow_html=True)
 
 # =============================================================================
-# HELPER DE EXTRAÇÃO E MONTAGEM DINÂMICA DE CREDS POR CIA / BATALHÃO
+# HELPERS AUXILIARES
 # =============================================================================
 def extrair_unidade_mae_creds(str_unidade):
     if not str_unidade or not isinstance(str_unidade, str):
@@ -134,20 +129,17 @@ def gerar_excel_panoramico_tco(lista_bens_filtrados):
 
         dados_excel.append({
             "Nº REDS": str(b.get("num_reds", "N/I")),
-            "Código Bem": str(b.get("id_bem", "N/I")),
             "Descrição do Material": str(b.get("descricao", "N/I")),
             "Qtd": b.get("quantidade", 1.0),
             "Unidade Medida": str(b.get("unidade_medida", "UN")),
             "Nº Lacre / Invólucro": str(b.get("involucro_lacre", "N/I")),
             "Autor(es) Vinculado(s)": str(b.get("autores", "N/I")),
             "Custodiante Atual": str(b.get("fiel_depositario_atual", "N/I")),
-            "Unidade / Posse Atual": str(b.get("unidade_posse_atual", "N/I")),
+            "Unidade / Posse Atual": str(b.get("unidade_posse_atual", "N/A")),
             "Fase / Destinação Final": str(b.get("fase_destinacao", "N/I")),
             "Status do Trâmite": str(b.get("status_tramite", "N/I")),
             "Tempo Imóvel (Dias)": dias_num,
-            "Alerta Gargalo (>4d)": "SIM (RETIDO)" if (alerta_4d and "DESTRUÍDO" not in str(b.get("fase_destinacao", ""))) else "NÃO",
-            "Data Importação REDS": dt_ing_fmt,
-            "P.A. / Ofício Autorizador": str(b.get("pa_oficio_autorizador", "N/A"))
+            "Data Importação REDS": dt_ing_fmt
         })
 
     df_exp = pd.DataFrame(dados_excel)
@@ -354,13 +346,8 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                 st.markdown(f"• **Autor(es):** {', '.join(d['autores'])}")
 
             st.caption(f"**Local do Fato:** {d['local']}")
-            
-            with st.expander("📝 **Ver Resumo Fático & Hash SHA-256 do PDF**"):
-                st.write(d['resumo_fato'])
-                st.caption(f"🔐 Chancela SHA-256: `{d['hash_pdf']}`")
 
         st.markdown("##### 📦 Conferência e Seleção de Materiais")
-        st.caption("Marque a caixa na coluna 'Excluir' para os itens que deseja retirar e clique no botão 'Excluir Marcados'.")
 
         if d["materiais"]:
             df_mats = pd.DataFrame(d["materiais"])
@@ -394,7 +381,6 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 
             col_b1, col_b2, col_b3 = st.columns([2, 1.5, 1])
             with col_b1:
-                # 📌 BOTÃO RENOMEADO EXATAMENTE PARA "Confirmar Materiais"
                 btn_confirmar = st.button("💾 Confirmar Materiais", type="primary", key="btn_conf_fiel_dep_v35", use_container_width=True)
             with col_b2:
                 btn_excluir_marcados = st.button(f"🗑️ Excluir Marcados ({qtd_marcados})", disabled=(qtd_marcados == 0), key="btn_excluir_marcados_v35", use_container_width=True)
@@ -526,91 +512,115 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA 2: MEUS MATERIAIS EM CUSTÓDIA
+# ABA 2: MEUS MATERIAIS EM CUSTÓDIA (REESTRUTURADO: EXPANSÍVEL POR REDS)
 # =============================================================================
 def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
-    usr_logado = st.session_state.get("usuario_dados", {})
-    num_pm = str(usr_logado.get("usuario_login") or usr_logado.get("num_policia") or usr_logado.get("id") or "").strip().upper()
-    cargo_f = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).strip().upper()
 
-    col_tit1, col_tit2 = st.columns([3, 1.2])
-    with col_tit1:
-        st.markdown(f"#### 🎒 Materiais sob Fiel Depósito de: **{nome_militar_atual}**")
-    
-    with col_tit2:
-        _, data_aceite_fixa = obter_ou_registrar_aceite_compliance(num_pm, nome_militar_atual, cargo_f, unidade_militar_atual)
+    st.markdown(f"#### 🎒 Materiais em Custódia de: **{nome_militar_atual}**")
+
+    # 1. FILTROS DE BUSCA (Nº REDS, Data e Destinatário)
+    with st.expander("🔍 **Filtros de Pesquisa na Custódia**", expanded=False):
+        c_f1, c_f2, c_f3 = st.columns(3)
+        with c_f1:
+            q_reds = st.text_input("Nº do REDS:", placeholder="Ex: 2026-000484967", key="meus_f_reds").strip()
+        with c_f2:
+            q_dest = st.text_input("Destinatário / Encaminhamento:", placeholder="Ex: CREDS TCO - 35ª CIA", key="meus_f_dest").strip()
+        with c_f3:
+            q_data = st.date_input("Data de Ingestão / Encaminhamento:", value=None, key="meus_f_data")
+
+    # Filtra os materiais do militar ativo
+    meus_bens = [b for b in all_bens_banco if b.get("fiel_depositario_atual") == nome_militar_atual or b.get("remetente_ultimo") == nome_militar_atual]
+
+    # Aplicação dos Filtros do Usuário
+    bens_filtrados = []
+    for b in meus_bens:
+        if q_reds and q_reds.lower() not in str(b.get("num_reds", "")).lower():
+            continue
+        dest_str = f"{b.get('destinatario_pendente', '')} {b.get('fase_destinacao', '')} {b.get('unidade_posse_atual', '')}"
+        if q_dest and q_dest.lower() not in dest_str.lower():
+            continue
+        if q_data:
+            data_sel_str = q_data.strftime("%Y-%m-%d")
+            data_item_str = str(b.get("data_posse_atual", "")) + str(b.get("data_ingestao", ""))
+            if data_sel_str not in data_item_str:
+                continue
+        bens_filtrados.append(b)
+
+    if not bens_filtrados:
+        st.info("Nenhum material encontrado sob sua custódia com os parâmetros informados.")
+        return
+
+    # Agrupamento dos bens por REDS
+    reds_agrupados = {}
+    for b in bens_filtrados:
+        r_num = str(b.get("num_reds", "SEM REDS")).strip()
+        if r_num not in reds_agrupados:
+            reds_agrupados[r_num] = []
+        reds_agrupados[r_num].append(b)
+
+    # Ordena os REDSs pelo mais recente e limita aos últimos 10
+    reds_ordenados = sorted(
+        reds_agrupados.items(),
+        key=lambda x: max([b.get("data_ingestao") or b.get("data_posse_atual") or "" for b in x[1]]),
+        reverse=True
+    )[:10]
+
+    st.caption(f"Exibindo os **{len(reds_ordenados)} último(s) REDS** ativos:")
+
+    # 2. RENDERIZAÇÃO DOS EXPANDERS POR REDS
+    for idx_r, (reds_codigo, itens_reds) in enumerate(reds_ordenados):
+        primeiro_item = itens_reds[0]
         
-        pdf_comp = gerar_pdf_termo_compliance(
-            nome_militar=nome_militar_atual,
-            cargo_funcao=cargo_f,
-            unidade=unidade_militar_atual,
-            num_policia=num_pm,
-            data_aceite_str=data_aceite_fixa,
-            data_impressao_str=datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        )
-        st.download_button(
-            label="🖨️ Imprimir Termo Compliance",
-            data=pdf_comp,
-            file_name=f"Termo_Compliance_PM_{num_pm}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+        # Formatação das informações do Cabeçalho do REDS
+        data_bruta = primeiro_item.get("data_ingestao") or primeiro_item.get("data_posse_atual") or ""
+        try:
+            data_fmt = pd.to_datetime(data_bruta).strftime("%d/%m/%Y") if data_bruta else "Data N/I"
+        except Exception:
+            data_fmt = str(data_bruta)[:10] if data_bruta else "Data N/I"
 
-    meus_bens = [b for b in all_bens_banco if b.get("fiel_depositario_atual") == nome_militar_atual and b.get("status_tramite") == "Em Custódia"]
-    
-    if meus_bens:
-        for mb in meus_bens:
-            dt_posse_m = mb.get("data_posse_atual") or mb.get("data_ingestao")
-            txt_t, alert_m, _ = calcular_tempo_decorrido_detalhado(dt_posse_m)
-            mb["tempo_posse"] = f"🚨 {txt_t}" if alert_m else txt_t
-            mb["status_edicao"] = "Editado" if mb.get("editado_pelo_operador") else "Original"
-
-        df_mb = pd.DataFrame(meus_bens)
-        st.dataframe(
-            df_mb[["id_bem", "num_reds", "autores", "descricao", "quantidade", "unidade_medida", "involucro_lacre", "tempo_posse", "status_edicao"]],
-            column_config={
-                "id_bem": "Código Bem",
-                "num_reds": "Nº REDS",
-                "autores": "Autor(es)",
-                "descricao": "Descrição",
-                "quantidade": "Qtd",
-                "unidade_medida": "Unid",
-                "involucro_lacre": "Invólucro / Lacre",
-                "tempo_posse": "Tempo na Posse",
-                "status_edicao": "Origem"
-            },
-            hide_index=True, use_container_width=True
-        )
+        autor_fmt = primeiro_item.get("autores") or "AUTOR NÃO INFORMADO"
         
-        st.divider()
-        st.markdown("##### ⚙️ Ações e Mídias Anexas:")
-        for idx_m, item_meu in enumerate(meus_bens):
-            e_marrom = (idx_m % 2 != 0)
-            classe_card = "card-brown" if e_marrom else "card-blue"
-            
-            midias = item_meu.get("midias_anexas") or []
-            str_midias = f"📎 <b>{len(midias)} arquivo(s) anexo(s)</b>" if midias else "Nenhuma mídia anexa"
+        # Destinatário e Data de Encaminhamento
+        destinacao_fmt = primeiro_item.get("destinatario_pendente") or primeiro_item.get("fase_destinacao") or "Com Fiel Depositário"
+        dt_envio_raw = primeiro_item.get("data_envio_tramite") or primeiro_item.get("data_posse_atual") or ""
+        try:
+            dt_envio_fmt = pd.to_datetime(dt_envio_raw).strftime("%d/%m/%Y %H:%M") if dt_envio_raw else ""
+        except Exception:
+            dt_envio_fmt = str(dt_envio_raw)[:16] if dt_envio_raw else ""
 
-            html_card = f"""
-            <div class="{classe_card}">
-                📄 REDS: <b>{item_meu.get('num_reds', 'N/I')}</b> | Código: <b>{item_meu.get('id_bem', 'N/I')}</b><br/>
-                📦 Material: <b>{item_meu.get('descricao', 'N/I')}</b><br/>
-                👤 Autor: <b>{item_meu.get('autores', 'AUTOR NÃO INFORMADO')}</b><br/>
-                <small>🔒 Lacre: <b>{item_meu.get('involucro_lacre', 'N/I')}</b> | Qtd: <b>{item_meu.get('quantidade', '1.0')} {item_meu.get('unidade_medida', 'UN')}</b> | {str_midias}</small>
-            </div>
-            """
-            st.markdown(html_card, unsafe_allow_html=True)
-            
-            c_act1, c_act2 = st.columns([4, 1])
-            with c_act2:
-                if st.button("✏️ Editar / Anexar", key=f"btn_edit_meu_bem_{item_meu['id_bem']}_{idx_m}", use_container_width=True):
-                    abrir_modal_edicao_material(item_meu, nome_militar_atual, unidade_militar_atual)
-    else:
-        st.info("Você não possui nenhum material sob sua custódia no momento.")
+        encaminhamento_str = f"{destinacao_fmt}" + (f" ({dt_envio_fmt})" if dt_envio_fmt else "")
+
+        # Rótulo em destaque do Expander (REDS, Data, Autor e Encaminhamento)
+        label_expander = f"📄 REDS: {reds_codigo} | Data: {data_fmt} | Autor: {autor_fmt} | Encaminhado: {encaminhamento_str} ({len(itens_reds)} item/ns)"
+
+        with st.expander(label_expander, expanded=(idx_r == 0)):
+            for idx_i, item_bem in enumerate(itens_reds):
+                e_marrom = (idx_i % 2 != 0)
+                classe_card = "card-brown" if e_marrom else "card-blue"
+
+                midias = item_bem.get("midias_anexas") or []
+                str_midias = f"📎 <b>{len(midias)} mídia(s) anexa(s)</b>" if midias else "Nenhuma mídia anexa"
+
+                ponto_cad, tempo_str, alerta_4d, _ = obter_status_gargalo_e_tempo(item_bem, e_marrom=e_marrom)
+
+                # O código id_bem NÃO APARECE visualmente aqui
+                html_card = f"""
+                <div class="{classe_card}">
+                    📦 Material: <b>{item_bem.get('descricao', 'N/I')}</b><br/>
+                    🔒 Lacre: <b>{item_bem.get('involucro_lacre', 'SEM LACRE')}</b> | Qtd: <b>{item_bem.get('quantidade', '1.0')} {item_bem.get('unidade_medida', 'UN')}</b> | {str_midias}<br/>
+                    📍 Status: {ponto_cad} | ⏱️ Tempo: <b>{tempo_str}</b>
+                </div>
+                """
+                st.markdown(html_card, unsafe_allow_html=True)
+
+                c_a1, c_a2 = st.columns([4, 1])
+                with c_a2:
+                    if st.button("✏️ Editar / Anexar", key=f"btn_edit_meu_bem_{item_bem['id_bem']}_{idx_r}_{idx_i}", use_container_width=True):
+                        abrir_modal_edicao_material(item_bem, nome_militar_atual, unidade_militar_atual)
 
 # =============================================================================
-# ABA 3: TRAMITAÇÃO COM DESTINO AO CREDS TCO DA COMPANHIA
+# DEMAIS ABAS (TRAMITAÇÃO, PAINEL CREDS, AUDITORIA, GESTORES)
 # =============================================================================
 def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -641,7 +651,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
         st.caption("Envie um ou múltiplos materiais para o CREDS TCO da Companhia/Batalhão ou para outro militar específico.")
 
         bens_disp = {
-            f"{b['id_bem']} | REDS: {b['num_reds']} - {b['descricao']} (Lacre: {b.get('involucro_lacre', 'N/I')})": b['id_bem'] 
+            f"REDS: {b['num_reds']} - {b['descricao']} (Lacre: {b.get('involucro_lacre', 'N/I')})": b['id_bem'] 
             for b in meus_bens_filtrados
         }
 
@@ -738,10 +748,9 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 df_pend.insert(0, "receber", True)
 
             df_editado_rec = st.data_editor(
-                df_pend[["receber", "id_bem", "num_reds", "descricao", "involucro_lacre", "remetente_ultimo", "unidade_remetente", "obs_tramite"]],
+                df_pend[["receber", "num_reds", "descricao", "involucro_lacre", "remetente_ultimo", "unidade_remetente", "obs_tramite"]],
                 column_config={
                     "receber": st.column_config.CheckboxColumn("✅ Receber?", default=True, width="small"),
-                    "id_bem": st.column_config.TextColumn("Código Bem", disabled=True, width="small"),
                     "num_reds": st.column_config.TextColumn("Nº REDS", disabled=True, width="medium"),
                     "descricao": st.column_config.TextColumn("Descrição do Material", disabled=True, width="large"),
                     "involucro_lacre": st.column_config.TextColumn("Nº Lacre", disabled=True, width="medium"),
@@ -783,8 +792,8 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 sucessos_acc = 0
 
                 for idx_a, row_a in itens_aceitar.iterrows():
-                    id_bem_acc = str(row_a["id_bem"])
-                    p_orig = next(b for b in pendentes_filtrados if b["id_bem"] == id_bem_acc)
+                    p_orig = pendentes_filtrados[idx_a]
+                    id_bem_acc = p_orig["id_bem"]
                     
                     orig = p_orig.get('remetente_ultimo') or p_orig.get('fiel_depositario_atual')
                     orig_unid = p_orig.get('unidade_remetente') or p_orig.get('unidade_posse_atual')
@@ -841,8 +850,8 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                             sucessos_div = 0
 
                             for idx_r, row_r in itens_recusar.iterrows():
-                                id_bem_rec = str(row_r["id_bem"])
-                                p_orig = next(b for b in pendentes_filtrados if b["id_bem"] == id_bem_rec)
+                                p_orig = pendentes_filtrados[idx_r]
+                                id_bem_rec = p_orig["id_bem"]
                                 
                                 origem_remetente = p_orig.get("remetente_ultimo") or p_orig.get("fiel_depositario_atual")
                                 unidade_remetente = p_orig.get("unidade_remetente") or p_orig.get("unidade_posse_atual")
@@ -882,9 +891,6 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
         else:
             st.info("Nenhuma transferência pendente de aceite para você ou para o CREDS TCO da sua Cia.")
 
-# =============================================================================
-# ABA 5: PAINEL CREDS-TCO
-# =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Custódia")
@@ -1001,16 +1007,13 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
         html_item = f"""
         <div class="{classe_card}">
-            📄 REDS: <b>{bem['num_reds']}</b> | Código Bem: <b>{bem['id_bem']}</b> | Material: <b>{bem['descricao']}</b><br/>
+            📄 REDS: <b>{bem['num_reds']}</b> | Material: <b>{bem['descricao']}</b><br/>
             📍 Status: {ponto_cad_card}<br/>
             ⏱️ Tempo Imóvel na Etapa: {tempo_html}
         </div>
         """
         st.markdown(html_item, unsafe_allow_html=True)
 
-# =============================================================================
-# ABA 6: TRILHA DE AUDITORIA
-# =============================================================================
 def renderizar_aba_logs(all_logs_banco):
     st.markdown("#### 📜 Trilha de Auditoria Imutável da Custódia (Supabase)")
     
@@ -1046,9 +1049,6 @@ def renderizar_aba_logs(all_logs_banco):
     else:
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
-# =============================================================================
-# ABA 7: DESIGNAÇÃO DE GESTORES
-# =============================================================================
 def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
     usr_logado = st.session_state.get("usuario_dados", {})
     eh_autorizado = usuario_eh_gestor_creds(usr_logado)
