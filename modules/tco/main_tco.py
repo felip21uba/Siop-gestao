@@ -25,7 +25,7 @@ def renderizar_modulo_tco():
     perfil_usuario = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
     cargo_str = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).upper()
 
-    # Validação do Termo de Compliance no acesso
+    # Validação do Termo de Compliance
     if not st.session_state.get("termo_compliance_aceito", False):
         if verificar_aceite_compliance_supabase(usr_id):
             st.session_state["termo_compliance_aceito"] = True
@@ -46,7 +46,7 @@ def renderizar_modulo_tco():
 
     eh_gestor_creds = "PROGRAMADOR" in cargo_str or "ADMIN" in perfil_usuario or "P1" in perfil_usuario or "COMANDANTE" in cargo_str or "CREDS" in perfil_usuario
 
-    # Carregamento de dados em tempo real
+    # Carregamento dos dados em tempo real do Supabase
     all_bens_banco = carregar_materiais_supabase()
     all_logs_banco = carregar_logs_supabase()
 
