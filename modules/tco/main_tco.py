@@ -16,7 +16,7 @@ from modules.tco.compliance import (
 )
 
 def renderizar_modulo_tco():
-    """Ponto de entrada do Módulo TCO / Custódia no SIOP."""
+    """Ponto de entrada do Módulo TCO / Custódia no SIOP com abas na horizontal abaixo do card."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -33,42 +33,52 @@ def renderizar_modulo_tco():
         else:
             exibir_modal_termo_compliance(usr_id, nome_militar_atual, cargo_str, unidade_militar_atual)
 
+    # CARD CABEÇALHO DO MÓDULO
     st.markdown("### 📦 Custódia de Materiais TCO & Cadeia de Custódia")
     
-    col_hdr1, col_hdr2 = st.columns(2)
-    with col_hdr1:
-        st.markdown(f"👤 **Operador Ativo:** **{nome_militar_atual}**")
-    with col_hdr2:
-        st.markdown(f"🏛️ **Unidade Atual:** **{unidade_militar_atual}**")
+    with st.container(border=True):
+        col_hdr1, col_hdr2 = st.columns(2)
+        with col_hdr1:
+            st.markdown(f"👤 **Operador Ativo:** **{nome_militar_atual}**")
+        with col_hdr2:
+            st.markdown(f"🏛️ **Unidade Atual:** **{unidade_militar_atual}**")
 
-    st.divider()
+    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
     eh_gestor_creds = "PROGRAMADOR" in cargo_str or "ADMIN" in perfil_usuario or "P1" in perfil_usuario or "COMANDANTE" in cargo_str or "CREDS" in perfil_usuario
 
-    # Carregamento dos dados em tempo real
+    # Carregamento dos dados em tempo real do Supabase
     all_bens_banco = carregar_materiais_supabase()
     all_logs_banco = carregar_logs_supabase()
 
-    # ROTEAMENTO DINÂMICO BASEADO NO MENU LATERAL (SIDEBAR)
-    aba_selecionada = st.session_state.get("subnav_tco", "📥 Importar REDS")
+    # 📌 ESTRUTURA DE ABAS HORIZONTAIS LOGO ABAIXO DO CARD MÓDULO (TIPO A FOTO)
+    tab_import, tab_meus, tab_tram, tab_oficios, tab_creds, tab_auditoria, tab_gestores = st.tabs([
+        "📥 Importar REDS",
+        "🎒 Meus Materiais",
+        "🔄 Tramitação",
+        "📄 Ofícios",
+        "🏛️ Painel CREDS",
+        "📜 Auditoria",
+        "👥 Gestores"
+    ])
 
-    if "Importar" in aba_selecionada or "Ingestão" in aba_selecionada:
+    with tab_import:
         renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
 
-    elif "Meus Materiais" in aba_selecionada:
+    with tab_meus:
         renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    elif "Tramitação" in aba_selecionada:
+    with tab_tram:
         renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    elif "Ofícios" in aba_selecionada:
+    with tab_oficios:
         renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    elif "Painel CREDS" in aba_selecionada:
+    with tab_creds:
         renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual)
 
-    elif "Auditoria" in aba_selecionada:
+    with tab_auditoria:
         renderizar_aba_logs(all_logs_banco)
 
-    elif "Gestores" in aba_selecionada:
+    with tab_gestores:
         renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)
