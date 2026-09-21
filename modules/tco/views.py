@@ -25,15 +25,9 @@ from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sani
 def injetar_css_cards_alternados():
     st.markdown("""
     <style>
-    /* 1. SUAVIZAÇÃO DO TEXTO GERAL */
-    .card-content {
-      color: #e2e8f0;
-    }
-    .card-content strong, .card-content b {
-      color: #ffffff;
-    }
+    .card-content { color: #e2e8f0; }
+    .card-content strong, .card-content b { color: #ffffff; }
 
-    /* 2. CARD AZUL (Status Normal / Aguardando) */
     .card-blue {
       background-color: #0c1938;
       border: 2px solid #1e6091;
@@ -42,11 +36,8 @@ def injetar_css_cards_alternados():
       margin-bottom: 12px;
       color: #e2e8f0 !important;
     }
-    .card-blue b, .card-blue strong {
-      color: #ffffff !important;
-    }
+    .card-blue b, .card-blue strong { color: #ffffff !important; }
 
-    /* 3. CARD MARROM (Dourado Institucional - Texto PRETO) */
     .card-brown {
       background-color: #9e8652;
       border: 2px solid #7a663b;
@@ -60,9 +51,7 @@ def injetar_css_cards_alternados():
     .card-brown strong,
     .card-brown b,
     .card-brown small,
-    .card-brown i {
-      color: #000000 !important;
-    }
+    .card-brown i { color: #000000 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -70,7 +59,6 @@ def injetar_css_cards_alternados():
 # HELPER DE EXTRAÇÃO E MONTAGEM DINÂMICA DE CREDS POR CIA / BATALHÃO
 # =============================================================================
 def extrair_unidade_mae_creds(str_unidade):
-    """Extrai estritamente a Companhia ou Batalhão a partir de uma string de lotação."""
     if not str_unidade or not isinstance(str_unidade, str):
         return None
     str_u = str_unidade.upper().strip()
@@ -98,7 +86,6 @@ def extrair_unidade_mae_creds(str_unidade):
     return None
 
 def obter_lista_creds_dinamica():
-    """Lê as lotações das planilhas importadas e preserva CREDS criados manualmente."""
     unidades_set = set()
     all_m = carregar_militares_supabase()
     
@@ -131,7 +118,6 @@ def obter_lista_creds_dinamica():
     return lista
 
 def gerar_excel_panoramico_tco(lista_bens_filtrados):
-    """Gera o arquivo Excel (.xlsx) formatado com o acervo completo de materiais."""
     buffer = io.BytesIO()
     dados_excel = []
     
@@ -408,7 +394,8 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 
             col_b1, col_b2, col_b3 = st.columns([2, 1.5, 1])
             with col_b1:
-                btn_confirmar = st.button("💾 Salvar Materiais no Supabase", type="primary", key="btn_conf_fiel_dep_v35", use_container_width=True)
+                # 📌 BOTÃO RENOMEADO EXATAMENTE PARA "Confirmar Materiais"
+                btn_confirmar = st.button("💾 Confirmar Materiais", type="primary", key="btn_conf_fiel_dep_v35", use_container_width=True)
             with col_b2:
                 btn_excluir_marcados = st.button(f"🗑️ Excluir Marcados ({qtd_marcados})", disabled=(qtd_marcados == 0), key="btn_excluir_marcados_v35", use_container_width=True)
             with col_b3:
@@ -539,7 +526,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA 2: MEUS MATERIAIS EM CUSTÓDIA (CARDS ALTERNADOS AZUL E MARROM)
+# ABA 2: MEUS MATERIAIS EM CUSTÓDIA
 # =============================================================================
 def renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -630,7 +617,6 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
     st.markdown("#### 🔄 Tramitação Multi-Unidades & Aceite Parcial")
     
     unidades_creds_destino = obter_lista_creds_dinamica()
-
     meus_bens = [b for b in all_bens_banco if b.get("fiel_depositario_atual") == nome_militar_atual and b.get("status_tramite") == "Em Custódia"]
 
     with st.expander("🔍 **Filtros de Pesquisa na Tramitação**", expanded=True):
@@ -648,7 +634,6 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
     
     mils_todos = carregar_militares_supabase()
     nomes_mils_base = [f"{m.get('posto_grad')} {m.get('nome_guerra')}" for m in mils_todos] if mils_todos else ["CB MORAES", "SD VINICIUS", "SGT SILVA"]
-    
     opcoes_destinatarios_geral = unidades_creds_destino + [n for n in nomes_mils_base if n != nome_militar_atual]
 
     with st.container(border=True):
@@ -670,7 +655,6 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             c_tr1, c_tr2 = st.columns(2)
             with c_tr1:
                 destinatario_sel = st.selectbox("Selecione o Destino (CREDS Cia ou Militar):", opcoes_destinatarios_geral, key="sel_destinatario_v35")
-                
                 destino_final_tram = destinatario_sel
                 if destinatario_sel == "✏️ Outro CREDS / Digitar Manualmente":
                     destino_final_tram = st.text_input("Digite o Nome do CREDS de Destino:", placeholder="Ex: CREDS TCO - 285ª CIA TM").strip().upper()
@@ -679,7 +663,6 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
                 unidade_dest_sel = st.text_input("Unidade Responsável:", value=unidade_militar_atual).strip().upper()
             
             obs_transf = st.text_input("Observações Gerais da Tramitação:", key="txt_obs_transf_v35", placeholder="Ex: Encaminhado para o depósito do CREDS TCO da Cia")
-
             qtd_sel_envio = len(itens_selecionados_keys)
             
             btn_tramitar = st.button(
@@ -900,7 +883,7 @@ def renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_mi
             st.info("Nenhuma transferência pendente de aceite para você ou para o CREDS TCO da sua Cia.")
 
 # =============================================================================
-# ABA 5: PAINEL CREDS-TCO (EXIBIÇÃO COM CARDS ALTERNADOS AZUL E MARROM)
+# ABA 5: PAINEL CREDS-TCO
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -912,7 +895,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     with st.container(border=True):
         st.markdown("##### 📊 Relatório Panorâmico (Excel) & Filtro de Período")
-        
         c_exp1, c_exp2, c_exp3 = st.columns([1.5, 1.5, 1])
         
         with c_exp1:
@@ -1010,7 +992,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     for idx_creds, bem in enumerate(bens_processados):
         e_marrom = (idx_creds % 2 != 0)
         classe_card = "card-brown" if e_marrom else "card-blue"
-        
         ponto_cad_card, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
 
         if e_marrom:
@@ -1028,7 +1009,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.markdown(html_item, unsafe_allow_html=True)
 
 # =============================================================================
-# ABA 6: TRILHA DE AUDITORIA (FILTRO POR PERÍODO DE DATAS INÍCIO/FIM)
+# ABA 6: TRILHA DE AUDITORIA
 # =============================================================================
 def renderizar_aba_logs(all_logs_banco):
     st.markdown("#### 📜 Trilha de Auditoria Imutável da Custódia (Supabase)")
@@ -1054,8 +1035,6 @@ def renderizar_aba_logs(all_logs_banco):
     
     if logs_filtrados:
         df_l = pd.DataFrame(logs_filtrados)
-        
-        # Trata a formatação de data/hora prevenindo NaT e mantendo DD/MM/AAAA HH:MM
         if "data_hora" in df_l.columns and not df_l.empty:
             df_l["data_hora"] = df_l["data_hora"].apply(
                 lambda x: pd.to_datetime(x).strftime("%d/%m/%Y %H:%M") if pd.notna(x) and str(x).strip() not in ["", "None", "NaT"] else "N/I"
@@ -1068,11 +1047,10 @@ def renderizar_aba_logs(all_logs_banco):
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
 # =============================================================================
-# ABA 7: DESIGNAÇÃO E ESTRUTURA DE GESTORES POR COMPANHIA / BATALHÃO
+# ABA 7: DESIGNAÇÃO DE GESTORES
 # =============================================================================
 def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
     usr_logado = st.session_state.get("usuario_dados", {})
-    
     eh_autorizado = usuario_eh_gestor_creds(usr_logado)
 
     if not eh_autorizado:
@@ -1081,7 +1059,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
 
     perfil_creds_usr = usr_logado.get("perfil_creds", "TROPA")
     perfil_geral_usr = usr_logado.get("nivel_acesso", "TROPA")
-    
     eh_gestor_unidade = (perfil_creds_usr == "GESTOR_UNIDADE" or perfil_geral_usr in ["ADMIN", "PROGRAMADOR"])
 
     st.markdown("#### 👥 Designação e Estrutura de Gestores do CREDS / TCO")
@@ -1091,7 +1068,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
         st.caption(f"🏢 **Visão Restrita:** Atribuição de permissão CREDS limitada à **{unidade_operador}**.")
 
     all_milit = carregar_militares_supabase()
-    
     if not eh_gestor_unidade:
         all_milit = [m for m in all_milit if str(m.get("unidade", "")).strip().upper() == str(unidade_operador).strip().upper()]
 
@@ -1114,7 +1090,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
             st.warning(f"Aviso ao consultar lista de usuários: {e}")
 
     df_u = pd.DataFrame(usuarios_banco) if usuarios_banco else pd.DataFrame()
-
     col_des1, col_des2 = st.columns([2, 2.2])
 
     with col_des1:
@@ -1188,7 +1163,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                     with st.expander(f"🏢 **CREDS TCO - {unid_nome}** ({len(lista_gestores)} Integrante/s)", expanded=True):
                         for idx_g, g in enumerate(lista_gestores):
                             pm_key = str(g.get("usuario_login") or g.get("usuario") or "").strip().upper()
-                            
                             grad_correta = (
                                 mapa_graduacoes.get(pm_key) or 
                                 g.get("posto_grad") or 
@@ -1196,7 +1170,6 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                                 g.get("cargo_funcao") or 
                                 "PM"
                             )
-                            
                             with st.container(border=True):
                                 c_g1, c_g2 = st.columns([3, 1.5])
                                 with c_g1:
