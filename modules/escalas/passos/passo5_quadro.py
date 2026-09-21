@@ -187,7 +187,7 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
     if st.session_state.get("limpar_avisos_manual", False) and not dias_filtro:
         st.session_state["lista_bloqueios_auditoria"] = []
         st.session_state["lista_avisos_descanso"] = []
-        return
+        return False
 
     bloqueios = []
     avisos_descanso = []
@@ -254,7 +254,7 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
         if not sub_intervalos_militar:
             continue
 
-        # 1. TESTE DE SOBREPOSIÇÃO / CHOQUE REAL DE HORÁRIOS
+        # 1. TESTE DE SOBREPOSIÇÃO / CHOQUE REAL DE HORÁRIOS (CRÍTICO)
         for i in range(len(sub_intervalos_militar)):
             for j in range(i + 1, len(sub_intervalos_militar)):
                 t1 = sub_intervalos_militar[i]
@@ -291,6 +291,9 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None):
 
     st.session_state["lista_bloqueios_auditoria"] = bloqueios
     st.session_state["lista_avisos_descanso"] = avisos_descanso
+    
+    # Retorna True se houver bloqueio crítico de sobreposição
+    return len(bloqueios) > 0
 
 def recalcular_escala_matriz():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
@@ -362,7 +365,6 @@ def recalcular_escala_matriz():
     verificar_trava_sobreposicao()
 
 def abrir_segunda_janela_popup(m_mes, m_ano):
-    """Abre o espelho em janela pop-up apontando para a mesma URL com o parametro modo_monitor."""
     url_espelho = f".?modo_monitor=segunda_tela&mes={m_mes}&ano={m_ano}"
     components.html(
         f"""
@@ -401,10 +403,20 @@ def renderizar_passo5():
         existentes = [(str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []) if isinstance(p, (tuple, list)) and len(p) == 2]
         existentes_set = set(existentes)
 
+        grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
+
         st.session_state["militares_no_quadro_chaves"] = [p for p in existentes if (p[1] != eq_ativa or p[0] in sel_ids)] + [(mid, eq_ativa) for mid in sel_ids if (mid, eq_ativa) not in existentes_set]
         st.session_state["limpar_avisos_manual"] = False
         recalcular_escala_matriz()
-        executar_auto_save_banco()
+        
+        # CHECAGEM DE BLOQUEIO CRÍTICO DE SOBREPOSIÇÃO
+        tem_bloqueio = verificar_trava_sobreposicao()
+        if tem_bloqueio:
+            st.session_state["grade_escala_lancamentos"] = grade_backup
+            st.error("⛔ **Lançamento Cancelado:** Foram detetados choques/sobreposições de horário para o mesmo militar!")
+        else:
+            executar_auto_save_banco()
+            
         st.session_state["atualizar_quadro_passo5"] = False
 
     verificar_trava_sobreposicao()
@@ -437,8 +449,6 @@ def renderizar_passo5():
             if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True):
                 st.session_state["atualizar_quadro_passo5"] = True
                 st.session_state["limpar_avisos_manual"] = False
-                recalcular_escala_matriz()
-                executar_auto_save_banco()
                 st.rerun()
 
         with col_link:
@@ -562,7 +572,7 @@ def renderizar_passo5():
 
                     if mils_sel_lote:
                         salvar_estado_undo()
-                        grade_tmp = st.session_state.get("grade_escala_lancamentos", {})
+                        grade_tmp = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
                         chaves_tmp = list(st.session_state.get("militares_no_quadro_chaves", []))
                         
                         mils_efetivos_alvo = []
@@ -603,12 +613,21 @@ def renderizar_passo5():
                             msg_sucesso = f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!"
 
                         if cnt:
+                            # APLICA TEMPORARIAMENTE PARA TESTAR AUDITORIA
+                            grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
                             st.session_state["grade_escala_lancamentos"] = grade_tmp
-                            executar_auto_save_banco()
                             st.session_state["limpar_avisos_manual"] = False
-                            verificar_trava_sobreposicao(dias_filtro=dias_alvo, militares_filtro=mids_lote)
-                            st.success(msg_sucesso)
-                            st.rerun()
+                            
+                            tem_bloqueio = verificar_trava_sobreposicao(dias_filtro=dias_alvo, militares_filtro=mids_lote)
+                            
+                            if tem_bloqueio and "[REMOVER" not in tipo_ev and "[LIMPAR" not in tipo_ev:
+                                # REVERTE ALTERAÇÃO SE HOUVER CHOQUE CRÍTICO
+                                st.session_state["grade_escala_lancamentos"] = grade_backup
+                                st.error("⛔ **Lançamento Cancelado:** Foram detetados choques/sobreposições de horário para o militar!")
+                            else:
+                                executar_auto_save_banco()
+                                st.success(msg_sucesso)
+                                st.rerun()
 
         colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
         matriz = []
@@ -664,6 +683,8 @@ def renderizar_passo5():
             )
 
             alterou_quadro = False
+            grade_backup_ed = copy.deepcopy(grade)
+
             for idx_r, row in df_ed.iterrows():
                 if idx_r >= len(mils_ord):
                     continue
@@ -690,8 +711,13 @@ def renderizar_passo5():
             st.session_state["grade_escala_lancamentos"] = grade
             if alterou_quadro:
                 st.session_state["limpar_avisos_manual"] = False
-                verificar_trava_sobreposicao()
-                executar_auto_save_banco()
+                tem_bloqueio_ed = verificar_trava_sobreposicao()
+                
+                if tem_bloqueio_ed:
+                    st.session_state["grade_escala_lancamentos"] = grade_backup_ed
+                    st.error("⛔ **Lançamento Direto Cancelado:** Edição gerou choque de horários!")
+                else:
+                    executar_auto_save_banco()
         else:
             st.info("💡 Clique em '⚡ Aplicar Lançamentos' para montar a escala com os militares selecionados.")
 
