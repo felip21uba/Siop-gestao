@@ -2,12 +2,11 @@ import streamlit as st
 from modules.tco.database import carregar_materiais_supabase, carregar_logs_supabase
 from modules.tco.views import (
     renderizar_aba_importacao,
-    renderizar_aba_meus_bens,
-    renderizar_aba_transferencias,
     renderizar_aba_creds,
     renderizar_aba_logs,
     renderizar_aba_gestores_creds
 )
+from modules.tco.views_tramitacao_unificada import renderizar_aba_custodia_tramitacao_unificada
 from modules.tco.pdf_generator import renderizar_aba_gerador_oficios
 from modules.tco.compliance import (
     verificar_aceite_compliance_supabase,
@@ -16,7 +15,7 @@ from modules.tco.compliance import (
 )
 
 def renderizar_modulo_tco():
-    """Ponto de entrada do Módulo TCO / Custódia no SIOP com abas na horizontal abaixo do card."""
+    """Ponto de entrada do Módulo TCO / Custódia no SIOP com abas unificadas na horizontal."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -26,7 +25,7 @@ def renderizar_modulo_tco():
     perfil_usuario = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
     cargo_str = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).upper()
 
-    # Validação do Termo de Compliance
+    # Validação do Termo de Compliance no acesso
     if not st.session_state.get("termo_compliance_aceito", False):
         if verificar_aceite_compliance_supabase(usr_id):
             st.session_state["termo_compliance_aceito"] = True
@@ -47,15 +46,14 @@ def renderizar_modulo_tco():
 
     eh_gestor_creds = "PROGRAMADOR" in cargo_str or "ADMIN" in perfil_usuario or "P1" in perfil_usuario or "COMANDANTE" in cargo_str or "CREDS" in perfil_usuario
 
-    # Carregamento dos dados em tempo real do Supabase
+    # Carregamento de dados em tempo real
     all_bens_banco = carregar_materiais_supabase()
     all_logs_banco = carregar_logs_supabase()
 
-    # 📌 ABAS HORIZONTAIS LOGO ABAIXO DO CARD
-    tab_import, tab_meus, tab_tram, tab_oficios, tab_creds, tab_auditoria, tab_gestores = st.tabs([
+    # 📌 ABAS HORIZONTAIS UNIFICADAS
+    tab_import, tab_custodia, tab_oficios, tab_creds, tab_auditoria, tab_gestores = st.tabs([
         "📥 Importar REDS",
-        "🎒 Meus Materiais",
-        "🔄 Tramitação",
+        "🎒 Custódia & Tramitação",
         "📄 Ofícios",
         "🏛️ Painel CREDS",
         "📜 Auditoria",
@@ -65,11 +63,8 @@ def renderizar_modulo_tco():
     with tab_import:
         renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
 
-    with tab_meus:
-        renderizar_aba_meus_bens(all_bens_banco, nome_militar_atual, unidade_militar_atual)
-
-    with tab_tram:
-        renderizar_aba_transferencias(all_bens_banco, nome_militar_atual, unidade_militar_atual)
+    with tab_custodia:
+        renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
     with tab_oficios:
         renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual)
