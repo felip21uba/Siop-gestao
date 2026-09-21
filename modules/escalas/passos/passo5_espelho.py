@@ -27,10 +27,10 @@ def carregar_escala_direto_supabase(m_ano, m_mes):
     if not supabase:
         return {}, [], {}, {}
     try:
-        # Tenta a busca convertendo o mês para inteiro e garantindo compatibilidade
         mes_int = int(m_mes)
         ano_int = int(m_ano)
         
+        # Busca a escala gravada atualizada
         res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", ano_int).eq("mes", mes_int).execute()
         
         if res and res.data and len(res.data) > 0:
@@ -55,7 +55,7 @@ def carregar_escala_direto_supabase(m_ano, m_mes):
     return {}, [], {}, {}
 
 def renderizar_modo_segunda_tela():
-    """Renderiza a 2ª tela autônoma em tela cheia com atualização em tempo real."""
+    """Renderiza a 2ª tela autônoma e estável, escutando atualizações acionadas pelo Passo 5."""
     st.markdown(
         """
         <style>
@@ -71,7 +71,6 @@ def renderizar_modo_segunda_tela():
 
     params = st.query_params
     
-    # Tratamento rigoroso de conversão de query_params para inteiros
     raw_mes = params.get("mes", datetime.date.today().month)
     raw_ano = params.get("ano", datetime.date.today().year)
 
@@ -154,12 +153,16 @@ def renderizar_modo_segunda_tela():
     else:
         st.info("💡 Nenhuma escala localizada no Supabase para este período.")
 
+    # Ouvinte de Eventos do Navegador (Escuta a mensagem enviada pelo Passo 5 quando você clica em Aplicar)
     components.html(
         """
         <script>
-        setTimeout(function(){
-            window.parent.location.reload();
-        }, 3000);
+        const bc = new BroadcastChannel('SIOP_ESCALA_UPDATES');
+        bc.onmessage = function(ev) {
+            if (ev.data && ev.data.action === 'RELOAD_ESPELHO') {
+                window.parent.location.reload();
+            }
+        };
         </script>
         """,
         height=0
