@@ -33,6 +33,18 @@ SIGLAS_ABATEM_META = {
 # UTILITÁRIOS E MOTOR DE CÁLCULO DE HORAS
 # ============================================================
 
+def emitir_sinal_atualizacao_espelho():
+    """Dispara sinal via BroadcastChannel do navegador para atualizar a 2ª Tela instantaneamente sem reload contínuo."""
+    components.html(
+        """
+        <script>
+        const bc = new BroadcastChannel('SIOP_ESCALA_UPDATES');
+        bc.postMessage({ action: 'RELOAD_ESPELHO' });
+        </script>
+        """,
+        height=0
+    )
+
 def padronizar_entrada_quadro(valor):
     if valor is None or pd.isna(valor):
         return "F"
@@ -122,6 +134,7 @@ def executar_desfazer_undo():
         st.session_state["militares_no_quadro_chaves"] = copy.deepcopy(ultimo_estado["chaves"])
         st.session_state["ordem_customizada_map"] = copy.deepcopy(ultimo_estado["ordem"])
         executar_auto_save_banco()
+        emitir_sinal_atualizacao_espelho()
         st.toast("↩️ Última alteração desfeita com sucesso!", icon="✅")
         return True
     else:
@@ -159,6 +172,7 @@ def executar_auto_save_banco():
             status="RASCUNHO"
         )
         st.session_state["ultima_gravacao"] = datetime.datetime.now()
+        emitir_sinal_atualizacao_espelho()
         return True
     except Exception as e:
         st.error(f"Erro ao salvar no banco de dados: {e}")
@@ -172,8 +186,8 @@ def carregar_escala_salva_banco():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
 
     try:
-        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", m_ano).eq("mes", m_mes).order("updated_at", desc=True).limit(1).execute()
-        if res and res.data:
+        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", int(m_ano)).eq("mes", int(m_mes)).execute()
+        if res and res.data and len(res.data) > 0:
             md = res.data[0].get("matriz_dados", {})
             st.session_state["grade_escala_lancamentos"] = md.get("grade_escala_lancamentos", {})
             chaves_raw = md.get("militares_no_quadro_chaves", [])
@@ -387,10 +401,9 @@ def abrir_segunda_janela_popup(m_mes, m_ano):
         const altura = Math.min(screen.availHeight, 1000);
         const esquerda = Math.max(0, screen.availWidth - largura) / 2;
         const topo = Math.max(0, screen.availHeight - altura) / 2;
-        const popName = "SIOP_ESPELHO_" + new Date().getTime();
         window.open(
             url,
-            popName,
+            "SIOP_ESPELHO_WINDOW",
             "width=" + largura + ",height=" + altura + ",left=" + esquerda + ",top=" + topo + ",resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no,status=no"
         );
         </script>
@@ -419,6 +432,7 @@ def renderizar_passo5():
 
         grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
 
+        # Substitui a equipe ativa pelos novos militares selecionados
         st.session_state["militares_no_quadro_chaves"] = [p for p in existentes if (p[1] != eq_ativa or p[0] in sel_ids)] + [(mid, eq_ativa) for mid in sel_ids if (mid, eq_ativa) not in existentes_set]
         st.session_state["limpar_avisos_manual"] = False
         recalcular_escala_matriz()
@@ -556,7 +570,7 @@ def renderizar_passo5():
                 eh_limpeza_linha = "[LIMPAR" in tipo_ev
 
                 if eh_limpeza_linha:
-                    c_f2.caption("📅 *Ação aplicada automaticamente a todos os dias do mês.*")
+                    c_f2.caption("📅 *Ação applied automaticamente a todos os dias do mês.*")
                     datas_sel = (datetime.date(m_ano, m_mes, 1), datetime.date(m_ano, m_mes, num_dias))
                 else:
                     datas_sel = c_f2.date_input(
