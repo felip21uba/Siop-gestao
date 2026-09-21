@@ -362,7 +362,8 @@ def recalcular_escala_matriz():
     verificar_trava_sobreposicao()
 
 def abrir_segunda_janela_popup(m_mes, m_ano):
-    url_espelho = f"espelho?mes={m_mes}&ano={m_ano}"
+    """Abre o espelho em janela pop-up apontando para a mesma URL com o parametro modo_monitor."""
+    url_espelho = f".?modo_monitor=segunda_tela&mes={m_mes}&ano={m_ano}"
     components.html(
         f"""
         <script>
@@ -521,7 +522,6 @@ def renderizar_passo5():
 
                 tipo_ev = c_f3.selectbox("Evento / Ação:", opcoes_eventos, key="p5_tipo")
 
-                # Se for a opção de limpar horários da linha, desabilita a necessidade do seletor de datas
                 eh_limpeza_linha = "[LIMPAR" in tipo_ev
 
                 if eh_limpeza_linha:
@@ -586,12 +586,11 @@ def renderizar_passo5():
                             st.session_state["militares_no_quadro_chaves"] = chaves_tmp
                             msg_sucesso = f"✅ {cnt} linha(s) de equipe removida(s) com sucesso do Quadro!"
 
-                        # LIMPEZA COMPLETA DA LINHA (TODOS OS DIAS COM STRING VAZIA "")
                         elif "[LIMPAR" in tipo_ev:
                             for it in mils_efetivos_alvo:
                                 for d_a in range(1, num_dias + 1):
                                     ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
-                                    grade_tmp.pop(ck, None) # Elimina a chave da memória
+                                    grade_tmp.pop(ck, None)
                                     cnt += 1
                             msg_sucesso = f"✅ Linha(s) completamente limpa(s) para todos os dias do mês!"
 
@@ -601,7 +600,7 @@ def renderizar_passo5():
                                     ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
                                     grade_tmp[ck] = val_final_lote
                                     cnt += 1
-                            msg_sucesso = f"✅ Alteração applied a {cnt} célula(s) com sucesso!"
+                            msg_sucesso = f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!"
 
                         if cnt:
                             st.session_state["grade_escala_lancamentos"] = grade_tmp
@@ -623,7 +622,6 @@ def renderizar_passo5():
             for d, col_name in colunas_dias:
                 val_bruto = grade.get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "")
                 
-                # Se a chave não existir ou estiver vazia, exibe string vazia no grid
                 if val_bruto == "":
                     v = ""
                 else:
