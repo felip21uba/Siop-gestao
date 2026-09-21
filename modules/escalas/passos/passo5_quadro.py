@@ -206,7 +206,6 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_
     bloqueios = []
     avisos_descanso = []
 
-    # Permite auditar uma grade proposta antes de gravá-la definitivamente
     grade = grade_submetida if grade_submetida is not None else st.session_state.get("grade_escala_lancamentos", {})
     chaves = st.session_state.get("militares_no_quadro_chaves", [])
     mils = st.session_state.get("lista_militares", [])
@@ -304,7 +303,6 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_
                         "mensagem": f"Intervalo de descanso curto: Término no Dia {atual['dia']:02d} ({atual['texto_raw']}) e Início no Dia {proximo['dia']:02d} ({proximo['texto_raw']}) com apenas {diferenca_horas:.1f}h de descanso (mínimo: 6h)."
                     })
 
-    # GRAVA OS ERROS NO ESTADO PARA EXIBIÇÃO NO QUADRO DE AVISOS DA TELA
     st.session_state["lista_bloqueios_auditoria"] = bloqueios
     st.session_state["lista_avisos_descanso"] = avisos_descanso
     
@@ -461,9 +459,12 @@ def renderizar_passo5():
 
         with col_btn1:
             if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True):
-                st.session_state["atualizar_quadro_passo5"] = True
-                st.session_state["limpar_avisos_manual"] = False
-                st.rerun()
+                if not st.session_state.get("militares_selecionados_ids"):
+                    st.warning("⚠️ Selecione ao menos um militar no Passo 3 para aplicar os lançamentos na equipe ativa.")
+                else:
+                    st.session_state["atualizar_quadro_passo5"] = True
+                    st.session_state["limpar_avisos_manual"] = False
+                    st.rerun()
 
         with col_btn2:
             if st.button("↩️ Desfazer", type="secondary", use_container_width=True, help="Reverte a última alteração efetuada no Quadro."):
@@ -474,7 +475,7 @@ def renderizar_passo5():
             if st.button("🖥️ 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
                 abrir_segunda_janela_popup(m_mes, m_ano)
 
-        # QUADRO DE AUDITORIA DE AVISOS E TRAVAS (EXIBE OS MENSAGENS MESMO APÓS O CANCELAMENTO)
+        # QUADRO DE AUDITORIA DE AVISOS E TRAVAS (EXIBE AS MENSAGENS EM CASO DE CANCELAMENTO)
         if (bloqueios or avisos_descanso) and not st.session_state.get("limpar_avisos_manual", False):
             st.markdown("---")
             c_head_av, c_btn_fechar = st.columns([4, 1])
@@ -581,15 +582,17 @@ def renderizar_passo5():
                     btn_aplicar_lote = st.button("⚡ Aplicar Alteração Direta", type="primary", use_container_width=True, key="btn_aplicar_lote_sigla")
 
                 if btn_aplicar_lote:
-                    dias_alvo = []
-                    if isinstance(datas_sel, (tuple, list)):
-                        d_start = datas_sel[0].day
-                        d_end = datas_sel[1].day if len(datas_sel) > 1 else d_start
-                        dias_alvo = list(range(d_start, d_end + 1))
-                    elif isinstance(datas_sel, datetime.date):
-                        dias_alvo = [datas_sel.day]
+                    if not mils_sel_lote:
+                        st.warning("⚠️ Selecione ao menos um militar ou equipe no campo 'Militar(es) ou Equipe(s)' para continuar.")
+                    else:
+                        dias_alvo = []
+                        if isinstance(datas_sel, (tuple, list)):
+                            d_start = datas_sel[0].day
+                            d_end = datas_sel[1].day if len(datas_sel) > 1 else d_start
+                            dias_alvo = list(range(d_start, d_end + 1))
+                        elif isinstance(datas_sel, datetime.date):
+                            dias_alvo = [datas_sel.day]
 
-                    if mils_sel_lote:
                         salvar_estado_undo()
                         grade_tmp = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
                         chaves_tmp = list(st.session_state.get("militares_no_quadro_chaves", []))
@@ -635,7 +638,6 @@ def renderizar_passo5():
                             grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
                             st.session_state["limpar_avisos_manual"] = False
                             
-                            # AUDITA A PROPOSTA ANTES DE GRAVAR
                             tem_bloqueio = verificar_trava_sobreposicao(dias_filtro=dias_alvo, militares_filtro=mids_lote, grade_submetida=grade_tmp)
                             
                             if tem_bloqueio and "[REMOVER" not in tipo_ev and "[LIMPAR" not in tipo_ev:

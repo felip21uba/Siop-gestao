@@ -106,10 +106,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 🎨 OCULTA A SELEÇÃO NATIVA DE PÁGINAS DA BARRA LATERAL
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebarNav"] {
+        display: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # 🖥️ VERIFICAÇÃO ANTECIPADA DO MODO POP-OUT / SEGUNDA TELA (ISENÇÃO DE LOGIN DEDICADA)
 query_params = st.query_params
 if query_params.get("modo_monitor") == "segunda_tela":
-    from modules.escalas.passos.passo5_quadro import renderizar_modo_segunda_tela
+    from modules.escalas.passos.passo5_espelho import renderizar_modo_segunda_tela
     renderizar_modo_segunda_tela()
     st.stop()
 

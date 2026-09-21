@@ -37,11 +37,11 @@ def carregar_escala_direto_supabase(m_ano, m_mes):
             ordem_map = md.get("ordem_customizada_map", {})
             return grade, chaves, bh_cfg, ordem_map
     except Exception as ex:
-        print(f"Erro no espelho: {ex}")
+        print(f"Erro no espelho autônomo: {ex}")
     return {}, [], {}, {}
 
 def renderizar_modo_segunda_tela():
-    """Renderiza a 2ª tela em pop-up com atualização automática estabilizada."""
+    """Renderiza a 2ª tela autônoma em tela cheia com atualização em tempo real."""
     st.markdown(
         """
         <style>
@@ -66,7 +66,7 @@ def renderizar_modo_segunda_tela():
     except Exception:
         m_ano = datetime.date.today().year
 
-    st.markdown(f"### 🖥️ ESPELHO EM TEMPO REAL - QUADRO 5 ({m_mes:02d}/{m_ano})")
+    st.markdown(f"### 🖥️ ESPELHO DA ESCALA - QUADRO 5 ({m_mes:02d}/{m_ano})")
 
     grade, chaves_existentes, bh_configs, ordem_map = carregar_escala_direto_supabase(m_ano, m_mes)
     militares = carregar_militares_supabase() or []
@@ -124,13 +124,13 @@ def renderizar_modo_segunda_tela():
     else:
         st.info("💡 Nenhuma escala localizada no Supabase para este período.")
 
-    # Script de recarregamento suave a cada 4 segundos via navegador (Impede hibernação do Streamlit Cloud)
+    # Atualização via JavaScript (A cada 3 segundos) - Evita a tela "Zzzz"
     components.html(
         """
         <script>
         setTimeout(function(){
             window.parent.location.reload();
-        }, 4000);
+        }, 3000);
         </script>
         """,
         height=0
