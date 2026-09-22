@@ -322,6 +322,7 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_
     return len(bloqueios) > 0
 
 def recalcular_escala_matriz():
+    """Calcula a matriz do mês (Passos 1 ao 4) e SOBRESCREVE automaticamente com a sigla FE as férias do Passo 8."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -331,7 +332,7 @@ def recalcular_escala_matriz():
     grade = st.session_state.get("grade_escala_lancamentos", {})
     dias_ativos = set(st.session_state.get("dias_selecionados_passo4", []))
 
-    # 🔍 CONSULTA AS FÉRIAS REGISTRADAS NO PASSO 8 PARA O MÊS DO PASSO 2
+    # 🚀 1. BUSCA AS FÉRIAS DO BANCO SUPABASE PARA O MÊS DO PASSO 2
     ferias_passo8 = carregar_ferias_supabase(ano=m_ano, mes=m_mes)
     mils = st.session_state.get("lista_militares", [])
     
@@ -352,7 +353,11 @@ def recalcular_escala_matriz():
             continue
 
         for m_id, num_p_mil in mapa_mils_num.items():
-            if num_p_mil and (num_p_mil in num_p_ferias or num_p_ferias in num_p_mil):
+            # Casamento estrito por Nº de Polícia (com ou sem DV)
+            num_p_mil_limpo = re.sub(r'\D', '', num_p_mil)
+            num_p_ferias_limpo = re.sub(r'\D', '', num_p_ferias)
+
+            if num_p_mil_limpo and (num_p_mil_limpo in num_p_ferias_limpo or num_p_ferias_limpo in num_p_mil_limpo):
                 if m_id not in dias_ferias_por_militar:
                     dias_ferias_por_militar[m_id] = set()
 
@@ -374,6 +379,7 @@ def recalcular_escala_matriz():
     )
     sem_iso_d1 = datetime.date(m_ano, m_mes, 1).isocalendar()[1]
 
+    # 2. CÁLCULO E INJEÇÃO NAS LINHAS ATIVAS
     for pair in st.session_state.get("militares_no_quadro_chaves", []):
         if not (isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[1]) == eq_ativa):
             continue
@@ -384,11 +390,12 @@ def recalcular_escala_matriz():
         for d in range(1, num_dias + 1):
             k = f"{m_id}_{eq_ativa}_{m_ano}_{m_mes:02d}_{d:02d}"
 
-            # 🚀 INJEÇÃO PRIORITÁRIA DE FÉRIAS DO PASSO 8
+            # 🚀 LÓGICA DE SOBREESCRITA: Se o dia está no mapa do Passo 8, força 'FE'
             if d in dias_ferias_mil:
                 grade[k] = "FE"
                 continue
 
+            # Preserva outros afastamentos manuais já existentes (ex: LM, ATE)
             if any(sig in str(grade.get(k, "")).upper() for sig in SIGLAS_DIAS_NEUTROS if sig not in ["F", "D", "X"]):
                 continue
 
@@ -501,7 +508,7 @@ def renderizar_passo5():
 
         with col_esq:
             cnt_linhas = len(st.session_state.get("militares_no_quadro_chaves", []))
-            st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legenda `X` = serviço em outra equipe.*")
+            st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legenda `FE` = Férias Injetadas do Passo 8.*")
 
         with col_btn1:
             if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True):
@@ -568,6 +575,7 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
+        # PAINEL DE AJUSTE RÁPIDO (LIBERDADE PARA SOBRESCREVER QUALQUER DIA/FÉRIAS)
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote / Remoção)", expanded=False):
             if mils_ord and not quadro_travado:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}

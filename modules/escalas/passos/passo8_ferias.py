@@ -7,7 +7,7 @@ from core.database import supabase, carregar_militares_supabase
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # Limite de 10MB
 
 def processar_txt_ferias_pmmg(file_bytes):
-    """Lê o arquivo TXT/CSV oficial do SIRH/PMMG separado por ponto e vírgula."""
+    """Lê o arquivo TXT/CSV oficial do SIRH/PMMG separado por ponto e vírgula extraindo lotação granular."""
     try:
         try:
             df = pd.read_csv(file_bytes, sep=';', dtype=str, encoding='latin1')
@@ -28,21 +28,31 @@ def processar_txt_ferias_pmmg(file_bytes):
             num_policia_completo = f"{num_pm}-{dv}" if dv and dv.upper() != "NAN" else num_pm
             posto = str(row.get("POSTO", "")).strip()
             nome = str(row.get("NOME SERVIDOR", "")).strip()
-            unidade = str(row.get("NOME UNIDADE", row.get("UNIDADE", "N/I"))).strip().upper()
+            
+            # Captura granular da Lotação (ex: 2 GP/3 PEL/35 CIA PM/21 BPM/4 RPM)
+            lotacao_detalhada = str(
+                row.get("NOME UNIDADE", row.get("UNIDADE", row.get("UNID PRINCIPAL", "N/I")))
+            ).strip().upper()
+            
             dt_inicio = str(row.get("DT INICIO FERIAS", "")).strip()
             dt_fim = str(row.get("DT TERMINO FERIAS", "")).strip()
             num_dias = str(row.get("NUM DIAS", "")).strip()
 
             if dt_inicio and dt_fim:
+                try:
+                    num_dias_int = int(num_dias)
+                except ValueError:
+                    num_dias_int = 0
+
                 ferias_mapeadas.append({
                     "num_policia": num_policia_completo,
                     "posto_grad": posto,
                     "nome_militar": f"{posto} {nome}".strip(),
                     "nome_servidor": nome,
-                    "unidade": unidade,
+                    "unidade": lotacao_detalhada,
                     "dt_inicio": dt_inicio,
                     "dt_fim": dt_fim,
-                    "dias_qtd": num_dias,
+                    "dias_qtd": num_dias_int,
                     "nota_publicacao": f"Férias SIRH ({dt_inicio} a {dt_fim})"
                 })
 
@@ -130,8 +140,8 @@ def salvar_ferias_supabase_lote(lista_registros):
             return False, f"Erro ao salvar no banco: {ex}"
     return False, "Banco Supabase indisponível."
 
-def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", cidade_sel="Todas"):
-    """Consulta as férias gravadas no banco de dados Supabase e cruza com a tabela de militares para obter Lotação e Cidade."""
+def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", cidade_sel="Todas", filtro_dias="Todos"):
+    """Consulta as férias gravadas no Supabase com suporte a filtros avançados (Lotação detalhada, Cidade e Qtd de Dias)."""
     if not supabase: 
         return []
     try:
@@ -144,7 +154,6 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
         
         dados = res.data or []
         
-        # Mapeamento do cadastro de militares para resgatar Unidade e Cidade
         mils_banco = carregar_militares_supabase() or []
         mapa_mils = {
             str(m.get("num_policia", "")).strip().upper(): m 
@@ -161,6 +170,7 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
             num_p = str(d.get("num_policia", "")).strip().upper()
             m_cadastro = mapa_mils.get(num_p, {})
             
+            # Lotação detalhada vinda do cadastro do militar ou do próprio registro do SIRH
             d["lotacao"] = str(m_cadastro.get("unidade") or d.get("unidade") or "N/I").strip().upper()
             d["cidade"] = str(m_cadastro.get("cidade") or "N/I").strip().upper()
 
@@ -169,6 +179,17 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
                 continue
             if cidade_sel != "Todas" and cidade_sel not in d["cidade"]:
                 continue
+            
+            # Filtro por Duração das Férias
+            if filtro_dias != "Todos":
+                qtd_d = int(d.get("dias_qtd") or 0)
+                if filtro_dias == "10 dias" and qtd_d != 10:
+                    continue
+                elif filtro_dias == "15 dias" and qtd_d != 15:
+                    continue
+                elif filtro_dias == "20+ dias" and qtd_d < 20:
+                    continue
+
             if busca:
                 termo_b = busca.upper()
                 if not (
@@ -186,9 +207,9 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
         return []
 
 def renderizar_modulo_ferias_anual():
-    """Renderiza a interface do Passo 8 com upload unificado e filtros avançados de Lotação e Cidade."""
+    """Renderiza a interface do Passo 8 com filtros detalhados de Lotação, Cidade e Duração de Férias."""
     with st.expander("📌 PASSO 8: Mapeamento Anual de Férias & Indisponibilidade", expanded=True):
-        st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados para alertar sobre indisponibilidades na escala mensal.")
+        st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados para alertar e injetar na escala mensal.")
 
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
 
@@ -260,15 +281,15 @@ def renderizar_modulo_ferias_anual():
                     else:
                         st.error(msg)
 
-        # SUB-EXPANDER DE CONSULTA COM FILTROS DE LOTAÇÃO E CIDADE
+        # SUB-EXPANDER DE CONSULTA COM FILTROS DE LOTAÇÃO GRANULAR, CIDADE E DURAÇÃO
         with st.expander("➕ 🔍 Consulta e Gestão do Mapeamento Anual de Férias", expanded=True):
             mils_cadastrados = carregar_militares_supabase() or []
             
-            # Opções dinâmicas para os filtros
+            # Extração de Lotações Detalhadas (ex: 2 GP/3 PEL/35 CIA PM/21 BPM/4 RPM)
             opcoes_lotacao = ["Todas"] + sorted(list(set([str(m.get("unidade", "")).strip().upper() for m in mils_cadastrados if m.get("unidade")])))
             opcoes_cidade = ["Todas"] + sorted(list(set([str(m.get("cidade", "")).strip().upper() for m in mils_cadastrados if m.get("cidade") and str(m.get("cidade")).strip().upper() != "N/I"])))
 
-            c_f1, c_f2, c_f3, c_f4, c_f5 = st.columns([1.2, 1.5, 2, 2, 2.3])
+            c_f1, c_f2, c_f3, c_f4, c_f5, c_f6 = st.columns([1, 1.2, 2.2, 1.8, 1.3, 2])
             
             with c_f1:
                 ano_sel = st.number_input("Ano:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year))
@@ -277,18 +298,21 @@ def renderizar_modulo_ferias_anual():
                 mes_filtro_nome = st.selectbox("Mês:", meses_nomes)
                 mes_num = meses_nomes.index(mes_filtro_nome)
             with c_f3:
-                lotacao_sel = st.selectbox("Lotação / Unidade:", opcoes_lotacao)
+                lotacao_sel = st.selectbox("Lotação / Fração Detalhada:", opcoes_lotacao)
             with c_f4:
                 cidade_sel = st.selectbox("Cidade / Fração:", opcoes_cidade)
             with c_f5:
-                busca_militar = st.text_input("Buscar Militar / Nº Polícia:", placeholder="Digite o número ou nome...").strip().upper()
+                filtro_dias = st.selectbox("Duração Férias:", ["Todos", "10 dias", "15 dias", "20+ dias"])
+            with c_f6:
+                busca_militar = st.text_input("Buscar Militar / Nº Polícia:", placeholder="Digite número ou nome...").strip().upper()
 
             registros_banco = carregar_ferias_supabase(
                 ano=ano_sel, 
                 mes=mes_num, 
                 busca=busca_militar, 
                 lotacao_sel=lotacao_sel, 
-                cidade_sel=cidade_sel
+                cidade_sel=cidade_sel,
+                filtro_dias=filtro_dias
             )
 
             if registros_banco:
@@ -304,7 +328,7 @@ def renderizar_modulo_ferias_anual():
                         "id": None,
                         "num_policia": "Nº Polícia",
                         "nome_militar": "Nome Militar",
-                        "lotacao": "Lotação / Unidade",
+                        "lotacao": "Lotação / Fração Detalhada",
                         "cidade": "Cidade / Fração",
                         "dt_inicio": "Data Início",
                         "dt_fim": "Data Fim",
