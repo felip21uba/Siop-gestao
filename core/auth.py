@@ -64,40 +64,26 @@ def gerar_secret_mfa() -> str:
 
 def buscar_usuario_para_login(usuario_input: str):
     """
-    Consulta o registro do usuário no Supabase.
-    Diagnostica e exibe alertas em tela caso haja falha na conexão do Supabase no ambiente DEV.
+    Consulta o registro do usuário no Supabase com tolerância a zeros à esquerda.
     """
-    if not usuario_input:
+    if not supabase or not usuario_input:
         return None
 
-    # DIAGNÓSTICO: Verifica se o cliente Supabase foi instanciado
-    if not supabase:
-        st.error("🚨 **Erro de Conexão no Ambiente DEV:** O cliente Supabase não foi inicializado. Verifique se as variáveis SUPABASE_URL e SUPABASE_KEY estão configuradas no Secrets do Streamlit Cloud.")
-        return None
-    
-    u_clean = str(usuario_input).strip()
-    
+    u_clean = str(usuario_input).strip().upper()
+    u_sem_zero = u_clean.lstrip("0")
+    u_com_zero = f"0{u_sem_zero}"
+
     try:
-        # Busca primária por OR no Supabase
+        # Busca no Supabase testando as variações com e sem zero
         res = supabase.table("usuarios").select("*").or_(
-            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},email_recuperacao.eq.{u_clean}"
+            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},usuario_login.eq.{u_sem_zero},usuario_login.eq.{u_com_zero},email_recuperacao.eq.{u_clean}"
         ).execute()
         
         if res and res.data and len(res.data) > 0:
             return res.data[0]
             
     except Exception as e:
-        # Exibe o motivo técnico caso a consulta ao Supabase falhe em DEV
-        st.error(f"🚨 **Falha ao consultar Supabase no DEV:** `{str(e)}`")
-        print(f"Erro na busca de usuário Supabase: {e}")
-
-    # Busca secundária individualizada (Fallback)
-    try:
-        res_fall = supabase.table("usuarios").select("*").eq("usuario_login", u_clean).execute()
-        if res_fall and res_fall.data and len(res_fall.data) > 0:
-            return res_fall.data[0]
-    except Exception:
-        pass
+        print(f"Erro na busca de usuário no Supabase: {e}")
 
     return None
 
@@ -122,13 +108,16 @@ def atualizar_senha_usuario(usuario_id: str, nova_senha: str) -> bool:
     if not supabase or not usuario_id or not nova_senha:
         return False
     try:
-        u_clean = str(usuario_id).strip()
+        u_clean = str(usuario_id).strip().upper()
+        u_sem_zero = u_clean.lstrip("0")
+        u_com_zero = f"0{u_sem_zero}"
+
         hash_nova = gerar_hash_senha(nova_senha)
         supabase.table("usuarios").update({
             "senha": nova_senha,
             "senha_hash": hash_nova,
             "ativo": True
-        }).or_(f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},id.eq.{u_clean}").execute()
+        }).or_(f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},usuario_login.eq.{u_sem_zero},usuario_login.eq.{u_com_zero}").execute()
         st.cache_data.clear()
         return True
     except Exception as e:
