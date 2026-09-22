@@ -162,7 +162,7 @@ def carregar_ferias_supabase(ano=None, mes=None, busca=""):
 def renderizar_modulo_ferias_anual():
     """Renderiza a interface do Passo 8 com upload unificado para TXT, CSV e PDF."""
     with st.expander("📌 PASSO 8: Mapeamento Anual de Férias & Indisponibilidade", expanded=True):
-        st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados para alertar sobre indisponibilidades na escala mensal.")
+        st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados para alertar sobre indisponividades na escala mensal.")
 
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
 
