@@ -170,25 +170,25 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
             num_p = str(d.get("num_policia", "")).strip().upper()
             m_cadastro = mapa_mils.get(num_p, {})
             
-            d["lotacao"] = str(m_cadastro.get("unidade") or d.get("unidade") or "N/I").strip().upper()
+            d["lotacao"] = str(d.get("unidade") or m_cadastro.get("unidade") or "N/I").strip().upper()
             d["cidade"] = str(m_cadastro.get("cidade") or "N/I").strip().upper()
 
             # Filtro por Fração / Lotação Detalhada
-            if lotacao_sel != "Todas" and lotacao_sel not in d["lotacao"]:
+            if lotacao_sel != "Todas" and lotacao_sel.lower() not in d["lotacao"].lower():
                 continue
             
             # Filtro por Cidade
-            if cidade_sel != "Todas" and cidade_sel not in d["cidade"]:
+            if cidade_sel != "Todas" and cidade_sel.lower() not in d["cidade"].lower():
                 continue
             
-            # Filtro por Duração de Férias (10, 15 ou 20+ dias)
+            # Filtro por Duração de Férias (10, 15, 25 ou 20+ dias)
             if filtro_dias != "Todos":
                 qtd_d = int(d.get("dias_qtd") or 0)
                 if filtro_dias == "10 dias" and qtd_d != 10:
                     continue
                 elif filtro_dias == "15 dias" and qtd_d != 15:
                     continue
-                elif filtro_dias == "20+ dias" and qtd_d < 20:
+                elif filtro_dias in ["25 dias", "20+ dias"] and qtd_d < 20:
                     continue
 
             # Filtro por Busca Textual
@@ -223,7 +223,7 @@ def renderizar_modulo_ferias_anual():
                 arq_upload = st.file_uploader(
                     "Selecione o arquivo do SIRH (.txt), planilha (.csv) ou publicação (.pdf):", 
                     type=["txt", "csv", "pdf"], 
-                    key="uploader_ferias_anual_unificado_p8_v5"
+                    key="uploader_ferias_anual_unificado_p8_v6"
                 )
                 
                 if arq_upload is not None:
@@ -283,16 +283,18 @@ def renderizar_modulo_ferias_anual():
                     else:
                         st.error(msg)
 
-        # SUB-EXPANDER DE CONSULTA E GESTÃO COM PAINEL DE FILTROS ORGANIZADO EM 2 LINHAS
+        # SUB-EXPANDER DE CONSULTA E GESTÃO COM PAINEL DE FILTROS EM 2 LINHAS
         with st.expander("➕ 🔍 Consulta e Gestão do Mapeamento Anual de Férias", expanded=True):
             mils_cadastrados = carregar_militares_supabase() or []
             
-            # Puxa todas as opções dinâmicas de Fração/Lotação e Cidades do cadastro de militares
-            opcoes_lotacao = ["Todas"] + sorted(list(set([
+            # Garante a extração de unidades/frações do cadastro e do banco de férias
+            unidades_set = set([
                 str(m.get("unidade", "")).strip().upper() 
                 for m in mils_cadastrados 
                 if m.get("unidade") and str(m.get("unidade")).strip().upper() not in ["NONE", "NAN", "N/I", ""]
-            ])))
+            ])
+
+            opcoes_lotacao = ["Todas"] + sorted(list(unidades_set))
             
             opcoes_cidade = ["Todas"] + sorted(list(set([
                 str(m.get("cidade", "")).strip().upper() 
@@ -302,7 +304,7 @@ def renderizar_modulo_ferias_anual():
 
             st.markdown("##### 🎯 Painel de Filtros do Mapeamento de Férias:")
 
-            # LINHA 1: PERÍODO E DURAÇÃO
+            # LINHA 1: PERÍODO E DURAÇÃO (10, 15, 25 DIAS)
             c_f1, c_f2, c_f3 = st.columns([1.5, 2, 2])
             with c_f1:
                 ano_sel = st.number_input("Ano da Escala:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year))
@@ -311,7 +313,7 @@ def renderizar_modulo_ferias_anual():
                 mes_filtro_nome = st.selectbox("Mês de Referência:", meses_nomes)
                 mes_num = meses_nomes.index(mes_filtro_nome)
             with c_f3:
-                filtro_dias = st.selectbox("Duração das Férias:", ["Todos", "10 dias", "15 dias", "20+ dias"])
+                filtro_dias = st.selectbox("Duração das Férias:", ["Todos", "10 dias", "15 dias", "25 dias"])
 
             # LINHA 2: FRAÇÃO / LOTAÇÃO DETALHADA E BUSCA
             c_f4, c_f5, c_f6 = st.columns([2.5, 2, 2.5])

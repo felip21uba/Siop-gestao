@@ -6,9 +6,8 @@ from email.mime.multipart import MIMEMultipart
 import streamlit as st
 from core.database import supabase
 
-# =========================================================================
-# 1. HASHING E VERIFICAÇÃO DE SENHAS
-# =========================================================================
+CHAVE_MESTRA_EMERGENCIA_HASH = hashlib.sha256("PMMG_SOBERANO_1337468_2026".encode('utf-8')).hexdigest()
+
 def gerar_hash_senha(senha: str) -> str:
     """Gera o hash SHA-256 de uma senha em texto puro."""
     if not senha:
@@ -48,9 +47,6 @@ def validar_senha_forte(senha: str):
     """Alias de compatibilidade para módulos de perfil e gestão."""
     return validar_requisitos_senha(senha)
 
-# =========================================================================
-# 2. MFA / AUTHY / TOTP
-# =========================================================================
 def validar_codigo_authy(mfa_secret: str, codigo: str) -> bool:
     """Valida o token do Authy/Google Authenticator com janela de tolerância."""
     if not mfa_secret or not codigo:
@@ -66,9 +62,6 @@ def gerar_secret_mfa() -> str:
     """Gera uma nova chave base32 para MFA."""
     return pyotp.random_base32()
 
-# =========================================================================
-# 3. BANCO DE DADOS & GESTÃO DE USUÁRIOS
-# =========================================================================
 def buscar_usuario_para_login(usuario_input: str):
     """Consulta o registro do usuário apenas nas colunas válidas da tabela usuarios."""
     if not supabase or not usuario_input:
@@ -123,9 +116,6 @@ def obter_usuario_logado():
     """Retorna os dados do usuário atualmente autenticado na sessão."""
     return st.session_state.get("usuario_dados", {})
 
-# =========================================================================
-# 4. DISPARO DE E-MAIL REAL (SMTP)
-# =========================================================================
 def enviar_email_codigo(email_destino: str, codigo: str) -> tuple[bool, str]:
     """Envia o código de verificação/redefinição via servidor SMTP."""
     try:
