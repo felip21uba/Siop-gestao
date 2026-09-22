@@ -84,7 +84,7 @@ def extrair_unidade_mae_creds(str_unidade):
 
 def obter_lista_creds_dinamica():
     unidades_set = set()
-    all_m = carregar_militares_supabase()
+    all_m = carregar_militares_supabase() or []
     
     for m in all_m:
         for col in ["unidade", "nome_unidade", "lotacao", "secao"]:
@@ -705,7 +705,6 @@ def renderizar_aba_logs(all_logs_banco):
         st.markdown("<br>", unsafe_allow_html=True)
         col_exp_log1, col_exp_log2 = st.columns(2)
 
-        # 📥 BOTÃO DE EXPORTAÇÃO EXCEL DA TRILHA DE AUDITORIA
         with col_exp_log1:
             buffer_log_xls = io.BytesIO()
             with pd.ExcelWriter(buffer_log_xls, engine='openpyxl') as writer:
@@ -722,7 +721,6 @@ def renderizar_aba_logs(all_logs_banco):
                 key="btn_dl_logs_excel"
             )
 
-        # 📥 BOTÃO DE EXPORTAÇÃO CSV DA TRILHA DE AUDITORIA
         with col_exp_log2:
             csv_bytes = df_l[cols_reais].to_csv(index=False).encode('utf-8')
             st.download_button(
@@ -736,7 +734,7 @@ def renderizar_aba_logs(all_logs_banco):
     else:
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
-def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
+def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21º BPM", cargo_operador="MILITAR", perfil_operador="GESTOR"):
     usr_logado = st.session_state.get("usuario_dados", {})
     eh_autorizado = usuario_eh_gestor_creds(usr_logado)
 
@@ -754,7 +752,7 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
     else:
         st.caption(f"🏢 **Visão Restrita:** Atribuição de permissão CREDS limitada à **{unidade_operador}**.")
 
-    all_milit = carregar_militares_supabase()
+    all_milit = carregar_militares_supabase() or []
     if not eh_gestor_unidade:
         all_milit = [m for m in all_milit if str(m.get("unidade", "")).strip().upper() == str(unidade_operador).strip().upper()]
 
@@ -804,7 +802,7 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                 }
 
                 chaves_disponiveis = list(opcoes_perfis.keys())
-                if not eh_gestor_unidade:
+                if not eh_gestor_unidade and "GESTOR_UNIDADE" in chaves_disponiveis:
                     chaves_disponiveis.remove("GESTOR_UNIDADE")
 
                 index_default = chaves_disponiveis.index(perfil_creds_atual) if perfil_creds_atual in chaves_disponiveis else len(chaves_disponiveis) - 1
@@ -820,10 +818,10 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                 if st.button("💾 Salvar Função CREDS", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
                     if atualizar_usuario_supabase(num_pm, {"perfil_creds": novo_perfil_creds}):
                         registrar_audit_log(
-                            operador_pm=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
-                            alvo_pm=num_pm,
-                            tipo_acao="ALTERAÇÃO_FUNÇÃO_CREDS",
-                            descricao=f"Função CREDS do militar {militar_obj.get('nome_guerra')} ({num_pm}) alterada para {novo_perfil_creds}."
+                            usuario=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
+                            alvo=num_pm,
+                            acao="ALTERAÇÃO_FUNÇÃO_CREDS",
+                            detalhe=f"Função CREDS do militar {militar_obj.get('nome_guerra')} ({num_pm}) alterada para {novo_perfil_creds}."
                         )
                         st.success(f"Função CREDS de **{militar_obj.get('nome_guerra')}** atualizada para **{opcoes_perfis[novo_perfil_creds]}**!")
                         st.rerun()
@@ -866,12 +864,22 @@ def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operado
                                     if st.button("🔻 Retornar a Tropa", key=f"btn_revogar_creds_{pm_key}_{idx_g}", use_container_width=True):
                                         if atualizar_usuario_supabase(pm_key, {"perfil_creds": "TROPA"}):
                                             registrar_audit_log(
-                                                operador_pm=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
-                                                alvo_pm=pm_key,
-                                                tipo_acao="REVOGAÇÃO_FUNÇÃO_CREDS",
-                                                descricao=f"Função CREDS do militar {pm_key} retornada para TROPA."
+                                                usuario=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
+                                                alvo=pm_key,
+                                                acao="REVOGAÇÃO_FUNÇÃO_CREDS",
+                                                detalhe=f"Função CREDS do militar {pm_key} retornada para TROPA."
                                             )
                                             st.success("Função alterada para TROPA!")
                                             st.rerun()
             else:
                 st.info("Nenhum gestor ou operador elevado cadastrado nesta lotação.")
+
+# =============================================================================
+# ALIASES DE RETROCOMPATIBILIDADE PARA IMPORTAÇÃO PELO MAIN_TCO.PY
+# =============================================================================
+renderizar_aba_importar_reds = renderizar_aba_importacao
+
+def renderizar_aba_painel_creds(all_bens_banco, nome_militar_atual, unidade_militar_atual):
+    usr_logado = st.session_state.get("usuario_dados", {})
+    eh_gestor = usuario_eh_gestor_creds(usr_logado)
+    return renderizar_aba_creds(all_bens_banco, eh_gestor, nome_militar_atual, unidade_militar_atual)
