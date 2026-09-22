@@ -4,6 +4,7 @@ import datetime
 import pandas as pd
 
 def renderizar_painel_afastamentos(militares, padronizar_graduacao_func, pesos_dict):
+    """Renderiza o painel de lançamento de afastamentos e dias neutros no Passo 3."""
     if "afastamentos_militares" not in st.session_state:
         st.session_state["afastamentos_militares"] = []
 
@@ -77,6 +78,7 @@ def renderizar_painel_afastamentos(militares, padronizar_graduacao_func, pesos_d
                         
                         st.session_state["afastamentos_militares"].append(novo_afast)
                         
+                        # Injeta a sigla nas células correspondentes do Quadro Geral (Passo 5)
                         dt_atual = dt_inicio
                         while dt_atual <= dt_fim:
                             ano_c, mes_c, dia_c = dt_atual.year, dt_atual.month, dt_atual.day
