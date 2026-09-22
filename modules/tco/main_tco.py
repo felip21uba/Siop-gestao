@@ -2,11 +2,14 @@ import streamlit as st
 import datetime
 from core.database import supabase, atualizar_usuario_supabase, registrar_audit_log
 
-# Importações corrigidas apontando para cada módulo específico de view
-from modules.tco.views import renderizar_aba_importar_reds, renderizar_aba_painel_creds
+# Importações corrigidas: renderizar_aba_gestores_creds vem de views.py
+from modules.tco.views import (
+    renderizar_aba_importar_reds, 
+    renderizar_aba_painel_creds,
+    renderizar_aba_gestores_creds
+)
 from modules.tco.views_tramitacao_unificada import renderizar_aba_custodia_tramitacao_unificada
 from modules.tco.views_oficios import renderizar_aba_gerador_oficios
-from modules.tco.views_gestores import renderizar_aba_gestores_creds
 
 def verificar_e_exigir_termo_tco(usr_dados):
     """Exige obrigatoriamente o aceite do Termo de Compliance TCO no primeiro acesso do militar ao módulo."""
