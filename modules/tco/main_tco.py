@@ -1,90 +1,108 @@
 import streamlit as st
-from modules.tco.database import carregar_materiais_supabase, carregar_logs_supabase
-from modules.tco.views import (
-    renderizar_aba_importacao,
-    renderizar_aba_creds,
-    renderizar_aba_logs,
-    renderizar_aba_gestores_creds
-)
+import datetime
+from core.database import supabase, atualizar_usuario_supabase, registrar_audit_log
+
+# Importação das abas do Módulo TCO
+from modules.tco.views import renderizar_aba_importar_reds, renderizar_aba_painel_creds
 from modules.tco.views_tramitacao_unificada import renderizar_aba_custodia_tramitacao_unificada
-from modules.tco.views_oficios import renderizar_aba_gerador_oficios
-from modules.tco.compliance import (
-    verificar_aceite_compliance_supabase,
-    exibir_modal_termo_compliance,
-    aplicar_estilo_tco
-)
+from modules.tco.views_oficios import renderizar_aba_oficios
+from modules.tco.views_gestores import renderizar_aba_gestores_creds
 
-def renderizar_modulo_tco():
-    """Ponto de entrada do Módulo TCO / Custódia no SIOP com abas na horizontal."""
-    aplicar_estilo_tco()
+def verificar_e_exigir_termo_tco(usr_dados):
+    """Exige obrigatoriamente o aceite do Termo de Compliance TCO no primeiro acesso do militar ao módulo."""
+    if not usr_dados or not isinstance(usr_dados, dict):
+        return True
 
-    usr_logado = st.session_state.get("usuario_dados", {})
-    usr_id = str(usr_logado.get("id") or usr_logado.get("usuario_login") or "").strip()
-    nome_militar_atual = f"{usr_logado.get('cargo_funcao', 'CB PM')} {usr_logado.get('nome_guerra', 'OPERADOR')}".strip()
-    unidade_militar_atual = str(usr_logado.get("unidade", "35ª CIA PM")).strip().upper()
-    perfil_usuario = str(usr_logado.get("nivel_acesso") or usr_logado.get("perfil") or "TROPA").upper()
-    cargo_str = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).upper()
+    # Verifica se já aceitou o termo
+    ja_aceitou = usr_dados.get("termo_compliance_aceito") or usr_dados.get("termo_tco_aceito") or False
+    if ja_aceitou:
+        return True
 
-    # Validação do Termo de Compliance no primeiro acesso
-    if not st.session_state.get("termo_compliance_aceito", False):
-        if verificar_aceite_compliance_supabase(usr_id):
-            st.session_state["termo_compliance_aceito"] = True
-        else:
-            exibir_modal_termo_compliance(usr_id, nome_militar_atual, cargo_str, unidade_militar_atual)
-
-    # CARD CABEÇALHO DO MÓDULO
-    st.markdown("### 📦 Custódia de Materiais TCO & Cadeia de Custódia")
+    st.warning("🛡️ **ACEITE OBRIGATÓRIO: Termo de Compliance e Responsabilidade TCO/CREDS**")
     
-    with st.container(border=True):
-        col_hdr1, col_hdr2 = st.columns(2)
-        with col_hdr1:
-            st.markdown(f"👤 **Operador Ativo:** **{nome_militar_atual}**")
-        with col_hdr2:
-            st.markdown(f"🏛️ **Unidade Atual:** **{unidade_militar_atual}**")
+    st.markdown("""
+    <div style="background-color: #1e293b; padding: 18px; border-radius: 8px; border: 1px solid #334155; margin-bottom: 15px;">
+        <h4 style="color: #38bdf8; margin-top: 0;">📜 Termo de Adesão, Custódia e Fidelidade Processual (Art. 158-A do CPP)</h4>
+        <p style="font-size: 13px; color: #cbd5e1; line-height: 1.6;">
+        Ao operar o Módulo TCO/CREDS do SIOP, o(a) militar declara estar ciente e de acordo com as seguintes condições:<br><br>
+        1. <b>Rastreabilidade Imutável:</b> Todas as ações de inserção de REDS, recebimento de materiais, conferência de invólucros/lacres, alteração de dados e transferência de custódia são registradas com identificação individual, data/hora e IP de origem.<br>
+        2. <b>Fiel Depositário:</b> A guarda física dos bens vinculados ao seu cadastro é de sua responsabilidade até a transferência formal e aceite pelo próximo custodiante ou depósito final (PCMG/JECRIM).<br>
+        3. <b>Penalidades:</b> O uso indevido do sistema, falsificação de registros ou extravio de bens sujeitará o operador às sanções disciplinares, administrativas e penais cabíveis (CPM/CPP).
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
+    col_t1, col_t2 = st.columns([2, 1])
+    with col_t1:
+        aceito = st.checkbox("Declaro que li, compreendi e aceito integralmente o Termo de Responsabilidade TCO/CREDS.")
+    
     st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
-    # 🔓 ACESSO IRRESTRITO E SOBERANO PARA PROGRAMADOR / ADMIN / GESTOR
-    eh_gestor_creds = (
-        "PROGRAMADOR" in cargo_str or 
-        "DESENVOLVEDOR" in cargo_str or 
-        "ADMIN" in perfil_usuario or 
-        "PROGRAMADOR" in perfil_usuario or 
-        "DESENVOLVEDOR" in perfil_usuario or 
-        "P1" in perfil_usuario or 
-        "COMANDANTE" in cargo_str or 
-        "CREDS" in perfil_usuario or
-        "GESTOR" in perfil_usuario
-    )
+    if st.button("✅ Confirmar Aceite e Acessar Módulo TCO", type="primary", use_container_width=True, disabled=not aceito, key="btn_aceite_termo_tco_primeiro_acesso"):
+        login_usr = str(usr_dados.get("usuario_login") or usr_dados.get("num_policia") or "").strip()
+        now_iso = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # Carregamento dos dados em tempo real do Supabase
-    all_bens_banco = carregar_materiais_supabase()
-    all_logs_banco = carregar_logs_supabase()
+        # Grava a confirmação no Supabase
+        if supabase and login_usr:
+            try:
+                atualizar_usuario_supabase(login_usr, {
+                    "termo_compliance_aceito": True,
+                    "data_aceite_compliance": now_iso
+                })
+            except Exception as ex:
+                st.error(f"Erro ao registrar aceite no banco: {ex}")
 
-    # 📌 ABAS HORIZONTAIS UNIFICADAS
-    tab_import, tab_custodia, tab_oficios, tab_creds, tab_auditoria, tab_gestores = st.tabs([
-        "📥 Importar REDS",
-        "🎒 Custódia & Tramitação",
-        "📄 Ofícios",
-        "🏛️ Painel CREDS",
-        "📜 Auditoria",
-        "👥 Gestores"
-    ])
+        # Atualiza a sessão ativa local
+        st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
+        st.session_state["usuario_dados"]["termo_tco_aceito"] = True
 
-    with tab_import:
-        renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
+        registrar_audit_log(
+            usuario=login_usr,
+            alvo="MODULO_TCO",
+            acao="ACEITE_TERMO_COMPLIANCE",
+            detalhe=f"Aceite do termo de compliance do Módulo TCO realizado em {now_iso}."
+        )
+        st.toast("✅ Termo de Compliance aceito com sucesso!", icon="🎉")
+        st.rerun()
 
-    with tab_custodia:
-        renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual)
+    st.stop()
+    return False
 
-    with tab_oficios:
-        renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual)
+def renderizar_modulo_tco():
+    """Ponto de entrada principal do Módulo TCO/CREDS com trava de termo e subnavegação."""
+    st.title("📦 Módulo TCO / Cadeia de Custódia CREDS")
 
-    with tab_creds:
-        renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual)
+    usr_dados = st.session_state.get("usuario_dados", {})
+    
+    # Exige aceite no primeiro acesso
+    verificar_e_exigir_termo_tco(usr_dados)
 
-    with tab_auditoria:
-        renderizar_aba_logs(all_logs_banco)
+    nome_militar = usr_dados.get("nome_guerra") or usr_dados.get("nome_completo") or "OPERADOR"
+    unidade_militar = st.session_state.get("unidade_ativa_nome") or usr_dados.get("unidade", "21º BPM / 35ª CIA PM")
 
-    with tab_gestores:
-        renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)
+    # Mapeamento do subnav vindo da barra lateral ou abas padrão
+    subnav = st.session_state.get("subnav_tco", "🎒 Meus Materiais")
+
+    st.caption(f"👤 **Operador:** {usr_dados.get('posto_grad', '')} {nome_militar} | 🏛️ **Unidade Ativa:** {unidade_militar}")
+    st.divider()
+
+    all_bens = []
+    if supabase:
+        try:
+            res_b = supabase.table("tco_materiais").select("*").execute()
+            all_bens = res_b.data or []
+        except Exception as ex:
+            st.error(f"Erro ao carregar acervo do TCO: {ex}")
+
+    if "Importar REDS" in subnav:
+        renderizar_aba_importar_reds(nome_militar, unidade_militar)
+    elif "Meus Materiais" in subnav or "Tramitação" in subnav:
+        renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar, unidade_militar)
+    elif "Ofícios" in subnav:
+        renderizar_aba_oficios(all_bens, nome_militar, unidade_militar)
+    elif "Painel CREDS" in subnav:
+        renderizar_aba_painel_creds(all_bens, nome_militar, unidade_militar)
+    elif "Gestores" in subnav:
+        renderizar_aba_gestores_creds()
+    else:
+        renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar, unidade_militar)
