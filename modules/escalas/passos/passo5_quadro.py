@@ -18,6 +18,7 @@ from modules.escalas.passos.passo3_efetivo import (
 )
 
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
+from modules.escalas.passos.passo8_ferias import carregar_ferias_supabase
 
 SIGLAS_DIAS_NEUTROS = {
     "F", "D", "X", "FER", "DOM", "FERIADO",
@@ -282,7 +283,6 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_
         if not sub_intervalos_militar:
             continue
 
-        # 1. TESTE DE SOBREPOSIÇÃO / CHOQUE REAL DE HORÁRIOS
         for i in range(len(sub_intervalos_militar)):
             for j in range(i + 1, len(sub_intervalos_militar)):
                 t1 = sub_intervalos_militar[i]
@@ -300,7 +300,6 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_
                         "mensagem": f"Choque no Dia {t1['dia']:02d}/{m_mes:02d}: Lançamento [{t1['equipe']}] ({t1['texto_raw']}) e [{t2['equipe']}] ({t2['texto_raw']}) se sobrepõem no mesmo horário!"
                     })
 
-        # 2. TESTE DE DESCANSO INTERJORNADA (< 6H) ENTRE TURNOS DISTINTOS
         turnos_ordenados = sorted(blocos_turnos_militar, key=lambda x: x["inicio"])
         for i in range(len(turnos_ordenados) - 1):
             atual = turnos_ordenados[i]
@@ -332,6 +331,37 @@ def recalcular_escala_matriz():
     grade = st.session_state.get("grade_escala_lancamentos", {})
     dias_ativos = set(st.session_state.get("dias_selecionados_passo4", []))
 
+    # 🔍 CONSULTA AS FÉRIAS REGISTRADAS NO PASSO 8 PARA O MÊS DO PASSO 2
+    ferias_passo8 = carregar_ferias_supabase(ano=m_ano, mes=m_mes)
+    mils = st.session_state.get("lista_militares", [])
+    
+    mapa_mils_num = {
+        str(m.get("id")).strip(): str(m.get("num_policia", "")).strip().upper()
+        for m in mils if m.get("id")
+    }
+
+    # MONTA O MAPA DE DIAS DE FÉRIAS POR MILITAR
+    dias_ferias_por_militar = {}
+    for f in ferias_passo8:
+        num_p_ferias = str(f.get("num_policia", "")).strip().upper()
+        
+        try:
+            dt_i = datetime.datetime.strptime(f["dt_inicio"], "%d/%m/%Y").date()
+            dt_f = datetime.datetime.strptime(f["dt_fim"], "%d/%m/%Y").date()
+        except Exception:
+            continue
+
+        for m_id, num_p_mil in mapa_mils_num.items():
+            if num_p_mil and (num_p_mil in num_p_ferias or num_p_ferias in num_p_mil):
+                if m_id not in dias_ferias_por_militar:
+                    dias_ferias_por_militar[m_id] = set()
+
+                dt_curr = dt_i
+                while dt_curr <= dt_f:
+                    if dt_curr.year == m_ano and dt_curr.month == m_mes:
+                        dias_ferias_por_militar[m_id].add(dt_curr.day)
+                    dt_curr += datetime.timedelta(days=1)
+
     h_avulso = st.session_state.get("horario_avulso_p2", "07:00 às 19:00")
     h_adm_norm = st.session_state.get("adm_h_norm", "08:00 às 12:00\n13:30 às 17:00")
     h_adm_qua = st.session_state.get("adm_h_qua", "08:30 às 13:00")
@@ -349,9 +379,15 @@ def recalcular_escala_matriz():
             continue
 
         m_id = str(pair[0])
+        dias_ferias_mil = dias_ferias_por_militar.get(m_id, set())
 
         for d in range(1, num_dias + 1):
             k = f"{m_id}_{eq_ativa}_{m_ano}_{m_mes:02d}_{d:02d}"
+
+            # 🚀 INJEÇÃO PRIORITÁRIA DE FÉRIAS DO PASSO 8
+            if d in dias_ferias_mil:
+                grade[k] = "FE"
+                continue
 
             if any(sig in str(grade.get(k, "")).upper() for sig in SIGLAS_DIAS_NEUTROS if sig not in ["F", "D", "X"]):
                 continue
@@ -411,10 +447,6 @@ def abrir_segunda_janela_popup(m_mes, m_ano):
         height=0
     )
 
-# ============================================================
-# TELA PRINCIPAL (PASSO 5)
-# ============================================================
-
 def renderizar_passo5():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
@@ -432,7 +464,6 @@ def renderizar_passo5():
 
         grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
 
-        # Substitui a equipe ativa pelos novos militares selecionados
         st.session_state["militares_no_quadro_chaves"] = [p for p in existentes if (p[1] != eq_ativa or p[0] in sel_ids)] + [(mid, eq_ativa) for mid in sel_ids if (mid, eq_ativa) not in existentes_set]
         st.session_state["limpar_avisos_manual"] = False
         recalcular_escala_matriz()
@@ -490,7 +521,6 @@ def renderizar_passo5():
             if st.button("🖥️ 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
                 abrir_segunda_janela_popup(m_mes, m_ano)
 
-        # QUADRO DE AUDITORIA DE AVISOS E TRAVAS
         if (bloqueios or avisos_descanso) and not st.session_state.get("limpar_avisos_manual", False):
             st.markdown("---")
             c_head_av, c_btn_fechar = st.columns([4, 1])
@@ -538,7 +568,6 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
-        # PAINEL DE AJUSTE RÁPIDO NO QUADRO
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote / Remoção)", expanded=False):
             if mils_ord and not quadro_travado:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
