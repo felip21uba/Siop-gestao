@@ -154,7 +154,7 @@ if "tema_visual" not in st.session_state:
     st.session_state["tema_visual"] = "DARK"
 
 # ==============================================================================
-# 🔄 RESTAURAÇÃO AUTOMÁTICA DE SESSÃO AO PRESSIONAR F5 (PERSISTÊNCIA)
+# 🔄 RESTAURAÇÃO AUTOMÁTICA DE SESSÃO AO PRESSIONAR F5 (PERSISTÊNCIA VIA QUERY PARAMS)
 # ==============================================================================
 token_url = query_params.get("session_token")
 
@@ -190,6 +190,10 @@ if st.session_state.get("autenticado", False):
     usr_login = str(usr_dados.get("usuario_login") or usr_dados.get("usuario") or "").strip().upper()
     usr_id = str(usr_dados.get("id") or usr_login or "").strip()
     token_local = st.session_state.get("token_sessao_local")
+
+    # Garante que o parâmetro permanence na URL durante a navegação
+    if token_local and st.query_params.get("session_token") != token_local:
+        st.query_params["session_token"] = token_local
 
     if supabase and usr_login and token_local:
         try:
@@ -555,11 +559,35 @@ if not st.session_state.get("autenticado", False):
                                 st.session_state["tentativas_login"][usuario_input] = 0
                                 st.session_state["temp_user_data"] = usuario_encontrado
 
-                                if usuario_encontrado.get("mfa_habilitado", False) and usuario_encontrado.get("mfa_secret"):
+                                # Caso o usuário não exija 2FA, realiza a autenticação direta com geração e persistência de token
+                                if not usuario_encontrado.get("mfa_habilitado", False):
+                                    novo_token = str(uuid.uuid4())
+                                    num_pol_str = str(usuario_encontrado.get("usuario_login") or usuario_encontrado.get("usuario") or "").strip().upper()
+
+                                    if supabase and num_pol_str:
+                                        try:
+                                            supabase.table("usuarios").update({"token_sessao_ativa": novo_token}).eq("usuario_login", num_pol_str).execute()
+                                        except Exception:
+                                            atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
+
+                                    usuario_encontrado["token_sessao_ativa"] = novo_token
+                                    st.session_state["token_sessao_local"] = novo_token
+                                    st.session_state["usuario_dados"] = usuario_encontrado
+                                    st.session_state["autenticado"] = True
+                                    st.session_state["usuario_autenticado"] = True
+                                    st.session_state["ultima_atividade_time"] = datetime.datetime.now()
+                                    st.query_params["session_token"] = novo_token
+                                    
+                                    registrar_audit_log(num_pol_str, "", "LOGIN_SUCESSO", "Login realizado com sucesso.")
+                                    st.toast(f"Acesso liberado! Bem-vindo, {usuario_encontrado.get('nome_guerra')}!", icon="🟢")
+                                    st.rerun()
+
+                                elif usuario_encontrado.get("mfa_habilitado", False) and usuario_encontrado.get("mfa_secret"):
                                     st.session_state["mfa_pendente"] = True
+                                    st.rerun()
                                 else:
                                     st.session_state["mfa_setup_mode"] = True
-                                st.rerun()
+                                    st.rerun()
 
             # 🚀 BOTÃO DE DISPARO FORMATADO COM MAILTO DINÂMICO
             email_suporte = "felip21uba@gmail.com"
