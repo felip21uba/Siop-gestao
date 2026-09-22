@@ -83,7 +83,8 @@ from core.auth import (
     verificar_senha,
     buscar_usuario_para_login,
     enviar_email_codigo,
-    gerar_hash_senha
+    gerar_hash_senha,
+    atualizar_senha_usuario
 )
 from core.session_manager import (
     gerenciar_timeout_sessao, 
@@ -118,7 +119,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# 🖥️ VERIFICAÇÃO ANTECIPADA DO MODO POP-OUT / SEGUNDA TELA (ISENÇÃO DE LOGIN DEDICADA)
+# 🖥️ VERIFICAÇÃO ANTECIPADA DO MODO POP-OUT / SEGUNDA TELA
 query_params = st.query_params
 if query_params.get("modo_monitor") == "segunda_tela":
     from modules.escalas.passos.passo5_espelho import renderizar_modo_segunda_tela
@@ -153,6 +154,26 @@ if "usuarios_teste_db" not in st.session_state:
 if "tema_visual" not in st.session_state:
     st.session_state["tema_visual"] = "DARK"
 
+# ==============================================================================
+# 🔄 RESTAURAÇÃO AUTOMÁTICA DE SESSÃO AO PRESSIONAR F5
+# ==============================================================================
+token_url = query_params.get("session_token")
+
+if not st.session_state.get("autenticado", False) and token_url:
+    if supabase:
+        try:
+            res_sessao = supabase.table("usuarios").select("*").eq("token_sessao_ativa", token_url).execute()
+            if res_sessao.data and len(res_sessao.data) > 0:
+                usr_recuperado = res_sessao.data[0]
+                if usr_recuperado.get("ativo", True):
+                    st.session_state["usuario_dados"] = usr_recuperado
+                    st.session_state["autenticado"] = True
+                    st.session_state["usuario_autenticado"] = True
+                    st.session_state["token_sessao_local"] = token_url
+                    st.toast(f"🟢 Sessão mantida para {usr_recuperado.get('nome_guerra', 'Operador')}!", icon="🔄")
+        except Exception as ex:
+            print(f"Erro ao restaurar sessão pelo F5: {ex}")
+
 # CONSTANTES VISUAIS INSTITUCIONAIS
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
@@ -163,13 +184,16 @@ def obter_imagem_brasao():
     return URL_BRASAO_PADRAO
 
 # ==============================================================================
-# ⏱️ GERENCIAMENTO DE TIMEOUT (20 MIN) E SESSÃO ÚNICA CONCORRENTE
+# ⏱️ GERENCIAMENTO DE TIMEOUT E SESSÃO ÚNICA CONCORRENTE
 # ==============================================================================
 if st.session_state.get("autenticado", False):
     usr_dados = st.session_state.get("usuario_dados", {})
     usr_login = str(usr_dados.get("usuario_login") or usr_dados.get("usuario") or "").strip().upper()
     usr_id = str(usr_dados.get("id") or usr_login or "").strip()
     token_local = st.session_state.get("token_sessao_local")
+
+    if token_local and st.query_params.get("session_token") != token_local:
+        st.query_params["session_token"] = token_local
 
     if supabase and usr_login and token_local:
         try:
@@ -186,6 +210,7 @@ if st.session_state.get("autenticado", False):
                     st.session_state["mfa_setup_mode"] = False
                     st.session_state["usuario_dados"] = {}
                     st.session_state["token_sessao_local"] = None
+                    st.query_params.clear()
                     st.error("🚨 **Sessão Encerrada:** Sua conta foi acessada em outro dispositivo. Por segurança, este acesso foi desconectado.")
                     st.stop()
         except Exception:
@@ -197,7 +222,7 @@ if st.session_state.get("autenticado", False):
     gerenciar_timeout_sessao()
 
 # ==============================================================================
-# 🔒 TELA DE LOGIN INSTITUCIONAL 
+# 🔒 TELA DE LOGIN INSTITUCIONAL
 # ==============================================================================
 if not st.session_state.get("autenticado", False):
     aplicar_estilo_visual()
@@ -224,7 +249,7 @@ if not st.session_state.get("autenticado", False):
 
             if "codigo_enviado" not in st.session_state["reset_token_dados"]:
                 with st.form("form_solicitar_codigo_email"):
-                    identificador = (st.text_input("Nº de Polícia ou E-mail Cadastrado:", placeholder="Ex: 0000000 ou militar@pmmg.mg.gov.br") or "").strip()
+                    identificador = (st.text_input("Nº de Polícia ou E-mail Cadastrado:", placeholder="Ex: 1337468 ou militar@pmmg.mg.gov.br") or "").strip()
                     
                     c_rec1, c_rec2 = st.columns(2)
                     with c_rec1:
@@ -242,29 +267,36 @@ if not st.session_state.get("autenticado", False):
                             st.error("⚠️ Digite o Nº de Polícia ou E-mail.")
                         else:
                             usr_obj = buscar_usuario_para_login(identificador)
-                            email_alvo = usr_obj.get("email_recuperacao") if usr_obj else (identificador if "@" in identificador else None)
-
-                            if not email_alvo:
-                                st.error("❌ Nenhum e-mail de recuperação cadastrado para este usuário.")
+                            
+                            if not usr_obj:
+                                st.error("❌ Usuário não localizado no sistema. Verifique a matrícula informada.")
                             else:
-                                codigo_gerado = str(random.randint(100000, 999999))
-                                sucesso_envio, msg_envio = enviar_email_codigo(email_alvo, codigo_gerado)
-                                
-                                if sucesso_envio:
-                                    st.session_state["reset_token_dados"] = {
-                                        "codigo_enviado": codigo_gerado,
-                                        "usuario_id": identificador
-                                    }
-                                    st.toast(f"Código enviado para {email_alvo}!", icon="📩")
-                                    st.rerun()
+                                email_alvo = usr_obj.get("email_recuperacao")
+                                if not email_alvo:
+                                    st.error("❌ Nenhum e-mail de recuperação cadastrado para este militar. Entre em contato com a P1/P3.")
                                 else:
-                                    st.error(f"🚨 {msg_envio}")
+                                    codigo_gerado = str(random.randint(100000, 999999))
+                                    sucesso_envio, msg_envio = enviar_email_codigo(email_alvo, codigo_gerado)
+                                    
+                                    if sucesso_envio:
+                                        num_login_real = usr_obj.get("usuario_login") or usr_obj.get("usuario") or identificador
+                                        st.session_state["reset_token_dados"] = {
+                                            "codigo_enviado": codigo_gerado,
+                                            "usuario_id": num_login_real,
+                                            "identificador_digitado": identificador,
+                                            "email_alvo": email_alvo
+                                        }
+                                        st.toast(f"Código enviado para {email_alvo}!", icon="📩")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"🚨 {msg_envio}")
 
             else:
                 cod_correto = st.session_state["reset_token_dados"]["codigo_enviado"]
                 usr_id = st.session_state["reset_token_dados"]["usuario_id"]
+                email_enviado = st.session_state["reset_token_dados"].get("email_alvo", "")
 
-                st.success("📧 **Instruções enviadas!** Insira o código de verificação de 6 dígitos recebido e cadastre sua nova senha:")
+                st.success(f"📧 **Código enviado para {email_enviado}!** Insira o código de 6 dígitos recebido e cadastre sua nova senha:")
 
                 with st.form("form_confirmar_reset_email"):
                     cod_digitado = (st.text_input("🔑 Digite o Código de 6 dígitos recebido:", max_chars=6) or "").strip()
@@ -292,29 +324,31 @@ if not st.session_state.get("autenticado", False):
                             if not senha_ok:
                                 st.error(f"⛔ {msg_s}")
                             else:
-                                if usr_id in st.session_state["tentativas_login"]:
-                                    st.session_state["tentativas_login"][usr_id] = 0
-                                st.session_state["bloqueados_temp"].discard(usr_id)
+                                # 1. Atualiza senha e desbloqueia no Supabase sem apagar o 2FA
+                                sucesso_up = atualizar_senha_usuario(usr_id, nova_senha)
 
-                                hash_nova = gerar_hash_senha(nova_senha)
+                                if sucesso_up:
+                                    # 2. Limpa contadores de tentativas da memória
+                                    u_clean = str(usr_id).strip().upper()
+                                    u_sem_zero = u_clean.lstrip("0")
+                                    for k in [usr_id, u_clean, u_sem_zero]:
+                                        st.session_state["bloqueados_temp"].discard(k)
+                                        if k in st.session_state["tentativas_login"]:
+                                            st.session_state["tentativas_login"][k] = 0
 
-                                if supabase:
-                                    atualizar_usuario_supabase(usr_id, {
-                                        "senha": nova_senha,
-                                        "senha_hash": hash_nova,
-                                        "ativo": True
-                                    })
+                                    registrar_audit_log(
+                                        operador_pm=usr_id,
+                                        alvo_pm=usr_id,
+                                        tipo_acao="RESET_SENHA_EMAIL",
+                                        descricao="Senha redefinida com sucesso via código de e-mail. Conta ativada e 2FA preservado."
+                                    )
 
-                                if "usuarios_teste_db" in st.session_state:
-                                    if usr_id in st.session_state["usuarios_teste_db"]:
-                                        st.session_state["usuarios_teste_db"][usr_id]["senha"] = nova_senha
-                                        st.session_state["usuarios_teste_db"][usr_id]["senha_hash"] = hash_nova
-                                        st.session_state["usuarios_teste_db"][usr_id]["ativo"] = True
-
-                                st.success("🎉 Senha redefinida e conta desbloqueada! Realize o login com a nova senha.")
-                                st.session_state["recuperar_senha_modo"] = False
-                                st.session_state["reset_token_dados"] = {}
-                                st.rerun()
+                                    st.success("🎉 Senha redefinida e conta desbloqueada com sucesso! Faça login com a nova senha.")
+                                    st.session_state["recuperar_senha_modo"] = False
+                                    st.session_state["reset_token_dados"] = {}
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Falha ao atualizar senha no banco de dados. Tente novamente.")
 
         # FLUXO 2: PRIMEIRO ACESSO - CADASTRO DO QR CODE + TROCA DE SENHA
         elif st.session_state.get("mfa_setup_mode", False):
@@ -391,7 +425,9 @@ if not st.session_state.get("autenticado", False):
                                         "mfa_habilitado": True,
                                         "email_recuperacao": email_input, 
                                         "celular_recuperacao": celular_input,
-                                        "token_sessao_ativa": novo_token
+                                        "token_sessao_ativa": novo_token,
+                                        "primeiro_acesso": False,
+                                        "ativo": True
                                     }).eq("usuario_login", num_pol_str).execute()
                                 except Exception:
                                     atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
@@ -405,17 +441,22 @@ if not st.session_state.get("autenticado", False):
                             usr_temp["token_sessao_ativa"] = novo_token
 
                             st.session_state["token_sessao_local"] = novo_token
-                            st.session_state["usuarios_teste_db"][num_pol_str] = usr_temp
                             st.session_state["usuario_dados"] = usr_temp
                             st.session_state["autenticado"] = True
                             st.session_state["usuario_autenticado"] = True
                             st.session_state["mfa_setup_mode"] = False
                             st.session_state["ultima_atividade_time"] = datetime.datetime.now()
+                            st.query_params["session_token"] = novo_token
                             
                             if "temp_mfa_secret" in st.session_state:
                                 del st.session_state["temp_mfa_secret"]
 
-                            registrar_audit_log(num_pol_str, "", "PRIMEIRO_ACESSO", "Senha e 2FA configurados.")
+                            registrar_audit_log(
+                                operador_pm=num_pol_str,
+                                alvo_pm=num_pol_str,
+                                tipo_acao="PRIMEIRO_ACESSO",
+                                descricao="Senha pessoal e 2FA configurados no primeiro acesso."
+                            )
                             st.toast("✅ Nova senha e 2FA salvos com sucesso!", icon="🎉")
                             st.rerun()
 
@@ -479,8 +520,14 @@ if not st.session_state.get("autenticado", False):
                         st.session_state["usuario_autenticado"] = True
                         st.session_state["mfa_pendente"] = False
                         st.session_state["ultima_atividade_time"] = datetime.datetime.now()
+                        st.query_params["session_token"] = novo_token
                         
-                        registrar_audit_log(num_pol_str, "", "LOGIN_SUCESSO", "Login com 2FA concluído.")
+                        registrar_audit_log(
+                            operador_pm=num_pol_str,
+                            alvo_pm=None,
+                            tipo_acao="LOGIN_SUCESSO",
+                            descricao="Login com 2FA concluído."
+                        )
                         st.toast(f"Acesso liberado! Bem-vindo, {usr_temp.get('nome_guerra')}!", icon="🟢")
                         st.rerun()
                     else:
@@ -489,7 +536,7 @@ if not st.session_state.get("autenticado", False):
         # FLUXO 4: TELA PRINCIPAL DE LOGIN
         else:
             with st.form("form_login_principal"):
-                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 0000000") or "").strip()
+                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1337468") or "").strip()
                 senha_input = (st.text_input("Senha de Acesso:", type="password", placeholder="••••••••") or "").strip()
                 
                 btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", use_container_width=True)
@@ -497,21 +544,17 @@ if not st.session_state.get("autenticado", False):
                 if btn_entrar:
                     if not usuario_input or not senha_input:
                         st.error("⚠️ Preencha as credenciais de acesso.")
-                    elif usuario_input in st.session_state["bloqueados_temp"]:
-                        st.error("🔒 **Conta Bloqueada por Excesso de Tentativas Incorretas (3/3).** Use a redefinição de senha via e-mail abaixo.")
                     else:
-                        num_pol_key = str(usuario_input).strip()
-                        usuario_encontrado = buscar_usuario_para_login(usuario_input)
+                        u_clean = str(usuario_input).strip().upper()
+                        u_sem_zero = u_clean.lstrip("0")
+                        
+                        # Busca flexível ignorando zeros à esquerda
+                        usuario_encontrado = buscar_usuario_para_login(u_clean) or buscar_usuario_para_login(u_sem_zero)
 
                         if not usuario_encontrado:
-                            db_teste = st.session_state.get("usuarios_teste_db", {})
-                            if num_pol_key in db_teste:
-                                usuario_encontrado = db_teste[num_pol_key]
-
-                        if not usuario_encontrado:
-                            st.error("❌ Usuário não localizado no sistema.")
+                            st.error(f"❌ Usuário '{usuario_input}' não localizado no sistema.")
                         elif not usuario_encontrado.get("ativo", True):
-                            st.error("🔒 Sua conta está bloqueada no banco de dados. Utilize o reset por e-mail abaixo.")
+                            st.error("🔒 Conta Bloqueada por tentativas incorretas. Clique em 'Esqueci a Senha / Desbloquear Conta' abaixo para redefinir via e-mail.")
                         else:
                             senha_db_texto = usuario_encontrado.get("senha")
                             senha_db_hash = usuario_encontrado.get("senha_hash")
@@ -522,23 +565,59 @@ if not st.session_state.get("autenticado", False):
 
                                 if erros_atuais >= 3:
                                     st.session_state["bloqueados_temp"].add(usuario_input)
+                                    st.session_state["bloqueados_temp"].add(u_clean)
                                     if supabase:
-                                        atualizar_usuario_supabase(num_pol_key, {"ativo": False})
-                                    st.error("🚨 **Senha Incorreta! Tentativa 3 de 3.** Sua conta foi BLOQUEADA por segurança! Clique em 'Esqueci a Senha' abaixo para redefinir via e-mail.")
+                                        atualizar_usuario_supabase(u_clean, {"ativo": False})
+                                    st.error("🚨 Senha Incorreta! Tentativa 3 de 3. Sua conta foi BLOQUEADA. Utilize a redefinição por e-mail abaixo.")
                                 else:
                                     restantes = 3 - erros_atuais
-                                    st.error(f"🚨 **Senha Incorreta!** Tentativa **{erros_atuais} de 3**. Você tem mais **{restantes}** tentativa(s) antes do bloqueio.")
+                                    st.error(f"🚨 Senha Incorreta! Tentativa {erros_atuais} de 3. Você tem mais {restantes} tentativa(s).")
                             else:
+                                # Sucesso no Login
                                 st.session_state["tentativas_login"][usuario_input] = 0
-                                st.session_state["temp_user_data"] = usuario_encontrado
+                                st.session_state["bloqueados_temp"].discard(usuario_input)
+                                st.session_state["bloqueados_temp"].discard(u_clean)
 
-                                if usuario_encontrado.get("mfa_habilitado", False) and usuario_encontrado.get("mfa_secret"):
-                                    st.session_state["mfa_pendente"] = True
-                                else:
+                                # Verificação do 2FA / Primeiro Acesso
+                                mfa_habilitado = usuario_encontrado.get("mfa_habilitado", False)
+                                primeiro_acesso = usuario_encontrado.get("primeiro_acesso", False)
+
+                                if primeiro_acesso:
+                                    st.session_state["temp_user_data"] = usuario_encontrado
                                     st.session_state["mfa_setup_mode"] = True
-                                st.rerun()
+                                    st.rerun()
+                                elif mfa_habilitado:
+                                    st.session_state["temp_user_data"] = usuario_encontrado
+                                    st.session_state["mfa_pendente"] = True
+                                    st.rerun()
+                                else:
+                                    novo_token = str(uuid.uuid4())
+                                    num_pol_str = str(usuario_encontrado.get("usuario_login") or usuario_encontrado.get("usuario") or "").strip().upper()
 
-            # 🚀 BOTÃO DE DISPARO FORMATADO COM MAILTO DINÂMICO
+                                    if supabase and num_pol_str:
+                                        try:
+                                            supabase.table("usuarios").update({"token_sessao_ativa": novo_token}).eq("usuario_login", num_pol_str).execute()
+                                        except Exception:
+                                            atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
+
+                                    usuario_encontrado["token_sessao_ativa"] = novo_token
+                                    st.session_state["token_sessao_local"] = novo_token
+                                    st.session_state["usuario_dados"] = usuario_encontrado
+                                    st.session_state["autenticado"] = True
+                                    st.session_state["usuario_autenticado"] = True
+                                    st.session_state["ultima_atividade_time"] = datetime.datetime.now()
+                                    st.query_params["session_token"] = novo_token
+                                    
+                                    registrar_audit_log(
+                                        operador_pm=num_pol_str,
+                                        alvo_pm=None,
+                                        tipo_acao="LOGIN_SUCESSO",
+                                        descricao="Login realizado com sucesso no ambiente main."
+                                    )
+                                    st.toast(f"Acesso liberado! Bem-vindo, {usuario_encontrado.get('nome_guerra')}!", icon="🟢")
+                                    st.rerun()
+
+            # 🚀 BOTÕES AUXILIARES
             email_suporte = "felip21uba@gmail.com"
             assunto_suporte = "Reporte de Defeito / Suporte - SIOP PMMG"
             corpo_suporte = f"Militar/Operador: {usuario_input if 'usuario_input' in locals() and usuario_input else 'Operador N/I'}\nDescreva o defeito ou solicitação aqui:\n"
@@ -564,7 +643,7 @@ if not st.session_state.get("autenticado", False):
     st.stop()
 
 # =========================================================================
-# 📌 EXTRAÇÃO DE DADOS DO OPERADOR PARA ESCOPO GLOBAL (PREVINE NAMEERROR)
+# 📌 EXTRAÇÃO DE DADOS DO OPERADOR PARA ESCOPO GLOBAL
 # =========================================================================
 aplicar_estilo_visual()
 
@@ -582,7 +661,7 @@ unid_op = st.session_state.get("unidade_ativa_nome") or usr.get("unidade", "21º
 cargo_op = usr.get("cargo_funcao", "MILITAR")
 perfil_op = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("cargo_funcao") or "TROPA").upper()
 
-# DEFINIÇÃO DE PERFIL E MODO DE VISUALIZÇÃO
+# DEFINIÇÃO DE PERFIL E MODO DE VISUALIZAÇÃO
 LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "CMT_FRACAO", "GESTOR"]
 eh_gestor_real = any(p in perfil_op for p in LISTA_GESTORES)
 
@@ -607,7 +686,6 @@ modulo_ativo = st.session_state["modulo_ativo"]
 # 🏗️ RENDERIZAÇÃO DA BARRA LATERAL UNIFICADA (SIDEBAR)
 # =========================================================================
 with st.sidebar:
-    # 1. BRASÃO INSTITUCIONAL CENTRALIZADO
     c_l, c_mid, c_r = st.columns([1, 1.5, 1])
     with c_mid:
         try:
@@ -615,7 +693,6 @@ with st.sidebar:
         except Exception:
             st.markdown("🛡️")
 
-    # 2. SELETOR MULTI-TENANT DE UNIDADE (GESTOR)
     if eh_gestor_real:
         if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa_nav"):
             st.session_state["simular_visao_tropa"] = True
@@ -661,7 +738,6 @@ with st.sidebar:
 
     st.divider()
 
-    # 3. CONTAINER MÓDULOS (COM CHAVES EXPLICITAS E ÚNICAS)
     st.markdown("##### 🧩 Módulos do Sistema")
     with st.container(border=True):
         if eh_gestor_ou_admin:
@@ -692,7 +768,6 @@ with st.sidebar:
                 st.session_state["modulo_ativo"] = "MINHA_ESCALA"
                 st.rerun()
 
-        # MÓDULO TCO COM SUBNAVEGAÇÃO DIRETA NA BARRA LATERAL
         if st.button("📦 Módulo TCO / Custódia", key="k_btn_mod_tco_nav", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
             st.session_state["modulo_ativo"] = "TCO"
             st.rerun()
@@ -727,7 +802,6 @@ with st.sidebar:
             st.session_state["modulo_ativo"] = "GOVERNANCA"
             st.rerun()
 
-    # 4. MURAL DE AVISOS
     qtd_novas_mensagens = 0 
     badge_msg = f" 🔴 ({qtd_novas_mensagens})" if qtd_novas_mensagens > 0 else ""
     if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", key="k_btn_mural_avisos_nav", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
@@ -736,7 +810,6 @@ with st.sidebar:
 
     st.divider()
 
-    # 5. PERFIL, TEMA E LOGOUT
     col_p1, col_p2 = st.columns(2)
     with col_p1:
         if st.button("👤 Perfil", key="k_btn_perfil_nav", use_container_width=True, type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
@@ -763,6 +836,7 @@ with st.sidebar:
         st.session_state["usuario_autenticado"] = False
         st.session_state["usuario_dados"] = {}
         st.session_state["token_sessao_local"] = None
+        st.query_params.clear()
         st.rerun()
 
 # =========================================================================
