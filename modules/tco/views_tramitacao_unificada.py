@@ -3,11 +3,31 @@ import pandas as pd
 import datetime
 from modules.tco.database import atualizar_material_supabase, registrar_log_supabase
 from modules.tco.modais import abrir_modal_edicao_material
-from modules.tco.views import obter_lista_creds_dinamica, injetar_css_cards_alternados
+from modules.tco.views import obter_lista_creds_dinamica, injetar_css_cards_alternados, extrair_unidade_mae_creds
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    """Módulo unificado de Custódia e Tramitação com seletor de acervo (Individual vs. CREDS/Unidade), aviso de materiais recentes e cards alternados."""
+    """Módulo unificado de Custódia e Tramitação com padronização DD/MM/AAAA e controle estrito de visibilidade por hierarquia."""
     injetar_css_cards_alternados()
+
+    usr_logado = st.session_state.get("usuario_dados", {})
+    cargo_str = str(usr_logado.get("cargo_funcao", "")).upper()
+    perfil_str = str(usr_logado.get("nivel_acesso") or usr_logado.get("perfil") or "").upper()
+    perfil_creds_usr = str(usr_logado.get("perfil_creds", "TROPA")).upper()
+    num_policia_usr = str(usr_logado.get("usuario_login") or usr_logado.get("num_policia") or "").strip()
+
+    # PERMISSÕES DE ACESSO SOBERANO E GESTÃO
+    eh_soberano = any(p in perfil_str for p in ["PROGRAMADOR", "DESENVOLVEDOR", "ADMIN", "TESTADOR"]) or \
+                 any(p in cargo_str for p in ["PROGRAMADOR", "DESENVOLVEDOR", "COMANDANTE", "SUBCOMANDANTE", "P1"]) or \
+                 perfil_creds_usr == "GESTOR_UNIDADE"
+
+    eh_gestor_cia = perfil_creds_usr in ["GESTOR_CIA", "OPERADOR"] or \
+                    any(p in cargo_str for p in ["COMANDANTE_CIA", "SARGENTIACAO", "CMT_CIA"]) or \
+                    any(p in perfil_str for p in ["COMANDANTE_CIA", "SARGENTIACAO"])
+
+    eh_cmt_pelotao = any(p in cargo_str for p in ["TENENTE", "TEN", "CMT_PELOTAO", "PELOTAO"]) or \
+                     any(p in perfil_str for p in ["CMT_PELOTAO"])
+
+    unidade_mae_usr = extrair_unidade_mae_creds(unidade_militar_atual) or unidade_militar_atual
 
     st.markdown(f"#### 🎒 Gestão de Custódia & Tramitação de Materiais TCO")
 
@@ -25,24 +45,44 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
 
     if materiais_pendentes_unidade:
         st.warning(
-            f"🔔 **ALERTA CREDS / TRAMITAÇÃO:** Você possui **{len(materiais_pendentes_unidade)} material(is) recente(s)** "
-            f"encaminhado(s) aguardando conferência e aceite de recebimento na unidade **{unidade_militar_atual}**!"
+            f"🔔 **ALERTA DE TRAMITAÇÃO:** Você possui **{len(materiais_pendentes_unidade)} material(is) recente(s)** "
+            f"encaminhado(s) aguardando conferência e aceite na sua unidade/escopo!"
         )
 
     st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
 
     # =========================================================================
-    # 🔀 BOTÃO DE SELEÇÃO DE VISÃO DE ACERVO (INDIVIDUAL VS. UNIDADE / CREDS)
+    # 🔀 DADOS E SELETOR DE ESCOPO DE VISUALIZAÇÃO POR HIERARQUIA
     # =========================================================================
-    visao_acervo = st.radio(
-        "Selecione o Escopo do Acervo:",
-        [
-            f"🎒 Meus Materiais (Custódia Individual de {nome_militar_atual})", 
-            f"🏛️ Acervo da Unidade / CREDS ({unidade_militar_atual})"
-        ],
-        horizontal=True,
-        key="radio_visao_acervo_custodia"
-    )
+    opcoes_visao = [f"🎒 Meus Materiais (Custódia Individual: {nome_militar_atual})"]
+
+    if eh_soberano:
+        opcoes_visao.append(f"🏛️ Acervo Geral da Unidade (21º BPM / Todas as Cias)")
+        opcoes_visao.append(f"🏢 Acervo da minha Companhia ({unidade_mae_usr})")
+        
+    elif eh_gestor_cia:
+        opcoes_visao.append(f"🏢 Acervo da Companhia ({unidade_mae_usr})")
+
+    elif eh_cmt_pelotao:
+        opcoes_visao.append(f"🛡️ Acervo do Pelotão / Fração ({unidade_militar_atual})")
+
+    with st.container(border=True):
+        col_rad1, col_rad2 = st.columns([3, 2])
+        with col_rad1:
+            visao_acervo = st.radio(
+                "Selecione o Escopo do Acervo para Visualização:",
+                opcoes_visao,
+                horizontal=True,
+                key="radio_visao_acervo_custodia_v2"
+            )
+        
+        with col_rad2:
+            # Se for soberano e selecionar acervo geral, permite escolher Cias específicas
+            if eh_soberano and "Acervo Geral" in visao_acervo:
+                lista_cias = ["TODAS AS COMPANHIAS"] + [u for u in obter_lista_creds_dinamica() if "✏️" not in u]
+                cia_filtrada_soberano = st.selectbox("Filtrar Companhia/CREDS Específico:", lista_cias, key="sb_filtro_soberano_cia")
+            else:
+                cia_filtrada_soberano = None
 
     st.markdown("<div style='margin-bottom: 12px;'></div>", unsafe_allow_html=True)
 
@@ -63,7 +103,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         [n for n in nomes_mils_base if n != nome_militar_atual]
     )
 
-    # 2. FILTROS DE PESQUISA
+    # 2. FILTROS DE PESQUISA (PADRÃO BRASILEIRO DE DATA DD/MM/AAAA)
     with st.expander("🔍 **Filtros de Pesquisa na Custódia**", expanded=False):
         c_f1, c_f2, c_f3 = st.columns(3)
         with c_f1:
@@ -71,23 +111,46 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         with c_f2:
             q_dest = st.text_input("Destinatário / Encaminhamento:", placeholder="Ex: CREDS ou PCMG", key="f_uni_dest").strip()
         with c_f3:
-            q_data = st.date_input("Data de Ingestão / Tramitação:", value=None, key="f_uni_data")
+            q_data = st.date_input("Data de Ingestão / Tramitação (DD/MM/AAAA):", value=None, format="DD/MM/YYYY", key="f_uni_data")
 
-    # 3. APLICAÇÃO DO FILTRO CONFORME A SELEÇÃO DO ESCOPO
+    # 3. FILTRAGEM E RESTRIÇÃO DOS MATERIAIS CONFORME O ESCOPO HIERÁRQUICO
     if "Meus Materiais" in visao_acervo:
         meus_bens = [
             b for b in all_bens_banco 
             if b.get("fiel_depositario_atual") == nome_militar_atual or b.get("remetente_ultimo") == nome_militar_atual
         ]
-    else:
+    elif "Acervo Geral da Unidade" in visao_acervo:
+        if cia_filtrada_soberano and cia_filtrada_soberano != "TODAS AS COMPANHIAS":
+            unid_target = cia_filtrada_soberano.replace("CREDS TCO - ", "").strip().lower()
+            meus_bens = [
+                b for b in all_bens_banco
+                if unid_target in str(b.get("unidade_posse_atual", "")).lower() or
+                   unid_target in str(b.get("unidade_destinatario_pendente", "")).lower()
+            ]
+        else:
+            meus_bens = list(all_bens_banco)
+    elif "Acervo da Companhia" in visao_acervo or "Acervo da minha Companhia" in visao_acervo:
+        unid_target = unidade_mae_usr.lower()
         meus_bens = [
             b for b in all_bens_banco
-            if unidade_militar_atual.lower() in str(b.get("unidade_posse_atual", "")).lower() or
-               unidade_militar_atual.lower() in str(b.get("unidade_destinatario_pendente", "")).lower() or
-               unidade_militar_atual.lower() in str(b.get("destinatario_pendente", "")).lower()
+            if unid_target in str(b.get("unidade_posse_atual", "")).lower() or
+               unid_target in str(b.get("unidade_destinatario_pendente", "")).lower() or
+               unid_target in str(extrair_unidade_mae_creds(str(b.get("unidade_posse_atual", ""))) or "").lower()
+        ]
+    elif "Acervo do Pelotão" in visao_acervo:
+        unid_target = unidade_militar_atual.lower()
+        meus_bens = [
+            b for b in all_bens_banco
+            if unid_target in str(b.get("unidade_posse_atual", "")).lower() or
+               unid_target in str(b.get("unidade_destinatario_pendente", "")).lower()
+        ]
+    else:
+        meus_bens = [
+            b for b in all_bens_banco 
+            if b.get("fiel_depositario_atual") == nome_militar_atual
         ]
 
-    # Aplicação dos Filtros Secundários (REDS, Destino e Data)
+    # Aplicação dos Filtros Secundários
     bens_filtrados = []
     for b in meus_bens:
         if q_reds and q_reds.lower() not in str(b.get("num_reds", "")).lower():
@@ -96,9 +159,13 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         if q_dest and q_dest.lower() not in dest_str.lower():
             continue
         if q_data:
-            data_sel_str = q_data.strftime("%Y-%m-%d")
-            data_item_str = str(b.get("data_posse_atual", "")) + str(b.get("data_ingestao", ""))
-            if data_sel_str not in data_item_str:
+            data_sel_fmt = q_data.strftime("%d/%m/%Y")
+            data_item_raw = str(b.get("data_posse_atual", "")) + str(b.get("data_ingestao", ""))
+            try:
+                data_item_fmt = pd.to_datetime(data_item_raw[:10]).strftime("%d/%m/%Y") if len(data_item_raw) >= 10 else ""
+            except Exception:
+                data_item_fmt = ""
+            if data_sel_fmt not in data_item_fmt and q_data.strftime("%Y-%m-%d") not in data_item_raw:
                 continue
         bens_filtrados.append(b)
 
@@ -114,14 +181,13 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
             reds_agrupados[r_num] = []
         reds_agrupados[r_num].append(b)
 
-    # Ordena pelos últimos 10 REDSs mais recentes
     reds_ordenados = sorted(
         reds_agrupados.items(),
         key=lambda x: max([b.get("data_ingestao") or b.get("data_posse_atual") or "" for b in x[1]]),
         reverse=True
     )[:10]
 
-    st.caption(f"Exibindo **{len(reds_ordenados)} REDS(s)** no escopo de **{visao_acervo.split(' (')[0]}**:")
+    st.caption(f"Exibindo **{len(reds_ordenados)} REDS(s)** no escopo ativo:")
 
     # 4. RENDERIZAÇÃO POR EXPANDERS DE REDS COM CARDS ALTERNADOS
     for idx_r, (reds_codigo, itens_reds) in enumerate(reds_ordenados):
@@ -129,14 +195,14 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         
         data_bruta = primeiro_item.get("data_ingestao") or primeiro_item.get("data_posse_atual") or ""
         try:
-            data_fmt = pd.to_datetime(data_bruta).strftime("%d/%m/%Y") if data_bruta else "Data N/I"
+            data_fmt = pd.to_datetime(data_bruta).strftime("%d/%m/%Y %H:%M") if data_bruta else "Data N/I"
         except Exception:
-            data_fmt = str(data_bruta)[:10] if data_bruta else "Data N/I"
+            data_fmt = str(data_bruta)[:16] if data_bruta else "Data N/I"
 
         autor_fmt = primeiro_item.get("autores") or "AUTOR NÃO INFORMADO"
         destinacao_fmt = primeiro_item.get("destinatario_pendente") or primeiro_item.get("fase_destinacao") or "Com Fiel Depositário"
 
-        label_expander = f"📄 REDS: {reds_codigo}  |  🗓️ Data: {data_fmt}  |  👤 Autor: {autor_fmt}  |  🏛️ Status: {destinacao_fmt} ({len(itens_reds)} item/ns)"
+        label_expander = f"📄 REDS: {reds_codigo}  |  🗓️ Data/Hora: {data_fmt}  |  👤 Autor: {autor_fmt}  |  🏛️ Status: {destinacao_fmt} ({len(itens_reds)} item/ns)"
 
         with st.expander(label_expander, expanded=(idx_r == 0)):
             st.markdown("##### 📦 Materiais Vinculados a este REDS:")
@@ -201,11 +267,12 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
 
                 c_act_col1, c_act_col2 = st.columns([3.8, 1.2])
                 with c_act_col2:
-                    # BOTÃO DE ACEITAR MATERIAL SE FOR DESTINATÁRIO PENDENTE
+                    # BOTÃO DE ACEITAR MATERIAL SE FOR DESTINATÁRIO PENDENTE OU GESTOR DO ESCOPO
                     if eh_pendente_aceite and (
                         nome_militar_atual.lower() in str(dest_pendente).lower() or
                         unidade_militar_atual.lower() in str(dest_pendente).lower() or
-                        unidade_militar_atual.lower() in str(item_bem.get("unidade_destinatario_pendente", "")).lower()
+                        unidade_militar_atual.lower() in str(item_bem.get("unidade_destinatario_pendente", "")).lower() or
+                        eh_soberano or eh_gestor_cia
                     ):
                         if st.button("✅ Aceitar & Incorporar", key=f"btn_aceitar_{id_bem_key}_{idx_r}_{idx_i}", type="primary", use_container_width=True):
                             now_iso = datetime.datetime.now().isoformat()
@@ -221,14 +288,14 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                                 registrar_log_supabase({
                                     "data_hora": now_iso,
                                     "num_reds": reds_codigo,
-                                    "bem_id": id_bem_target if 'id_bem_target' in locals() else id_bem_key,
+                                    "bem_id": id_bem_key,
                                     "web_origem": "SIOP_TCO",
                                     "acao": "ACEITE E INCORPORAÇÃO DE CUSTÓDIA",
                                     "origem": remetente_ult,
                                     "unidade_origem": item_bem.get("unidade_remetente", "N/I"),
                                     "destino": nome_militar_atual,
                                     "unidade_destino": unidade_militar_atual,
-                                    "detalhe": f"Material '{item_bem.get('descricao')}' aceito e incorporado à custódia de {nome_militar_atual} ({unidade_militar_atual})."
+                                    "detalhe": f"Material '{item_bem.get('descricao')}' aceito e incorporado por {nome_militar_atual} ({unidade_militar_atual})."
                                 })
                                 st.toast("Material aceito e incorporado com sucesso!", icon="✅")
                                 st.rerun()
@@ -258,7 +325,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                                 })
                                 st.toast("Envio cancelado com sucesso!", icon="✅")
                                 st.rerun()
-                    elif not eh_ja_aceito and fiel_dep_atual == nome_militar_atual:
+                    elif not eh_ja_aceito and (fiel_dep_atual == nome_militar_atual or eh_soberano or eh_gestor_cia):
                         if st.button("✏️ Editar Material", key=f"btn_ed_uni_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
                             abrir_modal_edicao_material(item_bem, nome_militar_atual, unidade_militar_atual)
 
