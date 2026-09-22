@@ -3,9 +3,12 @@ def pode_acessar_modulo(usuario: dict, modulo: str) -> bool:
     if not usuario:
         return False
 
-    # Gestor Geral / Admin possui bypass
-    perfil_geral = usuario.get("nivel_acesso") or usuario.get("perfil_geral")
-    if perfil_geral in ["ADMIN", "PROGRAMADOR"]:
+    # Gestor Geral / Admin / Programador possui bypass total
+    perfil_geral = usuario.get("nivel_acesso") or usuario.get("perfil_geral") or usuario.get("perfil")
+    cargo_geral = usuario.get("cargo_funcao") or ""
+    
+    if any(p in str(perfil_geral).upper() for p in ["ADMIN", "PROGRAMADOR", "DESENVOLVEDOR"]) or \
+       any(p in str(cargo_geral).upper() for p in ["ADMIN", "PROGRAMADOR", "DESENVOLVEDOR"]):
         return True
 
     if modulo == "creds":
@@ -18,17 +21,20 @@ def pode_acessar_modulo(usuario: dict, modulo: str) -> bool:
 
     return False
 
-def usuario_eh_gestor_creds(usuario: dict) -> bool:
-    """Verifica se o usuário possui prerrogativa de gestão sobre o CREDS/TCO."""
-    if not usuario:
+
+def usuario_eh_gestor_creds(usr_dados: dict) -> bool:
+    """Verifica se o usuário possui acesso de gestor/programador irrestrito ao TCO/CREDS."""
+    if not usr_dados or not isinstance(usr_dados, dict):
         return False
 
-    perfil_geral = usuario.get("nivel_acesso") or usuario.get("perfil_geral")
-    perfil_creds = usuario.get("perfil_creds", "TROPA")
-    perfil_escala = usuario.get("perfil_escala", "TROPA")
+    perfil = str(usr_dados.get("nivel_acesso") or usr_dados.get("perfil") or "").upper()
+    cargo = str(usr_dados.get("cargo_funcao") or "").upper()
+    perfil_creds = str(usr_dados.get("perfil_creds") or "").upper()
 
-    return (
-        perfil_geral in ["ADMIN", "PROGRAMADOR", "P1", "COMANDANTE", "COMANDANTE_CIA"]
-        or perfil_creds in ["GESTOR_UNIDADE", "GESTOR_CIA"]
-        or perfil_escala in ["CMT_CIA", "COMANDANTE_CIA"]
-    )
+    # 🔓 ACESSO IRRESTRITO E SOBERANO PARA PROGRAMADORES E ADMINISTRADORES
+    PERFIS_SUPERIORES = ["PROGRAMADOR", "DESENVOLVEDOR", "ADMIN", "TESTADOR", "GESTOR_UNIDADE"]
+    if any(p in perfil for p in PERFIS_SUPERIORES) or any(p in cargo for p in PERFIS_SUPERIORES):
+        return True
+
+    # Demais perfis operacionais do CREDS
+    return perfil_creds in ["GESTOR_UNIDADE", "GESTOR_CIA", "OPERADOR"] or "CREDS" in perfil or "P1" in perfil or "COMANDANTE" in cargo

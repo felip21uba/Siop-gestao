@@ -22,10 +22,10 @@ def renderizar_modulo_tco():
     usr_id = str(usr_logado.get("id") or usr_logado.get("usuario_login") or "").strip()
     nome_militar_atual = f"{usr_logado.get('cargo_funcao', 'CB PM')} {usr_logado.get('nome_guerra', 'OPERADOR')}".strip()
     unidade_militar_atual = str(usr_logado.get("unidade", "35ª CIA PM")).strip().upper()
-    perfil_usuario = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
+    perfil_usuario = str(usr_logado.get("nivel_acesso") or usr_logado.get("perfil") or "TROPA").upper()
     cargo_str = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).upper()
 
-    # Validação do Termo de Compliance
+    # Validação do Termo de Compliance no primeiro acesso
     if not st.session_state.get("termo_compliance_aceito", False):
         if verificar_aceite_compliance_supabase(usr_id):
             st.session_state["termo_compliance_aceito"] = True
@@ -44,7 +44,18 @@ def renderizar_modulo_tco():
 
     st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
-    eh_gestor_creds = "PROGRAMADOR" in cargo_str or "ADMIN" in perfil_usuario or "P1" in perfil_usuario or "COMANDANTE" in cargo_str or "CREDS" in perfil_usuario
+    # 🔓 ACESSO IRRESTRITO E SOBERANO PARA PROGRAMADOR / ADMIN / GESTOR
+    eh_gestor_creds = (
+        "PROGRAMADOR" in cargo_str or 
+        "DESENVOLVEDOR" in cargo_str or 
+        "ADMIN" in perfil_usuario or 
+        "PROGRAMADOR" in perfil_usuario or 
+        "DESENVOLVEDOR" in perfil_usuario or 
+        "P1" in perfil_usuario or 
+        "COMANDANTE" in cargo_str or 
+        "CREDS" in perfil_usuario or
+        "GESTOR" in perfil_usuario
+    )
 
     # Carregamento dos dados em tempo real do Supabase
     all_bens_banco = carregar_materiais_supabase()
