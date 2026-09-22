@@ -63,29 +63,39 @@ def gerar_secret_mfa() -> str:
     return pyotp.random_base32()
 
 def buscar_usuario_para_login(usuario_input: str):
-    """Consulta o registro do usuário com busca resiliente e insensível a maiúsculas/minúsculas."""
-    if not supabase or not usuario_input:
+    """
+    Consulta o registro do usuário no Supabase.
+    Diagnostica e exibe alertas em tela caso haja falha na conexão do Supabase no ambiente DEV.
+    """
+    if not usuario_input:
+        return None
+
+    # DIAGNÓSTICO: Verifica se o cliente Supabase foi instanciado
+    if not supabase:
+        st.error("🚨 **Erro de Conexão no Ambiente DEV:** O cliente Supabase não foi inicializado. Verifique se as variáveis SUPABASE_URL e SUPABASE_KEY estão configuradas no Secrets do Streamlit Cloud.")
         return None
     
     u_clean = str(usuario_input).strip()
+    
     try:
-        # Busca flexível por usuario_login, usuario, num_policia ou email_recuperacao
+        # Busca primária por OR no Supabase
         res = supabase.table("usuarios").select("*").or_(
-            f"usuario_login.ilike.{u_clean},usuario.ilike.{u_clean},num_policia.ilike.{u_clean},email_recuperacao.ilike.{u_clean}"
+            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},email_recuperacao.eq.{u_clean}"
         ).execute()
         
         if res and res.data and len(res.data) > 0:
             return res.data[0]
+            
     except Exception as e:
-        print(f"Erro ao buscar usuário para login no Supabase: {e}")
-        
-    # Tentativa secundária sem ilike caso haja restrição no Supabase
+        # Exibe o motivo técnico caso a consulta ao Supabase falhe em DEV
+        st.error(f"🚨 **Falha ao consultar Supabase no DEV:** `{str(e)}`")
+        print(f"Erro na busca de usuário Supabase: {e}")
+
+    # Busca secundária individualizada (Fallback)
     try:
-        res_sec = supabase.table("usuarios").select("*").or_(
-            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean}"
-        ).execute()
-        if res_sec and res_sec.data and len(res_sec.data) > 0:
-            return res_sec.data[0]
+        res_fall = supabase.table("usuarios").select("*").eq("usuario_login", u_clean).execute()
+        if res_fall and res_fall.data and len(res_fall.data) > 0:
+            return res_fall.data[0]
     except Exception:
         pass
 
