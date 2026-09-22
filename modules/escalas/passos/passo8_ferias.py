@@ -4,7 +4,7 @@ import re
 import pandas as pd
 from core.database import supabase
 
-MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # Limite de 5MB
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # Limite de 10MB
 
 def processar_txt_ferias_pmmg(file_bytes):
     """Lê o arquivo TXT/CSV oficial do SIRH/PMMG separado por ponto e vírgula."""
@@ -50,15 +50,17 @@ def processar_txt_ferias_pmmg(file_bytes):
         return []
 
 def extrair_registros_ferias_texto(texto_bruto):
-    """Extrai férias a partir de padrões textuais e PDFs."""
+    """Extrai férias a partir de padrões textuais de PDFs e colagens de texto."""
     registros = []
     linhas = texto_bruto.split("\n")
 
     for linha in linhas:
         s = str(linha).strip()
-        if s.startswith(('=', '+', '-', '@')): s = "'" + s
+        if s.startswith(('=', '+', '-', '@')): 
+            s = "'" + s
         linha_clean = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', s).upper()
-        if not linha_clean: continue
+        if not linha_clean: 
+            continue
 
         m_num = re.search(r'\b\d{6,7}\b', linha_clean)
         num_pol = m_num.group(0) if m_num else ""
@@ -72,13 +74,15 @@ def extrair_registros_ferias_texto(texto_bruto):
             try:
                 dt_i = datetime.datetime.strptime(m_intervalo.group(1), "%d/%m/%Y").date()
                 dt_f = datetime.datetime.strptime(m_intervalo.group(2), "%d/%m/%Y").date()
-            except ValueError: pass
+            except ValueError: 
+                pass
         elif m_dias_partir:
             try:
                 qtd_dias = int(m_dias_partir.group(1))
                 dt_i = datetime.datetime.strptime(m_dias_partir.group(2), "%d/%m/%Y").date()
                 dt_f = dt_i + datetime.timedelta(days=qtd_dias - 1)
-            except ValueError: pass
+            except ValueError: 
+                pass
 
         if dt_i and dt_f:
             qtd_dias_calculada = (dt_f - dt_i).days + 1
@@ -96,6 +100,7 @@ def extrair_registros_ferias_texto(texto_bruto):
     return registros
 
 def salvar_ferias_supabase_lote(lista_registros):
+    """Grava o lote de férias extraído na tabela plano_ferias_anual do Supabase."""
     if supabase and lista_registros:
         try:
             registros_db = []
@@ -124,11 +129,15 @@ def salvar_ferias_supabase_lote(lista_registros):
     return False, "Banco Supabase indisponível."
 
 def carregar_ferias_supabase(ano=None, mes=None, busca=""):
-    if not supabase: return []
+    """Consulta as férias gravadas no banco de dados Supabase."""
+    if not supabase: 
+        return []
     try:
         query = supabase.table("plano_ferias_anual").select("*")
-        if ano: query = query.eq("ano", ano)
-        if mes and mes != 0: query = query.eq("mes", mes)
+        if ano: 
+            query = query.eq("ano", ano)
+        if mes and mes != 0: 
+            query = query.eq("mes", mes)
         res = query.order("dt_inicio").execute()
         
         dados = res.data or []
@@ -139,46 +148,76 @@ def carregar_ferias_supabase(ano=None, mes=None, busca=""):
                 d["dt_fim"] = datetime.datetime.strptime(str(d["dt_fim"]), "%Y-%m-%d").strftime("%d/%m/%Y")
 
         if busca:
-            dados = [d for d in dados if busca in str(d.get("num_policia", "")) or busca in str(d.get("nota_publicacao", "")).upper() or busca in str(d.get("nome_militar", "")).upper() or busca in str(d.get("nome_servidor", "")).upper()]
+            dados = [
+                d for d in dados 
+                if busca in str(d.get("num_policia", "")) 
+                or busca in str(d.get("nota_publicacao", "")).upper() 
+                or busca in str(d.get("nome_militar", "")).upper() 
+                or busca in str(d.get("nome_servidor", "")).upper()
+            ]
         return dados
-    except Exception: return []
+    except Exception: 
+        return []
 
 def renderizar_modulo_ferias_anual():
+    """Renderiza a interface do Passo 8 com upload unificado para TXT, CSV e PDF."""
     with st.expander("📌 PASSO 8: Mapeamento Anual de Férias & Indisponibilidade", expanded=True):
         st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados para alertar sobre indisponibilidades na escala mensal.")
 
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
 
-        with st.expander("➕ 📥 Importação via TXT (SIRH) ou PDF de Férias", expanded=False):
+        with st.expander("➕ 📥 Importar Arquivo de Férias (TXT do SIRH, CSV ou PDF)", expanded=False):
             c_up1, c_up2 = st.columns(2)
             
             with c_up1:
-                st.markdown("**Upload de Arquivo TXT (SIRH) / CSV:**")
-                arq_txt = st.file_uploader("Selecione o arquivo TXT do SIRH:", type=["txt", "csv"], key="uploader_txt_ferias_p8")
-                if arq_txt is not None:
-                    if st.button("🚀 Processar TXT de Férias", type="primary", use_container_width=True):
-                        regs_txt = processar_txt_ferias_pmmg(arq_txt)
-                        if regs_txt:
-                            st.session_state["temp_ferias_extraidas"] = regs_txt
-                            st.success(f"✅ {len(regs_txt)} registro(s) de férias identificados!")
-                        else:
-                            st.warning("Nenhum registro encontrado no arquivo TXT.")
-
-            with c_up2:
-                st.markdown("**Upload de Documento PDF de Férias:**")
-                arq_pdf = st.file_uploader("Selecione o arquivo PDF:", type=["pdf"], key="uploader_pdf_ferias_anual")
-                if arq_pdf is not None:
-                    if st.button("🚀 Extrair Férias do PDF", use_container_width=True):
-                        try:
-                            import pypdf
-                            reader = pypdf.PdfReader(arq_pdf)
-                            texto_extraido = "".join([(page.extract_text() or "") + "\n" for page in reader.pages])
-                            regs = extrair_registros_ferias_texto(texto_extraido)
+                st.markdown("**Upload de Ficheiro (TXT / CSV / PDF):**")
+                arq_upload = st.file_uploader(
+                    "Selecione o arquivo do SIRH (.txt), planilha (.csv) ou publicação (.pdf):", 
+                    type=["txt", "csv", "pdf"], 
+                    key="uploader_ferias_anual_unificado"
+                )
+                
+                if arq_upload is not None:
+                    nome_ext = arq_upload.name.lower()
+                    
+                    if nome_ext.endswith(".txt") or nome_ext.endswith(".csv"):
+                        if st.button("🚀 Processar Arquivo TXT/CSV (SIRH)", type="primary", use_container_width=True):
+                            regs = processar_txt_ferias_pmmg(arq_upload)
                             if regs:
                                 st.session_state["temp_ferias_extraidas"] = regs
-                                st.success(f"✅ {len(regs)} registro(s) identificados no PDF!")
-                            else: st.warning("Nenhum padrão localizado no PDF.")
-                        except Exception as ex: st.error(f"Erro ao ler PDF: {ex}")
+                                st.success(f"✅ {len(regs)} registro(s) de férias identificados do SIRH!")
+                            else:
+                                st.warning("Nenhum registro no padrão SIRH foi encontrado no arquivo.")
+
+                    elif nome_ext.endswith(".pdf"):
+                        if st.button("🚀 Extrair Férias do PDF", type="primary", use_container_width=True):
+                            try:
+                                import pypdf
+                                reader = pypdf.PdfReader(arq_upload)
+                                texto_extraido = "".join([(page.extract_text() or "") + "\n" for page in reader.pages])
+                                regs = extrair_registros_ferias_texto(texto_extraido)
+                                if regs:
+                                    st.session_state["temp_ferias_extraidas"] = regs
+                                    st.success(f"✅ {len(regs)} registro(s) identificados no PDF!")
+                                else:
+                                    st.warning("Nenhum padrão de férias localizado no PDF.")
+                            except Exception as ex:
+                                st.error(f"Erro ao processar PDF: {ex}")
+
+            with c_up2:
+                st.markdown("**Ou Cole o Texto da Nota / Publicação:**")
+                txt_area = st.text_area(
+                    "Cole o texto da publicação aqui:", 
+                    placeholder="Ex: 1234567 SD SILVA - 10 DIAS A PARTIR DE 02/02/2027", 
+                    height=120
+                )
+                if st.button("⚡ Processar Texto Copiado", use_container_width=True):
+                    regs = extrair_registros_ferias_texto(txt_area)
+                    if regs:
+                        st.session_state["temp_ferias_extraidas"] = regs
+                        st.success(f"✅ {len(regs)} registro(s) identificados no texto!")
+                    else:
+                        st.warning("Nenhum padrão reconhecido no texto.")
 
             if st.session_state.get("temp_ferias_extraidas"):
                 st.divider()
@@ -192,7 +231,8 @@ def renderizar_modulo_ferias_anual():
                         st.session_state.pop("temp_ferias_extraidas", None)
                         st.success(msg)
                         st.rerun()
-                    else: st.error(msg)
+                    else:
+                        st.error(msg)
 
         with st.expander("➕ 🔍 Consulta e Gestão do Mapeamento Anual de Férias", expanded=True):
             c_f1, c_f2, c_f3 = st.columns(3)
@@ -234,4 +274,5 @@ def renderizar_modulo_ferias_anual():
                             supabase.table("plano_ferias_anual").delete().eq("id", id_del).execute()
                         st.success("Registro(s) removido(s) com sucesso!")
                         st.rerun()
-            else: st.info("Nenhuma férias cadastrada no banco para o período selecionado.")
+            else:
+                st.info("Nenhuma férias cadastrada no banco para o período selecionado.")
