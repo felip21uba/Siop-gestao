@@ -64,23 +64,31 @@ def gerar_secret_mfa() -> str:
 
 def buscar_usuario_para_login(usuario_input: str):
     """
-    Consulta o registro do usuário no Supabase com tolerância total a zeros à esquerda e e-mail.
+    Busca direta e simplificada do usuário no Supabase para garantir compatibilidade REST.
     """
     if not supabase or not usuario_input:
         return None
 
     u_clean = str(usuario_input).strip().upper()
     u_sem_zero = u_clean.lstrip("0")
-    u_com_zero = f"0{u_sem_zero}"
 
     try:
-        res = supabase.table("usuarios").select("*").or_(
-            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},usuario_login.eq.{u_sem_zero},usuario_login.eq.{u_com_zero},email_recuperacao.eq.{u_clean}"
-        ).execute()
-        
+        # 1. Busca direta por usuario_login exato
+        res = supabase.table("usuarios").select("*").eq("usuario_login", u_clean).execute()
         if res and res.data and len(res.data) > 0:
             return res.data[0]
-            
+
+        # 2. Busca por usuario_login sem zeros à esquerda
+        if u_sem_zero != u_clean:
+            res_sz = supabase.table("usuarios").select("*").eq("usuario_login", u_sem_zero).execute()
+            if res_sz and res_sz.data and len(res_sz.data) > 0:
+                return res_sz.data[0]
+
+        # 3. Busca por e-mail de recuperação
+        res_em = supabase.table("usuarios").select("*").eq("email_recuperacao", u_clean.lower()).execute()
+        if res_em and res_em.data and len(res_em.data) > 0:
+            return res_em.data[0]
+
     except Exception as e:
         print(f"Erro na busca de usuário no Supabase: {e}")
 
@@ -95,7 +103,7 @@ def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
         if "senha" in payload and payload["senha"] and not payload.get("senha_hash"):
             payload["senha_hash"] = gerar_hash_senha(payload["senha"])
 
-        supabase.table("usuarios").upsert(payload).execute()
+        supabase.table("usuarios").upsert(payload, on_conflict="usuario_login").execute()
         st.cache_data.clear()
         return True
     except Exception as e:
@@ -109,15 +117,23 @@ def atualizar_senha_usuario(usuario_id: str, nova_senha: str) -> bool:
     try:
         u_clean = str(usuario_id).strip().upper()
         u_sem_zero = u_clean.lstrip("0")
-        u_com_zero = f"0{u_sem_zero}"
-
         hash_nova = gerar_hash_senha(nova_senha)
-        supabase.table("usuarios").update({
+
+        res = supabase.table("usuarios").update({
             "senha": nova_senha,
             "senha_hash": hash_nova,
             "ativo": True,
             "tentativas_erradas": 0
-        }).or_(f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},usuario_login.eq.{u_sem_zero},usuario_login.eq.{u_com_zero}").execute()
+        }).eq("usuario_login", u_clean).execute()
+
+        if not res.data and u_sem_zero != u_clean:
+            supabase.table("usuarios").update({
+                "senha": nova_senha,
+                "senha_hash": hash_nova,
+                "ativo": True,
+                "tentativas_erradas": 0
+            }).eq("usuario_login", u_sem_zero).execute()
+
         st.cache_data.clear()
         return True
     except Exception as e:
