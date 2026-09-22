@@ -2,7 +2,7 @@ import streamlit as st
 import datetime
 import re
 import pandas as pd
-from core.database import supabase
+from core.database import supabase, carregar_militares_supabase
 
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # Limite de 10MB
 
@@ -28,6 +28,7 @@ def processar_txt_ferias_pmmg(file_bytes):
             num_policia_completo = f"{num_pm}-{dv}" if dv and dv.upper() != "NAN" else num_pm
             posto = str(row.get("POSTO", "")).strip()
             nome = str(row.get("NOME SERVIDOR", "")).strip()
+            unidade = str(row.get("NOME UNIDADE", row.get("UNIDADE", "N/I"))).strip().upper()
             dt_inicio = str(row.get("DT INICIO FERIAS", "")).strip()
             dt_fim = str(row.get("DT TERMINO FERIAS", "")).strip()
             num_dias = str(row.get("NUM DIAS", "")).strip()
@@ -38,6 +39,7 @@ def processar_txt_ferias_pmmg(file_bytes):
                     "posto_grad": posto,
                     "nome_militar": f"{posto} {nome}".strip(),
                     "nome_servidor": nome,
+                    "unidade": unidade,
                     "dt_inicio": dt_inicio,
                     "dt_fim": dt_fim,
                     "dias_qtd": num_dias,
@@ -128,8 +130,8 @@ def salvar_ferias_supabase_lote(lista_registros):
             return False, f"Erro ao salvar no banco: {ex}"
     return False, "Banco Supabase indisponível."
 
-def carregar_ferias_supabase(ano=None, mes=None, busca=""):
-    """Consulta as férias gravadas no banco de dados Supabase."""
+def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", cidade_sel="Todas"):
+    """Consulta as férias gravadas no banco de dados Supabase e cruza com a tabela de militares para obter Lotação e Cidade."""
     if not supabase: 
         return []
     try:
@@ -141,26 +143,50 @@ def carregar_ferias_supabase(ano=None, mes=None, busca=""):
         res = query.order("dt_inicio").execute()
         
         dados = res.data or []
+        
+        # Mapeamento do cadastro de militares para resgatar Unidade e Cidade
+        mils_banco = carregar_militares_supabase() or []
+        mapa_mils = {
+            str(m.get("num_policia", "")).strip().upper(): m 
+            for m in mils_banco if m.get("num_policia")
+        }
+
+        dados_completos = []
         for d in dados:
             if d.get("dt_inicio") and "-" in str(d["dt_inicio"]):
                 d["dt_inicio"] = datetime.datetime.strptime(str(d["dt_inicio"]), "%Y-%m-%d").strftime("%d/%m/%Y")
             if d.get("dt_fim") and "-" in str(d["dt_fim"]):
                 d["dt_fim"] = datetime.datetime.strptime(str(d["dt_fim"]), "%Y-%m-%d").strftime("%d/%m/%Y")
 
-        if busca:
-            dados = [
-                d for d in dados 
-                if busca in str(d.get("num_policia", "")) 
-                or busca in str(d.get("nota_publicacao", "")).upper() 
-                or busca in str(d.get("nome_militar", "")).upper() 
-                or busca in str(d.get("nome_servidor", "")).upper()
-            ]
-        return dados
+            num_p = str(d.get("num_policia", "")).strip().upper()
+            m_cadastro = mapa_mils.get(num_p, {})
+            
+            d["lotacao"] = str(m_cadastro.get("unidade") or d.get("unidade") or "N/I").strip().upper()
+            d["cidade"] = str(m_cadastro.get("cidade") or "N/I").strip().upper()
+
+            # Filtros dinâmicos
+            if lotacao_sel != "Todas" and lotacao_sel not in d["lotacao"]:
+                continue
+            if cidade_sel != "Todas" and cidade_sel not in d["cidade"]:
+                continue
+            if busca:
+                termo_b = busca.upper()
+                if not (
+                    termo_b in num_p or 
+                    termo_b in str(d.get("nota_publicacao", "")).upper() or 
+                    termo_b in str(d.get("nome_militar", "")).upper() or 
+                    termo_b in str(d.get("nome_servidor", "")).upper()
+                ):
+                    continue
+
+            dados_completos.append(d)
+
+        return dados_completos
     except Exception: 
         return []
 
 def renderizar_modulo_ferias_anual():
-    """Renderiza a interface do Passo 8 com upload unificado para TXT, CSV e PDF."""
+    """Renderiza a interface do Passo 8 com upload unificado e filtros avançados de Lotação e Cidade."""
     with st.expander("📌 PASSO 8: Mapeamento Anual de Férias & Indisponibilidade", expanded=True):
         st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados para alertar sobre indisponibilidades na escala mensal.")
 
@@ -174,7 +200,7 @@ def renderizar_modulo_ferias_anual():
                 arq_upload = st.file_uploader(
                     "Selecione o arquivo do SIRH (.txt), planilha (.csv) ou publicação (.pdf):", 
                     type=["txt", "csv", "pdf"], 
-                    key="uploader_ferias_anual_unificado_v2"
+                    key="uploader_ferias_anual_unificado_p8"
                 )
                 
                 if arq_upload is not None:
@@ -234,22 +260,43 @@ def renderizar_modulo_ferias_anual():
                     else:
                         st.error(msg)
 
+        # SUB-EXPANDER DE CONSULTA COM FILTROS DE LOTAÇÃO E CIDADE
         with st.expander("➕ 🔍 Consulta e Gestão do Mapeamento Anual de Férias", expanded=True):
-            c_f1, c_f2, c_f3 = st.columns(3)
-            ano_sel = c_f1.number_input("Ano:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year))
-            meses_nomes = ["Todos", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-            mes_filtro_nome = c_f2.selectbox("Mês:", meses_nomes)
-            mes_num = meses_nomes.index(mes_filtro_nome)
-            busca_militar = c_f3.text_input("Buscar Militar / Nº Polícia:", placeholder="Digite o número ou nome...").strip().upper()
+            mils_cadastrados = carregar_militares_supabase() or []
+            
+            # Opções dinâmicas para os filtros
+            opcoes_lotacao = ["Todas"] + sorted(list(set([str(m.get("unidade", "")).strip().upper() for m in mils_cadastrados if m.get("unidade")])))
+            opcoes_cidade = ["Todas"] + sorted(list(set([str(m.get("cidade", "")).strip().upper() for m in mils_cadastrados if m.get("cidade") and str(m.get("cidade")).strip().upper() != "N/I"])))
 
-            registros_banco = carregar_ferias_supabase(ano=ano_sel, mes=mes_num, busca=busca_militar)
+            c_f1, c_f2, c_f3, c_f4, c_f5 = st.columns([1.2, 1.5, 2, 2, 2.3])
+            
+            with c_f1:
+                ano_sel = st.number_input("Ano:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year))
+            with c_f2:
+                meses_nomes = ["Todos", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+                mes_filtro_nome = st.selectbox("Mês:", meses_nomes)
+                mes_num = meses_nomes.index(mes_filtro_nome)
+            with c_f3:
+                lotacao_sel = st.selectbox("Lotação / Unidade:", opcoes_lotacao)
+            with c_f4:
+                cidade_sel = st.selectbox("Cidade / Fração:", opcoes_cidade)
+            with c_f5:
+                busca_militar = st.text_input("Buscar Militar / Nº Polícia:", placeholder="Digite o número ou nome...").strip().upper()
+
+            registros_banco = carregar_ferias_supabase(
+                ano=ano_sel, 
+                mes=mes_num, 
+                busca=busca_militar, 
+                lotacao_sel=lotacao_sel, 
+                cidade_sel=cidade_sel
+            )
 
             if registros_banco:
                 df_p = pd.DataFrame(registros_banco)
                 st.markdown(f"📊 **{len(df_p)} registro(s) localizado(s):**")
                 df_p["Excluir"] = False
                 
-                cols_exibir = [c for c in ["id", "num_policia", "nome_militar", "nome_servidor", "dt_inicio", "dt_fim", "dias_qtd", "nota_publicacao", "Excluir"] if c in df_p.columns]
+                cols_exibir = [c for c in ["id", "num_policia", "nome_militar", "lotacao", "cidade", "dt_inicio", "dt_fim", "dias_qtd", "nota_publicacao", "Excluir"] if c in df_p.columns]
                 
                 df_edit = st.data_editor(
                     df_p[cols_exibir],
@@ -257,7 +304,8 @@ def renderizar_modulo_ferias_anual():
                         "id": None,
                         "num_policia": "Nº Polícia",
                         "nome_militar": "Nome Militar",
-                        "nome_servidor": "Nome Servidor",
+                        "lotacao": "Lotação / Unidade",
+                        "cidade": "Cidade / Fração",
                         "dt_inicio": "Data Início",
                         "dt_fim": "Data Fim",
                         "dias_qtd": "Dias",
@@ -275,4 +323,4 @@ def renderizar_modulo_ferias_anual():
                         st.success("Registro(s) removido(s) com sucesso!")
                         st.rerun()
             else:
-                st.info("Nenhuma férias cadastrada no banco para o período selecionado.")
+                st.info("Nenhuma férias cadastrada no banco para o período e filtros selecionados.")
