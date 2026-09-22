@@ -63,19 +63,32 @@ def gerar_secret_mfa() -> str:
     return pyotp.random_base32()
 
 def buscar_usuario_para_login(usuario_input: str):
-    """Consulta o registro do usuário apenas nas colunas válidas da tabela usuarios."""
+    """Consulta o registro do usuário com busca resiliente e insensível a maiúsculas/minúsculas."""
     if not supabase or not usuario_input:
         return None
     
     u_clean = str(usuario_input).strip()
     try:
+        # Busca flexível por usuario_login, usuario, num_policia ou email_recuperacao
         res = supabase.table("usuarios").select("*").or_(
-            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},email_recuperacao.eq.{u_clean}"
+            f"usuario_login.ilike.{u_clean},usuario.ilike.{u_clean},num_policia.ilike.{u_clean},email_recuperacao.ilike.{u_clean}"
         ).execute()
+        
         if res and res.data and len(res.data) > 0:
             return res.data[0]
     except Exception as e:
-        print(f"Erro ao buscar usuário para login: {e}")
+        print(f"Erro ao buscar usuário para login no Supabase: {e}")
+        
+    # Tentativa secundária sem ilike caso haja restrição no Supabase
+    try:
+        res_sec = supabase.table("usuarios").select("*").or_(
+            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean}"
+        ).execute()
+        if res_sec and res_sec.data and len(res_sec.data) > 0:
+            return res_sec.data[0]
+    except Exception:
+        pass
+
     return None
 
 def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
