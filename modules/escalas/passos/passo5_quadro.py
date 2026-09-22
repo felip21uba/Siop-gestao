@@ -570,7 +570,7 @@ def renderizar_passo5():
                 eh_limpeza_linha = "[LIMPAR" in tipo_ev
 
                 if eh_limpeza_linha:
-                    c_f2.caption("📅 *Ação applied automaticamente a todos os dias do mês.*")
+                    c_f2.caption("📅 *Ação aplicada automaticamente a todos os dias do mês.*")
                     datas_sel = (datetime.date(m_ano, m_mes, 1), datetime.date(m_ano, m_mes, num_dias))
                 else:
                     datas_sel = c_f2.date_input(
