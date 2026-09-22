@@ -6,12 +6,12 @@ from modules.tco.modais import abrir_modal_edicao_material
 from modules.tco.views import obter_lista_creds_dinamica, injetar_css_cards_alternados
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    """Módulo unificado de Custódia e Tramitação com trava estrita de aceite e janela de cancelamento de 24h."""
+    """Módulo unificado de Custódia e Tramitação com cores alternadas e trava estrita de aceite."""
     injetar_css_cards_alternados()
 
     st.markdown(f"#### 🎒 Gestão de Custódia & Tramitação de: **{nome_militar_atual}**")
 
-    # 1. LISTA COMPLETA DE DESTINATÁRIOS INSTITUCIONAIS, CREDS E MILITARES
+    # 1. LISTA COMPLETA DE DESTINATÁRIOS
     destinatarios_institucionais = [
         "🏛️ PCMG / DELEGACIA DE POLÍCIA CIVIL",
         "🔬 PERÍCIA TÉCNICA / PERITO",
@@ -80,7 +80,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
 
     st.caption(f"Exibindo os **{len(reds_ordenados)} último(s) REDS** ativos:")
 
-    # 3. RENDERIZAÇÃO POR EXPANDERS DE REDS
+    # 3. RENDERIZAÇÃO POR EXPANDERS DE REDS COM CARDS ALTERNADOS
     for idx_r, (reds_codigo, itens_reds) in enumerate(reds_ordenados):
         primeiro_item = itens_reds[0]
         
@@ -98,7 +98,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         with st.expander(label_expander, expanded=(idx_r == 0)):
             st.markdown("##### 📦 Materiais Vinculados a este REDS:")
 
-            # ESTADO DO CARRINHO LOCAL
             chave_carrinho = f"carrinho_tramitacao_{reds_codigo}"
             if chave_carrinho not in st.session_state:
                 st.session_state[chave_carrinho] = []
@@ -106,7 +105,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
             ids_no_carrinho = [i["id_bem"] for bloco in st.session_state[chave_carrinho] for i in bloco["itens"]]
             itens_livres_para_envio = []
 
-            # 4. RENDERIZAÇÃO DA LISTA DOS ITENS
+            # 4. RENDERIZAÇÃO DA LISTA DOS ITENS EM CARDS ALTERNADOS
             for idx_i, item_bem in enumerate(itens_reds):
                 id_bem_key = item_bem["id_bem"]
                 midias = item_bem.get("midias_anexas") or []
@@ -117,13 +116,9 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                 dest_pendente = item_bem.get("destinatario_pendente")
                 dt_envio_str = item_bem.get("data_envio_tramite")
 
-                # O material está pendente de aceite pelo destinatário?
                 eh_pendente_aceite = (status_tramite == "Pendente Aceite" and remetente_ult == nome_militar_atual)
-                
-                # O material já foi aceito e incorporado pelo novo destinatário?
                 eh_ja_aceito = (status_tramite == "Em Custódia" and remetente_ult == nome_militar_atual and item_bem.get("fiel_depositario_atual") != nome_militar_atual)
 
-                # Regra dos 24h para cancelamento (SOMENTE SE NÃO TIVER SIDO ACEITO AINDA)
                 pode_cancelar_24h = False
                 horas_decorridas = 999
                 if eh_pendente_aceite and dt_envio_str:
@@ -136,42 +131,35 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                     except Exception:
                         pass
 
-                c_info, c_status_btn = st.columns([3.8, 1.2])
+                # ALTERNÂNCIA DE COR POR ITEM
+                e_marrom = (idx_i % 2 != 0)
+                classe_card = "card-brown" if e_marrom else "card-blue"
 
-                with c_info:
-                    if eh_pendente_aceite:
-                        st.markdown(
-                            f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
-                            f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>  \n"
-                            f"⏳ <span style='color: #F59E0B; font-weight: bold;'>ENVIADO / AGUARDANDO ACEITE DE: {dest_pendente}</span> *(Envio há {horas_decorridas:.1f}h)*", 
-                            unsafe_allow_html=True
-                        )
-                    elif eh_ja_aceito:
-                        st.markdown(
-                            f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
-                            f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>  \n"
-                            f"🔒 <span style='color: #4ADE80; font-weight: bold;'>ACEITO E INCORPORADO POR: {item_bem.get('fiel_depositario_atual')} ({item_bem.get('unidade_posse_atual')})</span>", 
-                            unsafe_allow_html=True
-                        )
-                    elif id_bem_key in ids_no_carrinho:
-                        st.markdown(
-                            f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
-                            f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>  \n"
-                            f"📌 <span style='color: #60A5FA; font-weight: bold;'>SELECIONADO NO QUADRO DE ENVIO ABAIXO</span>", 
-                            unsafe_allow_html=True
-                        )
-                    else:
-                        itens_livres_para_envio.append(item_bem)
-                        st.markdown(
-                            f"**Item {idx_i+1}:** {item_bem.get('descricao')}  \n"
-                            f"<small>Lacre: **{item_bem.get('involucro_lacre', 'SEM LACRE')}** | Qtd: **{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}** | {str_midias}</small>", 
-                            unsafe_allow_html=True
-                        )
+                if eh_pendente_aceite:
+                    status_badge = f"⏳ <b>Aguardando Aceite:</b> {dest_pendente}"
+                elif eh_ja_aceito:
+                    status_badge = f"🔒 <b>Aceito por:</b> {item_bem.get('fiel_depositario_atual')}"
+                elif id_bem_key in ids_no_carrinho:
+                    status_badge = f"📌 <b>Selecionado para Envio</b>"
+                else:
+                    itens_livres_para_envio.append(item_bem)
+                    status_badge = f"🎒 <b>Em Custódia</b>"
 
-                with c_status_btn:
+                card_html = f"""
+                <div class="{classe_card}">
+                    📄 REDS: <b>{reds_codigo}</b> | Material: <b>{item_bem.get('descricao')}</b><br/>
+                    <small>Lacre: <b>{item_bem.get('involucro_lacre', 'N/I')}</b> | Qtd: <b>{item_bem.get('quantidade', 1.0)} {item_bem.get('unidade_medida', 'UN')}</b> | {str_midias}</small><br/>
+                    📍 Status: {status_badge}
+                </div>
+                """
+                
+                st.markdown(card_html, unsafe_allow_html=True)
+
+                c_act_col1, c_act_col2 = st.columns([4, 1])
+                with c_act_col2:
                     if eh_pendente_aceite:
                         if pode_cancelar_24h:
-                            if st.button("↩️ Cancelar Envio", key=f"btn_canc_24h_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True, help="Cancela o envio e retorna a posse do bem para você (permitido até o aceite ou limite de 24h)."):
+                            if st.button("↩️ Cancelar", key=f"btn_canc_24h_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
                                 now_iso = datetime.datetime.now().isoformat()
                                 upd_cancelar = {
                                     "status_tramite": "Em Custódia",
@@ -186,26 +174,22 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                                         "data_hora": now_iso,
                                         "num_reds": reds_codigo,
                                         "bem_id": id_bem_key,
-                                        "acao": "CANCELAMENTO DE TRAMITAÇÃO (PRE-ACEITE 24H)",
+                                        "acao": "CANCELAMENTO DE TRAMITAÇÃO (24H)",
                                         "origem": nome_militar_atual,
                                         "unidade_origem": unidade_militar_atual,
                                         "destino": nome_militar_atual,
                                         "unidade_destino": unidade_militar_atual,
-                                        "detalhe": f"Envio cancelado antes do aceite pelo remetente dentro da janela de 24h. Posse retornada para {nome_militar_atual}."
+                                        "detalhe": f"Envio cancelado antes do aceite pelo remetente."
                                     })
-                                    st.toast("Envio cancelado com sucesso! Posse do bem retornada.", icon="✅")
+                                    st.toast("Envio cancelado com sucesso!", icon="✅")
                                     st.rerun()
-                        else:
-                            st.caption("🔒 Prazo 24h expirado.")
-                    elif eh_ja_aceito:
-                        st.caption("🔒 Custódia Aceita.")
-                    else:
+                    elif not eh_ja_aceito:
                         if st.button("✏️ Editar", key=f"btn_ed_uni_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
                             abrir_modal_edicao_material(item_bem, nome_militar_atual, unidade_militar_atual)
 
-                st.markdown("<hr style='margin: 4px 0; border-color: #334155;'>", unsafe_allow_html=True)
+                st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
 
-            # 5. ÁREA DE MONTAGEM DO QUADRO DE DESTINAÇÃO
+            # 5. QUADRO DE ENCAMINHAMENTO
             if itens_livres_para_envio:
                 st.markdown("---")
                 st.markdown("##### 🏛️ Encaminhar Materiais Disponíveis:")
@@ -248,16 +232,16 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                             st.toast("Materiais adicionados ao Quadro de Envio!", icon="✅")
                             st.rerun()
 
-            # 6. QUADRO RESUMO E CONFIRMAÇÃO FINAL DA TRAMITAÇÃO
+            # 6. CONFIRMAÇÃO DA TRAMITAÇÃO
             if st.session_state[chave_carrinho]:
                 st.markdown("<br>", unsafe_allow_html=True)
-                st.markdown("##### 📋 Quadro Resumo de Transferência deste REDS (Rascunho do Envio):")
+                st.markdown("##### 📋 Quadro Resumo de Transferência deste REDS:")
 
                 for idx_b, bloco in enumerate(st.session_state[chave_carrinho]):
                     with st.container(border=True):
                         col_quad1, col_quad2 = st.columns([4, 1])
                         with col_quad1:
-                            st.markdown(f"🏛️ **Destino:** <span style='color: #4ADE80; font-weight: bold;'>{bloco['destinatario']}</span>", unsafe_allow_html=True)
+                            st.markdown(f"🏛️ **Destino:** **{bloco['destinatario']}**")
                             for it_b in bloco["itens"]:
                                 idx_orig = itens_reds.index(it_b) + 1
                                 st.caption(f"• **Item {idx_orig}:** {it_b['descricao']} (Lacre: {it_b.get('involucro_lacre', 'N/I')})")
@@ -325,5 +309,5 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
 
                     if sucessos_tram > 0:
                         st.session_state[chave_carrinho] = []
-                        st.success(f"✅ Envio confirmado! {sucessos_tram} material(is) do REDS {reds_codigo} foram encaminhados com sucesso!")
+                        st.success(f"✅ Envio confirmado! {sucessos_tram} material(is) do REDS {reds_codigo} foram encaminhados!")
                         st.rerun()

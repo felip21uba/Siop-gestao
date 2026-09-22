@@ -55,9 +55,6 @@ def injetar_css_cards_alternados():
     </style>
     """, unsafe_allow_html=True)
 
-# =============================================================================
-# HELPER DE EXTRAÇÃO E MONTAGEM DINÂMICA DE CREDS POR CIA / BATALHÃO
-# =============================================================================
 def extrair_unidade_mae_creds(str_unidade):
     if not str_unidade or not isinstance(str_unidade, str):
         return None
@@ -233,12 +230,8 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", peri
         resultado.append(l)
     return resultado
 
-# =============================================================================
-# TRAVA E VALIDAÇÃO DE DUPLICIDADE POR NÚMERO DE REDS
-# =============================================================================
 @st.dialog("🚨 REDS Já Cadastrado na Custódia")
 def modal_alerta_reds_duplicado(num_reds, data_cadastrado, cadastrado_por):
-    """Exibe pop-up de alerta quando há tentativa de reimportação do mesmo Nº de REDS."""
     st.warning(f"**Atenção:** Os materiais do **REDS Nº {num_reds}** já foram inseridos anteriormente no Supabase.")
     st.markdown(
         f"📅 **Data do Cadastro (DD/MM/AAAA):** `{data_cadastrado}`  \n"
@@ -258,7 +251,6 @@ def modal_alerta_reds_duplicado(num_reds, data_cadastrado, cadastrado_por):
             st.rerun()
 
 def verificar_existencia_reds_banco(num_reds):
-    """Consulta no Supabase se já existem materiais registrados para este Nº de REDS e formata em DD/MM/AAAA HH:MM."""
     if not supabase or not num_reds or num_reds == "N/A":
         return False, None, None
 
@@ -278,9 +270,6 @@ def verificar_existencia_reds_banco(num_reds):
     except Exception:
         return False, None, None
 
-# =============================================================================
-# ABA 1: IMPORTAR REDS & MÍDIAS (FORMATO DD/MM/AAAA HH:MM)
-# =============================================================================
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     if "temp_reds_extraido" not in st.session_state:
@@ -552,9 +541,6 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 
 renderizar_aba_ingestao = renderizar_aba_importacao
 
-# =============================================================================
-# ABA PAINEL CREDS-TCO
-# =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Custódia")
@@ -680,7 +666,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.markdown(html_item, unsafe_allow_html=True)
 
 # =============================================================================
-# ABA TRILHA DE AUDITORIA (DATAS FORMATADAS EM DD/MM/AAAA HH:MM)
+# ABA TRILHA DE AUDITORIA (COM EXPORTAÇÃO EXCEL / CSV)
 # =============================================================================
 def renderizar_aba_logs(all_logs_banco):
     st.markdown("#### 📜 Trilha de Auditoria Imutável da Custódia (Supabase)")
@@ -713,13 +699,43 @@ def renderizar_aba_logs(all_logs_banco):
 
         cols_exibicao = ["data_hora", "num_reds", "bem_id", "acao", "origem", "unidade_origem", "destino", "unidade_destino", "detalhe"]
         cols_reais = [c for c in cols_exibicao if c in df_l.columns]
+        
         st.dataframe(df_l[cols_reais], use_container_width=True, hide_index=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_exp_log1, col_exp_log2 = st.columns(2)
+
+        # 📥 BOTÃO DE EXPORTAÇÃO EXCEL DA TRILHA DE AUDITORIA
+        with col_exp_log1:
+            buffer_log_xls = io.BytesIO()
+            with pd.ExcelWriter(buffer_log_xls, engine='openpyxl') as writer:
+                df_l[cols_reais].to_excel(writer, index=False, sheet_name="Auditoria_TCO")
+            buffer_log_xls.seek(0)
+
+            st.download_button(
+                label=f"📊 Baixar Trilha de Auditoria em Excel ({len(df_l)} registros)",
+                data=buffer_log_xls.getvalue(),
+                file_name=f"Auditoria_TCO_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True,
+                key="btn_dl_logs_excel"
+            )
+
+        # 📥 BOTÃO DE EXPORTAÇÃO CSV DA TRILHA DE AUDITORIA
+        with col_exp_log2:
+            csv_bytes = df_l[cols_reais].to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label=f"📄 Baixar Trilha de Auditoria em CSV",
+                data=csv_bytes,
+                file_name=f"Auditoria_TCO_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="btn_dl_logs_csv"
+            )
     else:
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
-# =============================================================================
-# ABA DESIGNAÇÃO DE GESTORES
-# =============================================================================
 def renderizar_aba_gestores_creds(nome_operador, unidade_operador, cargo_operador, perfil_operador):
     usr_logado = st.session_state.get("usuario_dados", {})
     eh_autorizado = usuario_eh_gestor_creds(usr_logado)
