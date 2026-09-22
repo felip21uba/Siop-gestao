@@ -2,11 +2,12 @@ import streamlit as st
 import datetime
 from core.database import supabase, atualizar_usuario_supabase, registrar_audit_log
 
-# Importações das abas do Módulo TCO
+# Importações diretas do seu views.py existente
 from modules.tco.views import (
     renderizar_aba_importar_reds, 
     renderizar_aba_painel_creds,
-    renderizar_aba_gestores_creds
+    renderizar_aba_gestores_creds,
+    renderizar_aba_logs
 )
 from modules.tco.views_tramitacao_unificada import renderizar_aba_custodia_tramitacao_unificada
 from modules.tco.views_oficios import renderizar_aba_gerador_oficios
@@ -45,32 +46,28 @@ def verificar_e_exigir_termo_tco(usr_dados):
         login_usr = str(usr_dados.get("usuario_login") or usr_dados.get("num_policia") or usr_dados.get("usuario") or "OPERADOR").strip()
         now_iso = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Atualiza o Supabase com fallback seguro
         if supabase and login_usr:
             try:
                 atualizar_usuario_supabase(login_usr, {
                     "termo_compliance_aceito": True,
                     "data_aceite_compliance": now_iso
                 })
-            except Exception as ex:
+            except Exception:
                 try:
-                    # Tentativa caso a coluna data_aceite_compliance ainda não exista
                     atualizar_usuario_supabase(login_usr, {"termo_compliance_aceito": True})
                 except Exception:
                     pass
 
-        # Atualiza o estado da sessão imediatamente
         if "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
             st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
             st.session_state["usuario_dados"]["termo_tco_aceito"] = True
 
-        # Correção da chamada de registro de log
         try:
             registrar_audit_log(
-                login_usr,
-                "MODULO_TCO",
-                "ACEITE_TERMO_COMPLIANCE",
-                f"Aceite do termo de compliance do Módulo TCO realizado em {now_iso}."
+                operador_pm=login_usr,
+                alvo_pm="MODULO_TCO",
+                tipo_acao="ACEITE_TERMO_COMPLIANCE",
+                descricao=f"Aceite do termo de compliance do Módulo TCO realizado em {now_iso}."
             )
         except Exception:
             pass
@@ -106,6 +103,7 @@ def renderizar_modulo_tco():
         except Exception as ex:
             st.error(f"Erro ao carregar acervo do TCO: {ex}")
 
+    # Roteamento das abas utilizando as funções nativas existentes
     if "Importar REDS" in subnav:
         renderizar_aba_importar_reds(nome_militar, unidade_militar)
     elif "Meus Materiais" in subnav or "Tramitação" in subnav:
@@ -114,7 +112,17 @@ def renderizar_modulo_tco():
         renderizar_aba_gerador_oficios(all_bens, nome_militar, unidade_militar)
     elif "Painel CREDS" in subnav:
         renderizar_aba_painel_creds(all_bens, nome_militar, unidade_militar)
+    elif "Auditoria" in subnav or "Logs" in subnav:
+        # Busca os logs da tabela tco_logs e passa para a funcao nativa do views.py
+        all_logs = []
+        if supabase:
+            try:
+                res_l = supabase.table("tco_logs").select("*").order("data_hora", desc=True).execute()
+                all_logs = res_l.data or []
+            except Exception as ex:
+                st.warning(f"Aviso ao consultar tco_logs: {ex}")
+        renderizar_aba_logs(all_logs)
     elif "Gestores" in subnav:
-        renderizar_aba_gestores_creds()
+        renderizar_aba_gestores_creds(nome_militar, unidade_militar, "MILITAR", "GESTOR")
     else:
         renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar, unidade_militar)
