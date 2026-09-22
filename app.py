@@ -118,7 +118,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# 🖥️ VERIFICAÇÃO ANTECIPADA DO MODO POP-OUT / SEGUNDA TELA (ISENÇÃO DE LOGIN DEDICADA)
+# 🖥️ VERIFICAÇÃO ANTECIPADA DO MODO POP-OUT / SEGUNDA TELA
 query_params = st.query_params
 if query_params.get("modo_monitor") == "segunda_tela":
     from modules.escalas.passos.passo5_espelho import renderizar_modo_segunda_tela
@@ -153,6 +153,26 @@ if "usuarios_teste_db" not in st.session_state:
 if "tema_visual" not in st.session_state:
     st.session_state["tema_visual"] = "DARK"
 
+# ==============================================================================
+# 🔄 RESTAURAÇÃO AUTOMÁTICA DE SESSÃO AO PRESSIONAR F5 (PERSISTÊNCIA)
+# ==============================================================================
+token_url = query_params.get("session_token")
+
+if not st.session_state.get("autenticado", False) and token_url:
+    if supabase:
+        try:
+            res_sessao = supabase.table("usuarios").select("*").eq("token_sessao_ativa", token_url).execute()
+            if res_sessao.data and len(res_sessao.data) > 0:
+                usr_recuperado = res_sessao.data[0]
+                if usr_recuperado.get("ativo", True):
+                    st.session_state["usuario_dados"] = usr_recuperado
+                    st.session_state["autenticado"] = True
+                    st.session_state["usuario_autenticado"] = True
+                    st.session_state["token_sessao_local"] = token_url
+                    st.toast(f"🟢 Sessão mantida para {usr_recuperado.get('nome_guerra', 'Operador')}!", icon="🔄")
+        except Exception as ex:
+            print(f"Erro ao restaurar sessão pelo F5: {ex}")
+
 # CONSTANTES VISUAIS INSTITUCIONAIS
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
@@ -163,7 +183,7 @@ def obter_imagem_brasao():
     return URL_BRASAO_PADRAO
 
 # ==============================================================================
-# ⏱️ GERENCIAMENTO DE TIMEOUT (20 MIN) E SESSÃO ÚNICA CONCORRENTE
+# ⏱️ GERENCIAMENTO DE TIMEOUT E SESSÃO ÚNICA CONCORRENTE
 # ==============================================================================
 if st.session_state.get("autenticado", False):
     usr_dados = st.session_state.get("usuario_dados", {})
@@ -186,6 +206,7 @@ if st.session_state.get("autenticado", False):
                     st.session_state["mfa_setup_mode"] = False
                     st.session_state["usuario_dados"] = {}
                     st.session_state["token_sessao_local"] = None
+                    st.query_params.clear()
                     st.error("🚨 **Sessão Encerrada:** Sua conta foi acessada em outro dispositivo. Por segurança, este acesso foi desconectado.")
                     st.stop()
         except Exception:
@@ -411,6 +432,7 @@ if not st.session_state.get("autenticado", False):
                             st.session_state["usuario_autenticado"] = True
                             st.session_state["mfa_setup_mode"] = False
                             st.session_state["ultima_atividade_time"] = datetime.datetime.now()
+                            st.query_params["session_token"] = novo_token
                             
                             if "temp_mfa_secret" in st.session_state:
                                 del st.session_state["temp_mfa_secret"]
@@ -479,6 +501,7 @@ if not st.session_state.get("autenticado", False):
                         st.session_state["usuario_autenticado"] = True
                         st.session_state["mfa_pendente"] = False
                         st.session_state["ultima_atividade_time"] = datetime.datetime.now()
+                        st.query_params["session_token"] = novo_token
                         
                         registrar_audit_log(num_pol_str, "", "LOGIN_SUCESSO", "Login com 2FA concluído.")
                         st.toast(f"Acesso liberado! Bem-vindo, {usr_temp.get('nome_guerra')}!", icon="🟢")
@@ -564,7 +587,7 @@ if not st.session_state.get("autenticado", False):
     st.stop()
 
 # =========================================================================
-# 📌 EXTRAÇÃO DE DADOS DO OPERADOR PARA ESCOPO GLOBAL (PREVINE NAMEERROR)
+# 📌 EXTRAÇÃO DE DADOS DO OPERADOR PARA ESCOPO GLOBAL
 # =========================================================================
 aplicar_estilo_visual()
 
@@ -582,7 +605,7 @@ unid_op = st.session_state.get("unidade_ativa_nome") or usr.get("unidade", "21º
 cargo_op = usr.get("cargo_funcao", "MILITAR")
 perfil_op = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("cargo_funcao") or "TROPA").upper()
 
-# DEFINIÇÃO DE PERFIL E MODO DE VISUALIZÇÃO
+# DEFINIÇÃO DE PERFIL E MODO DE VISUALIZAÇÃO
 LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "CMT_FRACAO", "GESTOR"]
 eh_gestor_real = any(p in perfil_op for p in LISTA_GESTORES)
 
@@ -607,7 +630,6 @@ modulo_ativo = st.session_state["modulo_ativo"]
 # 🏗️ RENDERIZAÇÃO DA BARRA LATERAL UNIFICADA (SIDEBAR)
 # =========================================================================
 with st.sidebar:
-    # 1. BRASÃO INSTITUCIONAL CENTRALIZADO
     c_l, c_mid, c_r = st.columns([1, 1.5, 1])
     with c_mid:
         try:
@@ -615,7 +637,6 @@ with st.sidebar:
         except Exception:
             st.markdown("🛡️")
 
-    # 2. SELETOR MULTI-TENANT DE UNIDADE (GESTOR)
     if eh_gestor_real:
         if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa_nav"):
             st.session_state["simular_visao_tropa"] = True
@@ -661,7 +682,6 @@ with st.sidebar:
 
     st.divider()
 
-    # 3. CONTAINER MÓDULOS (COM CHAVES EXPLICITAS E ÚNICAS)
     st.markdown("##### 🧩 Módulos do Sistema")
     with st.container(border=True):
         if eh_gestor_ou_admin:
@@ -692,7 +712,6 @@ with st.sidebar:
                 st.session_state["modulo_ativo"] = "MINHA_ESCALA"
                 st.rerun()
 
-        # MÓDULO TCO COM SUBNAVEGAÇÃO DIRETA NA BARRA LATERAL
         if st.button("📦 Módulo TCO / Custódia", key="k_btn_mod_tco_nav", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
             st.session_state["modulo_ativo"] = "TCO"
             st.rerun()
@@ -727,7 +746,6 @@ with st.sidebar:
             st.session_state["modulo_ativo"] = "GOVERNANCA"
             st.rerun()
 
-    # 4. MURAL DE AVISOS
     qtd_novas_mensagens = 0 
     badge_msg = f" 🔴 ({qtd_novas_mensagens})" if qtd_novas_mensagens > 0 else ""
     if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", key="k_btn_mural_avisos_nav", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
@@ -736,7 +754,6 @@ with st.sidebar:
 
     st.divider()
 
-    # 5. PERFIL, TEMA E LOGOUT
     col_p1, col_p2 = st.columns(2)
     with col_p1:
         if st.button("👤 Perfil", key="k_btn_perfil_nav", use_container_width=True, type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
@@ -763,6 +780,7 @@ with st.sidebar:
         st.session_state["usuario_autenticado"] = False
         st.session_state["usuario_dados"] = {}
         st.session_state["token_sessao_local"] = None
+        st.query_params.clear()
         st.rerun()
 
 # =========================================================================
