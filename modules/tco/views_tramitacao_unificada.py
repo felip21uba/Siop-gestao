@@ -6,10 +6,45 @@ from modules.tco.modais import abrir_modal_edicao_material
 from modules.tco.views import obter_lista_creds_dinamica, injetar_css_cards_alternados
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    """Módulo unificado de Custódia e Tramitação com cores alternadas e trava estrita de aceite."""
+    """Módulo unificado de Custódia e Tramitação com seletor de acervo (Individual vs. CREDS/Unidade), aviso de materiais recentes e cards alternados."""
     injetar_css_cards_alternados()
 
-    st.markdown(f"#### 🎒 Gestão de Custódia & Tramitação de: **{nome_militar_atual}**")
+    st.markdown(f"#### 🎒 Gestão de Custódia & Tramitação de Materiais TCO")
+
+    # =========================================================================
+    # 🔔 CAIXA DE ALERTA DO GESTOR DO CREDS (MATERIAIS RECENTES AGUARDANDO ACEITE)
+    # =========================================================================
+    materiais_pendentes_unidade = [
+        b for b in all_bens_banco 
+        if b.get("status_tramite") == "Pendente Aceite" and (
+            unidade_militar_atual.lower() in str(b.get("unidade_destinatario_pendente", "")).lower() or
+            unidade_militar_atual.lower() in str(b.get("destinatario_pendente", "")).lower() or
+            nome_militar_atual.lower() in str(b.get("destinatario_pendente", "")).lower()
+        )
+    ]
+
+    if materiais_pendentes_unidade:
+        st.warning(
+            f"🔔 **ALERTA CREDS / TRAMITAÇÃO:** Você possui **{len(materiais_pendentes_unidade)} material(is) recente(s)** "
+            f"encaminhado(s) aguardando conferência e aceite de recebimento na unidade **{unidade_militar_atual}**!"
+        )
+
+    st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
+
+    # =========================================================================
+    # 🔀 BOTÃO DE SELEÇÃO DE VISÃO DE ACERVO (INDIVIDUAL VS. UNIDADE / CREDS)
+    # =========================================================================
+    visao_acervo = st.radio(
+        "Selecione o Escopo do Acervo:",
+        [
+            f"🎒 Meus Materiais (Custódia Individual de {nome_militar_atual})", 
+            f"🏛️ Acervo da Unidade / CREDS ({unidade_militar_atual})"
+        ],
+        horizontal=True,
+        key="radio_visao_acervo_custodia"
+    )
+
+    st.markdown("<div style='margin-bottom: 12px;'></div>", unsafe_allow_html=True)
 
     # 1. LISTA COMPLETA DE DESTINATÁRIOS
     destinatarios_institucionais = [
@@ -38,13 +73,21 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         with c_f3:
             q_data = st.date_input("Data de Ingestão / Tramitação:", value=None, key="f_uni_data")
 
-    # Filtra materiais relacionados ao militar ativo
-    meus_bens = [
-        b for b in all_bens_banco 
-        if b.get("fiel_depositario_atual") == nome_militar_atual or b.get("remetente_ultimo") == nome_militar_atual
-    ]
+    # 3. APLICAÇÃO DO FILTRO CONFORME A SELEÇÃO DO ESCOPO
+    if "Meus Materiais" in visao_acervo:
+        meus_bens = [
+            b for b in all_bens_banco 
+            if b.get("fiel_depositario_atual") == nome_militar_atual or b.get("remetente_ultimo") == nome_militar_atual
+        ]
+    else:
+        meus_bens = [
+            b for b in all_bens_banco
+            if unidade_militar_atual.lower() in str(b.get("unidade_posse_atual", "")).lower() or
+               unidade_militar_atual.lower() in str(b.get("unidade_destinatario_pendente", "")).lower() or
+               unidade_militar_atual.lower() in str(b.get("destinatario_pendente", "")).lower()
+        ]
 
-    # Aplicação dos Filtros
+    # Aplicação dos Filtros Secundários (REDS, Destino e Data)
     bens_filtrados = []
     for b in meus_bens:
         if q_reds and q_reds.lower() not in str(b.get("num_reds", "")).lower():
@@ -60,7 +103,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         bens_filtrados.append(b)
 
     if not bens_filtrados:
-        st.info("Nenhum material localizado sob sua custódia com os parâmetros informados.")
+        st.info("Nenhum material localizado no escopo selecionado com os parâmetros informados.")
         return
 
     # Agrupamento por REDS
@@ -78,9 +121,9 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
         reverse=True
     )[:10]
 
-    st.caption(f"Exibindo os **{len(reds_ordenados)} último(s) REDS** ativos:")
+    st.caption(f"Exibindo **{len(reds_ordenados)} REDS(s)** no escopo de **{visao_acervo.split(' (')[0]}**:")
 
-    # 3. RENDERIZAÇÃO POR EXPANDERS DE REDS COM CARDS ALTERNADOS
+    # 4. RENDERIZAÇÃO POR EXPANDERS DE REDS COM CARDS ALTERNADOS
     for idx_r, (reds_codigo, itens_reds) in enumerate(reds_ordenados):
         primeiro_item = itens_reds[0]
         
@@ -105,7 +148,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
             ids_no_carrinho = [i["id_bem"] for bloco in st.session_state[chave_carrinho] for i in bloco["itens"]]
             itens_livres_para_envio = []
 
-            # 4. RENDERIZAÇÃO DA LISTA DOS ITENS EM CARDS ALTERNADOS
+            # RENDERIZAÇÃO DA LISTA DOS ITENS EM CARDS ALTERNADOS
             for idx_i, item_bem in enumerate(itens_reds):
                 id_bem_key = item_bem["id_bem"]
                 midias = item_bem.get("midias_anexas") or []
@@ -114,14 +157,15 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                 status_tramite = item_bem.get("status_tramite", "Em Custódia")
                 remetente_ult = item_bem.get("remetente_ultimo")
                 dest_pendente = item_bem.get("destinatario_pendente")
+                fiel_dep_atual = item_bem.get("fiel_depositario_atual")
                 dt_envio_str = item_bem.get("data_envio_tramite")
 
-                eh_pendente_aceite = (status_tramite == "Pendente Aceite" and remetente_ult == nome_militar_atual)
-                eh_ja_aceito = (status_tramite == "Em Custódia" and remetente_ult == nome_militar_atual and item_bem.get("fiel_depositario_atual") != nome_militar_atual)
+                eh_pendente_aceite = (status_tramite == "Pendente Aceite")
+                eh_ja_aceito = (status_tramite == "Em Custódia" and fiel_dep_atual != nome_militar_atual and remetente_ult == nome_militar_atual)
 
                 pode_cancelar_24h = False
                 horas_decorridas = 999
-                if eh_pendente_aceite and dt_envio_str:
+                if eh_pendente_aceite and remetente_ult == nome_militar_atual and dt_envio_str:
                     try:
                         dt_envio_obj = pd.to_datetime(dt_envio_str)
                         delta = datetime.datetime.now() - dt_envio_obj.to_pydatetime().replace(tzinfo=None)
@@ -131,19 +175,19 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                     except Exception:
                         pass
 
-                # ALTERNÂNCIA DE COR POR ITEM
+                # ALTERNÂNCIA DE COR POR ITEM (AZUL VS BEGE/DOURADO)
                 e_marrom = (idx_i % 2 != 0)
                 classe_card = "card-brown" if e_marrom else "card-blue"
 
                 if eh_pendente_aceite:
-                    status_badge = f"⏳ <b>Aguardando Aceite:</b> {dest_pendente}"
+                    status_badge = f"⏳ <b>Aguardando Aceite de:</b> {dest_pendente}"
                 elif eh_ja_aceito:
-                    status_badge = f"🔒 <b>Aceito por:</b> {item_bem.get('fiel_depositario_atual')}"
+                    status_badge = f"🔒 <b>Aceito por:</b> {fiel_dep_atual} ({item_bem.get('unidade_posse_atual')})"
                 elif id_bem_key in ids_no_carrinho:
                     status_badge = f"📌 <b>Selecionado para Envio</b>"
                 else:
                     itens_livres_para_envio.append(item_bem)
-                    status_badge = f"🎒 <b>Em Custódia</b>"
+                    status_badge = f"🎒 <b>Em Custódia de:</b> {fiel_dep_atual}"
 
                 card_html = f"""
                 <div class="{classe_card}">
@@ -155,50 +199,81 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                 
                 st.markdown(card_html, unsafe_allow_html=True)
 
-                c_act_col1, c_act_col2 = st.columns([4, 1])
+                c_act_col1, c_act_col2 = st.columns([3.8, 1.2])
                 with c_act_col2:
-                    if eh_pendente_aceite:
-                        if pode_cancelar_24h:
-                            if st.button("↩️ Cancelar", key=f"btn_canc_24h_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
-                                now_iso = datetime.datetime.now().isoformat()
-                                upd_cancelar = {
-                                    "status_tramite": "Em Custódia",
-                                    "fiel_depositario_atual": nome_militar_atual,
-                                    "unidade_posse_atual": unidade_militar_atual,
-                                    "destinatario_pendente": None,
-                                    "unidade_destinatario_pendente": None,
-                                    "data_envio_tramite": None
-                                }
-                                if atualizar_material_supabase(id_bem_key, upd_cancelar):
-                                    registrar_log_supabase({
-                                        "data_hora": now_iso,
-                                        "num_reds": reds_codigo,
-                                        "bem_id": id_bem_key,
-                                        "acao": "CANCELAMENTO DE TRAMITAÇÃO (24H)",
-                                        "origem": nome_militar_atual,
-                                        "unidade_origem": unidade_militar_atual,
-                                        "destino": nome_militar_atual,
-                                        "unidade_destino": unidade_militar_atual,
-                                        "detalhe": f"Envio cancelado antes do aceite pelo remetente."
-                                    })
-                                    st.toast("Envio cancelado com sucesso!", icon="✅")
-                                    st.rerun()
-                    elif not eh_ja_aceito:
-                        if st.button("✏️ Editar", key=f"btn_ed_uni_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
+                    # BOTÃO DE ACEITAR MATERIAL SE FOR DESTINATÁRIO PENDENTE
+                    if eh_pendente_aceite and (
+                        nome_militar_atual.lower() in str(dest_pendente).lower() or
+                        unidade_militar_atual.lower() in str(dest_pendente).lower() or
+                        unidade_militar_atual.lower() in str(item_bem.get("unidade_destinatario_pendente", "")).lower()
+                    ):
+                        if st.button("✅ Aceitar & Incorporar", key=f"btn_aceitar_{id_bem_key}_{idx_r}_{idx_i}", type="primary", use_container_width=True):
+                            now_iso = datetime.datetime.now().isoformat()
+                            upd_aceite = {
+                                "status_tramite": "Em Custódia",
+                                "fiel_depositario_atual": nome_militar_atual,
+                                "unidade_posse_atual": unidade_militar_atual,
+                                "destinatario_pendente": None,
+                                "unidade_destinatario_pendente": None,
+                                "data_posse_atual": now_iso
+                            }
+                            if atualizar_material_supabase(id_bem_key, upd_aceite):
+                                registrar_log_supabase({
+                                    "data_hora": now_iso,
+                                    "num_reds": reds_codigo,
+                                    "bem_id": id_bem_target if 'id_bem_target' in locals() else id_bem_key,
+                                    "web_origem": "SIOP_TCO",
+                                    "acao": "ACEITE E INCORPORAÇÃO DE CUSTÓDIA",
+                                    "origem": remetente_ult,
+                                    "unidade_origem": item_bem.get("unidade_remetente", "N/I"),
+                                    "destino": nome_militar_atual,
+                                    "unidade_destino": unidade_militar_atual,
+                                    "detalhe": f"Material '{item_bem.get('descricao')}' aceito e incorporado à custódia de {nome_militar_atual} ({unidade_militar_atual})."
+                                })
+                                st.toast("Material aceito e incorporado com sucesso!", icon="✅")
+                                st.rerun()
+
+                    elif eh_pendente_aceite and pode_cancelar_24h and remetente_ult == nome_militar_atual:
+                        if st.button("↩️ Cancelar Envio", key=f"btn_canc_24h_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
+                            now_iso = datetime.datetime.now().isoformat()
+                            upd_cancelar = {
+                                "status_tramite": "Em Custódia",
+                                "fiel_depositario_atual": nome_militar_atual,
+                                "unidade_posse_atual": unidade_militar_atual,
+                                "destinatario_pendente": None,
+                                "unidade_destinatario_pendente": None,
+                                "data_envio_tramite": None
+                            }
+                            if atualizar_material_supabase(id_bem_key, upd_cancelar):
+                                registrar_log_supabase({
+                                    "data_hora": now_iso,
+                                    "num_reds": reds_codigo,
+                                    "bem_id": id_bem_key,
+                                    "acao": "CANCELAMENTO DE TRAMITAÇÃO (24H)",
+                                    "origem": nome_militar_atual,
+                                    "unidade_origem": unidade_militar_atual,
+                                    "destino": nome_militar_atual,
+                                    "unidade_destino": unidade_militar_atual,
+                                    "detalhe": f"Envio cancelado antes do aceite pelo remetente."
+                                })
+                                st.toast("Envio cancelado com sucesso!", icon="✅")
+                                st.rerun()
+                    elif not eh_ja_aceito and fiel_dep_atual == nome_militar_atual:
+                        if st.button("✏️ Editar Material", key=f"btn_ed_uni_{id_bem_key}_{idx_r}_{idx_i}", use_container_width=True):
                             abrir_modal_edicao_material(item_bem, nome_militar_atual, unidade_militar_atual)
 
                 st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
 
-            # 5. QUADRO DE ENCAMINHAMENTO
+            # QUADRO DE ENCAMINHAMENTO
             if itens_livres_para_envio:
                 st.markdown("---")
-                st.markdown("##### 🏛️ Encaminhar Materiais Disponíveis:")
+                st.markdown("##### 🏛️ Encaminhar / Tramitar Materiais Disponíveis:")
 
                 col_dest1, col_dest2 = st.columns([2, 2.5])
 
                 with col_dest1:
                     destinatario_selecionado = st.selectbox(
-                        "Selecione o Destinatário:",
+                        "Selecione o Destinatário Final ou Unidade CREDS:",
                         options=opcoes_destinatarios_todas,
                         key=f"sb_dest_sel_{reds_codigo}_{idx_r}"
                     )
@@ -232,7 +307,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                             st.toast("Materiais adicionados ao Quadro de Envio!", icon="✅")
                             st.rerun()
 
-            # 6. CONFIRMAÇÃO DA TRAMITAÇÃO
+            # CONFIRMAÇÃO DA TRAMITAÇÃO
             if st.session_state[chave_carrinho]:
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.markdown("##### 📋 Quadro Resumo de Transferência deste REDS:")
@@ -254,7 +329,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_at
                 st.markdown("<br>", unsafe_allow_html=True)
                 obs_tram_reds = st.text_input(
                     "Observação Geral da Tramitação deste REDS:", 
-                    placeholder="Ex: Encaminhado para o depósito CREDS TCO da Cia", 
+                    placeholder="Ex: Encaminhado para o depósito CREDS TCO da Cia / Destino Final", 
                     key=f"obs_uni_{reds_codigo}_{idx_r}"
                 )
 
