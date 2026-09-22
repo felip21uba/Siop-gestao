@@ -63,19 +63,27 @@ def gerar_secret_mfa() -> str:
     return pyotp.random_base32()
 
 def buscar_usuario_para_login(usuario_input: str):
-    """Consulta o registro do usuário apenas nas colunas válidas da tabela usuarios."""
+    """
+    Consulta flexível ignorando zeros à esquerda e buscando por login, matrícula ou e-mail.
+    """
     if not supabase or not usuario_input:
         return None
     
-    u_clean = str(usuario_input).strip()
+    u_clean = str(usuario_input).strip().upper()
+    u_sem_zero = u_clean.lstrip("0")
+    u_com_zero = f"0{u_sem_zero}"
+
     try:
         res = supabase.table("usuarios").select("*").or_(
-            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},email_recuperacao.eq.{u_clean}"
+            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},usuario_login.eq.{u_sem_zero},usuario_login.eq.{u_com_zero},email_recuperacao.eq.{u_clean.lower()}"
         ).execute()
+        
         if res and res.data and len(res.data) > 0:
             return res.data[0]
+            
     except Exception as e:
         print(f"Erro ao buscar usuário para login: {e}")
+        
     return None
 
 def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
@@ -87,7 +95,7 @@ def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
         if "senha" in payload and payload["senha"] and not payload.get("senha_hash"):
             payload["senha_hash"] = gerar_hash_senha(payload["senha"])
 
-        supabase.table("usuarios").upsert(payload).execute()
+        supabase.table("usuarios").upsert(payload, on_conflict="usuario_login").execute()
         st.cache_data.clear()
         return True
     except Exception as e:
@@ -95,17 +103,26 @@ def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
         return False
 
 def atualizar_senha_usuario(usuario_id: str, nova_senha: str) -> bool:
-    """Atualiza a senha e o hash de um usuário específico."""
+    """
+    Atualiza a senha, reativa a conta e zera o contador de tentativas erradas.
+    Preserva a chave MFA/Authy intacta.
+    """
     if not supabase or not usuario_id or not nova_senha:
         return False
     try:
-        u_clean = str(usuario_id).strip()
+        u_clean = str(usuario_id).strip().upper()
+        u_sem_zero = u_clean.lstrip("0")
+        u_com_zero = f"0{u_sem_zero}"
         hash_nova = gerar_hash_senha(nova_senha)
+
         supabase.table("usuarios").update({
             "senha": nova_senha,
             "senha_hash": hash_nova,
-            "ativo": True
-        }).or_(f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},id.eq.{u_clean}").execute()
+            "ativo": True,
+            "tentativas_erradas": 0,
+            "token_sessao_ativa": None
+        }).or_(f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},usuario_login.eq.{u_sem_zero},usuario_login.eq.{u_com_zero}").execute()
+
         st.cache_data.clear()
         return True
     except Exception as e:
