@@ -7,7 +7,7 @@ from core.database import supabase, carregar_militares_supabase
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # Limite de 10MB
 
 def processar_txt_ferias_pmmg(file_bytes):
-    """Lê o arquivo TXT/CSV oficial do SIRH/PMMG separado por ponto e vírgula extraindo lotação granular."""
+    """Lê o arquivo TXT/CSV oficial do SIRH/PMMG separado por ponto e vírgula extraindo lotação/fração detalhada."""
     try:
         try:
             df = pd.read_csv(file_bytes, sep=';', dtype=str, encoding='latin1')
@@ -29,7 +29,7 @@ def processar_txt_ferias_pmmg(file_bytes):
             posto = str(row.get("POSTO", "")).strip()
             nome = str(row.get("NOME SERVIDOR", "")).strip()
             
-            # Captura granular da Lotação (ex: 2 GP/3 PEL/35 CIA PM/21 BPM/4 RPM)
+            # Captura a Fração/Lotação Detalhada (ex: 2 GP/3 PEL/35 CIA PM/21 BPM/4 RPM)
             lotacao_detalhada = str(
                 row.get("NOME UNIDADE", row.get("UNIDADE", row.get("UNID PRINCIPAL", "N/I")))
             ).strip().upper()
@@ -141,7 +141,7 @@ def salvar_ferias_supabase_lote(lista_registros):
     return False, "Banco Supabase indisponível."
 
 def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", cidade_sel="Todas", filtro_dias="Todos"):
-    """Consulta as férias gravadas no Supabase com suporte a filtros avançados (Lotação detalhada, Cidade e Qtd de Dias)."""
+    """Consulta as férias no Supabase filtrando por Fração/Lotação, Cidade e Duração das Férias."""
     if not supabase: 
         return []
     try:
@@ -170,17 +170,18 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
             num_p = str(d.get("num_policia", "")).strip().upper()
             m_cadastro = mapa_mils.get(num_p, {})
             
-            # Lotação detalhada vinda do cadastro do militar ou do próprio registro do SIRH
             d["lotacao"] = str(m_cadastro.get("unidade") or d.get("unidade") or "N/I").strip().upper()
             d["cidade"] = str(m_cadastro.get("cidade") or "N/I").strip().upper()
 
-            # Filtros dinâmicos
+            # Filtro por Fração / Lotação Detalhada
             if lotacao_sel != "Todas" and lotacao_sel not in d["lotacao"]:
                 continue
+            
+            # Filtro por Cidade
             if cidade_sel != "Todas" and cidade_sel not in d["cidade"]:
                 continue
             
-            # Filtro por Duração das Férias
+            # Filtro por Duração de Férias (10, 15 ou 20+ dias)
             if filtro_dias != "Todos":
                 qtd_d = int(d.get("dias_qtd") or 0)
                 if filtro_dias == "10 dias" and qtd_d != 10:
@@ -190,6 +191,7 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
                 elif filtro_dias == "20+ dias" and qtd_d < 20:
                     continue
 
+            # Filtro por Busca Textual
             if busca:
                 termo_b = busca.upper()
                 if not (
@@ -207,7 +209,7 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
         return []
 
 def renderizar_modulo_ferias_anual():
-    """Renderiza a interface do Passo 8 com filtros detalhados de Lotação, Cidade e Duração de Férias."""
+    """Renderiza a interface do Passo 8 com seletores de Lotação Detalhada, Cidade e Duração das Férias."""
     with st.expander("📌 PASSO 8: Mapeamento Anual de Férias & Indisponibilidade", expanded=True):
         st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados para alertar e injetar na escala mensal.")
 
@@ -221,7 +223,7 @@ def renderizar_modulo_ferias_anual():
                 arq_upload = st.file_uploader(
                     "Selecione o arquivo do SIRH (.txt), planilha (.csv) ou publicação (.pdf):", 
                     type=["txt", "csv", "pdf"], 
-                    key="uploader_ferias_anual_unificado_p8"
+                    key="uploader_ferias_anual_unificado_p8_v5"
                 )
                 
                 if arq_upload is not None:
@@ -281,30 +283,46 @@ def renderizar_modulo_ferias_anual():
                     else:
                         st.error(msg)
 
-        # SUB-EXPANDER DE CONSULTA COM FILTROS DE LOTAÇÃO GRANULAR, CIDADE E DURAÇÃO
+        # SUB-EXPANDER DE CONSULTA E GESTÃO COM PAINEL DE FILTROS ORGANIZADO EM 2 LINHAS
         with st.expander("➕ 🔍 Consulta e Gestão do Mapeamento Anual de Férias", expanded=True):
             mils_cadastrados = carregar_militares_supabase() or []
             
-            # Extração de Lotações Detalhadas (ex: 2 GP/3 PEL/35 CIA PM/21 BPM/4 RPM)
-            opcoes_lotacao = ["Todas"] + sorted(list(set([str(m.get("unidade", "")).strip().upper() for m in mils_cadastrados if m.get("unidade")])))
-            opcoes_cidade = ["Todas"] + sorted(list(set([str(m.get("cidade", "")).strip().upper() for m in mils_cadastrados if m.get("cidade") and str(m.get("cidade")).strip().upper() != "N/I"])))
-
-            c_f1, c_f2, c_f3, c_f4, c_f5, c_f6 = st.columns([1, 1.2, 2.2, 1.8, 1.3, 2])
+            # Puxa todas as opções dinâmicas de Fração/Lotação e Cidades do cadastro de militares
+            opcoes_lotacao = ["Todas"] + sorted(list(set([
+                str(m.get("unidade", "")).strip().upper() 
+                for m in mils_cadastrados 
+                if m.get("unidade") and str(m.get("unidade")).strip().upper() not in ["NONE", "NAN", "N/I", ""]
+            ])))
             
+            opcoes_cidade = ["Todas"] + sorted(list(set([
+                str(m.get("cidade", "")).strip().upper() 
+                for m in mils_cadastrados 
+                if m.get("cidade") and str(m.get("cidade")).strip().upper() not in ["NONE", "NAN", "N/I", ""]
+            ])))
+
+            st.markdown("##### 🎯 Painel de Filtros do Mapeamento de Férias:")
+
+            # LINHA 1: PERÍODO E DURAÇÃO
+            c_f1, c_f2, c_f3 = st.columns([1.5, 2, 2])
             with c_f1:
-                ano_sel = st.number_input("Ano:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year))
+                ano_sel = st.number_input("Ano da Escala:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year))
             with c_f2:
                 meses_nomes = ["Todos", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-                mes_filtro_nome = st.selectbox("Mês:", meses_nomes)
+                mes_filtro_nome = st.selectbox("Mês de Referência:", meses_nomes)
                 mes_num = meses_nomes.index(mes_filtro_nome)
             with c_f3:
-                lotacao_sel = st.selectbox("Lotação / Fração Detalhada:", opcoes_lotacao)
+                filtro_dias = st.selectbox("Duração das Férias:", ["Todos", "10 dias", "15 dias", "20+ dias"])
+
+            # LINHA 2: FRAÇÃO / LOTAÇÃO DETALHADA E BUSCA
+            c_f4, c_f5, c_f6 = st.columns([2.5, 2, 2.5])
             with c_f4:
-                cidade_sel = st.selectbox("Cidade / Fração:", opcoes_cidade)
+                lotacao_sel = st.selectbox("Lotação / Fração Detalhada:", opcoes_lotacao)
             with c_f5:
-                filtro_dias = st.selectbox("Duração Férias:", ["Todos", "10 dias", "15 dias", "20+ dias"])
+                cidade_sel = st.selectbox("Cidade / Fração:", opcoes_cidade)
             with c_f6:
                 busca_militar = st.text_input("Buscar Militar / Nº Polícia:", placeholder="Digite número ou nome...").strip().upper()
+
+            st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
             registros_banco = carregar_ferias_supabase(
                 ano=ano_sel, 

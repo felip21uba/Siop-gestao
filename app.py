@@ -1,5 +1,6 @@
 import os
 import sys
+import urllib.parse
 
 # 🌐 REGISTRO DO DIRETÓRIO RAIZ NO SYS.PATH
 DIRETORIO_RAIZ = os.path.abspath(os.path.dirname(__file__))
@@ -10,7 +11,6 @@ import datetime
 from zoneinfo import ZoneInfo
 import hashlib
 import random
-import urllib.parse
 import uuid
 import html
 import re
@@ -538,9 +538,15 @@ if not st.session_state.get("autenticado", False):
                                     st.session_state["mfa_setup_mode"] = True
                                 st.rerun()
 
+            # 🚀 BOTÃO DE DISPARO FORMATADO COM MAILTO DINÂMICO
+            email_suporte = "felip21uba@gmail.com"
+            assunto_suporte = "Reporte de Defeito / Suporte - SIOP PMMG"
+            corpo_suporte = f"Militar/Operador: {usuario_input if 'usuario_input' in locals() and usuario_input else 'Operador N/I'}\nDescreva o defeito ou solicitação aqui:\n"
+            url_mailto_suporte = f"mailto:{email_suporte}?subject={urllib.parse.quote(assunto_suporte)}&body={urllib.parse.quote(corpo_suporte)}"
+
             col_b1, col_b2 = st.columns([1, 1])
             with col_b1:
-                st.link_button("🐛 Reportar Defeito", "mailto:felip21uba@gmail.com?subject=Reporte%20de%20Defeito%20-%20SIOP", use_container_width=True)
+                st.link_button("🐛 Reportar Defeito", url_mailto_suporte, use_container_width=True)
             with col_b2:
                 if st.button("❓ Esqueci a Senha / Desbloquear Conta", use_container_width=True):
                     st.session_state["recuperar_senha_modo"] = True
