@@ -324,7 +324,7 @@ if not st.session_state.get("autenticado", False):
                                 u_sem_zero = u_clean.lstrip("0")
                                 u_com_zero = f"0{u_sem_zero}"
 
-                                # 1. Atualização e Desbloqueio de todas as variações no Supabase
+                                # 1. Atualização e Desbloqueio no Supabase
                                 if supabase:
                                     try:
                                         supabase.table("usuarios").update({
@@ -544,7 +544,7 @@ if not st.session_state.get("autenticado", False):
         # FLUXO 4: TELA PRINCIPAL DE LOGIN
         else:
             with st.form("form_login_principal"):
-                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 0000000") or "").strip()
+                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1337468") or "").strip()
                 senha_input = (st.text_input("Senha de Acesso:", type="password", placeholder="••••••••") or "").strip()
                 
                 btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", use_container_width=True)
@@ -555,13 +555,14 @@ if not st.session_state.get("autenticado", False):
                     else:
                         u_clean = str(usuario_input).strip().upper()
                         u_sem_zero = u_clean.lstrip("0")
-                        usuario_encontrado = buscar_usuario_para_login(usuario_input)
+                        
+                        # Busca flexível ignorando zeros à esquerda
+                        usuario_encontrado = buscar_usuario_para_login(u_clean) or buscar_usuario_para_login(u_sem_zero)
 
                         if not usuario_encontrado:
-                            st.error("❌ Usuário não localizado no sistema.")
-                        # Verifica se o usuário está inativo no banco de dados
+                            st.error(f"❌ Usuário '{usuario_input}' não localizado no sistema.")
                         elif not usuario_encontrado.get("ativo", True):
-                            st.error("🔒 **Conta Bloqueada.** Utilize a redefinição de senha via e-mail abaixo para liberar seu acesso.")
+                            st.error("🔒 Conta Bloqueada. Utilize a redefinição de senha via e-mail abaixo.")
                         else:
                             senha_db_texto = usuario_encontrado.get("senha")
                             senha_db_hash = usuario_encontrado.get("senha_hash")
@@ -573,55 +574,44 @@ if not st.session_state.get("autenticado", False):
                                 if erros_atuais >= 3:
                                     st.session_state["bloqueados_temp"].add(usuario_input)
                                     st.session_state["bloqueados_temp"].add(u_clean)
-                                    st.session_state["bloqueados_temp"].add(u_sem_zero)
                                     if supabase:
                                         atualizar_usuario_supabase(u_clean, {"ativo": False})
-                                    st.error("🚨 **Senha Incorreta! Tentativa 3 de 3.** Sua conta foi BLOQUEADA por segurança! Clique em 'Esqueci a Senha' abaixo para redefinir via e-mail.")
+                                    st.error("🚨 Senha Incorreta! Tentativa 3 de 3. Sua conta foi BLOQUEADA.")
                                 else:
                                     restantes = 3 - erros_atuais
-                                    st.error(f"🚨 **Senha Incorreta!** Tentativa **{erros_atuais} de 3**. Você tem mais **{restantes}** tentativa(s) antes do bloqueio.")
+                                    st.error(f"🚨 Senha Incorreta! Tentativa {erros_atuais} de 3. Você tem mais {restantes} tentativa(s).")
                             else:
-                                # Limpa os bloqueios na sessão local
-                                for k_limp in [usuario_input, u_clean, u_sem_zero]:
-                                    st.session_state["bloqueados_temp"].discard(k_limp)
-                                    if k_limp in st.session_state["tentativas_login"]:
-                                        st.session_state["tentativas_login"][k_limp] = 0
-
+                                # Sucesso no Login
+                                st.session_state["tentativas_login"][usuario_input] = 0
+                                st.session_state["bloqueados_temp"].discard(usuario_input)
+                                st.session_state["bloqueados_temp"].discard(u_clean)
                                 st.session_state["temp_user_data"] = usuario_encontrado
 
-                                if not usuario_encontrado.get("mfa_habilitado", False):
-                                    novo_token = str(uuid.uuid4())
-                                    num_pol_str = str(usuario_encontrado.get("usuario_login") or usuario_encontrado.get("usuario") or "").strip().upper()
+                                novo_token = str(uuid.uuid4())
+                                num_pol_str = str(usuario_encontrado.get("usuario_login") or usuario_encontrado.get("usuario") or "").strip().upper()
 
-                                    if supabase and num_pol_str:
-                                        try:
-                                            supabase.table("usuarios").update({"token_sessao_ativa": novo_token}).eq("usuario_login", num_pol_str).execute()
-                                        except Exception:
-                                            atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
+                                if supabase and num_pol_str:
+                                    try:
+                                        supabase.table("usuarios").update({"token_sessao_ativa": novo_token}).eq("usuario_login", num_pol_str).execute()
+                                    except Exception:
+                                        atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
 
-                                    usuario_encontrado["token_sessao_ativa"] = novo_token
-                                    st.session_state["token_sessao_local"] = novo_token
-                                    st.session_state["usuario_dados"] = usuario_encontrado
-                                    st.session_state["autenticado"] = True
-                                    st.session_state["usuario_autenticado"] = True
-                                    st.session_state["ultima_atividade_time"] = datetime.datetime.now()
-                                    st.query_params["session_token"] = novo_token
-                                    
-                                    registrar_audit_log(
-                                        operador_pm=num_pol_str,
-                                        alvo_pm=None,
-                                        tipo_acao="LOGIN_SUCESSO",
-                                        descricao="Login realizado com sucesso."
-                                    )
-                                    st.toast(f"Acesso liberado! Bem-vindo, {usuario_encontrado.get('nome_guerra')}!", icon="🟢")
-                                    st.rerun()
-
-                                elif usuario_encontrado.get("mfa_habilitado", False) and usuario_encontrado.get("mfa_secret"):
-                                    st.session_state["mfa_pendente"] = True
-                                    st.rerun()
-                                else:
-                                    st.session_state["mfa_setup_mode"] = True
-                                    st.rerun()
+                                usuario_encontrado["token_sessao_ativa"] = novo_token
+                                st.session_state["token_sessao_local"] = novo_token
+                                st.session_state["usuario_dados"] = usuario_encontrado
+                                st.session_state["autenticado"] = True
+                                st.session_state["usuario_autenticado"] = True
+                                st.session_state["ultima_atividade_time"] = datetime.datetime.now()
+                                st.query_params["session_token"] = novo_token
+                                
+                                registrar_audit_log(
+                                    operador_pm=num_pol_str,
+                                    alvo_pm=None,
+                                    tipo_acao="LOGIN_SUCESSO",
+                                    descricao="Login realizado com sucesso no ambiente dev."
+                                )
+                                st.toast(f"Acesso liberado! Bem-vindo, {usuario_encontrado.get('nome_guerra')}!", icon="🟢")
+                                st.rerun()
 
             # 🚀 BOTÃO DE DISPARO FORMATADO COM MAILTO DINÂMICO
             email_suporte = "felip21uba@gmail.com"

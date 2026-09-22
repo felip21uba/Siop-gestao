@@ -64,7 +64,7 @@ def gerar_secret_mfa() -> str:
 
 def buscar_usuario_para_login(usuario_input: str):
     """
-    Consulta o registro do usuário no Supabase com tolerância a zeros à esquerda.
+    Consulta o registro do usuário no Supabase com tolerância total a zeros à esquerda e e-mail.
     """
     if not supabase or not usuario_input:
         return None
@@ -74,7 +74,6 @@ def buscar_usuario_para_login(usuario_input: str):
     u_com_zero = f"0{u_sem_zero}"
 
     try:
-        # Busca no Supabase testando as variações com e sem zero
         res = supabase.table("usuarios").select("*").or_(
             f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},usuario_login.eq.{u_sem_zero},usuario_login.eq.{u_com_zero},email_recuperacao.eq.{u_clean}"
         ).execute()
@@ -104,7 +103,7 @@ def salvar_usuario_universal_supabase(dados_usuario: dict) -> bool:
         return False
 
 def atualizar_senha_usuario(usuario_id: str, nova_senha: str) -> bool:
-    """Atualiza a senha e o hash de um usuário específico."""
+    """Atualiza a senha e o hash de um usuário específico e desbloqueia a conta."""
     if not supabase or not usuario_id or not nova_senha:
         return False
     try:
@@ -116,7 +115,8 @@ def atualizar_senha_usuario(usuario_id: str, nova_senha: str) -> bool:
         supabase.table("usuarios").update({
             "senha": nova_senha,
             "senha_hash": hash_nova,
-            "ativo": True
+            "ativo": True,
+            "tentativas_erradas": 0
         }).or_(f"usuario_login.eq.{u_clean},usuario.eq.{u_clean},usuario_login.eq.{u_sem_zero},usuario_login.eq.{u_com_zero}").execute()
         st.cache_data.clear()
         return True
