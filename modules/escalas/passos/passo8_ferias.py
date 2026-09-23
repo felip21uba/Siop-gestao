@@ -7,11 +7,11 @@ from core.database import supabase, carregar_militares_supabase
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 
 # ==============================================================================
-# 1. FUNÇÕES DE TRATAMENTO E HIGIENIZAÇÃO DE DADOS
+# 1. HIGIENIZAÇÃO E CHAVES ÚNICAS (ANTI-DUPLICIDADE)
 # ==============================================================================
 
 def extrair_apenas_digitos(valor):
-    """Extrai estritamente os dígitos da matrícula para garantir casamento único."""
+    """Extrai estritamente os dígitos da matrícula para normalização."""
     if not valor:
         return ""
     return re.sub(r'\D', '', str(valor)).lstrip("0")
@@ -24,26 +24,21 @@ def extrair_dias_inteiro(valor):
     except (ValueError, TypeError):
         return 0
 
-# ==============================================================================
-# 2. PARSING E IMPORTAÇÃO (COM DESDUPLICAÇÃO NA ORIGEM)
-# ==============================================================================
-
 def normalizar_texto(valor):
-    """Normaliza texto para comparação, removendo espaços e diferenças de caixa."""
+    """Normaliza strings para comparação unificada."""
     if valor is None:
         return ""
-    return re.sub(r"\\s+", " ", str(valor).strip()).upper()
+    return re.sub(r"\s+", " ", str(valor).strip()).upper()
 
 def chave_ferias_unica(reg):
-    """Gera uma chave estável para impedir o mesmo lançamento de férias mais de uma vez."""
+    """Gera chave estável para impedir registros repetidos."""
     numero = extrair_apenas_digitos(reg.get("num_policia", ""))
-    nome = normalizar_texto(reg.get("nome_servidor", reg.get("nome_militar", "")))
     dt_i = normalizar_texto(reg.get("dt_inicio", ""))
     dt_f = normalizar_texto(reg.get("dt_fim", ""))
-    return f"{numero}|{nome}|{dt_i}|{dt_f}"
+    return f"{numero}|{dt_i}|{dt_f}"
 
 def deduplicar_registros_ferias(registros):
-    """Remove duplicidades exatas mantendo somente a primeira ocorrência."""
+    """Remove ocorrências duplicadas mantendo apenas a primeira."""
     unicos = []
     chaves = set()
     for reg in registros or []:
@@ -54,41 +49,12 @@ def deduplicar_registros_ferias(registros):
         unicos.append(reg)
     return unicos
 
-def dias_ferias_no_mes(reg, ano, mes):
-    """Calcula quantos dias do período de férias caem dentro do mês consultado."""
-    try:
-        dt_i_raw = str(reg.get("dt_inicio", ""))
-        dt_f_raw = str(reg.get("dt_fim", ""))
-        formatos = ("%d/%m/%Y", "%Y-%m-%d")
-        dt_i = dt_f = None
-        for fmt in formatos:
-            try:
-                dt_i = datetime.datetime.strptime(dt_i_raw, fmt).date()
-                break
-            except Exception:
-                pass
-        for fmt in formatos:
-            try:
-                dt_f = datetime.datetime.strptime(dt_f_raw, fmt).date()
-                break
-            except Exception:
-                pass
-        if not dt_i or not dt_f:
-            return 0
-
-        primeiro = datetime.date(int(ano), int(mes), 1)
-        ultimo = datetime.date(
-            int(ano), int(mes),
-            __import__("calendar").monthrange(int(ano), int(mes))[1]
-        )
-        inicio = max(dt_i, primeiro)
-        fim = min(dt_f, ultimo)
-        return max(0, (fim - inicio).days + 1)
-    except Exception:
-        return 0
+# ==============================================================================
+# 2. PARSING DE ARQUIVOS (SIRH TXT/CSV E PDF)
+# ==============================================================================
 
 def processar_txt_sirh(file_bytes):
-    """Lê TXT/CSV do SIRH, eliminando linhas duplicadas do mesmo militar/período."""
+    """Lê TXT/CSV do SIRH eliminando duplicidades na origem."""
     try:
         try:
             df = pd.read_csv(file_bytes, sep=';', dtype=str, encoding='latin1')
@@ -98,7 +64,6 @@ def processar_txt_sirh(file_bytes):
 
         df.columns = [str(c).strip().upper() for c in df.columns]
         lista_ferias = []
-        chaves_unicas = set()
 
         for _, row in df.iterrows():
             num_pm = str(row.get("NUMERO", "")).strip()
@@ -112,22 +77,13 @@ def processar_txt_sirh(file_bytes):
 
             posto = str(row.get("POSTO", "")).strip()
             nome = str(row.get("NOME SERVIDOR", "")).strip()
-            
-            unidade = str(
-                row.get("NOME UNIDADE", row.get("UNIDADE", row.get("UNID PRINCIPAL", "N/I")))
-            ).strip().upper()
+            unidade = str(row.get("NOME UNIDADE", row.get("UNIDADE", row.get("UNID PRINCIPAL", "N/I")))).strip().upper()
             
             dt_inicio = str(row.get("DT INICIO FERIAS", "")).strip()
             dt_fim = str(row.get("DT TERMINO FERIAS", "")).strip()
             dias_qtd = extrair_dias_inteiro(row.get("NUM DIAS", 0))
 
             if dt_inicio and dt_fim and num_policia_digitos:
-                # TRAVA RÍGIDA ANTI-DUPLICIDADE
-                chave_item = f"{num_policia_digitos}_{dt_inicio}_{dt_fim}"
-                if chave_item in chaves_unicas:
-                    continue
-                chaves_unicas.add(chave_item)
-
                 lista_ferias.append({
                     "num_policia": num_policia_digitos,
                     "posto_grad": posto,
@@ -146,9 +102,8 @@ def processar_txt_sirh(file_bytes):
         return []
 
 def extrair_texto_ferias(texto_bruto):
-    """Extrai férias a partir de texto copiado ou documentos PDF."""
+    """Extrai férias a partir de notas, textos copiados ou PDFs."""
     lista_ferias = []
-    chaves_unicas = set()
     linhas = str(texto_bruto).split("\n")
 
     for linha in linhas:
@@ -181,11 +136,6 @@ def extrair_texto_ferias(texto_bruto):
                 pass
 
         if dt_i and dt_f and num_pol_digitos:
-            chave_item = f"{num_pol_digitos}_{dt_i}_{dt_f}"
-            if chave_item in chaves_unicas:
-                continue
-            chaves_unicas.add(chave_item)
-
             lista_ferias.append({
                 "num_policia": num_pol_digitos,
                 "nome_militar": l_clean[:60],
@@ -197,34 +147,33 @@ def extrair_texto_ferias(texto_bruto):
                 "mes": dt_i.month,
                 "nota_publicacao": l_clean
             })
+
     return deduplicar_registros_ferias(lista_ferias)
 
 # ==============================================================================
-# 3. INTERAÇÃO COM BANCO DE DADOS (SUPABASE)
+# 3. INTERAÇÃO BANCO DE DADOS (SUPABASE)
 # ==============================================================================
 
 def salvar_ferias_supabase_lote(lista_dados):
-    """Insere o lote no Supabase sem repetir o mesmo militar/período."""
+    """Salva no Supabase garantindo que nenhum item duplicado seja inserido."""
     if not supabase or not lista_dados:
         return False, "Dados ou conexão indisponíveis."
     try:
         lista_dados = deduplicar_registros_ferias(lista_dados)
 
-        # Também evita inserir novamente registros que já estão no banco.
         existentes = supabase.table("plano_ferias_anual").select(
-            "num_policia,nome_servidor,nome_militar,dt_inicio,dt_fim"
+            "num_policia,dt_inicio,dt_fim"
         ).execute().data or []
 
         chaves_existentes = {chave_ferias_unica(r) for r in existentes}
         payload = []
-        chaves_lote = set()
 
         for reg in lista_dados:
-            if chave_ferias_unica(reg) in chaves_existentes:
+            chave_reg = chave_ferias_unica(reg)
+            if chave_reg in chaves_existentes:
                 continue
-            if chave_ferias_unica(reg) in chaves_lote:
-                continue
-            chaves_lote.add(chave_ferias_unica(reg))
+            chaves_existentes.add(chave_reg)
+
             item = reg.copy()
             try:
                 dt_i_obj = datetime.datetime.strptime(reg["dt_inicio"], "%d/%m/%Y")
@@ -239,14 +188,17 @@ def salvar_ferias_supabase_lote(lista_dados):
 
             payload.append(item)
 
+        if not payload:
+            return True, "⚠️ Todos os registros já estavam gravados no banco de dados."
+
         supabase.table("plano_ferias_anual").insert(payload).execute()
         st.cache_data.clear()
-        return True, f"✅ {len(payload)} registro(s) salvos no banco com sucesso!"
+        return True, f"✅ {len(payload)} registro(s) salvos no banco de dados com sucesso!"
     except Exception as e:
         return False, f"Erro ao gravar no Supabase: {e}"
 
 def limpar_todas_ferias_supabase(ano_alvo=None):
-    """Remove os registros de férias do ano selecionado ou todos."""
+    """Limpa a tabela de férias no Supabase."""
     if not supabase:
         return False, "Supabase indisponível."
     try:
@@ -261,8 +213,8 @@ def limpar_todas_ferias_supabase(ano_alvo=None):
     except Exception as e:
         return False, f"Erro ao apagar banco: {e}"
 
-def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", cidade_sel="Todas", filtro_dias="Todos"):
-    """Consulta as férias agrupando estritamente por militar/período para eliminar nomes repetidos."""
+def carregar_ferias_supabase(ano=None, mes=None, busca="", filtro_dias="Todos"):
+    """Consulta férias com desduplicação rígida em memória por número e datas."""
     if not supabase:
         return []
     try:
@@ -295,18 +247,13 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
             dt_i_raw = str(row.get("dt_inicio", ""))
             dt_f_raw = str(row.get("dt_fim", ""))
 
-            # 🛑 GARANTE REGISTRO ÚNICO POR MILITAR + NOME + PERÍODO
-            chave_unq = (
-                num_p_key,
-                normalizar_texto(row.get("nome_servidor", row.get("nome_militar", ""))),
-                normalizar_texto(dt_i_raw),
-                normalizar_texto(dt_f_raw),
-            )
+            # Trava absoluta contra registros duplicados no retorno
+            chave_unq = f"{num_p_key}|{normalizar_texto(dt_i_raw)}|{normalizar_texto(dt_f_raw)}"
             if chave_unq in processados:
                 continue
             processados.add(chave_unq)
 
-            # Formata datas para visualização
+            # Formata datas
             if "-" in dt_i_raw:
                 row["dt_inicio"] = datetime.datetime.strptime(dt_i_raw, "%Y-%m-%d").strftime("%d/%m/%Y")
             if "-" in dt_f_raw:
@@ -314,15 +261,8 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
 
             cad_militar = mapa_militares.get(num_p_key, {})
             row["lotacao"] = str(row.get("unidade") or cad_militar.get("unidade") or "N/I").strip().upper()
-            row["cidade"] = str(cad_militar.get("cidade") or "N/I").strip().upper()
 
-            # FILTRO 1: LOTAÇÃO E CIDADE
-            if lotacao_sel != "Todas" and lotacao_sel.lower() not in row["lotacao"].lower():
-                continue
-            if cidade_sel != "Todas" and cidade_sel.lower() not in row["cidade"].lower():
-                continue
-
-            # FILTRO 2: DURAÇÃO EM DIAS DE FÉRIAS (10, 15, 20, 25, 30)
+            # 🟢 FILTRO 1: DURAÇÃO (DIAS DE FÉRIAS)
             qtd_dias_row = extrair_dias_inteiro(row.get("dias_qtd", 0))
             row["dias_qtd"] = qtd_dias_row
 
@@ -331,17 +271,16 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
                 if qtd_dias_row != val_dias_esperado:
                     continue
 
-            # FILTRO 3: BUSCA TEXTUAL
+            # 🟢 FILTRO 2: BUSCA POR MILITAR (NOME OU Nº POLÍCIA)
             if busca:
                 termo = busca.upper()
-                if not (
-                    termo in num_p_raw.upper() or
-                    termo in str(row.get("nome_militar", "")).upper() or
-                    termo in str(row.get("nota_publicacao", "")).upper()
-                ):
+                num_match = termo in num_p_raw.upper() or termo in num_p_key
+                nome_match = termo in str(row.get("nome_militar", "")).upper() or termo in str(row.get("nome_servidor", "")).upper()
+                nota_match = termo in str(row.get("nota_publicacao", "")).upper()
+
+                if not (num_match or nome_match or nota_match):
                     continue
 
-            row["dias_no_mes_consulta"] = dias_ferias_no_mes(row, ano or row.get("ano"), mes or row.get("mes"))
             dados_filtrados.append(row)
 
         return deduplicar_registros_ferias(dados_filtrados)
@@ -354,7 +293,7 @@ def carregar_ferias_supabase(ano=None, mes=None, busca="", lotacao_sel="Todas", 
 # ==============================================================================
 
 def aplicar_sobrescricao_ferias_no_quadro(grade_escala, ano_escala, mes_escala):
-    """Lê o banco e força a sigla 'FE' nas datas de férias dos militares no Passo 5."""
+    """Função utilitária invocada pelo Passo 5 para forçar a sigla FE nas férias."""
     ferias_mes = carregar_ferias_supabase(ano=ano_escala, mes=mes_escala)
     if not ferias_mes:
         return grade_escala
@@ -380,7 +319,7 @@ def aplicar_sobrescricao_ferias_no_quadro(grade_escala, ano_escala, mes_escala):
     return grade_escala
 
 # ==============================================================================
-# 5. ESTRUTURA PRINCIPAL DA INTERFACE (PASSO 8)
+# 5. ESTRUTURA DA INTERFACE (PASSO 8)
 # ==============================================================================
 
 def renderizar_modulo_ferias_anual():
@@ -388,79 +327,34 @@ def renderizar_modulo_ferias_anual():
     st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados e sobrescreve na escala mensal (Passo 5).")
 
     # --------------------------------------------------------------------------
-    # BLOCO 1: CONSULTA, FILTROS E AJUSTES RÁPIDOS
+    # BLOCO 1: PAINEL DE BUSCA SIMPLIFICADO
     # --------------------------------------------------------------------------
-    with st.expander("🔍 1. Consulta, Filtros e Gestão de Férias Cadastradas", expanded=True):
-        mils = carregar_militares_supabase() or []
-        unidades_set = set([
-            str(m.get("unidade", "")).strip().upper() 
-            for m in mils 
-            if isinstance(m, dict) and m.get("unidade") and str(m.get("unidade")).strip().upper() not in ["NONE", "NAN", "N/I", ""]
-        ])
-        opcoes_lotacao = ["Todas"] + sorted(list(unidades_set))
+    with st.expander("🔍 1. Consulta e Gestão de Férias Cadastradas", expanded=True):
+        st.markdown("**🎯 Filtros de Busca:**")
         
-        cidades_set = set([
-            str(m.get("cidade", "")).strip().upper() 
-            for m in mils 
-            if isinstance(m, dict) and m.get("cidade") and str(m.get("cidade")).strip().upper() not in ["NONE", "NAN", "N/I", ""]
-        ])
-        opcoes_cidade = ["Todas"] + sorted(list(cidades_set))
+        c1, c2, c3, c4 = st.columns([1.2, 1.5, 1.5, 2.8])
 
-        st.markdown("**🎯 Painel de Filtros de Busca:**")
-        f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns([1.1, 1.4, 1.4, 1.8, 2.2])
-
-        with f_col1:
-            v_ano = st.number_input("Ano da Escala:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year), key="p8_f_ano_v12")
-        with f_col2:
+        with c1:
+            v_ano = st.number_input("Ano:", min_value=2024, max_value=2035, value=st.session_state.get("ano_escala", datetime.date.today().year), key="p8_f_ano_v13")
+        with c2:
             m_nomes = ["Todos", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
-            v_mes_nome = st.selectbox("Mês de Referência:", m_nomes, key="p8_f_mes_v12")
+            v_mes_nome = st.selectbox("Mês de Referência:", m_nomes, key="p8_f_mes_v13")
             v_mes_num = m_nomes.index(v_mes_nome)
-        with f_col3:
-            v_dias = st.selectbox("Duração (Dias):", ["Todos", "10 dias", "15 dias", "20 dias", "25 dias", "30 dias"], key="p8_f_dias_v12")
-        with f_col4:
-            v_lotacao = st.selectbox("Lotação / Fração:", opcoes_lotacao, key="p8_f_lot_v12")
+        with c3:
+            v_dias = st.selectbox("Duração (Dias):", ["Todos", "10 dias", "15 dias", "20 dias", "25 dias", "30 dias"], key="p8_f_dias_v13")
+        with c4:
+            v_busca = st.text_input("🔎 Buscar Militar (Nome ou Nº Polícia):", placeholder="Digite o nome ou a matrícula...", key="p8_f_busca_v13").strip().upper()
 
-        with f_col5:
-            v_busca = st.text_input(
-                "🔎 Buscar Militar:",
-                placeholder="Nome ou Nº Polícia...",
-                key="p8_f_busca_v12"
-            ).strip().upper()
-
-        c_f5, c_f6 = st.columns([2.5, 2.5])
-        with c_f5:
-            v_cidade = st.selectbox("Cidade / Fração:", opcoes_cidade, key="p8_f_cid_v12")
-        with c_f6:
-            v_dias_mes = st.number_input(
-                "Dias lançados no mês:",
-                min_value=0,
-                max_value=31,
-                value=0,
-                step=1,
-                help="0 = todos. Quando informado, mostra somente militares com essa quantidade de dias de férias no mês selecionado.",
-                key="p8_f_dias_mes_v12"
-            )
-
-        # Executa a consulta no Supabase com desduplicação
         registros_banco = carregar_ferias_supabase(
             ano=v_ano,
             mes=v_mes_num,
             busca=v_busca,
-            lotacao_sel=v_lotacao,
-            cidade_sel=v_cidade,
             filtro_dias=v_dias
         )
 
-        # Filtro por quantidade TOTAL de dias lançados no mês.
-        if v_dias_mes > 0 and registros_banco:
-            registros_banco = [
-                r for r in registros_banco
-                if dias_ferias_no_mes(r, v_ano, v_mes_num) == v_dias_mes
-            ]
-
-        col_acc1, col_acc2 = st.columns([3, 1.2])
-        with col_acc2:
-            if st.button("🗑️ Limpar Arquivos de Férias", type="secondary", use_container_width=True, key="p8_btn_limpar_v12"):
+        col_limp1, col_limp2 = st.columns([3, 1.2])
+        with col_limp2:
+            if st.button("🗑️ Limpar Arquivos de Férias", type="secondary", use_container_width=True, key="p8_btn_limpar_v13"):
                 ok_l, msg_l = limpar_todas_ferias_supabase(ano_alvo=v_ano)
                 if ok_l:
                     st.success(msg_l)
@@ -468,31 +362,12 @@ def renderizar_modulo_ferias_anual():
                 else:
                     st.error(msg_l)
 
-        # Exibição do Editor de Dados sem duplicados
         if registros_banco:
             df_exibicao = pd.DataFrame(registros_banco)
-
-            # Resumo por militar: mostra quantos dias de férias estão lançados no mês.
-            if v_mes_num:
-                resumo = (
-                    df_exibicao.groupby(
-                        ["num_policia", "nome_militar"], dropna=False
-                    )["dias_no_mes_consulta"]
-                    .sum()
-                    .reset_index()
-                    .rename(columns={
-                        "num_policia": "Nº Polícia",
-                        "nome_militar": "Militar",
-                        "dias_no_mes_consulta": "Dias lançados no mês"
-                    })
-                )
-                st.markdown("### 📊 Resumo de dias de férias por militar")
-                st.dataframe(resumo, use_container_width=True, hide_index=True)
-
-            st.markdown(f"📋 **{len(df_exibicao)} registro(s) de período localizado(s):**")
+            st.markdown(f"📊 **{len(df_exibicao)} registro(s) localizado(s):**")
             df_exibicao["Excluir"] = False
 
-            cols_validos = [c for c in ["id", "num_policia", "nome_militar", "lotacao", "cidade", "dt_inicio", "dt_fim", "dias_qtd", "dias_no_mes_consulta", "nota_publicacao", "Excluir"] if c in df_exibicao.columns]
+            cols_validos = [c for c in ["id", "num_policia", "nome_militar", "lotacao", "dt_inicio", "dt_fim", "dias_qtd", "nota_publicacao", "Excluir"] if c in df_exibicao.columns]
 
             df_editado = st.data_editor(
                 df_exibicao[cols_validos],
@@ -501,17 +376,15 @@ def renderizar_modulo_ferias_anual():
                     "num_policia": st.column_config.TextColumn("Nº Polícia", disabled=True),
                     "nome_militar": st.column_config.TextColumn("Militar", disabled=True),
                     "lotacao": st.column_config.TextColumn("Lotação", disabled=True),
-                    "cidade": st.column_config.TextColumn("Cidade", disabled=True),
                     "dt_inicio": st.column_config.TextColumn("Data Início (DD/MM/YYYY)"),
                     "dt_fim": st.column_config.TextColumn("Data Fim (DD/MM/YYYY)"),
                     "dias_qtd": st.column_config.NumberColumn("Dias"),
-                    "dias_no_mes_consulta": st.column_config.NumberColumn("Dias no mês", disabled=True),
-                    "nota_publicacao": st.column_config.TextColumn("Observação"),
+                    "nota_publicacao": st.column_config.TextColumn("Observação / Publicação"),
                     "Excluir": st.column_config.CheckboxColumn("🗑️ Remover")
                 },
                 hide_index=True,
                 use_container_width=True,
-                key="p8_editor_ferias_v12"
+                key="p8_editor_ferias_v13"
             )
 
             if any(df_editado["Excluir"]):
@@ -525,7 +398,7 @@ def renderizar_modulo_ferias_anual():
             st.info("Nenhuma férias localizada com os filtros selecionados.")
 
     # --------------------------------------------------------------------------
-    # BLOCO 2: UPLOAD E CARGA DE ARQUIVO (TXT SIRH OU PDF/TEXTO)
+    # BLOCO 2: IMPORTAÇÃO E UPLOAD DE ARQUIVOS
     # --------------------------------------------------------------------------
     with st.expander("📥 2. Importar Arquivo de Férias (TXT do SIRH, CSV ou PDF)", expanded=False):
         u_col1, u_col2 = st.columns(2)
@@ -535,32 +408,32 @@ def renderizar_modulo_ferias_anual():
             arq_up = st.file_uploader(
                 "Selecione o relatório (.txt, .csv ou .pdf):",
                 type=["txt", "csv", "pdf"],
-                key="p8_file_up_v12"
+                key="p8_file_up_v13"
             )
 
             if arq_up is not None:
                 ext = arq_up.name.lower()
                 if ext.endswith((".txt", ".csv")):
-                    if st.button("🚀 Processar TXT/CSV (SIRH)", type="primary", use_container_width=True, key="btn_proc_sirh_v12"):
+                    if st.button("🚀 Processar TXT/CSV (SIRH)", type="primary", use_container_width=True, key="btn_proc_sirh_v13"):
                         st.session_state.pop("p8_temp_ferias", None)
-                        regs = deduplicar_registros_ferias(processar_txt_sirh(arq_up))
+                        regs = processar_txt_sirh(arq_up)
                         if regs:
                             st.session_state["p8_temp_ferias"] = regs
-                            st.success(f"✅ {len(regs)} registro(s) identificados do SIRH!")
+                            st.success(f"✅ {len(regs)} registro(s) únicos identificados do SIRH!")
                         else:
                             st.warning("Nenhum registro no padrão SIRH foi localizado.")
 
                 elif ext.endswith(".pdf"):
-                    if st.button("🚀 Extrair do PDF", type="primary", use_container_width=True, key="btn_proc_pdf_v12"):
+                    if st.button("🚀 Extrair do PDF", type="primary", use_container_width=True, key="btn_proc_pdf_v13"):
                         st.session_state.pop("p8_temp_ferias", None)
                         try:
                             import pypdf
                             reader = pypdf.PdfReader(arq_up)
                             txt_pdf = "".join([(p.extract_text() or "") + "\n" for p in reader.pages])
-                            regs = deduplicar_registros_ferias(extrair_texto_ferias(txt_pdf))
+                            regs = extrair_texto_ferias(txt_pdf)
                             if regs:
                                 st.session_state["p8_temp_ferias"] = regs
-                                st.success(f"✅ {len(regs)} registro(s) localizados no PDF!")
+                                st.success(f"✅ {len(regs)} registro(s) únicos localizados no PDF!")
                             else:
                                 st.warning("Nenhum padrão localizado no PDF.")
                         except Exception as ex:
@@ -568,24 +441,23 @@ def renderizar_modulo_ferias_anual():
 
         with u_col2:
             st.markdown("**Ou Cole o Texto da Publicação:**")
-            txt_copiado = st.text_area("Cole a nota aqui:", placeholder="Ex: 1337468 SD SILVA - 10 DIAS A PARTIR DE 10/02/2026", height=110, key="p8_txt_area_v12")
-            if st.button("⚡ Processar Texto Copiado", use_container_width=True, key="btn_proc_txt_v12"):
+            txt_copiado = st.text_area("Cole a nota aqui:", placeholder="Ex: 1337468 SD SILVA - 10 DIAS A PARTIR DE 10/02/2026", height=110, key="p8_txt_area_v13")
+            if st.button("⚡ Processar Texto Copiado", use_container_width=True, key="btn_proc_txt_v13"):
                 st.session_state.pop("p8_temp_ferias", None)
-                regs = deduplicar_registros_ferias(extrair_texto_ferias(txt_copiado))
+                regs = extrair_texto_ferias(txt_copiado)
                 if regs:
                     st.session_state["p8_temp_ferias"] = regs
                     st.success(f"✅ {len(regs)} registro(s) identificados!")
                 else:
                     st.warning("Nenhum padrão reconhecido.")
 
-        # Pré-visualização da Carga de Férias
         if st.session_state.get("p8_temp_ferias"):
             st.divider()
             st.markdown("##### 🔍 Confirmação dos Registros Extraídos:")
             df_temp = pd.DataFrame(st.session_state["p8_temp_ferias"])
             st.dataframe(df_temp, use_container_width=True, hide_index=True)
 
-            if st.button("💾 Gravar Registros no Banco de Dados", type="primary", use_container_width=True, key="btn_salvar_db_v12"):
+            if st.button("💾 Gravar Registros no Banco de Dados", type="primary", use_container_width=True, key="btn_salvar_db_v13"):
                 ok, msg = salvar_ferias_supabase_lote(st.session_state["p8_temp_ferias"])
                 if ok:
                     st.session_state.pop("p8_temp_ferias", None)
