@@ -2,7 +2,7 @@ import streamlit as st
 from modules.escalas.passos.passo1_unidade import renderizar_passo1
 from modules.escalas.passos.passo2_turno import renderizar_passo2
 from modules.escalas.passos.passo3_efetivo import renderizar_passo3, padronizar_graduacao, PESOS_HIERARQUIA
-from modules.escalas.passos.passo3_ferias_anual import renderizar_modulo_ferias_anual
+from modules.escalas.passos.passo8_ferias import renderizar_modulo_ferias_anual
 from modules.escalas.passos.passo4_calendario import renderizar_passo4
 from modules.escalas.passos.passo5_quadro import renderizar_passo5
 from modules.escalas.passos.passo6_exportar import renderizar_passo6
