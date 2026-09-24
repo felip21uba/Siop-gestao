@@ -1,7 +1,8 @@
-import streamlit as st
-import pandas as pd
+import datetime
 import hashlib
 import os
+import pandas as pd
+import streamlit as st
 from supabase import create_client, Client
 
 # =========================================================================
@@ -60,30 +61,37 @@ def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
 # =========================================================================
 @st.cache_data(ttl=300)
 def carregar_militares_supabase() -> list[dict]:
-    """Busca a lista de militares no banco com cache de 5 minutos."""
+    """Busca a lista de militares no banco com busca resiliente nas tabelas efetivo e militares."""
     if not supabase:
         return []
     try:
-        res = supabase.table("militares").select("*").execute()
-        if res and res.data:
-            militares = []
-            for r in res.data:
-                militares.append({
-                    "id": r["id"],
-                    "num_policia": r.get("num_policia", "N/I"),
-                    "posto_grad": r.get("posto_grad", "SD"),
-                    "nome_guerra": r.get("nome_guerra", "MILITAR"),
-                    "nome_completo": r.get("nome_completo", r.get("nome_guerra", "MILITAR")),
-                    "cidade": r.get("cidade", "N/I"),
-                    "peso": r.get("peso", 99),
-                    "ordem_manual": r.get("ordem_manual", 1),
-                    "unidade": r.get("unidade", "UNIDADE N/I"),
-                    "nivel_acesso": r.get("nivel_acesso", "TROPA")
-                })
-            return militares
+        # 1. Tenta carregar primeiro da tabela 'efetivo'
+        res = supabase.table("efetivo").select("*").execute()
+        dados_brutos = res.data if (res and res.data) else []
+
+        # 2. Fallback para a tabela/view 'militares'
+        if not dados_brutos:
+            res_m = supabase.table("militares").select("*").execute()
+            dados_brutos = res_m.data if (res_m and res_m.data) else []
+
+        militares = []
+        for r in dados_brutos:
+            militares.append({
+                "id": str(r.get("id")),
+                "num_policia": r.get("num_policia", "N/I"),
+                "posto_grad": r.get("posto_grad", "SD"),
+                "nome_guerra": r.get("nome_guerra", "MILITAR"),
+                "nome_completo": r.get("nome_completo", r.get("nome_guerra", "MILITAR")),
+                "cidade": r.get("cidade", "N/I"),
+                "peso": r.get("peso", 99),
+                "ordem_manual": r.get("ordem_manual", 1),
+                "unidade": r.get("unidade", "UNIDADE N/I"),
+                "nivel_acesso": r.get("nivel_acesso", "TROPA")
+            })
+        return militares
     except Exception as e:
         st.warning(f"Aviso ao carregar militares do Supabase: {e}")
-    return []
+        return []
 
 def sincronizar_contas_usuarios_do_efetivo(lista_militares: list[dict]):
     """Garante que todo militar importado receba uma conta de usuário na tabela 'usuarios'."""
@@ -118,23 +126,36 @@ def sincronizar_contas_usuarios_do_efetivo(lista_militares: list[dict]):
                 })
 
         if novos_usuarios:
-            supabase.table("usuarios").upsert(novos_usuarios, on_conflict="usuario_login").execute()
+            try:
+                supabase.table("usuarios").upsert(novos_usuarios, on_conflict="usuario_login").execute()
+            except Exception:
+                # Fallback item a item em caso de restricao
+                for nu in novos_usuarios:
+                    try:
+                        supabase.table("usuarios").insert(nu).execute()
+                    except Exception:
+                        pass
     except Exception as e:
         print(f"Erro ao sincronizar contas de usuários do efetivo: {e}")
 
 def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
-    """Grava/atualiza militares no banco e sincroniza logins."""
+    """Grava/atualiza militares de forma resiliente tanto na tabela efetivo quanto militares."""
     if not supabase or not lista_militares:
         return False
     try:
-        dados_salvar = []
+        tabela_alvo = "efetivo"
+        try:
+            supabase.table("efetivo").select("id").limit(1).execute()
+        except Exception:
+            tabela_alvo = "militares"
+
         for m in lista_militares:
+            num_pol = str(m.get("num_policia", "N/I")).strip().upper()
             nome_g = str(m.get("nome_guerra", "MILITAR")).strip().upper()
             nome_c = str(m.get("nome_completo") or nome_g).strip().upper()
-            
-            dados_salvar.append({
-                "id": str(m["id"]),
-                "num_policia": str(m.get("num_policia", "N/I")).strip().upper(),
+
+            payload = {
+                "num_policia": num_pol,
                 "posto_grad": m.get("posto_grad", "SD"),
                 "nome_guerra": nome_g,
                 "nome_completo": nome_c,
@@ -143,9 +164,21 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
                 "ordem_manual": m.get("ordem_manual", 1),
                 "unidade": str(m.get("unidade", "UNIDADE N/I")).strip().upper(),
                 "nivel_acesso": m.get("nivel_acesso", "TROPA")
-            })
-            
-        supabase.table("militares").upsert(dados_salvar, on_conflict="num_policia").execute()
+            }
+
+            # Se o ID nao for gerado como "mili_...", insere/atualiza pelo ID
+            id_val = str(m.get("id", ""))
+            if id_val and not id_val.startswith("mili_"):
+                payload["id"] = id_val
+
+            # Tenta verificar se ja existe pela matricula para fazer Update ou Insert seguro (evita erro de constraint)
+            res_ex = supabase.table(tabela_alvo).select("id").eq("num_policia", num_pol).execute()
+            if res_ex and res_ex.data and len(res_ex.data) > 0:
+                rec_id = res_ex.data[0]["id"]
+                supabase.table(tabela_alvo).update(payload).eq("id", rec_id).execute()
+            else:
+                supabase.table(tabela_alvo).insert(payload).execute()
+
         sincronizar_contas_usuarios_do_efetivo(lista_militares)
         st.cache_data.clear()
         return True
@@ -157,25 +190,52 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
 # GRAVAÇÃO DE ESCALAS, PERMUTAS E MENSAGENS P1
 # =========================================================================
 def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalidade: str, matriz_dados: dict, elaborado_por: str, homologado_por: str, status: str = "HOMOLOGADA") -> bool:
+    """Salva a escala de forma totalmente compativel, sem depender de restricoes UNIQUE do banco."""
     if not supabase:
         return False
     try:
         payload = {
-            "ano": ano,
-            "mes": mes,
-            "equipe_nome": equipe_nome,
-            "modalidade_turno": modalidade,
+            "ano": int(ano),
+            "mes": int(mes),
+            "equipe_nome": str(equipe_nome),
+            "modalidade": str(modalidade),
+            "modalidade_turno": str(modalidade),  # Envia ambas as chaves para compatibilidade total de colunas
             "status": status,
             "matriz_dados": matriz_dados,
             "elaborado_por": elaborado_por,
             "homologado_por": homologado_por
         }
-        supabase.table("escalas_mensais").upsert(payload, on_conflict="ano,mes,equipe_nome").execute()
+
+        # Busca previa por ano, mes e equipe
+        res = supabase.table("escalas_mensais")\
+            .select("id")\
+            .eq("ano", int(ano))\
+            .eq("mes", int(mes))\
+            .eq("equipe_nome", str(equipe_nome))\
+            .execute()
+
+        if res and res.data and len(res.data) > 0:
+            rec_id = res.data[0]["id"]
+            supabase.table("escalas_mensais").update(payload).eq("id", rec_id).execute()
+        else:
+            supabase.table("escalas_mensais").insert(payload).execute()
+
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar escala no Supabase: {e}")
-        return False
+        # Se der erro por conta de 'modalidade_turno' nao existir no esquema antigo, tenta sem ela
+        try:
+            payload.pop("modalidade_turno", None)
+            res = supabase.table("escalas_mensais").select("id").eq("ano", int(ano)).eq("mes", int(mes)).eq("equipe_nome", str(equipe_nome)).execute()
+            if res and res.data and len(res.data) > 0:
+                supabase.table("escalas_mensais").update(payload).eq("id", res.data[0]["id"]).execute()
+            else:
+                supabase.table("escalas_mensais").insert(payload).execute()
+            st.cache_data.clear()
+            return True
+        except Exception as ex_fallback:
+            st.error(f"Erro ao salvar escala no Supabase: {ex_fallback}")
+            return False
 
 def salvar_permuta_supabase(solicitante_id, solicitante_nome, substituto_id, substituto_nome, data_turno, motivo, documento="N/I", tipo_troca="DIRETA") -> bool:
     if not supabase:

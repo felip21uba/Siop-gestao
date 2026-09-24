@@ -46,7 +46,16 @@ def obter_brasao_base64(url_padrao):
 def obter_cor_equipe(eq): 
     return CORES_EQUIPES.get(str(eq).upper().strip(), "#475569")
 
+def remover_graduacao_texto(texto):
+    """Remove siglas de patentes/graduações do texto para cruzamento limpo do militar."""
+    pats = ["CEL", "TEN CEL", "TC", "MAJ", "CAP", "1 TEN", "2 TEN", "1º TEN", "2º TEN", "ASP", "SUB TEN", "1 SGT", "2 SGT", "3 SGT", "1º SGT", "2º SGT", "3º SGT", "SGT", "CB", "SD"]
+    t = str(texto).upper().strip()
+    for p in pats:
+        t = re.sub(rf'^{p}\b', '', t).strip()
+    return t
+
 def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, resp_escala_str, obs_escala, texto_legenda=""):
+    """Gera o arquivo binário .xlsx da escala com formatação visual avançada."""
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
@@ -97,14 +106,6 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
         worksheet.merge_range(linha_excel+1, c_mit, linha_excel+1, num_cols-1, cmt_cia_str.upper(), fmt_sig_text)
         
     return output.getvalue()
-
-def remover_graduacao_texto(texto):
-    """Remove siglas de patentes/graduações do texto do militar para facilitar a busca."""
-    pats = ["CEL", "TEN CEL", "TC", "MAJ", "CAP", "1 TEN", "2 TEN", "1º TEN", "2º TEN", "ASP", "SUB TEN", "1 SGT", "2 SGT", "3 SGT", "1º SGT", "2º SGT", "3º SGT", "SGT", "CB", "SD"]
-    t = str(texto).upper().strip()
-    for p in pats:
-        t = re.sub(rf'^{p}\b', '', t).strip()
-    return t
 
 def renderizar_passo6():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
@@ -197,7 +198,7 @@ def renderizar_passo6():
                             st.warning(f"⚠️ **ALERTA DE DESCANSO < 6H ({a['militar']}):** {a['mensagem']}")
                     st.markdown("---")
 
-                # 🟢 LEITOR DE EXCEL INTELIGENTE COM DETECÇÃO DINÂMICA DE CABEÇALHO
+                # 🟢 LEITOR DE EXCEL INTELIGENTE COM DETECÇÃO DINÂMICA
                 st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
                 st.markdown("##### 📥 Importar Escala Externa em Excel")
                 st.caption("Suporta planilhas exportadas pelo próprio sistema ou com cabeçalhos personalizados.")
@@ -211,7 +212,7 @@ def renderizar_passo6():
                 if arq_excel_escala is not None:
                     if st.button("🚀 Processar e Carregar no Quadro (Passo 5)", type="primary", use_container_width=True):
                         try:
-                            # 1. Lê a planilha sem cabeçalho para localizar a linha onde ficam as colunas 'EQUIPE' ou 'MILITAR'
+                            # 1. Localiza a linha do cabeçalho onde ficam 'EQUIPE' ou 'MILITAR'
                             df_raw = pd.read_excel(arq_excel_escala, header=None)
                             
                             header_idx = None
@@ -222,9 +223,9 @@ def renderizar_passo6():
                                     break
 
                             if header_idx is None:
-                                header_idx = 0 # Fallback para primeira linha
+                                header_idx = 0
 
-                            # 2. Re-lê o dataframe a partir da linha de cabeçalho detectada
+                            # 2. Re-lê o dataframe a partir da linha de cabeçalho correta
                             df_imp = pd.read_excel(arq_excel_escala, header=header_idx)
                             df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
 
@@ -260,40 +261,33 @@ def renderizar_passo6():
                                 if not eq_imp or eq_imp in ["NAN", "NONE"]:
                                     eq_imp = "ADMINISTRAÇÃO"
 
-                                # Parada de segurança para ignorar o rodapé de assinaturas
                                 if any(k in eq_imp for k in ["RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE"]):
                                     break
 
                                 m_id_encontrado = None
 
-                                # 1ª Tentativa: Busca por Matrícula/Nº Polícia (Dígitos Puros)
+                                # 1ª Tentativa: Busca por Matrícula/Nº Polícia
                                 if col_matricula:
                                     val_mat = str(row.get(col_matricula, "")).strip()
                                     digitos_mat = re.sub(r'\D', '', val_mat).lstrip("0")
                                     if digitos_mat in mapa_mils_digitos:
                                         m_id_encontrado = mapa_mils_digitos[digitos_mat]
 
-                                # 2ª Tentativa: Busca por Nome no campo MILITAR (extraindo dígitos ou casando nome)
+                                # 2ª Tentativa: Busca por Nome
                                 if not m_id_encontrado and col_militar:
                                     val_nome_raw = str(row.get(col_militar, "")).strip().upper()
                                     
-                                    # Parada se encontrou a linha do rodapé no campo militar
                                     if any(k in val_nome_raw for k in ["RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE"]):
                                         break
 
-                                    # Tenta extrair dígitos presentes na coluna militar (ex: "SD SILVA (1234567)")
                                     dig_nome = re.sub(r'\D', '', val_nome_raw).lstrip("0")
                                     if dig_nome and dig_nome in mapa_mils_digitos:
                                         m_id_encontrado = mapa_mils_digitos[dig_nome]
                                     else:
-                                        # Remove graduações (1 TEN, CAP, SD...) do nome para casar com o Nome de Guerra
                                         nome_limpo = remover_graduacao_texto(val_nome_raw)
-                                        
-                                        # Tenta casar exatamente com Nome de Guerra ou Completo
                                         if nome_limpo in mapa_mils_nomes:
                                             m_id_encontrado = mapa_mils_nomes[nome_limpo]
                                         else:
-                                            # Substring
                                             for k_nome, m_id in mapa_mils_nomes.items():
                                                 if k_nome and (k_nome in nome_limpo or nome_limpo in k_nome):
                                                     m_id_encontrado = m_id
@@ -305,13 +299,11 @@ def renderizar_passo6():
                                         chaves_novas.append(pair)
 
                                     for d in range(1, num_dias_mes + 1):
-                                        # Localiza a coluna do dia (ex: '1 TER', '1', '01', '1-SEX', etc.)
                                         col_dia = next((c for c in df_imp.columns if re.match(rf'^{d}\b', c.strip())), None)
                                         
                                         if col_dia:
                                             val_celula = str(row.get(col_dia, "")).strip()
                                             if val_celula and val_celula.upper() not in ["NAN", "NONE"]:
-                                                # Formata número de ponto flutuante (ex: "1.0" para "1")
                                                 if val_celula.endswith(".0"):
                                                     val_celula = val_celula[:-2]
                                                 grade_nova[f"{m_id_encontrado}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula
@@ -334,7 +326,7 @@ def renderizar_passo6():
                                 
                                 st.rerun()
                             else:
-                                st.error("❌ Nenhum militar foi localizado na planilha. Verifique se os nomes batem com o cadastro do sistema.")
+                                st.error("❌ Nenhum militar foi localizado na planilha. Verifique se os nomes ou matrículas batem com o cadastro do sistema.")
                         except Exception as ex_imp:
                             st.error(f"Erro ao processar arquivo Excel: {ex_imp}")
 
@@ -355,22 +347,39 @@ def renderizar_passo6():
                 for pair in chaves_quadro:
                     if len(pair) == 2:
                         val = grade_lancamentos.get(f"{pair[0]}_{pair[1]}_{m_ano}_{m_mes:02d}_{d:02d}", "")
-                        if val and ("às" in str(val).lower() or "as" in str(val).lower()):
-                            turnos_encontrados.add(val)
+                        val_s = str(val).strip().upper()
+                        if val_s and val_s not in ["F", "D", "X", "FE", "LM", "ATE", "NONE", "NAN", ""]:
+                            turnos_encontrados.add(str(val).strip())
 
-            usar_legendas = st.checkbox("⚙️ Substituir horários por legendas no Quadro (ex: T1, T2)", value=False, help="Substitui horários extensos por siglas no PDF/Excel.")
+            st.markdown("##### ⚙️ Mapeamento e Conversão de Horários / Legendas")
+            
+            modo_conversao = st.radio(
+                "Escolha o modo de exibição no Quadro/PDF/Excel:",
+                ["Exibir exatamente como lançado no Quadro", 
+                 "Substituir Horários Extensos por Legendas (ex: 07:00 às 19:00 ➔ T1)", 
+                 "Substituir Legendas Importadas por Horários (ex: T1 ➔ 07:00 às 19:00)"],
+                key="p6_modo_conversao_legendas"
+            )
+
             mapa_legendas = {}
             texto_legenda_final = ""
 
-            if usar_legendas and turnos_encontrados:
-                st.caption("Defina as siglas para os turnos encontrados:")
+            if modo_conversao == "Substituir Horários Extensos por Legendas (ex: 07:00 às 19:00 ➔ T1)" and turnos_encontrados:
+                st.caption("Defina qual sigla/legenda irá substituir cada horário longo:")
                 cols_leg = st.columns(3)
                 for i, t in enumerate(sorted(turnos_encontrados)):
                     with cols_leg[i % 3]:
-                        mapa_legendas[t] = st.text_input(f"Legenda ({t}):", value=f"T{i+1}", key=f"leg_input_{i}")
+                        mapa_legendas[t] = st.text_input(f"Sigla para [{t}]:", value=f"T{i+1}", key=f"leg_input_hor_{i}")
                 
                 leg_str_list = [f"{v} = {k}" for k, v in mapa_legendas.items()]
                 texto_legenda_final = "LEGENDA DE TURNOS:   " + "   |   ".join(leg_str_list)
+
+            elif modo_conversao == "Substituir Legendas Importadas por Horários (ex: T1 ➔ 07:00 às 19:00)" and turnos_encontrados:
+                st.caption("Informe qual horário real corresponde a cada sigla/legenda encontrada na planilha:")
+                cols_leg = st.columns(3)
+                for i, t in enumerate(sorted(turnos_encontrados)):
+                    with cols_leg[i % 3]:
+                        mapa_legendas[t] = st.text_input(f"Horário para Sigla [{t}]:", value="07:00 às 19:00", key=f"leg_input_sig_{i}")
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
@@ -446,7 +455,8 @@ def renderizar_passo6():
 
                     for d in range(1, num_dias_mes + 1):
                         val = grade_lancamentos.get(f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}", "F")
-                        val_str = str(val).upper().strip() if val else ""
+                        val_raw = str(val).strip()
+                        val_str = val_raw.upper()
                         tokens_dia = set(val_str.replace("/", " ").split())
                         
                         if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
@@ -456,20 +466,16 @@ def renderizar_passo6():
                             total_horas += 12.0
                             
                         cell_content = ""
-                        if val not in ["F", "D", "X", "", None]:
-                            if usar_legendas and val in mapa_legendas:
-                                val_display = mapa_legendas[val]
-                                cell_content = f'<div class="shift-badge">{val_display}</div>'
-                                linha_xls.append(str(val_display))
-                            else:
-                                val_quebrado = str(val).replace(" às ", "<br>AS<br>").replace(" AS ", "<br>AS<br>")
-                                cell_content = f'<div class="shift-badge">{val_quebrado}</div>'
-                                linha_xls.append(str(val))
-                        elif val == "X":
+                        if val_raw not in ["F", "D", "X", "", None]:
+                            val_efetivo = mapa_legendas.get(val_raw, val_raw) if mapa_legendas else val_raw
+                            val_quebrado = str(val_efetivo).replace(" às ", "<br>AS<br>").replace(" AS ", "<br>AS<br>").replace(" ÀS ", "<br>AS<br>")
+                            cell_content = f'<div class="shift-badge">{val_quebrado}</div>'
+                            linha_xls.append(str(val_efetivo))
+                        elif val_raw == "X":
                             cell_content = '<div class="shift-x">X</div>'
                             linha_xls.append("X")
                         else:
-                            linha_xls.append(str(val) if val else "")
+                            linha_xls.append(str(val_raw) if val_raw else "")
                             
                         row_html += f'<td class="td-day">{cell_content}</td>'
 
