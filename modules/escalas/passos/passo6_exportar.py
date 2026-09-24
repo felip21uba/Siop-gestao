@@ -98,6 +98,14 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
         
     return output.getvalue()
 
+def remover_graduacao_texto(texto):
+    """Remove siglas de patentes/graduações do texto do militar para facilitar a busca."""
+    pats = ["CEL", "TEN CEL", "TC", "MAJ", "CAP", "1 TEN", "2 TEN", "1º TEN", "2º TEN", "ASP", "SUB TEN", "1 SGT", "2 SGT", "3 SGT", "1º SGT", "2º SGT", "3º SGT", "SGT", "CB", "SD"]
+    t = str(texto).upper().strip()
+    for p in pats:
+        t = re.sub(rf'^{p}\b', '', t).strip()
+    return t
+
 def renderizar_passo6():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
@@ -109,7 +117,7 @@ def renderizar_passo6():
     img_brasao_cfg = st.session_state.get("cfg_brasao_url", URL_BRASAO_PADRAO)
     img_brasao = obter_brasao_base64(img_brasao_cfg)
     
-    mils_todos = st.session_state.get("lista_militares", [])
+    mils_todos = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
     usr_logado = st.session_state.get("usuario_dados", {})
     
     mat_usr = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
@@ -189,10 +197,10 @@ def renderizar_passo6():
                             st.warning(f"⚠️ **ALERTA DE DESCANSO < 6H ({a['militar']}):** {a['mensagem']}")
                     st.markdown("---")
 
-                # 🟢 NÚCLEO DE IMPORTAÇÃO EXTERNA DO EXCEL DIRETO NO PASSO 6
+                # 🟢 LEITOR DE EXCEL INTELIGENTE COM DETECÇÃO DINÂMICA DE CABEÇALHO
                 st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
                 st.markdown("##### 📥 Importar Escala Externa em Excel")
-                st.caption("A planilha deve conter as colunas: **EQUIPE**, **Nº POLÍCIA**, **MILITAR** e as colunas numeradas dos dias (1, 2, 3...31).")
+                st.caption("Suporta planilhas exportadas pelo próprio sistema ou com cabeçalhos personalizados.")
                 
                 arq_excel_escala = st.file_uploader(
                     "Selecione o arquivo Excel da Escala:", 
@@ -203,15 +211,30 @@ def renderizar_passo6():
                 if arq_excel_escala is not None:
                     if st.button("🚀 Processar e Carregar no Quadro (Passo 5)", type="primary", use_container_width=True):
                         try:
-                            df_imp = pd.read_excel(arq_excel_escala)
-                            df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
+                            # 1. Lê a planilha sem cabeçalho para localizar a linha onde ficam as colunas 'EQUIPE' ou 'MILITAR'
+                            df_raw = pd.read_excel(arq_excel_escala, header=None)
                             
+                            header_idx = None
+                            for idx_r, r_vals in df_raw.iterrows():
+                                line_str = [str(v).strip().upper() for v in r_vals.values if pd.notna(v)]
+                                if any(k in line_str for k in ["EQUIPE", "MILITAR", "Nº POLÍCIA", "POLICIA"]):
+                                    header_idx = idx_r
+                                    break
+
+                            if header_idx is None:
+                                header_idx = 0 # Fallback para primeira linha
+
+                            # 2. Re-lê o dataframe a partir da linha de cabeçalho detectada
+                            df_imp = pd.read_excel(arq_excel_escala, header=header_idx)
+                            df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
+
                             grade_nova = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
                             chaves_novas = list(st.session_state.get("militares_no_quadro_chaves", []))
                             mils_cad = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
                             
                             mapa_mils_digitos = {}
                             mapa_mils_nomes = {}
+                            
                             for m in mils_cad:
                                 m_id = str(m.get("id"))
                                 num_p_dig = re.sub(r'\D', '', str(m.get("num_policia", ""))).lstrip("0")
@@ -225,6 +248,7 @@ def renderizar_passo6():
                                 if nc_clean:
                                     mapa_mils_nomes[nc_clean] = m_id
 
+                            col_equipe = next((c for c in df_imp.columns if "EQUIPE" in c), None)
                             col_matricula = next((c for c in df_imp.columns if any(k in c for k in ["POLICIA", "POLÍCIA", "NUMERO", "NÚMERO", "MATRICULA", "MATRÍCULA", "NUM_POLICIA", "PM"])), None)
                             col_militar = next((c for c in df_imp.columns if any(k in c for k in ["MILITAR", "NOME", "NOME_GUERRA", "SERVIDOR"])), None)
 
@@ -232,9 +256,13 @@ def renderizar_passo6():
                             militar_nao_encontrado_lista = []
 
                             for idx_row, row in df_imp.iterrows():
-                                eq_imp = str(row.get("EQUIPE", "ADMINISTRAÇÃO")).strip().upper()
+                                eq_imp = str(row.get(col_equipe, "ADMINISTRAÇÃO")).strip().upper() if col_equipe else "ADMINISTRAÇÃO"
                                 if not eq_imp or eq_imp in ["NAN", "NONE"]:
                                     eq_imp = "ADMINISTRAÇÃO"
+
+                                # Parada de segurança para ignorar o rodapé de assinaturas
+                                if any(k in eq_imp for k in ["RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE"]):
+                                    break
 
                                 m_id_encontrado = None
 
@@ -245,17 +273,31 @@ def renderizar_passo6():
                                     if digitos_mat in mapa_mils_digitos:
                                         m_id_encontrado = mapa_mils_digitos[digitos_mat]
 
-                                # 2ª Tentativa: Fallback por Nome do Militar
+                                # 2ª Tentativa: Busca por Nome no campo MILITAR (extraindo dígitos ou casando nome)
                                 if not m_id_encontrado and col_militar:
-                                    val_nome = str(row.get(col_militar, "")).strip().upper()
-                                    dig_nome = re.sub(r'\D', '', val_nome).lstrip("0")
+                                    val_nome_raw = str(row.get(col_militar, "")).strip().upper()
+                                    
+                                    # Parada se encontrou a linha do rodapé no campo militar
+                                    if any(k in val_nome_raw for k in ["RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE"]):
+                                        break
+
+                                    # Tenta extrair dígitos presentes na coluna militar (ex: "SD SILVA (1234567)")
+                                    dig_nome = re.sub(r'\D', '', val_nome_raw).lstrip("0")
                                     if dig_nome and dig_nome in mapa_mils_digitos:
                                         m_id_encontrado = mapa_mils_digitos[dig_nome]
                                     else:
-                                        for k_nome, m_id in mapa_mils_nomes.items():
-                                            if k_nome in val_nome or val_nome in k_nome:
-                                                m_id_encontrado = m_id
-                                                break
+                                        # Remove graduações (1 TEN, CAP, SD...) do nome para casar com o Nome de Guerra
+                                        nome_limpo = remover_graduacao_texto(val_nome_raw)
+                                        
+                                        # Tenta casar exatamente com Nome de Guerra ou Completo
+                                        if nome_limpo in mapa_mils_nomes:
+                                            m_id_encontrado = mapa_mils_nomes[nome_limpo]
+                                        else:
+                                            # Substring
+                                            for k_nome, m_id in mapa_mils_nomes.items():
+                                                if k_nome and (k_nome in nome_limpo or nome_limpo in k_nome):
+                                                    m_id_encontrado = m_id
+                                                    break
 
                                 if m_id_encontrado:
                                     pair = (str(m_id_encontrado), eq_imp)
@@ -263,17 +305,22 @@ def renderizar_passo6():
                                         chaves_novas.append(pair)
 
                                     for d in range(1, num_dias_mes + 1):
-                                        col_dia = next((c for c in df_imp.columns if c == str(d) or c == f"{d:02d}" or c.startswith(f"{d} ") or c.startswith(f"{d:02d} ") or c.startswith(f"{d}-")), None)
+                                        # Localiza a coluna do dia (ex: '1 TER', '1', '01', '1-SEX', etc.)
+                                        col_dia = next((c for c in df_imp.columns if re.match(rf'^{d}\b', c.strip())), None)
                                         
                                         if col_dia:
                                             val_celula = str(row.get(col_dia, "")).strip()
                                             if val_celula and val_celula.upper() not in ["NAN", "NONE"]:
+                                                # Formata número de ponto flutuante (ex: "1.0" para "1")
+                                                if val_celula.endswith(".0"):
+                                                    val_celula = val_celula[:-2]
                                                 grade_nova[f"{m_id_encontrado}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula
                                     
                                     linhas_importadas += 1
                                 else:
-                                    nome_falha = str(row.get(col_militar or col_matricula, f"Linha {idx_row+2}"))
-                                    militar_nao_encontrado_lista.append(nome_falha)
+                                    val_falha = str(row.get(col_militar or col_matricula, "")).strip()
+                                    if val_falha and val_falha.upper() not in ["NAN", "NONE"]:
+                                        militar_nao_encontrado_lista.append(val_falha)
 
                             if linhas_importadas > 0:
                                 st.session_state["militares_no_quadro_chaves"] = chaves_novas
@@ -283,11 +330,11 @@ def renderizar_passo6():
                                 st.success(f"✅ {linhas_importadas} militar(es) importado(s) e lançados no Quadro do Passo 5!")
                                 
                                 if militar_nao_encontrado_lista:
-                                    st.warning(f"⚠️ {len(militar_nao_encontrado_lista)} linha(s) não foram associadas: {', '.join(militar_nao_encontrado_lista[:5])}...")
+                                    st.warning(f"⚠️ {len(militar_nao_encontrado_lista)} linha(s) não associadas: {', '.join(militar_nao_encontrado_lista[:5])}")
                                 
                                 st.rerun()
                             else:
-                                st.error("❌ Nenhum militar foi localizado. Certifique-se de que a planilha possui a coluna 'Nº POLÍCIA' ou 'MATRICULA' com o mesmo número cadastrado no sistema.")
+                                st.error("❌ Nenhum militar foi localizado na planilha. Verifique se os nomes batem com o cadastro do sistema.")
                         except Exception as ex_imp:
                             st.error(f"Erro ao processar arquivo Excel: {ex_imp}")
 
@@ -348,7 +395,6 @@ def renderizar_passo6():
             ))
 
             header_dias_html = ""
-            # 🟢 Adicionada a coluna "Nº POLÍCIA" na exportação do Excel
             cols_excel_names = ["EQUIPE", "Nº POLÍCIA", "MILITAR"]
 
             for d in range(1, num_dias_mes + 1):
@@ -387,7 +433,6 @@ def renderizar_passo6():
                                 {eq_nome}
                             </td>
                         """
-                    # 🟢 Coluna Nº POLÍCIA adicionada separadamente no HTML do Quadro/PDF
                     row_html += f"""
                         <td class="td-num-policia">{num_pol}</td>
                         <td class="td-militar">
@@ -395,7 +440,6 @@ def renderizar_passo6():
                         </td>
                     """
 
-                    # 🟢 Estrutura da linha enviada ao Excel com a coluna de matrícula separada
                     linha_xls = [eq_nome, num_pol, f"{pg} {nome_g}"]
                     total_horas = 0.0
                     dias_neutros_cnt = 0
