@@ -68,8 +68,9 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
         for col_num, value in enumerate(df_dados.columns):
             worksheet.write(4, col_num, value, fmt_header)
             if col_num == 0: worksheet.set_column(col_num, col_num, 16)
-            elif col_num == 1: worksheet.set_column(col_num, col_num, 25)
-            elif col_num > 1: worksheet.set_column(col_num, col_num, 8)
+            elif col_num == 1: worksheet.set_column(col_num, col_num, 15)  # Coluna Nº POLÍCIA
+            elif col_num == 2: worksheet.set_column(col_num, col_num, 25)  # Coluna MILITAR
+            elif col_num > 2: worksheet.set_column(col_num, col_num, 8)
 
         linha_excel = 5
         for _, row in df_dados.iterrows():
@@ -191,7 +192,7 @@ def renderizar_passo6():
                 # 🟢 NÚCLEO DE IMPORTAÇÃO EXTERNA DO EXCEL DIRETO NO PASSO 6
                 st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
                 st.markdown("##### 📥 Importar Escala Externa em Excel")
-                st.caption("A planilha deve conter as colunas: **EQUIPE**, **Nº POLÍCIA** (ou MATRICULA/MILITAR) e as colunas numeradas dos dias (1, 2, 3...31).")
+                st.caption("A planilha deve conter as colunas: **EQUIPE**, **Nº POLÍCIA**, **MILITAR** e as colunas numeradas dos dias (1, 2, 3...31).")
                 
                 arq_excel_escala = st.file_uploader(
                     "Selecione o arquivo Excel da Escala:", 
@@ -244,7 +245,7 @@ def renderizar_passo6():
                                     if digitos_mat in mapa_mils_digitos:
                                         m_id_encontrado = mapa_mils_digitos[digitos_mat]
 
-                                # 2ª Tentativa: Fallback por Nome ou Dígitos no campo Militar
+                                # 2ª Tentativa: Fallback por Nome do Militar
                                 if not m_id_encontrado and col_militar:
                                     val_nome = str(row.get(col_militar, "")).strip().upper()
                                     dig_nome = re.sub(r'\D', '', val_nome).lstrip("0")
@@ -347,7 +348,8 @@ def renderizar_passo6():
             ))
 
             header_dias_html = ""
-            cols_excel_names = ["EQUIPE", "MILITAR"]
+            # 🟢 Adicionada a coluna "Nº POLÍCIA" na exportação do Excel
+            cols_excel_names = ["EQUIPE", "Nº POLÍCIA", "MILITAR"]
 
             for d in range(1, num_dias_mes + 1):
                 dia_sem_idx = calendar.weekday(m_ano, m_mes, d)
@@ -385,14 +387,16 @@ def renderizar_passo6():
                                 {eq_nome}
                             </td>
                         """
+                    # 🟢 Coluna Nº POLÍCIA adicionada separadamente no HTML do Quadro/PDF
                     row_html += f"""
+                        <td class="td-num-policia">{num_pol}</td>
                         <td class="td-militar">
                             <div class="m-nome">{pg} {nome_g}</div>
-                            <div class="m-num">{num_pol}</div>
                         </td>
                     """
 
-                    linha_xls = [eq_nome, f"{pg} {nome_g}\n{num_pol}"]
+                    # 🟢 Estrutura da linha enviada ao Excel com a coluna de matrícula separada
+                    linha_xls = [eq_nome, num_pol, f"{pg} {nome_g}"]
                     total_horas = 0.0
                     dias_neutros_cnt = 0
 
@@ -486,7 +490,8 @@ def renderizar_passo6():
                     table.escala-table {{ width: 100%; border-collapse: collapse; font-size: 9px; table-layout: auto; }}
                     table.escala-table th, table.escala-table td {{ border: 1px solid #94a3b8; text-align: center; vertical-align: middle; padding: 2px 0px; }}
                     th.th-eq {{ width: 5%; background: #e2e8f0; font-weight: 800; }}
-                    th.th-mil {{ width: 12%; background: #e2e8f0; font-weight: 800; }}
+                    th.th-num {{ width: 7%; background: #e2e8f0; font-weight: 800; }}
+                    th.th-mil {{ width: 11%; background: #e2e8f0; font-weight: 800; }}
                     th.th-hor {{ width: 7%; background: #e2e8f0; font-weight: 800; }}
                     th.th-weekday {{ background: #e0f2fe !important; color: #0369a1 !important; }}
                     th.th-weekend {{ background: #ffe4e6 !important; color: #be123c !important; }}
@@ -494,9 +499,9 @@ def renderizar_passo6():
                     .d-sig {{ font-size: 7px; font-weight: 700; text-transform: uppercase; }}
                     
                     td.td-equipe {{ font-weight: 900 !important; font-size: 10px; text-transform: uppercase; word-wrap: break-word; }}
+                    td.td-num-policia {{ font-weight: 700; font-size: 8px; color: #475569; background: #ffffff; }}
                     td.td-militar {{ text-align: center; padding: 2px; background: #ffffff; }}
                     .m-nome {{ font-weight: 800; font-size: 9px; color: #0f172a; text-transform: uppercase; }}
-                    .m-num {{ font-size: 7px; color: #64748b; font-weight: 700; margin-top: 1px; }}
                     
                     td.td-day {{ background: #ffffff; height: 34px; min-width: 20px; }}
                     
@@ -534,6 +539,7 @@ def renderizar_passo6():
                         <thead>
                             <tr>
                                 <th class="th-eq">EQUIPE</th>
+                                <th class="th-num">Nº POLÍCIA</th>
                                 <th class="th-mil">MILITAR</th>
                                 {header_dias_html}
                                 <th class="th-hor">HORAS<br><span style="font-size:6.5px; font-weight:normal;">TRAB / META</span></th>
