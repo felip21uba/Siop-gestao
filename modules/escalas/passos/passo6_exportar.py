@@ -188,10 +188,10 @@ def renderizar_passo6():
                             st.warning(f"⚠️ **ALERTA DE DESCANSO < 6H ({a['militar']}):** {a['mensagem']}")
                     st.markdown("---")
 
-                # Uploader nativo de planilha Excel (.xlsx) no Passo 6
+                # 🟢 NÚCLEO DE IMPORTAÇÃO EXTERNA DO EXCEL DIRETO NO PASSO 6
                 st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
                 st.markdown("##### 📥 Importar Escala Externa em Excel")
-                st.caption("Selecione a planilha (.xlsx) com a grade montada para carregar diretamente no Passo 5 e no Banco.")
+                st.caption("A planilha deve conter as colunas: **EQUIPE**, **Nº POLÍCIA** (ou MATRICULA/MILITAR) e as colunas numeradas dos dias (1, 2, 3...31).")
                 
                 arq_excel_escala = st.file_uploader(
                     "Selecione o arquivo Excel da Escala:", 
@@ -207,28 +207,54 @@ def renderizar_passo6():
                             
                             grade_nova = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
                             chaves_novas = list(st.session_state.get("militares_no_quadro_chaves", []))
-                            mils_cad = st.session_state.get("lista_militares", [])
+                            mils_cad = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
                             
-                            mapa_mils = {}
+                            mapa_mils_digitos = {}
+                            mapa_mils_nomes = {}
                             for m in mils_cad:
-                                num_p = re.sub(r'\D', '', str(m.get("num_policia", "")))
-                                ng = str(m.get("nome_guerra", "")).strip().upper()
-                                if num_p: mapa_mils[num_p] = str(m["id"])
-                                if ng: mapa_mils[ng] = str(m["id"])
+                                m_id = str(m.get("id"))
+                                num_p_dig = re.sub(r'\D', '', str(m.get("num_policia", ""))).lstrip("0")
+                                ng_clean = str(m.get("nome_guerra", "")).strip().upper()
+                                nc_clean = str(m.get("nome_completo", "")).strip().upper()
+                                
+                                if num_p_dig:
+                                    mapa_mils_digitos[num_p_dig] = m_id
+                                if ng_clean:
+                                    mapa_mils_nomes[ng_clean] = m_id
+                                if nc_clean:
+                                    mapa_mils_nomes[nc_clean] = m_id
+
+                            col_matricula = next((c for c in df_imp.columns if any(k in c for k in ["POLICIA", "POLÍCIA", "NUMERO", "NÚMERO", "MATRICULA", "MATRÍCULA", "NUM_POLICIA", "PM"])), None)
+                            col_militar = next((c for c in df_imp.columns if any(k in c for k in ["MILITAR", "NOME", "NOME_GUERRA", "SERVIDOR"])), None)
 
                             linhas_importadas = 0
-                            for _, row in df_imp.iterrows():
+                            militar_nao_encontrado_lista = []
+
+                            for idx_row, row in df_imp.iterrows():
                                 eq_imp = str(row.get("EQUIPE", "ADMINISTRAÇÃO")).strip().upper()
-                                mil_txt = str(row.get("MILITAR", row.get("Nº POLÍCIA", ""))).strip().upper()
-                                
-                                num_digitos = re.sub(r'\D', '', mil_txt)
-                                m_id_encontrado = mapa_mils.get(num_digitos) or mapa_mils.get(mil_txt)
-                                
-                                if not m_id_encontrado:
-                                    for k_nome, id_v in mapa_mils.items():
-                                        if k_nome in mil_txt or mil_txt in k_nome:
-                                            m_id_encontrado = id_v
-                                            break
+                                if not eq_imp or eq_imp in ["NAN", "NONE"]:
+                                    eq_imp = "ADMINISTRAÇÃO"
+
+                                m_id_encontrado = None
+
+                                # 1ª Tentativa: Busca por Matrícula/Nº Polícia (Dígitos Puros)
+                                if col_matricula:
+                                    val_mat = str(row.get(col_matricula, "")).strip()
+                                    digitos_mat = re.sub(r'\D', '', val_mat).lstrip("0")
+                                    if digitos_mat in mapa_mils_digitos:
+                                        m_id_encontrado = mapa_mils_digitos[digitos_mat]
+
+                                # 2ª Tentativa: Fallback por Nome ou Dígitos no campo Militar
+                                if not m_id_encontrado and col_militar:
+                                    val_nome = str(row.get(col_militar, "")).strip().upper()
+                                    dig_nome = re.sub(r'\D', '', val_nome).lstrip("0")
+                                    if dig_nome and dig_nome in mapa_mils_digitos:
+                                        m_id_encontrado = mapa_mils_digitos[dig_nome]
+                                    else:
+                                        for k_nome, m_id in mapa_mils_nomes.items():
+                                            if k_nome in val_nome or val_nome in k_nome:
+                                                m_id_encontrado = m_id
+                                                break
 
                                 if m_id_encontrado:
                                     pair = (str(m_id_encontrado), eq_imp)
@@ -236,24 +262,33 @@ def renderizar_passo6():
                                         chaves_novas.append(pair)
 
                                     for d in range(1, num_dias_mes + 1):
-                                        col_dia_nome = next((c for c in df_imp.columns if c.startswith(str(d)) or c.startswith(f"{d:02d}")), None)
-                                        if col_dia_nome:
-                                            val_c = str(row.get(col_dia_nome, "")).strip()
-                                            if val_c and val_c.upper() not in ["NAN", "NONE"]:
-                                                grade_nova[f"{m_id_encontrado}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_c
+                                        col_dia = next((c for c in df_imp.columns if c == str(d) or c == f"{d:02d}" or c.startswith(f"{d} ") or c.startswith(f"{d:02d} ") or c.startswith(f"{d}-")), None)
+                                        
+                                        if col_dia:
+                                            val_celula = str(row.get(col_dia, "")).strip()
+                                            if val_celula and val_celula.upper() not in ["NAN", "NONE"]:
+                                                grade_nova[f"{m_id_encontrado}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula
+                                    
                                     linhas_importadas += 1
+                                else:
+                                    nome_falha = str(row.get(col_militar or col_matricula, f"Linha {idx_row+2}"))
+                                    militar_nao_encontrado_lista.append(nome_falha)
 
                             if linhas_importadas > 0:
                                 st.session_state["militares_no_quadro_chaves"] = chaves_novas
                                 st.session_state["grade_escala_lancamentos"] = grade_nova
                                 
                                 executar_auto_save_banco()
-                                st.success(f"✅ {linhas_importadas} linha(s) de militares importadas e sincronizadas com o Passo 5!")
+                                st.success(f"✅ {linhas_importadas} militar(es) importado(s) e lançados no Quadro do Passo 5!")
+                                
+                                if militar_nao_encontrado_lista:
+                                    st.warning(f"⚠️ {len(militar_nao_encontrado_lista)} linha(s) não foram associadas: {', '.join(militar_nao_encontrado_lista[:5])}...")
+                                
                                 st.rerun()
                             else:
-                                st.warning("Nenhum militar da planilha foi localizado no cadastro do sistema.")
+                                st.error("❌ Nenhum militar foi localizado. Certifique-se de que a planilha possui a coluna 'Nº POLÍCIA' ou 'MATRICULA' com o mesmo número cadastrado no sistema.")
                         except Exception as ex_imp:
-                            st.error(f"Erro ao processar planilha de escala: {ex_imp}")
+                            st.error(f"Erro ao processar arquivo Excel: {ex_imp}")
 
             with c_cfg2:
                 st.markdown("##### ✍️ Assinaturas & Observações")
