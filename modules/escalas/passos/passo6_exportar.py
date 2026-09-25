@@ -60,6 +60,49 @@ def calcular_horas_por_legenda(val_str, mapa_horarios):
     if not v or v in ["F", "D", "X", "NAN", "NONE", "0"] or any(sigla in v for sigla in SIGLAS_DIAS_NEUTROS):
         return 0.0
 
+    h_ini_str, h_fim_str = None, None
+
+    # 1. Busca primeiro no dicionário de legendas mapeadas (ex: '1', '2', 'RH', 'TPB')
+    if v in mapa_horarios:
+        h_ini_str = mapa_horarios[v].get("inicio")
+        h_fim_str = mapa_horarios[v].get("fim")
+
+    # 2. Se não achou no mapa, tenta extrair horário do texto no formato HH:MM (ex: 19:00 às 07:00, 19/07)
+    if not h_ini_str or not h_fim_str:
+        m = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', v)
+        if m:
+            h1, m1 = int(m[0][0]), int(m[0][1]) if m[0][1] else 0
+            h2, m2 = int(m[0][2]), int(m[0][3]) if m[0][3] else 0
+            h_ini_str = f"{h1:02d}:{m1:02d}"
+            h_fim_str = f"{h2:02d}:{m2:02d}"
+
+    # Se mesmo assim não achar horário válido, assume 12h padrão
+    if not h_ini_str or not h_fim_str:
+        return 12.0
+
+    try:
+        h_i = datetime.datetime.strptime(h_ini_str, "%H:%M")
+        h_f = datetime.datetime.strptime(h_fim_str, "%H:%M")
+
+        dt_curr = datetime.datetime(2026, 1, 1, h_i.hour, h_i.minute)
+        dt_fim = datetime.datetime(2026, 1, 1, h_f.hour, h_f.minute)
+
+        if dt_fim <= dt_curr:
+            dt_fim += datetime.timedelta(days=1)
+
+        horas_efetivas = 0.0
+        while dt_curr < dt_fim:
+            hora_atual = dt_curr.hour
+            # Bonificação noturna de +10 min por hora (23:00 às 05:00) => Fator (70/60)
+            is_noturno = (hora_atual >= 23 or hora_atual < 5)
+            fator_minuto = (70.0 / 60.0) if is_noturno else 1.0
+            horas_efetivas += (1.0 / 60.0) * fator_minuto
+            dt_curr += datetime.timedelta(minutes=1)
+
+        return horas_efetivas
+    except Exception:
+        return 12.0
+
     dt_ini, dt_fim = None, None
 
     # 1. Tenta mapear diretamente pelo dicionário de legendas
