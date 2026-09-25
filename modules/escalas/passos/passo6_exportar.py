@@ -12,7 +12,7 @@ import streamlit.components.v1 as components
 from core.database import supabase, carregar_militares_supabase
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
-from modules.escalas.passos.passo5_quadro import verificar_trava_sobreposicao, executar_auto_save_banco
+from modules.escalas.passos.passo5_quadro import executar_auto_save_banco
 
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
@@ -67,10 +67,21 @@ def calcular_horas_por_legenda(val_str, mapa_horarios):
             h_fim = datetime.datetime.strptime(info["fim"], "%H:%M")
             if h_fim <= h_ini:
                 h_fim += datetime.timedelta(days=1)
-            diff_horas = (h_fim - h_ini).total_seconds() / 3600.0
-            return diff_horas
+            return (h_fim - h_ini).total_seconds() / 3600.0
         except Exception:
             pass
+            
+    # Tenta extrair diretamente se o valor for um horário como '07:00 ÀS 19:00'
+    m = re.findall(r'(\d{1,2}:\d{2})\s*(?:ÀS|AS|-|A)\s*(\d{1,2}:\d{2})', v)
+    if m:
+        try:
+            h_ini = datetime.datetime.strptime(m[0][0], "%H:%M")
+            h_fim = datetime.datetime.strptime(m[0][1], "%H:%M")
+            if h_fim <= h_ini: h_fim += datetime.timedelta(days=1)
+            return (h_fim - h_ini).total_seconds() / 3600.0
+        except Exception:
+            pass
+
     return 12.0
 
 def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, resp_escala_str, obs_escala, texto_legenda=""):
@@ -156,10 +167,7 @@ def renderizar_passo6():
 
     with st.expander("📌 PASSO 6: Visualização da Escala e Exportação Oficial", expanded=True):
         
-        # --- TABELA DE MAPEAMENTO DE LEGENDAS (3 COLUNAS: LEGENDA / HORA INÍCIO / HORA TÉRMINO) ---
-        st.markdown("##### 📌 Tabela de Mapeamento de Legendas e Horários de Serviço")
-        st.caption("Configure abaixo os horários para cada legenda encontrada na escala. As horas trabalhadas serão recalculadas automaticamente.")
-        
+        # --- TABELA DE LEGENDAS (OCULTA POR PADRÃO, ATIVADA VIA CLIQUE) ---
         turnos_encontrados = set()
         for d in range(1, num_dias_mes + 1):
             for pair in chaves_quadro:
@@ -170,23 +178,25 @@ def renderizar_passo6():
                         turnos_encontrados.add(val_s)
 
         legendas_lista = sorted(list(turnos_encontrados)) if turnos_encontrados else ["1", "2", "RH", "TPB"]
-        
-        mapa_horarios = {}
-        cols_leg = st.columns(min(4, max(1, len(legendas_lista))))
-        
-        for idx_leg, leg_code in enumerate(legendas_lista):
-            with cols_leg[idx_leg % len(cols_leg)]:
-                st.markdown(f"**Legenda: `{leg_code}`**")
-                def_ini = "19:00" if leg_code == "2" else "07:00"
-                def_fim = "07:00" if leg_code == "2" else "19:00"
-                
-                h_ini = st.text_input(f"Início ({leg_code})", value=def_ini, key=f"leg_ini_{leg_code}")
-                h_fim = st.text_input(f"Término ({leg_code})", value=def_fim, key=f"leg_fim_{leg_code}")
-                mapa_horarios[leg_code] = {"inicio": h_ini, "fim": h_fim}
+        mapa_horarios = st.session_state.get("mapa_legendas_custom", {})
 
-        st.divider()
+        with st.expander("⚙️ Editar / Ler Legendas de Horários (Clique para Abrir)", expanded=False):
+            st.caption("Associe cada sigla/número da planilha ao seu horário real de início e término. A contagem de horas e o PDF serão atualizados.")
+            
+            cols_leg = st.columns(min(4, max(1, len(legendas_lista))))
+            for idx_leg, leg_code in enumerate(legendas_lista):
+                with cols_leg[idx_leg % len(cols_leg)]:
+                    st.markdown(f"**Legenda: `{leg_code}`**")
+                    def_ini = mapa_horarios.get(leg_code, {}).get("inicio", "19:00" if leg_code == "2" else "07:00")
+                    def_fim = mapa_horarios.get(leg_code, {}).get("fim", "07:00" if leg_code == "2" else "19:00")
+                    
+                    h_ini = st.text_input(f"Início ({leg_code})", value=def_ini, key=f"leg_ini_{leg_code}")
+                    h_fim = st.text_input(f"Término ({leg_code})", value=def_fim, key=f"leg_fim_{leg_code}")
+                    mapa_horarios[leg_code] = {"inicio": h_ini, "fim": h_fim}
+            
+            st.session_state["mapa_legendas_custom"] = mapa_horarios
 
-        # --- CONSTRUÇÃO DO QUADRO E HTML PARA PDF ---
+        # --- PREPARAÇÃO DOS DADOS DO QUADRO ---
         mils_linhas_quadro = []
         for pair in chaves_quadro:
             if isinstance(pair, (tuple, list)) and len(pair) == 2:
@@ -262,7 +272,6 @@ def renderizar_passo6():
                     val_raw = str(val).strip()
                     val_str = val_raw.upper()
 
-                    # Soma as horas mapeadas pela tabela de legendas
                     total_horas += calcular_horas_por_legenda(val_str, mapa_horarios)
 
                     tokens_dia = set(val_str.replace("/", " ").split())
@@ -310,9 +319,8 @@ def renderizar_passo6():
         df_excel_export = pd.DataFrame(linhas_excel_data, columns=cols_excel_names)
         mes_ano_str = f"{m_mes:02d}/{m_ano}"
         
-        # Texto da legenda no PDF
         leg_str_list = [f"{k} = {v['inicio']} às {v['fim']}" for k, v in mapa_horarios.items()]
-        texto_legenda_final = "LEGENDA DE HORÁRIOS:   " + "   |   ".join(leg_str_list)
+        texto_legenda_final = "LEGENDA DE HORÁRIOS:   " + "   |   ".join(leg_str_list) if leg_str_list else ""
 
         html_documento = f"""
         <!DOCTYPE html>
@@ -370,7 +378,7 @@ def renderizar_passo6():
                         <td class="header-titles">
                             <h2>{unidade}</h2>
                             <h3>{subunidade}</h3>
-                            <h4>QUADRO GERAL DE ESCALA DE SERVIÇO - {mes_ano_str}</h4>
+                            #### QUADRO GERAL DE ESCALA DE SERVIÇO - {mes_ano_str}
                         </td>
                         <td style="width: 70px;"></td>
                     </tr>
@@ -415,7 +423,7 @@ def renderizar_passo6():
         components.html(html_documento, height=520, scrolling=True)
         st.divider()
 
-        # --- LINHA INFERIOR DE AÇÕES UNIFICADAS: IMPORTAR EXCEL + BAIXAR EXCEL + IMPRIMIR PDF ---
+        # --- LINHA INFERIOR DE AÇÕES: IMPORTAÇÃO + DOWNLOAD EXCEL + PDF ---
         c_act1, c_act2, c_act3 = st.columns([1.2, 1, 1], gap="small")
         
         with c_act1:
@@ -429,7 +437,26 @@ def renderizar_passo6():
             if arq_excel_escala is not None:
                 if st.button("🚀 Processar Escala Importada", type="secondary", use_container_width=True):
                     try:
-                        df_raw = pd.read_excel(arq_excel_escala, header=None)
+                        xls_imp = pd.ExcelFile(arq_excel_escala)
+                        
+                        # Se houver aba de legendas na planilha, lê automaticamente
+                        mapa_auto_leg = copy.deepcopy(mapa_horarios)
+                        if len(xls_imp.sheet_names) > 1:
+                            try:
+                                df_leg = pd.read_excel(arq_excel_escala, sheet_name=1)
+                                df_leg.columns = [str(c).strip().lower() for c in df_leg.columns]
+                                if "legenda" in df_leg.columns and "horario" in df_leg.columns:
+                                    for _, r_leg in df_leg.dropna(subset=["horario"]).iterrows():
+                                        leg_k = str(r_leg["legenda"]).strip().upper()
+                                        hor_v = str(r_leg["horario"]).strip()
+                                        parts = re.split(r'[/|-|às|as]', hor_v, flags=re.IGNORECASE)
+                                        if len(parts) >= 2:
+                                            mapa_auto_leg[leg_k] = {"inicio": parts[0].strip(), "fim": parts[1].strip()}
+                                    st.session_state["mapa_legendas_custom"] = mapa_auto_leg
+                            except Exception:
+                                pass
+
+                        df_raw = pd.read_excel(arq_excel_escala, sheet_name=0, header=None)
                         header_idx = None
                         for idx_r, r_vals in df_raw.iterrows():
                             line_str = [str(v).strip().upper() for v in r_vals.values if pd.notna(v)]
@@ -437,8 +464,8 @@ def renderizar_passo6():
                                 header_idx = idx_r
                                 break
 
-                        if header_idx is None: header_idx = 4
-                        df_imp = pd.read_excel(arq_excel_escala, header=header_idx)
+                        if header_idx is None: header_idx = 3
+                        df_imp = pd.read_excel(arq_excel_escala, sheet_name=0, header=header_idx)
                         df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
 
                         grade_nova = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))

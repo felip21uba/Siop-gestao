@@ -88,7 +88,6 @@ def extrair_intervalos_horarios(texto_celula, data_ref):
 def calcular_horas_efetivas_turno(texto_celula, data_ref, eh_supervisao=False):
     intervalos = extrair_intervalos_horarios(texto_celula, data_ref)
     if not intervalos:
-        # Padrão para siglas numéricas/legendas clássicas de 12h se não houver formato de hora explícito
         v = str(texto_celula).upper().strip()
         if v in ["1", "2", "RH", "TPB", "T1", "T2"]:
             return 12.0
@@ -336,7 +335,6 @@ def recalcular_escala_matriz():
     grade = st.session_state.get("grade_escala_lancamentos", {})
     dias_ativos = set(st.session_state.get("dias_selecionados_passo4", []))
 
-    # 🚀 1. BUSCA AS FÉRIAS DO BANCO SUPABASE PARA O MÊS DO PASSO 2
     ferias_passo8 = carregar_ferias_supabase(ano=m_ano, mes=m_mes)
     mils = st.session_state.get("lista_militares", [])
     
@@ -345,7 +343,6 @@ def recalcular_escala_matriz():
         for m in mils if m.get("id")
     }
 
-    # MONTA O MAPA DE DIAS DE FÉRIAS POR MILITAR
     dias_ferias_por_militar = {}
     for f in ferias_passo8:
         num_p_ferias = str(f.get("num_policia", "")).strip().upper()
@@ -382,7 +379,6 @@ def recalcular_escala_matriz():
     )
     sem_iso_d1 = datetime.date(m_ano, m_mes, 1).isocalendar()[1]
 
-    # 2. CÁLCULO E INJEÇÃO NAS LINHAS ATIVAS
     for pair in st.session_state.get("militares_no_quadro_chaves", []):
         if not (isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[1]) == eq_ativa):
             continue
@@ -393,12 +389,10 @@ def recalcular_escala_matriz():
         for d in range(1, num_dias + 1):
             k = f"{m_id}_{eq_ativa}_{m_ano}_{m_mes:02d}_{d:02d}"
 
-            # 🚀 LÓGICA DE SOBREESCRITA: Se o dia está no mapa do Passo 8, força 'FE'
             if d in dias_ferias_mil:
                 grade[k] = "FE"
                 continue
 
-            # Preserva outros afastamentos manuais já existentes (ex: LM, ATE)
             if any(sig in str(grade.get(k, "")).upper() for sig in SIGLAS_DIAS_NEUTROS if sig not in ["F", "D", "X"]):
                 continue
 
@@ -578,7 +572,7 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
-        # PAINEL DE AJUSTE RÁPIDO (LIBERDADE PARA SOBRESCREVER QUALQUER DIA/FÉRIAS)
+        # PAINEL DE AJUSTE RÁPIDO
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote / Remoção)", expanded=False):
             if mils_ord and not quadro_travado:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
@@ -727,7 +721,7 @@ def renderizar_passo5():
                 v_str = str(v).upper().strip()
                 tokens_dia = set(v_str.replace("/", " ").split())
 
-                if any(sig in tokens_dia for sig grand in [SIGLAS_ABATEM_META] if sig not in ["F", "D", "X"]):
+                if any(sig in tokens_dia for sig in SIGLAS_ABATEM_META if sig not in ["F", "D", "X"]):
                     neutros += 1
 
                 if v_str not in ["", "F", "D", "X"] and (not any(sig in tokens_dia for sig in SIGLAS_ABATEM_META if sig not in ["F", "D", "X"]) or "DNT" in tokens_dia):
