@@ -16,7 +16,7 @@ from modules.escalas.passos.passo5_quadro import verificar_trava_sobreposicao, e
 
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
-    "LTSP", "LM",
+    "LTSP", "LM", "LMM",
     "ATEST", "ATESTADO", "ATE",
     "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT"
 ]
@@ -29,7 +29,10 @@ CORES_EQUIPES = {
     "SUPERVISÃO": "#b91c1c", 
     "ADMINISTRAÇÃO": "#0f766e", 
     "TM ALPHA": "#0369a1", 
-    "GEPAR": "#047857"
+    "GEPAR": "#047857",
+    "A": "#1e3a8a",
+    "B": "#065f46",
+    "C": "#9a3412"
 }
 
 def obter_brasao_base64(url_padrao):
@@ -47,16 +50,16 @@ def obter_cor_equipe(eq):
     return CORES_EQUIPES.get(str(eq).upper().strip(), "#475569")
 
 def extrair_matricula_limpa(valor):
-    """Extrai estritamente os dígitos do Nº de Polícia tratando floats do Excel (ex: '1337468.0' -> '1337468')."""
+    """Extrai estritamente os dígitos do Nº de Polícia tratando floats do Excel (ex: '1276716.0' -> '1276716')."""
     val_str = str(valor).strip()
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
     return re.sub(r'\D', '', val_str).lstrip('0')
 
 def calcular_duracao_turno_texto(val_str):
-    """Calcula a carga horária em horas a partir do texto do turno/legenda."""
+    """Calcula a carga horária real do plantão baseado no horário ou legenda (1, 2, T1, T2, RH, TPB)."""
     v = str(val_str).upper().strip()
-    if not v or v in ["F", "D", "X", "NAN", "NONE"] or any(sigla in v for sigla in SIGLAS_DIAS_NEUTROS):
+    if not v or v in ["F", "D", "X", "NAN", "NONE", "0"] or any(sigla in v for sigla in SIGLAS_DIAS_NEUTROS):
         return 0.0
     if "24" in v or "24X72" in v:
         return 24.0
@@ -64,7 +67,7 @@ def calcular_duracao_turno_texto(val_str):
         return 18.0
     if "8" in v or "08" in v or "EXPEDIENTE" in v:
         return 8.0
-    # Padrão para plantões de turno (12h) quando for sigla (ex: 1, 2, 3, T1, T2) ou horário
+    # Plantões padrão PMMG (Turnos 1, 2, T1, T2, RH, TPB ou intervalos de 12 horas)
     return 12.0
 
 def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, resp_escala_str, obs_escala, texto_legenda=""):
@@ -88,9 +91,9 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
         
         for col_num, value in enumerate(df_dados.columns):
             worksheet.write(4, col_num, value, fmt_header)
-            if col_num == 0: worksheet.set_column(col_num, col_num, 16)
-            elif col_num == 1: worksheet.set_column(col_num, col_num, 15)  # Coluna Nº POLÍCIA
-            elif col_num == 2: worksheet.set_column(col_num, col_num, 25)  # Coluna MILITAR
+            if col_num == 0: worksheet.set_column(col_num, col_num, 12)
+            elif col_num == 1: worksheet.set_column(col_num, col_num, 14)
+            elif col_num == 2: worksheet.set_column(col_num, col_num, 24)
             elif col_num > 2: worksheet.set_column(col_num, col_num, 8)
 
         linha_excel = 5
@@ -185,10 +188,10 @@ def renderizar_passo6():
                             st.success("✅ Escala homologada e encerrada com sucesso!")
                             st.rerun()
 
-                # 🟢 LEITOR DE EXCEL CAPTURANDO D, F, X E PLANTÕES
+                # 🟢 LEITOR DE EXCEL COM IDENTIFICAÇÃO EXCLUSIVA E COMPUTAÇÃO PRECISA
                 st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
                 st.markdown("##### 📥 Importar Escala Externa em Excel")
-                st.caption("Importa a escala mantendo os dias de folga (D, F), licenças e plantões.")
+                st.caption("A importação realiza o cruzamento exclusivo pelo Nº de Polícia mantendo os turnos e licenças (FE, LM, D, F).")
                 
                 arq_excel_escala = st.file_uploader(
                     "Selecione o arquivo Excel da Escala:", 
@@ -204,7 +207,7 @@ def renderizar_passo6():
                             header_idx = None
                             for idx_r, r_vals in df_raw.iterrows():
                                 line_str = [str(v).strip().upper() for v in r_vals.values if pd.notna(v)]
-                                if any(k in line_str for k in ["EQUIPE", "MILITAR", "Nº POLÍCIA", "POLICIA"]):
+                                if any(k in line_str for k in ["EQUIPE", "MILITAR", "Nº POLÍCIA", "POLICIA", "NUMERO", "NÚMERO"]):
                                     header_idx = idx_r
                                     break
 
@@ -232,12 +235,12 @@ def renderizar_passo6():
                             militar_nao_encontrado_lista = []
 
                             for idx_row, row in df_imp.iterrows():
-                                eq_imp = str(row.get(col_equipe, "ADMINISTRAÇÃO")).strip().upper() if col_equipe else "ADMINISTRAÇÃO"
+                                eq_imp = str(row.get(col_equipe, "A")).strip().upper() if col_equipe else "A"
                                 val_militar_txt = str(row.get(col_militar, "")).strip().upper() if col_militar else ""
                                 val_mat_txt = str(row.get(col_matricula, "")).strip() if col_matricula else ""
 
                                 texto_comb = f"{eq_imp} {val_militar_txt} {val_mat_txt}".upper()
-                                if any(k in texto_comb for k in ["RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE DA CIA"]):
+                                if any(k in texto_comb for k in ["RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE DA CIA", "PROGRAMADOR", "TEN CEL ERICK"]):
                                     break
 
                                 if not val_militar_txt and not val_mat_txt:
@@ -265,7 +268,6 @@ def renderizar_passo6():
                                             if val_celula and val_celula.upper() not in ["NAN", "NONE"]:
                                                 if val_celula.endswith(".0"):
                                                     val_celula = val_celula[:-2]
-                                                # Garante gravação mesmo para D, F, X ou Horários
                                                 grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula.upper()
                                             else:
                                                 grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
@@ -279,10 +281,10 @@ def renderizar_passo6():
                                 st.session_state["grade_escala_lancamentos"] = grade_nova
                                 
                                 executar_auto_save_banco()
-                                st.success(f"✅ {linhas_importadas} militar(es) cruzado(s) e importados com sucesso!")
+                                st.success(f"✅ {linhas_importadas} militar(es) importado(s) e associados pelo Nº Polícia com sucesso!")
                                 st.rerun()
                             else:
-                                st.error("❌ Nenhuma matrícula da planilha bateu com os militares cadastrados no sistema (Passo 3).")
+                                st.error("❌ Nenhuma matrícula da planilha coincidiu com os militares cadastrados no sistema (Passo 3).")
                         except Exception as ex_imp:
                             st.error(f"Erro ao processar arquivo Excel: {ex_imp}")
 
@@ -304,7 +306,7 @@ def renderizar_passo6():
                     if len(pair) == 2:
                         val = grade_lancamentos.get(f"{pair[0]}_{pair[1]}_{m_ano}_{m_mes:02d}_{d:02d}", "")
                         val_s = str(val).strip().upper()
-                        if val_s and val_s not in ["F", "D", "X", "FE", "LM", "ATE", "NONE", "NAN", ""]:
+                        if val_s and val_s not in ["F", "D", "X", "FE", "LM", "ATE", "NONE", "NAN", "", "0"]:
                             turnos_encontrados.add(str(val).strip())
 
             st.markdown("##### ⚙️ Mapeamento e Conversão de Horários / Legendas")
@@ -313,7 +315,7 @@ def renderizar_passo6():
                 "Escolha o modo de exibição no Quadro/PDF/Excel:",
                 ["Exibir exatamente como lançado no Quadro", 
                  "Substituir Horários Extensos por Legendas (ex: 07:00 às 19:00 ➔ T1)", 
-                 "Substituir Legendas Importadas por Horários (ex: T1 ➔ 07:00 às 19:00)"],
+                 "Substituir Legendas Importadas por Horários (ex: 1 ➔ 07:00 às 19:00 | 2 ➔ 19:00 às 07:00)"],
                 key="p6_modo_conversao_legendas"
             )
 
@@ -330,14 +332,16 @@ def renderizar_passo6():
                 leg_str_list = [f"{v} = {k}" for k, v in mapa_legendas.items()]
                 texto_legenda_final = "LEGENDA DE TURNOS:   " + "   |   ".join(leg_str_list)
 
-            elif modo_conversao == "Substituir Legendas Importadas por Horários (ex: T1 ➔ 07:00 às 19:00)" and turnos_encontrados:
+            elif modo_conversao == "Substituir Legendas Importadas por Horários (ex: 1 ➔ 07:00 às 19:00 | 2 ➔ 19:00 às 07:00)" and turnos_encontrados:
                 st.caption("Informe qual horário real corresponde a cada sigla/legenda encontrada na planilha:")
                 cols_leg = st.columns(3)
                 for i, t in enumerate(sorted(turnos_encontrados)):
+                    padrao_val = "07:00 às 19:00"
+                    if str(t).strip() == "2":
+                        padrao_val = "19:00 às 07:00"
                     with cols_leg[i % 3]:
-                        mapa_legendas[t] = st.text_input(f"Horário para Sigla [{t}]:", value="07:00 às 19:00", key=f"leg_input_sig_{i}")
+                        mapa_legendas[t] = st.text_input(f"Horário para Sigla [{t}]:", value=padrao_val, key=f"leg_input_sig_{i}")
 
-                # 🔄 BOTAO DE APLICAR CONVERSAO NO QUADRO DO PASSO 5
                 if mapa_legendas and st.button("🔄 Aplicar Horários Convertidos no Passo 5 (Recalcular Carga Horária)", type="primary"):
                     grade_atualizada = copy.deepcopy(grade_lancamentos)
                     for k_g, v_g in grade_atualizada.items():
@@ -427,21 +431,26 @@ def renderizar_passo6():
                         val_raw = str(val).strip()
                         val_str = val_raw.upper()
                         
-                        # 🟢 CALCULA HORAS TRABALHADAS REAL CONSIDERANDO PLANTÃO OU SIGLA
                         val_efetivo = mapa_legendas.get(val_raw, val_raw) if mapa_legendas else val_raw
+                        
+                        # Soma carga horaria real do plantão
                         total_horas += calcular_duracao_turno_texto(val_efetivo)
 
+                        # Contabiliza dias de abono / licença para ajuste de meta
                         tokens_dia = set(val_str.replace("/", " ").split())
                         if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
                             dias_neutros_cnt += 1
 
                         cell_content = ""
-                        if val_raw not in ["F", "D", "X", "", None]:
+                        if val_raw not in ["F", "D", "X", "", None, "0"]:
                             val_quebrado = str(val_efetivo).replace(" às ", "<br>AS<br>").replace(" AS ", "<br>AS<br>").replace(" ÀS ", "<br>AS<br>")
                             cell_content = f'<div class="shift-badge">{val_quebrado}</div>'
                             linha_xls.append(str(val_efetivo))
                         elif val_raw in ["D", "F"]:
                             cell_content = f'<div style="font-weight: bold; color: #64748b;">{val_raw}</div>'
+                            linha_xls.append(val_raw)
+                        elif val_raw in SIGLAS_DIAS_NEUTROS:
+                            cell_content = f'<div class="shift-badge" style="background-color: #fca5a5 !important; border-color: #f87171 !important;">{val_raw}</div>'
                             linha_xls.append(val_raw)
                         elif val_raw == "X":
                             cell_content = '<div class="shift-x">X</div>'
