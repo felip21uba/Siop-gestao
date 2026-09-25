@@ -60,29 +60,62 @@ def calcular_horas_por_legenda(val_str, mapa_horarios):
     if not v or v in ["F", "D", "X", "NAN", "NONE", "0"] or any(sigla in v for sigla in SIGLAS_DIAS_NEUTROS):
         return 0.0
 
+    dt_ini, dt_fim = None, None
+
+    # 1. Tenta mapear diretamente pelo dicionário de legendas
     if v in mapa_horarios:
         info = mapa_horarios[v]
         try:
-            h_ini = datetime.datetime.strptime(info["inicio"], "%H:%M")
-            h_fim = datetime.datetime.strptime(info["fim"], "%H:%M")
-            if h_fim <= h_ini:
-                h_fim += datetime.timedelta(days=1)
-            return (h_fim - h_ini).total_seconds() / 3600.0
-        except Exception:
-            pass
-            
-    # Tenta extrair diretamente se o valor for um horário como '07:00 ÀS 19:00'
-    m = re.findall(r'(\d{1,2}:\d{2})\s*(?:ÀS|AS|-|A)\s*(\d{1,2}:\d{2})', v)
-    if m:
-        try:
-            h_ini = datetime.datetime.strptime(m[0][0], "%H:%M")
-            h_fim = datetime.datetime.strptime(m[0][1], "%H:%M")
-            if h_fim <= h_ini: h_fim += datetime.timedelta(days=1)
-            return (h_fim - h_ini).total_seconds() / 3600.0
+            h_i = datetime.datetime.strptime(info["inicio"], "%H:%M")
+            h_f = datetime.datetime.strptime(info["fim"], "%H:%M")
+            dt_ini = datetime.datetime(2026, 1, 1, h_i.hour, h_i.minute)
+            dt_fim = datetime.datetime(2026, 1, 1, h_f.hour, h_f.minute)
+            if dt_fim <= dt_ini:
+                dt_fim += datetime.timedelta(days=1)
         except Exception:
             pass
 
-    return 12.0
+    # 2. Se não encontrou no mapa, faz o parse de padrões flexíveis no texto
+    if not dt_ini:
+        m = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', v)
+        if m:
+            try:
+                h1, m1 = int(m[0][0]), int(m[0][1]) if m[0][1] else 0
+                h2, m2 = int(m[0][2]), int(m[0][3]) if m[0][3] else 0
+                dt_ini = datetime.datetime(2026, 1, 1, h1, m1)
+                dt_fim = datetime.datetime(2026, 1, 1, h2, m2)
+                if dt_fim <= dt_ini:
+                    dt_fim += datetime.timedelta(days=1)
+            except Exception:
+                pass
+
+    if not dt_ini or not dt_fim:
+        return 12.0
+
+    # 3. Cálculo minuto a minuto aplicando bonificação noturna de +10 min/hora (23:00 às 05:00)
+    horas_efetivas = 0.0
+    dt_curr = dt_ini
+
+    while dt_curr < dt_fim:
+        hora_atual = dt_curr.hour
+        is_noturno = (hora_atual >= 23 or hora_atual < 5)
+        fator_minuto = (70.0 / 60.0) if is_noturno else 1.0
+        horas_efetivas += (1.0 / 60.0) * fator_minuto
+        dt_curr += datetime.timedelta(minutes=1)
+
+    return horas_efetivas
+
+def extrair_texto_pdf(arq_pdf):
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(arq_pdf)
+        texto = ""
+        for page in reader.pages:
+            texto += (page.extract_text() or "") + "\n"
+        return texto
+    except Exception as e:
+        st.error(f"Erro ao extrair texto do PDF: {e}")
+        return ""
 
 def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, resp_escala_str, obs_escala, texto_legenda=""):
     output = io.BytesIO()
@@ -165,9 +198,8 @@ def renderizar_passo6():
     chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
     grade_lancamentos = st.session_state.get("grade_escala_lancamentos", {})
 
-    with st.expander("📌 PASSO 6: Visualização da Escala e Exportação Oficial", expanded=True):
+    with st.expander("📌 PASSO 6: Visualização da Escala, Importação e Exportação Oficial", expanded=True):
         
-        # --- TABELA DE LEGENDAS (OCULTA POR PADRÃO, ATIVADA VIA CLIQUE) ---
         turnos_encontrados = set()
         for d in range(1, num_dias_mes + 1):
             for pair in chaves_quadro:
@@ -180,13 +212,13 @@ def renderizar_passo6():
         legendas_lista = sorted(list(turnos_encontrados)) if turnos_encontrados else ["1", "2", "RH", "TPB"]
         mapa_horarios = st.session_state.get("mapa_legendas_custom", {})
 
-        with st.expander("⚙️ Editar / Ler Legendas de Horários (Clique para Abrir)", expanded=False):
-            st.caption("Associe cada sigla/número da planilha ao seu horário real de início e término. A contagem de horas e o PDF serão atualizados.")
+        with st.expander("⚙️ Editar / Mapear Legendas de Horários (Clique para Expandir)", expanded=False):
+            st.caption("Verifique ou troque os horários das siglas detectadas na escala para que a contagem final de horas e PDF fiquem exatos.")
             
             cols_leg = st.columns(min(4, max(1, len(legendas_lista))))
             for idx_leg, leg_code in enumerate(legendas_lista):
                 with cols_leg[idx_leg % len(cols_leg)]:
-                    st.markdown(f"**Legenda: `{leg_code}`**")
+                    st.markdown(f"**Sigla/Legenda: `{leg_code}`**")
                     def_ini = mapa_horarios.get(leg_code, {}).get("inicio", "19:00" if leg_code == "2" else "07:00")
                     def_fim = mapa_horarios.get(leg_code, {}).get("fim", "07:00" if leg_code == "2" else "19:00")
                     
@@ -196,7 +228,6 @@ def renderizar_passo6():
             
             st.session_state["mapa_legendas_custom"] = mapa_horarios
 
-        # --- PREPARAÇÃO DOS DADOS DO QUADRO ---
         mils_linhas_quadro = []
         for pair in chaves_quadro:
             if isinstance(pair, (tuple, list)) and len(pair) == 2:
@@ -378,7 +409,7 @@ def renderizar_passo6():
                         <td class="header-titles">
                             <h2>{unidade}</h2>
                             <h3>{subunidade}</h3>
-                            #### QUADRO GERAL DE ESCALA DE SERVIÇO - {mes_ano_str}
+                            <h4>QUADRO GERAL DE ESCALA DE SERVIÇO - {mes_ano_str}</h4>
                         </td>
                         <td style="width: 70px;"></td>
                     </tr>
@@ -423,103 +454,114 @@ def renderizar_passo6():
         components.html(html_documento, height=520, scrolling=True)
         st.divider()
 
-        # --- LINHA INFERIOR DE AÇÕES: IMPORTAÇÃO + DOWNLOAD EXCEL + PDF ---
-        c_act1, c_act2, c_act3 = st.columns([1.2, 1, 1], gap="small")
+        # --- LINHA INFERIOR DE AÇÕES: IMPORTAÇÃO DE ARQUIVOS (EXCEL E PDF) ---
+        c_act1, c_act2, c_act3 = st.columns([1.3, 1, 1], gap="small")
         
         with c_act1:
-            arq_excel_escala = st.file_uploader(
-                "📥 Importar Escala (.xlsx):", 
-                type=["xlsx", "xls"], 
-                key="p6_uploader_excel_bottom",
+            arq_escala_up = st.file_uploader(
+                "📥 Importar Escala (.xlsx / .pdf):", 
+                type=["xlsx", "xls", "pdf"], 
+                key="p6_uploader_escala_bottom",
                 label_visibility="collapsed"
             )
 
-            if arq_excel_escala is not None:
-                if st.button("🚀 Processar Escala Importada", type="secondary", use_container_width=True):
-                    try:
-                        xls_imp = pd.ExcelFile(arq_excel_escala)
-                        
-                        # Se houver aba de legendas na planilha, lê automaticamente
-                        mapa_auto_leg = copy.deepcopy(mapa_horarios)
-                        if len(xls_imp.sheet_names) > 1:
-                            try:
-                                df_leg = pd.read_excel(arq_excel_escala, sheet_name=1)
-                                df_leg.columns = [str(c).strip().lower() for c in df_leg.columns]
-                                if "legenda" in df_leg.columns and "horario" in df_leg.columns:
-                                    for _, r_leg in df_leg.dropna(subset=["horario"]).iterrows():
-                                        leg_k = str(r_leg["legenda"]).strip().upper()
-                                        hor_v = str(r_leg["horario"]).strip()
-                                        parts = re.split(r'[/|-|às|as]', hor_v, flags=re.IGNORECASE)
-                                        if len(parts) >= 2:
-                                            mapa_auto_leg[leg_k] = {"inicio": parts[0].strip(), "fim": parts[1].strip()}
-                                    st.session_state["mapa_legendas_custom"] = mapa_auto_leg
-                            except Exception:
-                                pass
+            if arq_escala_up is not None:
+                ext_arq = arq_escala_up.name.lower()
+                
+                if ext_arq.endswith(".pdf"):
+                    if st.button("🚀 Processar Texto do PDF", type="secondary", use_container_width=True):
+                        texto_pdf = extrair_texto_pdf(arq_escala_up)
+                        if texto_pdf:
+                            st.session_state["p6_texto_pdf_lido"] = texto_pdf
+                            st.success("✅ Texto do PDF extraído! Defina os horários das legendas acima para aplicar.")
+                        else:
+                            st.warning("⚠️ Não foi possível ler texto estruturado neste PDF.")
 
-                        df_raw = pd.read_excel(arq_excel_escala, sheet_name=0, header=None)
-                        header_idx = None
-                        for idx_r, r_vals in df_raw.iterrows():
-                            line_str = [str(v).strip().upper() for v in r_vals.values if pd.notna(v)]
-                            if any(k in line_str for k in ["EQUIPE", "MILITAR", "Nº POLÍCIA", "POLICIA", "NUMERO", "NÚMERO"]):
-                                header_idx = idx_r
-                                break
+                elif ext_arq.endswith((".xlsx", ".xls")):
+                    if st.button("🚀 Processar Escala Importada", type="secondary", use_container_width=True):
+                        try:
+                            xls_imp = pd.ExcelFile(arq_escala_up)
+                            mapa_auto_leg = copy.deepcopy(mapa_horarios)
+                            
+                            if len(xls_imp.sheet_names) > 1:
+                                try:
+                                    df_leg = pd.read_excel(arq_escala_up, sheet_name=1)
+                                    df_leg.columns = [str(c).strip().lower() for c in df_leg.columns]
+                                    if "legenda" in df_leg.columns and "horario" in df_leg.columns:
+                                        for _, r_leg in df_leg.dropna(subset=["horario"]).iterrows():
+                                            leg_k = str(r_leg["legenda"]).strip().upper()
+                                            hor_v = str(r_leg["horario"]).strip()
+                                            parts = re.split(r'[/|-|às|as]', hor_v, flags=re.IGNORECASE)
+                                            if len(parts) >= 2:
+                                                mapa_auto_leg[leg_k] = {"inicio": parts[0].strip(), "fim": parts[1].strip()}
+                                        st.session_state["mapa_legendas_custom"] = mapa_auto_leg
+                                except Exception:
+                                    pass
 
-                        if header_idx is None: header_idx = 3
-                        df_imp = pd.read_excel(arq_excel_escala, sheet_name=0, header=header_idx)
-                        df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
+                            df_raw = pd.read_excel(arq_escala_up, sheet_name=0, header=None)
+                            header_idx = None
+                            for idx_r, r_vals in df_raw.iterrows():
+                                line_str = [str(v).strip().upper() for v in r_vals.values if pd.notna(v)]
+                                if any(k in line_str for k in ["EQUIPE", "MILITAR", "Nº POLÍCIA", "POLICIA", "NUMERO", "NÚMERO"]):
+                                    header_idx = idx_r
+                                    break
 
-                        grade_nova = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
-                        chaves_novas = list(st.session_state.get("militares_no_quadro_chaves", []))
-                        mils_cad = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
-                        
-                        mapa_mils_digitos = {}
-                        for m in mils_cad:
-                            num_p_dig = extrair_matricula_limpa(m.get("num_policia", ""))
-                            if num_p_dig: mapa_mils_digitos[num_p_dig] = m
+                            if header_idx is None: header_idx = 3
+                            df_imp = pd.read_excel(arq_escala_up, sheet_name=0, header=header_idx)
+                            df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
 
-                        col_equipe = next((c for c in df_imp.columns if "EQUIPE" in c), None)
-                        col_matricula = next((c for c in df_imp.columns if any(k in c for k in ["POLICIA", "POLÍCIA", "NUMERO", "NÚMERO", "MATRICULA", "MATRÍCULA"])), None)
-                        col_militar = next((c for c in df_imp.columns if any(k in c for k in ["MILITAR", "NOME", "SERVIDOR"])), None)
+                            grade_nova = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
+                            chaves_novas = list(st.session_state.get("militares_no_quadro_chaves", []))
+                            mils_cad = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
+                            
+                            mapa_mils_digitos = {}
+                            for m in mils_cad:
+                                num_p_dig = extrair_matricula_limpa(m.get("num_policia", ""))
+                                if num_p_dig: mapa_mils_digitos[num_p_dig] = m
 
-                        linhas_importadas = 0
-                        for idx_row, row in df_imp.iterrows():
-                            eq_imp = str(row.get(col_equipe, "A")).strip().upper() if col_equipe else "A"
-                            val_militar_txt = str(row.get(col_militar, "")).strip().upper() if col_militar else ""
-                            val_mat_txt = str(row.get(col_matricula, "")).strip() if col_matricula else ""
+                            col_equipe = next((c for c in df_imp.columns if "EQUIPE" in c), None)
+                            col_matricula = next((c for c in df_imp.columns if any(k in c for k in ["POLICIA", "POLÍCIA", "NUMERO", "NÚMERO", "MATRICULA", "MATRÍCULA"])), None)
+                            col_militar = next((c for c in df_imp.columns if any(k in c for k in ["MILITAR", "NOME", "SERVIDOR"])), None)
 
-                            if any(k in f"{eq_imp} {val_militar_txt}".upper() for k in ["RESPONSÁVEL", "COMANDANTE DA CIA"]):
-                                break
+                            linhas_importadas = 0
+                            for idx_row, row in df_imp.iterrows():
+                                eq_imp = str(row.get(col_equipe, "A")).strip().upper() if col_equipe else "A"
+                                val_militar_txt = str(row.get(col_militar, "")).strip().upper() if col_militar else ""
+                                val_mat_txt = str(row.get(col_matricula, "")).strip() if col_matricula else ""
 
-                            digitos_mat = extrair_matricula_limpa(val_mat_txt)
-                            if not digitos_mat and val_militar_txt:
-                                digitos_mat = extrair_matricula_limpa(val_militar_txt)
+                                if any(k in f"{eq_imp} {val_militar_txt}".upper() for k in ["RESPONSÁVEL", "COMANDANTE DA CIA"]):
+                                    break
 
-                            m_obj_encontrado = mapa_mils_digitos.get(digitos_mat)
-                            if m_obj_encontrado:
-                                m_id = str(m_obj_encontrado.get("id"))
-                                pair = (m_id, eq_imp)
-                                if pair not in chaves_novas:
-                                    chaves_novas.append(pair)
+                                digitos_mat = extrair_matricula_limpa(val_mat_txt)
+                                if not digitos_mat and val_militar_txt:
+                                    digitos_mat = extrair_matricula_limpa(val_militar_txt)
 
-                                for d in range(1, num_dias_mes + 1):
-                                    col_dia = next((c for c in df_imp.columns if re.match(rf'^{d}\b', c.strip())), None)
-                                    if col_dia:
-                                        val_celula = str(row.get(col_dia, "")).strip()
-                                        if val_celula and val_celula.upper() not in ["NAN", "NONE"]:
-                                            if val_celula.endswith(".0"): val_celula = val_celula[:-2]
-                                            grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula.upper()
-                                        else:
-                                            grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
-                                linhas_importadas += 1
+                                m_obj_encontrado = mapa_mils_digitos.get(digitos_mat)
+                                if m_obj_encontrado:
+                                    m_id = str(m_obj_encontrado.get("id"))
+                                    pair = (m_id, eq_imp)
+                                    if pair not in chaves_novas:
+                                        chaves_novas.append(pair)
 
-                        if linhas_importadas > 0:
-                            st.session_state["militares_no_quadro_chaves"] = chaves_novas
-                            st.session_state["grade_escala_lancamentos"] = grade_nova
-                            executar_auto_save_banco()
-                            st.success(f"✅ {linhas_importadas} militar(es) importado(s) com sucesso!")
-                            st.rerun()
-                    except Exception as ex_imp:
-                        st.error(f"Erro ao processar importação: {ex_imp}")
+                                    for d in range(1, num_dias_mes + 1):
+                                        col_dia = next((c for c in df_imp.columns if re.match(rf'^{d}\b', c.strip())), None)
+                                        if col_dia:
+                                            val_celula = str(row.get(col_dia, "")).strip()
+                                            if val_celula and val_celula.upper() not in ["NAN", "NONE"]:
+                                                if val_celula.endswith(".0"): val_celula = val_celula[:-2]
+                                                grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula.upper()
+                                            else:
+                                                grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
+                                    linhas_importadas += 1
+
+                            if linhas_importadas > 0:
+                                st.session_state["militares_no_quadro_chaves"] = chaves_novas
+                                st.session_state["grade_escala_lancamentos"] = grade_nova
+                                executar_auto_save_banco()
+                                st.success(f"✅ {linhas_importadas} militar(es) importado(s) com sucesso!")
+                                st.rerun()
+                        except Exception as ex_imp:
+                            st.error(f"Erro ao processar importação: {ex_imp}")
 
         with c_act2:
             bytes_xls = gerar_excel_escala(df_excel_export, unidade, subunidade, mes_ano_str, st.session_state.get('p6_cmt_cia_sel', 'TEN CEL LOPES'), nome_resp_escala, "", texto_legenda_final)

@@ -35,7 +35,7 @@ SIGLAS_ABATEM_META = {
 # ============================================================
 
 def emitir_sinal_atualizacao_espelho():
-    """Dispara sinal via BroadcastChannel do navegador para atualizar a 2ª Tela instantaneamente sem reload contínuo."""
+    """Dispara sinal via BroadcastChannel para atualizar a 2ª Tela instantaneamente."""
     components.html(
         """
         <script>
@@ -65,16 +65,17 @@ def extrair_intervalos_horarios(texto_celula, data_ref):
     if texto in SIGLAS_DIAS_NEUTROS:
         return []
 
-    padrao = re.findall(r'(\d{1,2}:\d{2})\s*(?:ÀS|AS|-|A)\s*(\d{1,2}:\d{2})', texto)
+    # Suporta formatos flexíveis: 14:00 às 00:00, 14:00/00:00, 14-00, 14/00, etc.
+    padrao = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', texto)
     intervalos = []
 
-    for h_ini_str, h_fim_str in padrao:
+    for item in padrao:
         try:
-            h_ini_p = [int(x) for x in h_ini_str.split(":")]
-            h_fim_p = [int(x) for x in h_fim_str.split(":")]
+            h1, m1 = int(item[0]), int(item[1]) if item[1] else 0
+            h2, m2 = int(item[2]), int(item[3]) if item[3] else 0
 
-            dt_ini = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h_ini_p[0], h_ini_p[1])
-            dt_fim = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h_fim_p[0], h_fim_p[1])
+            dt_ini = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h1, m1)
+            dt_fim = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h2, m2)
 
             if dt_fim <= dt_ini:
                 dt_fim += datetime.timedelta(days=1)
@@ -90,6 +91,7 @@ def calcular_horas_efetivas_turno(texto_celula, data_ref, eh_supervisao=False):
     if not intervalos:
         v = str(texto_celula).upper().strip()
         if v in ["1", "2", "RH", "TPB", "T1", "T2"]:
+            # Valor padrão sem detalhamento explícito
             return 12.0
         return 0.0
 
@@ -99,15 +101,15 @@ def calcular_horas_efetivas_turno(texto_celula, data_ref, eh_supervisao=False):
     for dt_ini, dt_fim in intervalos:
         dt_curr = dt_ini
         while dt_curr < dt_fim:
-            dt_next = dt_curr + datetime.timedelta(minutes=1)
             minutos_presenciais_reais += 1.0
             hora_atual = dt_curr.hour
 
+            # Bonificação noturna de +10 minutos por hora entre 23:00 e 05:00 (Fator 70/60)
             is_noturno = (hora_atual >= 23 or hora_atual < 5)
             fator_minuto = (70.0 / 60.0) if is_noturno else 1.0
             horas_presenciais_efetivas += (1.0 / 60.0) * fator_minuto
 
-            dt_curr = dt_next
+            dt_curr += datetime.timedelta(minutes=1)
 
     if eh_supervisao or "SUPERVISÃO" in str(texto_celula).upper():
         horas_presenciais_reais = minutos_presenciais_reais / 60.0
@@ -325,7 +327,7 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_
     return len(bloqueios) > 0
 
 def recalcular_escala_matriz():
-    """Calcula a matriz do mês (Passos 1 ao 4) e SOBRESCREVE automaticamente com a sigla FE as férias do Passo 8."""
+    """Calcula a matriz do mês e SOBRESCREVE com FE as férias do Passo 8."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -721,10 +723,10 @@ def renderizar_passo5():
                 v_str = str(v).upper().strip()
                 tokens_dia = set(v_str.replace("/", " ").split())
 
-                if any(sig in tokens_dia for sig in SIGLAS_ABATEM_META if sig not in ["F", "D", "X"]):
+                if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
                     neutros += 1
 
-                if v_str not in ["", "F", "D", "X"] and (not any(sig in tokens_dia for sig in SIGLAS_ABATEM_META if sig not in ["F", "D", "X"]) or "DNT" in tokens_dia):
+                if v_str not in ["", "F", "D", "X"] and (not any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]) or "DNT" in tokens_dia):
                     dt_ref_dia = datetime.date(m_ano, m_mes, d)
                     eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in v_str)
                     tot_h += calcular_horas_efetivas_turno(v_str, dt_ref_dia, eh_supervisao=eh_sup)
