@@ -66,26 +66,35 @@ def carregar_militares_supabase() -> list[dict]:
         return []
     try:
         # 1. Tenta carregar primeiro da tabela 'efetivo'
-        res = supabase.table("efetivo").select("*").execute()
-        dados_brutos = res.data if (res and res.data) else []
+        dados_brutos = []
+        try:
+            res = supabase.table("efetivo").select("*").execute()
+            if res and res.data:
+                dados_brutos = res.data
+        except Exception:
+            pass
 
-        # 2. Fallback para a tabela/view 'militares'
+        # 2. Fallback silencioso para a tabela/view 'militares'
         if not dados_brutos:
-            res_m = supabase.table("militares").select("*").execute()
-            dados_brutos = res_m.data if (res_m and res_m.data) else []
+            try:
+                res_m = supabase.table("militares").select("*").execute()
+                if res_m and res_m.data:
+                    dados_brutos = res_m.data
+            except Exception:
+                pass
 
         militares = []
         for r in dados_brutos:
             militares.append({
                 "id": str(r.get("id")),
-                "num_policia": r.get("num_policia", "N/I"),
+                "num_policia": str(r.get("num_policia", "N/I")).strip().upper(),
                 "posto_grad": r.get("posto_grad", "SD"),
-                "nome_guerra": r.get("nome_guerra", "MILITAR"),
-                "nome_completo": r.get("nome_completo", r.get("nome_guerra", "MILITAR")),
-                "cidade": r.get("cidade", "N/I"),
+                "nome_guerra": str(r.get("nome_guerra", "MILITAR")).strip().upper(),
+                "nome_completo": str(r.get("nome_completo") or r.get("nome_guerra", "MILITAR")).strip().upper(),
+                "cidade": str(r.get("cidade", "N/I")).strip().upper(),
                 "peso": r.get("peso", 99),
                 "ordem_manual": r.get("ordem_manual", 1),
-                "unidade": r.get("unidade", "UNIDADE N/I"),
+                "unidade": str(r.get("unidade", "UNIDADE N/I")).strip().upper(),
                 "nivel_acesso": r.get("nivel_acesso", "TROPA")
             })
         return militares
@@ -129,7 +138,6 @@ def sincronizar_contas_usuarios_do_efetivo(lista_militares: list[dict]):
             try:
                 supabase.table("usuarios").upsert(novos_usuarios, on_conflict="usuario_login").execute()
             except Exception:
-                # Fallback item a item em caso de restricao
                 for nu in novos_usuarios:
                     try:
                         supabase.table("usuarios").insert(nu).execute()
@@ -139,7 +147,7 @@ def sincronizar_contas_usuarios_do_efetivo(lista_militares: list[dict]):
         print(f"Erro ao sincronizar contas de usuários do efetivo: {e}")
 
 def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
-    """Grava/atualiza militares de forma resiliente tanto na tabela efetivo quanto militares."""
+    """Grava/atualiza militares no Supabase de forma resiliente e atualiza a sessão local."""
     if not supabase or not lista_militares:
         return False
     try:
@@ -166,12 +174,10 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
                 "nivel_acesso": m.get("nivel_acesso", "TROPA")
             }
 
-            # Se o ID nao for gerado como "mili_...", insere/atualiza pelo ID
             id_val = str(m.get("id", ""))
             if id_val and not id_val.startswith("mili_"):
                 payload["id"] = id_val
 
-            # Tenta verificar se ja existe pela matricula para fazer Update ou Insert seguro (evita erro de constraint)
             res_ex = supabase.table(tabela_alvo).select("id").eq("num_policia", num_pol).execute()
             if res_ex and res_ex.data and len(res_ex.data) > 0:
                 rec_id = res_ex.data[0]["id"]
@@ -180,6 +186,8 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
                 supabase.table(tabela_alvo).insert(payload).execute()
 
         sincronizar_contas_usuarios_do_efetivo(lista_militares)
+        
+        st.session_state["lista_militares"] = lista_militares
         st.cache_data.clear()
         return True
     except Exception as e:
@@ -190,7 +198,7 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
 # GRAVAÇÃO DE ESCALAS, PERMUTAS E MENSAGENS P1
 # =========================================================================
 def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalidade: str, matriz_dados: dict, elaborado_por: str, homologado_por: str, status: str = "HOMOLOGADA") -> bool:
-    """Salva a escala de forma totalmente compativel, sem depender de restricoes UNIQUE do banco."""
+    """Salva a escala de forma totalmente compatível sem depender de restrições UNIQUE do banco."""
     if not supabase:
         return False
     try:
@@ -199,14 +207,13 @@ def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalida
             "mes": int(mes),
             "equipe_nome": str(equipe_nome),
             "modalidade": str(modalidade),
-            "modalidade_turno": str(modalidade),  # Envia ambas as chaves para compatibilidade total de colunas
+            "modalidade_turno": str(modalidade),
             "status": status,
             "matriz_dados": matriz_dados,
             "elaborado_por": elaborado_por,
             "homologado_por": homologado_por
         }
 
-        # Busca previa por ano, mes e equipe
         res = supabase.table("escalas_mensais")\
             .select("id")\
             .eq("ano", int(ano))\
@@ -223,7 +230,6 @@ def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalida
         st.cache_data.clear()
         return True
     except Exception as e:
-        # Se der erro por conta de 'modalidade_turno' nao existir no esquema antigo, tenta sem ela
         try:
             payload.pop("modalidade_turno", None)
             res = supabase.table("escalas_mensais").select("id").eq("ano", int(ano)).eq("mes", int(mes)).eq("equipe_nome", str(equipe_nome)).execute()
