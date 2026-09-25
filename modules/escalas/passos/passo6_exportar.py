@@ -53,6 +53,20 @@ def extrair_matricula_limpa(valor):
         val_str = val_str[:-2]
     return re.sub(r'\D', '', val_str).lstrip('0')
 
+def calcular_duracao_turno_texto(val_str):
+    """Calcula a carga horária em horas a partir do texto do turno/legenda."""
+    v = str(val_str).upper().strip()
+    if not v or v in ["F", "D", "X", "NAN", "NONE"] or any(sigla in v for sigla in SIGLAS_DIAS_NEUTROS):
+        return 0.0
+    if "24" in v or "24X72" in v:
+        return 24.0
+    if "18" in v:
+        return 18.0
+    if "8" in v or "08" in v or "EXPEDIENTE" in v:
+        return 8.0
+    # Padrão para plantões de turno (12h) quando for sigla (ex: 1, 2, 3, T1, T2) ou horário
+    return 12.0
+
 def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, resp_escala_str, obs_escala, texto_legenda=""):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -171,35 +185,10 @@ def renderizar_passo6():
                             st.success("✅ Escala homologada e encerrada com sucesso!")
                             st.rerun()
 
-                bloqueios_p6 = st.session_state.get("lista_bloqueios_auditoria", [])
-                avisos_descanso_p6 = st.session_state.get("lista_avisos_descanso", [])
-                
-                if (bloqueios_p6 or avisos_descanso_p6) and not st.session_state.get("limpar_avisos_manual", False):
-                    st.markdown("---")
-                    c_head_av, c_btn_fechar = st.columns([3, 1.2])
-                    with c_head_av:
-                        st.markdown("##### 🚨 Pendências de Auditoria:")
-                    with c_btn_fechar:
-                        if st.button("✖ OK / Entendido", type="secondary", use_container_width=True, key="btn_limpar_avisos_p6"):
-                            st.session_state["lista_bloqueios_auditoria"] = []
-                            st.session_state["lista_avisos_descanso"] = []
-                            st.session_state["limpar_avisos_manual"] = True
-                            st.toast("🧹 Avisos cientes!", icon="✅")
-                            st.rerun()
-
-                    if bloqueios_p6:
-                        for b in bloqueios_p6:
-                            st.error(f"❌ **IMPEDIMENTO ({b['militar']}):** {b['mensagem']}")
-
-                    if avisos_descanso_p6:
-                        for a in avisos_descanso_p6:
-                            st.warning(f"⚠️ **ALERTA DE DESCANSO < 6H ({a['militar']}):** {a['mensagem']}")
-                    st.markdown("---")
-
-                # 🟢 LEITOR DE EXCEL COM BUSCA 100% EXCLUSIVA POR MATRÍCULA (Nº POLÍCIA)
+                # 🟢 LEITOR DE EXCEL CAPTURANDO D, F, X E PLANTÕES
                 st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
                 st.markdown("##### 📥 Importar Escala Externa em Excel")
-                st.caption("Busca os militares do banco de dados unicamente pela matrícula (Nº Polícia).")
+                st.caption("Importa a escala mantendo os dias de folga (D, F), licenças e plantões.")
                 
                 arq_excel_escala = st.file_uploader(
                     "Selecione o arquivo Excel da Escala:", 
@@ -210,7 +199,6 @@ def renderizar_passo6():
                 if arq_excel_escala is not None:
                     if st.button("🚀 Processar e Carregar no Quadro (Passo 5)", type="primary", use_container_width=True):
                         try:
-                            # 1. Localiza a linha do cabeçalho da planilha
                             df_raw = pd.read_excel(arq_excel_escala, header=None)
                             
                             header_idx = None
@@ -223,7 +211,6 @@ def renderizar_passo6():
                             if header_idx is None:
                                 header_idx = 4
 
-                            # 2. Lê a planilha a partir do cabeçalho correto
                             df_imp = pd.read_excel(arq_excel_escala, header=header_idx)
                             df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
 
@@ -231,7 +218,6 @@ def renderizar_passo6():
                             chaves_novas = list(st.session_state.get("militares_no_quadro_chaves", []))
                             mils_cad = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
                             
-                            # Mapeia militares do cadastro EXCLUSIVAMENTE por Dígitos Puros do Nº POLÍCIA
                             mapa_mils_digitos = {}
                             for m in mils_cad:
                                 num_p_dig = extrair_matricula_limpa(m.get("num_policia", ""))
@@ -250,7 +236,6 @@ def renderizar_passo6():
                                 val_militar_txt = str(row.get(col_militar, "")).strip().upper() if col_militar else ""
                                 val_mat_txt = str(row.get(col_matricula, "")).strip() if col_matricula else ""
 
-                                # Trava de rodapé de assinaturas
                                 texto_comb = f"{eq_imp} {val_militar_txt} {val_mat_txt}".upper()
                                 if any(k in texto_comb for k in ["RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE DA CIA"]):
                                     break
@@ -259,8 +244,6 @@ def renderizar_passo6():
                                     continue
 
                                 m_obj_encontrado = None
-
-                                # 🎯 BUSCA EXCLUSIVA: Tenta localizar pela matrícula da coluna dedicada ou extraída do texto do militar
                                 digitos_mat = extrair_matricula_limpa(val_mat_txt)
                                 if not digitos_mat and val_militar_txt:
                                     digitos_mat = extrair_matricula_limpa(val_militar_txt)
@@ -282,7 +265,10 @@ def renderizar_passo6():
                                             if val_celula and val_celula.upper() not in ["NAN", "NONE"]:
                                                 if val_celula.endswith(".0"):
                                                     val_celula = val_celula[:-2]
-                                                grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula
+                                                # Garante gravação mesmo para D, F, X ou Horários
+                                                grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula.upper()
+                                            else:
+                                                grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
                                     
                                     linhas_importadas += 1
                                 else:
@@ -293,14 +279,10 @@ def renderizar_passo6():
                                 st.session_state["grade_escala_lancamentos"] = grade_nova
                                 
                                 executar_auto_save_banco()
-                                st.success(f"✅ {linhas_importadas} militar(es) cruzado(s) com sucesso por Nº Polícia e lançados no Passo 5!")
-                                
-                                if militar_nao_encontrado_lista:
-                                    st.warning(f"⚠️ As matrículas a seguir não foram encontradas no cadastro do banco (Passo 3): {', '.join(militar_nao_encontrado_lista)}")
-                                
+                                st.success(f"✅ {linhas_importadas} militar(es) cruzado(s) e importados com sucesso!")
                                 st.rerun()
                             else:
-                                st.error("❌ Nenhuma matrícula da planilha bateu com os militares cadastrados no sistema (Passo 3). Certifique-se de que os números de polícia estão cadastrados.")
+                                st.error("❌ Nenhuma matrícula da planilha bateu com os militares cadastrados no sistema (Passo 3).")
                         except Exception as ex_imp:
                             st.error(f"Erro ao processar arquivo Excel: {ex_imp}")
 
@@ -354,6 +336,19 @@ def renderizar_passo6():
                 for i, t in enumerate(sorted(turnos_encontrados)):
                     with cols_leg[i % 3]:
                         mapa_legendas[t] = st.text_input(f"Horário para Sigla [{t}]:", value="07:00 às 19:00", key=f"leg_input_sig_{i}")
+
+                # 🔄 BOTAO DE APLICAR CONVERSAO NO QUADRO DO PASSO 5
+                if mapa_legendas and st.button("🔄 Aplicar Horários Convertidos no Passo 5 (Recalcular Carga Horária)", type="primary"):
+                    grade_atualizada = copy.deepcopy(grade_lancamentos)
+                    for k_g, v_g in grade_atualizada.items():
+                        v_str = str(v_g).strip()
+                        if v_str in mapa_legendas:
+                            grade_atualizada[k_g] = mapa_legendas[v_str]
+                    
+                    st.session_state["grade_escala_lancamentos"] = grade_atualizada
+                    executar_auto_save_banco()
+                    st.success("✅ Horários e carga horária atualizados no Passo 5 com sucesso!")
+                    st.rerun()
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
@@ -431,20 +426,23 @@ def renderizar_passo6():
                         val = grade_lancamentos.get(f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}", "F")
                         val_raw = str(val).strip()
                         val_str = val_raw.upper()
-                        tokens_dia = set(val_str.replace("/", " ").split())
                         
+                        # 🟢 CALCULA HORAS TRABALHADAS REAL CONSIDERANDO PLANTÃO OU SIGLA
+                        val_efetivo = mapa_legendas.get(val_raw, val_raw) if mapa_legendas else val_raw
+                        total_horas += calcular_duracao_turno_texto(val_efetivo)
+
+                        tokens_dia = set(val_str.replace("/", " ").split())
                         if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
                             dias_neutros_cnt += 1
-                            
-                        if val_str and val_str not in ["", "F", "D", "X"] and not any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
-                            total_horas += 12.0
-                            
+
                         cell_content = ""
                         if val_raw not in ["F", "D", "X", "", None]:
-                            val_efetivo = mapa_legendas.get(val_raw, val_raw) if mapa_legendas else val_raw
                             val_quebrado = str(val_efetivo).replace(" às ", "<br>AS<br>").replace(" AS ", "<br>AS<br>").replace(" ÀS ", "<br>AS<br>")
                             cell_content = f'<div class="shift-badge">{val_quebrado}</div>'
                             linha_xls.append(str(val_efetivo))
+                        elif val_raw in ["D", "F"]:
+                            cell_content = f'<div style="font-weight: bold; color: #64748b;">{val_raw}</div>'
+                            linha_xls.append(val_raw)
                         elif val_raw == "X":
                             cell_content = '<div class="shift-x">X</div>'
                             linha_xls.append("X")
