@@ -147,22 +147,18 @@ def sincronizar_contas_usuarios_do_efetivo(lista_militares: list[dict]):
         print(f"Erro ao sincronizar contas de usuários do efetivo: {e}")
 
 def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
-    """Grava/atualiza militares no Supabase de forma resiliente e atualiza a sessão local."""
+    """Grava/atualiza militares no Supabase e mantêm os dados fixos na sessão local do Streamlit."""
     if not supabase or not lista_militares:
         return False
     try:
-        tabela_alvo = "efetivo"
-        try:
-            supabase.table("efetivo").select("id").limit(1).execute()
-        except Exception:
-            tabela_alvo = "militares"
-
+        dados_salvar = []
         for m in lista_militares:
             num_pol = str(m.get("num_policia", "N/I")).strip().upper()
             nome_g = str(m.get("nome_guerra", "MILITAR")).strip().upper()
             nome_c = str(m.get("nome_completo") or nome_g).strip().upper()
 
-            payload = {
+            item = {
+                "id": str(m.get("id")),
                 "num_policia": num_pol,
                 "posto_grad": m.get("posto_grad", "SD"),
                 "nome_guerra": nome_g,
@@ -173,20 +169,18 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
                 "unidade": str(m.get("unidade", "UNIDADE N/I")).strip().upper(),
                 "nivel_acesso": m.get("nivel_acesso", "TROPA")
             }
+            dados_salvar.append(item)
 
-            id_val = str(m.get("id", ""))
-            if id_val and not id_val.startswith("mili_"):
-                payload["id"] = id_val
+        # 1. Tenta salvar na tabela 'efetivo' ou 'militares'
+        try:
+            supabase.table("efetivo").upsert(dados_salvar, on_conflict="num_policia").execute()
+        except Exception:
+            supabase.table("militares").upsert(dados_salvar, on_conflict="num_policia").execute()
 
-            res_ex = supabase.table(tabela_alvo).select("id").eq("num_policia", num_pol).execute()
-            if res_ex and res_ex.data and len(res_ex.data) > 0:
-                rec_id = res_ex.data[0]["id"]
-                supabase.table(tabela_alvo).update(payload).eq("id", rec_id).execute()
-            else:
-                supabase.table(tabela_alvo).insert(payload).execute()
-
+        # 2. Sincroniza logons de usuários
         sincronizar_contas_usuarios_do_efetivo(lista_militares)
-        
+
+        # 3. MANTÉM OS DADOS SALVOS NA SESSÃO E LIMPA O CACHE DE LEITURA
         st.session_state["lista_militares"] = lista_militares
         st.cache_data.clear()
         return True
