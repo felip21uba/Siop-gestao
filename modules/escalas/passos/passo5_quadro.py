@@ -1,8 +1,6 @@
 import streamlit as st
 import datetime
 import calendar
-import copy
-import re
 
 from core.database import supabase, carregar_militares_supabase, salvar_escala_mensal_supabase
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
@@ -31,7 +29,7 @@ def obter_cor_equipe(eq):
     return CORES_EQUIPES.get(str(eq).upper().strip(), "#475569")
 
 def calcular_duracao_turno_texto(val_str):
-    """Calcula a carga horária real do plantão baseado no horário ou legenda (1, 2, T1, T2, RH, TPB)."""
+    """Calcula a duração do turno diretamente pelo código da legenda ou horário extenso."""
     v = str(val_str).upper().strip()
     if not v or v in ["F", "D", "X", "NAN", "NONE", "0"] or any(sigla in v for sigla in SIGLAS_DIAS_NEUTROS):
         return 0.0
@@ -41,16 +39,15 @@ def calcular_duracao_turno_texto(val_str):
         return 18.0
     if "8" in v or "08" in v or "EXPEDIENTE" in v:
         return 8.0
-    # Plantões padrão PMMG (Turnos 1, 2, T1, T2, RH, TPB ou intervalos de 12 horas / ex: 07:00 às 19:00)
+    # Padrão para plantões de 12 horas (1, 2, RH, TPB, etc.)
     return 12.0
 
 def verificar_trava_sobreposicao():
-    """Valida sobreposições e descansos no planejamento da escala."""
     st.session_state["lista_bloqueios_auditoria"] = []
     st.session_state["lista_avisos_descanso"] = []
 
 def executar_auto_save_banco():
-    """Persiste a matriz e as chaves atuais da escala no Supabase."""
+    """Salva a matriz de lançamentos no Supabase automaticamente."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
@@ -77,7 +74,7 @@ def executar_auto_save_banco():
 
 def renderizar_passo5():
     st.subheader("📋 PASSO 5: Quadro Geral de Lançamentos da Escala")
-    st.caption("Insira os turnos, legendas (1, 2, RH) ou folgas (F, D). O saldo de horas e abonos é calculado automaticamente.")
+    st.caption("Insira os turnos/legendas (1, 2, RH) ou folgas (F, D). O saldo de horas é atualizado automaticamente.")
 
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
@@ -87,7 +84,7 @@ def renderizar_passo5():
     chaves_quadro = st.session_state.get("militares_no_quadro_chaves", [])
     grade_lancamentos = st.session_state.get("grade_escala_lancamentos", {})
 
-    # --- BARRA DE ADIÇÃO DE MILITARES AO QUADRO ---
+    # --- INSERIR MILITAR AO QUADRO ---
     with st.expander("➕ Adicionar Militar / Equipe ao Quadro Geral", expanded=False):
         c_add1, c_add2, c_add3 = st.columns([2, 2, 1])
         with c_add1:
@@ -103,14 +100,14 @@ def renderizar_passo5():
                     chaves_quadro.append(pair)
                     st.session_state["militares_no_quadro_chaves"] = chaves_quadro
                     executar_auto_save_banco()
-                    st.success("Militar adicionado ao quadro com sucesso!")
+                    st.success("Militar adicionado ao quadro!")
                     st.rerun()
 
     if not chaves_quadro:
         st.info("💡 Nenhum militar foi adicionado ao Quadro Geral. Adicione militares acima ou importe a escala no Passo 6.")
         return
 
-    # --- MONTAGEM DA LISTA DE MILITARES E ORDENAÇÃO HIERÁRQUICA ---
+    # --- ORDENAÇÃO E PREPARAÇÃO DOS DADOS ---
     mils_linhas_quadro = []
     for pair in chaves_quadro:
         if isinstance(pair, (tuple, list)) and len(pair) == 2:
@@ -131,7 +128,7 @@ def renderizar_passo5():
         x["nome_guerra"]
     ))
 
-    # --- TABELA INTERATIVA DE LANÇAMENTOS (MATRIZ) ---
+    # --- MATRIZ INTERATIVA DE LANÇAMENTOS DO PASSO 5 ---
     st.markdown("### 🗓️ Matriz de Lançamentos Mensais")
 
     equipes_unicas = list(dict.fromkeys([m["equipe"] for m in mils_escala_ord]))
@@ -149,8 +146,8 @@ def renderizar_passo5():
             c_info, c_dias, c_tot = st.columns([2.5, 9, 2])
             
             with c_info:
-                st.markdown(f"**{pg} {ng}**  \n`<small>Nº {num_pol}</small>`", unsafe_allow_html=True)
-                if st.button("🗑️", key=f"btn_del_{m_id}_{eq_nome}", help="Remover militar desta equipe"):
+                st.markdown(f"**{pg} {ng}**\n\n`Nº {num_pol}`")
+                if st.button("🗑️", key=f"btn_del_{m_id}_{eq_nome}", help="Remover militar"):
                     chaves_quadro = [p for p in chaves_quadro if not (str(p[0]) == str(m_id) and str(p[1]) == str(eq_nome))]
                     st.session_state["militares_no_quadro_chaves"] = chaves_quadro
                     executar_auto_save_banco()
@@ -165,14 +162,10 @@ def renderizar_passo5():
                     dia_sem_idx = calendar.weekday(m_ano, m_mes, d)
                     sigla_sem = DIAS_SEMANA_SIGLAS[dia_sem_idx]
                     key_cel = f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}"
-                    
-                    # Lê o valor atual salvo no session_state
                     val_atual = str(grade_lancamentos.get(key_cel, "F")).strip()
 
                     with cols_d[d - 1]:
                         st.caption(f"{d} {sigla_sem[:1]}")
-                        
-                        # Usa o valor vindo do session_state garantindo atualização visual imediata se convertido no Passo 6
                         novo_val = st.text_input(
                             f"D{d}", 
                             value=val_atual, 
@@ -185,7 +178,7 @@ def renderizar_passo5():
                             st.session_state["grade_escala_lancamentos"] = grade_lancamentos
                             executar_auto_save_banco()
 
-                        # Computa horas reais e dias neutros para a meta
+                        # Computa horas prestadas e abate de dias neutros
                         v_str = str(novo_val).upper()
                         total_horas += calcular_duracao_turno_texto(v_str)
 
