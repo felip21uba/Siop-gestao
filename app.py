@@ -424,8 +424,8 @@ if not st.session_state.get("autenticado", False):
         # FLUXO 2: PRIMEIRO ACESSO - CADASTRO DO QR CODE + E-MAIL + CELULAR + TROCA DE SENHA
         elif st.session_state.get("mfa_setup_mode", False):
             usr_temp = st.session_state.get("temp_user_data", {})
-            st.warning("🛡️ **Primeiro Acesso: Cadastro de Segurança & QR Code**")
-            st.markdown("Cadastre seus dados de contato, sua **nova senha pessoal** e escaneie o QR Code no seu aplicativo **Google Authenticator ou Authy**.")
+            st.warning("🛡️ **Primeiro Acesso: Cadastro de Segurança & Termo de Aceite**")
+            st.markdown("Cadastre seus dados de contato, sua **nova senha pessoal**, escaneie o QR Code no seu aplicativo **Google Authenticator ou Authy** e declare seu aceite aos termos institucionais.")
 
             if "temp_mfa_secret" not in st.session_state:
                 st.session_state["temp_mfa_secret"] = pyotp.random_base32()
@@ -454,6 +454,9 @@ if not st.session_state.get("autenticado", False):
                 celular_input = (st.text_input("Celular / WhatsApp:", value=usr_temp.get("celular_recuperacao") or "", placeholder="(32) 90000-0000") or "").strip()
                 codigo_setup = (st.text_input("🔑 Token de 6 dígitos gerado no App para confirmar o vínculo:", max_chars=6) or "").strip()
 
+                st.markdown("##### 📜 3. Termo de Compromisso e Sigilo de Dados:")
+                aceite_termo_box = st.checkbox("Declaro ciência e aceite dos termos de sigilo de dados (LGPD) e responsabilização de acesso ao sistema SIOP PMMG.")
+
                 col_s1, col_s2 = st.columns(2)
                 with col_s1:
                     btn_confirmar_setup = st.form_submit_button("💾 Salvar Cadastro & Ativar Conta", type="primary", use_container_width=True)
@@ -470,6 +473,8 @@ if not st.session_state.get("autenticado", False):
                 if btn_confirmar_setup:
                     if nova_senha != confirma_senha:
                         st.error("❌ As senhas não coincidem.")
+                    elif not aceite_termo_box:
+                        st.error("⚠️ É obrigatório declarar o aceite dos termos de sigilo para prosseguir.")
                     else:
                         senha_ok, msg_senha = validar_requisitos_senha(nova_senha)
                         if not senha_ok:
@@ -504,7 +509,19 @@ if not st.session_state.get("autenticado", False):
                                         "ip_origem": ip_conexao,
                                         "user_agent": "Ativação de Primeiro Acesso"
                                     }).execute()
-                                except Exception:
+
+                                    # Grava o aceite formal na tabela aceites_compliance
+                                    supabase.table("aceites_compliance").insert({
+                                        "num_policia": num_pol_str,
+                                        "nome_militar": f"{usr_temp.get('cargo_funcao', '')} {usr_temp.get('nome_guerra', '')}".strip(),
+                                        "termo_versao": "LGPD_E_SIGILO_V1",
+                                        "unidade": usr_temp.get("unidade", "21º BPM"),
+                                        "cargo_funcao": usr_temp.get("cargo_funcao", "MILITAR"),
+                                        "ip_origem": ip_conexao
+                                    }).execute()
+
+                                except Exception as ex_setup:
+                                    print(f"Aviso ao registrar setup/compliance: {ex_setup}")
                                     atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
                             
                             usr_temp["senha"] = nova_senha
@@ -527,7 +544,7 @@ if not st.session_state.get("autenticado", False):
                             if "temp_mfa_secret" in st.session_state:
                                 del st.session_state["temp_mfa_secret"]
 
-                            st.toast("✅ Primeiro acesso concluído com sucesso!", icon="🎉")
+                            st.toast("✅ Primeiro acesso e aceite de termos concluídos com sucesso!", icon="🎉")
                             st.rerun()
 
         # FLUXO 3: TELA PRINCIPAL DE LOGIN
@@ -583,7 +600,6 @@ if not st.session_state.get("autenticado", False):
                                             "ultima_atividade": datetime.datetime.now(datetime.timezone.utc).isoformat()
                                         }).eq("usuario_login", num_pol_str).execute()
                                         
-                                        # Grava histórico de logins com o IP público capturado
                                         supabase.table("historico_logins").insert({
                                             "usuario_login": num_pol_str,
                                             "ip_origem": ip_conexao,

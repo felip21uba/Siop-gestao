@@ -96,13 +96,13 @@ def exibir_tela_perfil():
         with st.expander("🛡️ Termo de Fiel Depósito e Cadeia de Custódia (TCO)", expanded=False):
             st.markdown("""
             > * Declaro estar ciente da custódia física dos materiais apreendidos sob minha responsabilidade.
-            > * Comprometo-me a zelar pela integridade dos invólucros e lacres, cumprindo rigorosamente as normas de tramitação do Decreto Estadual nº 48.243/2021.
+            > * Comprometo-me a zelar pela integridade dos invólucros, lacres e da rastreabilidade probatória, cumprindo rigorosamente os artigos 158-A a 158-F do Código de Processamento Penal (Lei nº 13.964/2019 - Pacote Anticrime) e as Instruções Normativas Institucionais de Cadeia de Custódia.
             """)
 
         with st.expander("🔒 Termo de Compromisso de Sigilo e Proteção de Dados (LGPD / PMMG)", expanded=False):
             st.markdown("""
-            > * Declaro ciência de que as informações acessadas no SIOP possuem caráter sigiloso e restrito ao serviço policial militar.
-            > * Comprometo-me a não divulgar, copiar ou transferir credenciais de acesso ou dados pessoais de terceiros sem autorização formal da P1/P3.
+            > * Declaro ciência de que todas as informações acessadas no SIOP possuem caráter estritamente sigiloso e de uso restrito às atividades operacionais da Polícia Militar de Minas Gerais.
+            > * Comprometo-me a cumprir os ditames da Lei Geral de Proteção de Dados Pessoais (Lei Federal nº 13.709/2018 - LGPD), não divulgando, copiando ou transferindo credenciais de acesso ou dados pessoais de terceiros sem autorização formal do Comando/P1/P3.
             """)
 
     # =========================================================================
