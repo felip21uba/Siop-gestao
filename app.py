@@ -315,7 +315,7 @@ if not st.session_state.get("autenticado", False):
 
             if "codigo_enviado" not in st.session_state["reset_token_dados"]:
                 with st.form("form_solicitar_codigo_email"):
-                    identificador = (st.text_input("Nº de Polícia ou E-mail Cadastrado:", placeholder="Ex: 0000000 ou militar@pmmg.mg.gov.br") or "").strip()
+                    identificador = (st.text_input("Nº de Polícia ou E-mail Cadastrado:", placeholder="Ex: 1234567 ou militar@pmmg.mg.gov.br") or "").strip()
                     
                     c_rec1, c_rec2 = st.columns(2)
                     with c_rec1:
@@ -525,11 +525,11 @@ if not st.session_state.get("autenticado", False):
                             st.toast("✅ Primeiro acesso concluído com sucesso!", icon="🎉")
                             st.rerun()
 
-        # FLUXO 3: TELA PRINCIPAL DE LOGIN (LOGIN DIRETO SEM QR CODE NO ACESSO DIÁRIO)
+        # FLUXO 3: TELA PRINCIPAL DE LOGIN (SEM EXPOSIÇÃO DE SENHAS NO PLACEHOLDER E SEM AUTOCOMPLETE)
         else:
             with st.form("form_login_principal"):
-                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 123456") or "").strip()
-                senha_input = (st.text_input("Senha de Acesso:", type="password", placeholder="••••••••") or "").strip()
+                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1234567", autocomplete="off") or "").strip()
+                senha_input = (st.text_input("Senha de Acesso:", type="password", placeholder="••••••••", autocomplete="new-password") or "").strip()
                 
                 btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", use_container_width=True)
 
@@ -681,15 +681,17 @@ with st.sidebar:
             st.markdown("---")
             st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
             
-            lista_unis = []
-            if supabase:
-                try:
-                    res_u = supabase.table("configuracao_unidade").select("id, unidade_nome, subunidade_nome").execute()
-                    lista_unis = res_u.data or []
-                except Exception:
-                    lista_unis = []
+            # Trecho da barra lateral em app.py para consulta resiliente:
+lista_unis = []
+if supabase:
+    try:
+        res_u = supabase.table("configuracao_unidade").select("id, unidade_nome, subunidade_nome").execute()
+        lista_unis = res_u.data or []
+    except Exception as e:
+        # Trata o erro silenciosamente sem travar a interface
+        lista_unis = []
 
-            if lista_unis:
+        if lista_unis:
                 opcoes_uni = [f"{u.get('unidade_nome', '')} / {u.get('subunidade_nome', '')}".strip(" /") for u in lista_unis]
                 idx_sel = 0
                 uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
@@ -707,10 +709,10 @@ with st.sidebar:
                 parts = sel_uni_sidebar.split(" / ")
                 st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
                 st.session_state["cfg_subunidade"] = parts[1] if len(parts) > 1 else ""
-            else:
+    else:
                 st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
     else:
-        st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
+                st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
 
     st.divider()
 
