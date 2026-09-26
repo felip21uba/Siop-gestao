@@ -62,7 +62,9 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             df_aud = pd.DataFrame(logs_auditoria)
             
             if "data_hora" in df_aud.columns and not df_aud.empty:
+                # Converte para UTC e ajusta rigorosamente para o Fuso Horário de Brasília (-3h)
                 df_aud["dt_obj"] = pd.to_datetime(df_aud["data_hora"], errors="coerce", utc=True)
+                df_aud["dt_obj"] = df_aud["dt_obj"].dt.tz_convert("America/Sao_Paulo")
                 df_aud.sort_values(by="dt_obj", ascending=False, inplace=True)
                 df_aud["Data / Hora"] = df_aud["dt_obj"].dt.strftime("%d/%m/%Y %H:%M:%S")
             else:
@@ -123,7 +125,9 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             df_logins = pd.DataFrame(logins_dados)
             
             if "data_hora" in df_logins.columns and not df_logins.empty:
+                # Converte para UTC e ajusta rigorosamente para o Fuso Horário de Brasília (-3h)
                 df_logins["dt_obj"] = pd.to_datetime(df_logins["data_hora"], errors="coerce", utc=True)
+                df_logins["dt_obj"] = df_logins["dt_obj"].dt.tz_convert("America/Sao_Paulo")
                 df_logins.sort_values(by="dt_obj", ascending=False, inplace=True)
                 df_logins["Data / Hora Conexão"] = df_logins["dt_obj"].dt.strftime("%d/%m/%Y %H:%M:%S")
             else:
