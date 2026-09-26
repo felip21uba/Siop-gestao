@@ -333,26 +333,30 @@ if not st.session_state.get("autenticado", False):
                             st.error("⚠️ Digite o Nº de Polícia ou E-mail.")
                         else:
                             usr_obj = buscar_usuario_para_login(identificador)
-                            email_alvo = usr_obj.get("email_recuperacao") if usr_obj else (identificador if "@" in identificador else None)
-
-                            if not email_alvo:
-                                st.error("❌ Nenhum e-mail de recuperação cadastrado para este usuário.")
+                            
+                            if not usr_obj:
+                                st.error("❌ Usuário não localizado no sistema. Verifique a matrícula ou e-mail digitado.")
                             else:
-                                codigo_gerado = str(random.randint(100000, 999999))
-                                sucesso_envio, msg_envio = enviar_email_codigo(email_alvo, codigo_gerado)
-                                
-                                if sucesso_envio:
-                                    num_login_real = usr_obj.get("usuario_login") or usr_obj.get("usuario") or identificador
-                                    st.session_state["reset_token_dados"] = {
-                                        "codigo_enviado": codigo_gerado,
-                                        "usuario_id": num_login_real,
-                                        "mfa_secret": usr_obj.get("mfa_secret", ""),
-                                        "identificador_digitado": identificador
-                                    }
-                                    st.toast(f"Código enviado para {email_alvo}!", icon="📩")
-                                    st.rerun()
+                                email_alvo = usr_obj.get("email_recuperacao") or (identificador if "@" in identificador else None)
+
+                                if not email_alvo:
+                                    st.error("❌ Nenhum e-mail de recuperação cadastrado para este usuário.")
                                 else:
-                                    st.error(f"🚨 {msg_envio}")
+                                    codigo_gerado = str(random.randint(100000, 999999))
+                                    sucesso_envio, msg_envio = enviar_email_codigo(email_alvo, codigo_gerado)
+                                    
+                                    if sucesso_envio:
+                                        num_login_real = usr_obj.get("usuario_login") or usr_obj.get("usuario") or identificador
+                                        st.session_state["reset_token_dados"] = {
+                                            "codigo_enviado": codigo_gerado,
+                                            "usuario_id": num_login_real,
+                                            "mfa_secret": usr_obj.get("mfa_secret", ""),
+                                            "identificador_digitado": identificador
+                                        }
+                                        st.toast(f"Código enviado para {email_alvo}!", icon="📩")
+                                        st.rerun()
+                                    else:
+                                        st.error(f"🚨 {msg_envio}")
 
             else:
                 cod_correto = st.session_state["reset_token_dados"]["codigo_enviado"]
