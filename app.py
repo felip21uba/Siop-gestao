@@ -66,7 +66,7 @@ def renderizar_rodape_corporativo():
         st.caption(f"🟢 **Sessão Ativa:** {nome_operador_rodape}")
         st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
-from core.database import init_db
+from core.database import init_db, obter_ip_cliente_real
 init_db()
 
 from core.styles import aplicar_estilo_visual
@@ -163,7 +163,6 @@ if not st.session_state.get("autenticado", False) and token_url:
             if res_sessao.data and len(res_sessao.data) > 0:
                 usr_recuperado = res_sessao.data[0]
                 if usr_recuperado.get("ativo", True):
-                    # Valida se a última atividade não ultrapassou 20 minutos
                     ult_atividade_str = usr_recuperado.get("ultima_atividade")
                     sessao_valida = True
                     if ult_atividade_str:
@@ -183,7 +182,6 @@ if not st.session_state.get("autenticado", False) and token_url:
                         st.session_state["ultima_atividade_time"] = datetime.datetime.now()
                         st.toast(f"🟢 Sessão mantida para {usr_recuperado.get('nome_guerra', 'Operador')}!", icon="🔄")
                     else:
-                        # Expira a sessão no banco e limpa parâmetros
                         supabase.table("usuarios").update({"token_sessao_ativa": "EXPIRADO"}).eq("id", usr_recuperado["id"]).execute()
                         st.query_params.clear()
                         st.error("⏰ **Sessão Expirada:** Você permaneceu inativo por mais de 20 minutos. Faça login novamente.")
@@ -276,7 +274,6 @@ def abrir_modal_reportar_erro():
                 
                 sucesso_envio, msg_envio = enviar_email_codigo(email_desenvolvedor, f"ERRO: {categoria_erro}")
                 
-                # Grava no banco
                 registrar_audit_log(
                     operador_pm=operador_nome,
                     alvo_pm="SISTEMA",
@@ -485,6 +482,7 @@ if not st.session_state.get("autenticado", False):
                             num_pol_str = str(usr_temp.get("usuario_login", usr_temp.get("usuario", ""))).strip().upper()
                             hash_nova = gerar_hash_senha(nova_senha)
                             novo_token = str(uuid.uuid4())
+                            ip_conexao = obter_ip_cliente_real()
                             
                             if supabase and num_pol_str:
                                 try:
@@ -499,6 +497,13 @@ if not st.session_state.get("autenticado", False):
                                         "token_sessao_ativa": novo_token,
                                         "ativo": True
                                     }).eq("usuario_login", num_pol_str).execute()
+                                    
+                                    # Grava no historico_logins
+                                    supabase.table("historico_logins").insert({
+                                        "usuario_login": num_pol_str,
+                                        "ip_origem": ip_conexao,
+                                        "user_agent": "Ativação de Primeiro Acesso"
+                                    }).execute()
                                 except Exception:
                                     atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
                             
@@ -525,7 +530,7 @@ if not st.session_state.get("autenticado", False):
                             st.toast("✅ Primeiro acesso concluído com sucesso!", icon="🎉")
                             st.rerun()
 
-        # FLUXO 3: TELA PRINCIPAL DE LOGIN (SEM EXPOSIÇÃO DE SENHAS NO PLACEHOLDER E SEM AUTOCOMPLETE)
+        # FLUXO 3: TELA PRINCIPAL DE LOGIN
         else:
             with st.form("form_login_principal"):
                 usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1234567", autocomplete="off") or "").strip()
@@ -561,16 +566,15 @@ if not st.session_state.get("autenticado", False):
                                 else:
                                     st.error(f"🚨 Senha Incorreta! Tentativa {erros_atuais} de 3.")
                             else:
-                                # Se for PRIMEIRO ACESSO, força a configuração inicial do QR Code
                                 if usuario_encontrado.get("primeiro_acesso", True) or not usuario_encontrado.get("mfa_habilitado", False):
                                     st.session_state["temp_user_data"] = usuario_encontrado
                                     st.session_state["mfa_setup_mode"] = True
                                     st.rerun()
 
-                                # ACESSO NORMAL (Login direto sem pedir QR Code)
                                 st.session_state["tentativas_login"][usuario_input] = 0
                                 novo_token = str(uuid.uuid4())
                                 num_pol_str = str(usuario_encontrado.get("usuario_login") or usuario_encontrado.get("usuario") or "").strip().upper()
+                                ip_conexao = obter_ip_cliente_real()
 
                                 if supabase and num_pol_str:
                                     try:
@@ -578,6 +582,13 @@ if not st.session_state.get("autenticado", False):
                                             "token_sessao_ativa": novo_token,
                                             "ultima_atividade": datetime.datetime.now(datetime.timezone.utc).isoformat()
                                         }).eq("usuario_login", num_pol_str).execute()
+                                        
+                                        # Grava histórico de logins com o IP público capturado
+                                        supabase.table("historico_logins").insert({
+                                            "usuario_login": num_pol_str,
+                                            "ip_origem": ip_conexao,
+                                            "user_agent": "Acesso Web SIOP"
+                                        }).execute()
                                     except Exception:
                                         atualizar_usuario_supabase(num_pol_str, {"token_sessao_ativa": novo_token})
 
@@ -637,7 +648,6 @@ unid_op = st.session_state.get("unidade_ativa_nome") or usr.get("unidade", "21º
 cargo_op = usr.get("cargo_funcao", "MILITAR")
 perfil_op = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("cargo_funcao") or "TROPA").upper()
 
-# DEFINIÇÃO DE PERFIL E MODO DE VISUALIZAÇÃO
 LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "CMT_FRACAO", "GESTOR"]
 eh_gestor_real = any(p in perfil_op for p in LISTA_GESTORES)
 

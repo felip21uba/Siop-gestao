@@ -36,6 +36,45 @@ def init_db():
     pass
 
 # =========================================================================
+# CAPTURA AUTOMÁTICA DO IP REAL DO CLIENTE
+# =========================================================================
+def obter_ip_cliente_real() -> str:
+    """Extrai o IP público/real da conexão do usuário através dos cabeçalhos HTTP do Streamlit."""
+    try:
+        from streamlit.web.server.websocket_headers import _get_websocket_headers
+        headers = _get_websocket_headers()
+        if headers:
+            # 1. Tenta capturar do cabeçalho X-Forwarded-For (nuvem / proxies Nginx/Cloudflare/Streamlit Cloud)
+            x_forwarded_for = headers.get("X-Forwarded-For") or headers.get("x-forwarded-for")
+            if x_forwarded_for:
+                ip_cliente = x_forwarded_for.split(",")[0].strip()
+                if ip_cliente:
+                    return ip_cliente
+            
+            # 2. Tenta capturar do X-Real-IP
+            x_real_ip = headers.get("X-Real-IP") or headers.get("x-real-ip")
+            if x_real_ip:
+                return x_real_ip.strip()
+
+            # 3. Fallback para Host / Remote Address
+            remote_ip = headers.get("Host") or headers.get("host")
+            if remote_ip:
+                return remote_ip.split(":")[0].strip()
+    except Exception:
+        pass
+    
+    # 4. Fallback via st.context (se disponível nas versões recentes do Streamlit)
+    try:
+        if hasattr(st, "context") and hasattr(st.context, "headers"):
+            xf_ctx = st.context.headers.get("x-forwarded-for") or st.context.headers.get("X-Forwarded-For")
+            if xf_ctx:
+                return xf_ctx.split(",")[0].strip()
+    except Exception:
+        pass
+
+    return "127.0.0.1"
+
+# =========================================================================
 # GESTÃO E ATUALIZAÇÃO DE USUÁRIOS
 # =========================================================================
 def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
@@ -65,7 +104,6 @@ def carregar_militares_supabase() -> list[dict]:
     if not supabase:
         return []
     try:
-        # 1. Tenta carregar primeiro da tabela 'efetivo'
         dados_brutos = []
         try:
             res = supabase.table("efetivo").select("*").execute()
@@ -74,7 +112,6 @@ def carregar_militares_supabase() -> list[dict]:
         except Exception:
             pass
 
-        # 2. Fallback silencioso para a tabela/view 'militares'
         if not dados_brutos:
             try:
                 res_m = supabase.table("militares").select("*").execute()
@@ -171,16 +208,13 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
             }
             dados_salvar.append(item)
 
-        # 1. Tenta salvar na tabela 'efetivo' ou 'militares'
         try:
             supabase.table("efetivo").upsert(dados_salvar, on_conflict="num_policia").execute()
         except Exception:
             supabase.table("militares").upsert(dados_salvar, on_conflict="num_policia").execute()
 
-        # 2. Sincroniza logons de usuários
         sincronizar_contas_usuarios_do_efetivo(lista_militares)
 
-        # 3. MANTÉM OS DADOS SALVOS NA SESSÃO E LIMPA O CACHE DE LEITURA
         st.session_state["lista_militares"] = lista_militares
         st.cache_data.clear()
         return True
@@ -192,7 +226,6 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
 # GRAVAÇÃO DE ESCALAS, PERMUTAS E MENSAGENS P1
 # =========================================================================
 def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalidade: str, matriz_dados: dict, elaborado_por: str, homologado_por: str, status: str = "HOMOLOGADA") -> bool:
-    """Salva a escala de forma totalmente compatível sem depender de restrições UNIQUE do banco."""
     if not supabase:
         return False
     try:
@@ -275,17 +308,20 @@ def salvar_mensagem_p1_supabase(remetente_id, remetente_nome, assunto, mensagem)
         return False
 
 # =========================================================================
-# REGISTRO AUDITÁVEL E BUSCA CONSOLIDADA DE LOGS
+# REGISTRO AUDITÁVEL COM CAPTURA DE IP E BUSCA CONSOLIDADA DE LOGS
 # =========================================================================
 def registrar_audit_log(operador_pm: str, alvo_pm: str | None, tipo_acao: str, descricao: str):
-    """Grava o evento de auditoria diretamente na tabela 'historico_auditoria' do Supabase."""
+    """Grava o evento de auditoria capturando automaticamente o IP público real da conexão."""
     if supabase:
         try:
+            ip_real = obter_ip_cliente_real()
+            
             supabase.table("historico_auditoria").insert({
                 "militar_operador": str(operador_pm),
                 "militar_alvo": str(alvo_pm) if alvo_pm else None,
                 "tipo_acao": str(tipo_acao),
-                "descricao_detalhada": str(descricao)
+                "descricao_detalhada": str(descricao),
+                "ip_origem": ip_real
             }).execute()
         except Exception as e:
             print(f"Erro ao gravar audit log no Supabase: {e}")
@@ -306,7 +342,7 @@ def registrar_log_banco(usuario_dados, acao, detalhe):
     )
 
 def buscar_logs_banco(limite=500) -> pd.DataFrame:
-    """Busca o histórico unificando 'historico_auditoria', 'historico_logins' e 'tco_logs' com a coluna 'data_hora'."""
+    """Busca o histórico unificando 'historico_auditoria', 'historico_logins' e 'tco_logs'."""
     if not supabase:
         return pd.DataFrame(columns=["data_hora", "usuario", "acao", "detalhe"])
 
@@ -321,7 +357,8 @@ def buscar_logs_banco(limite=500) -> pd.DataFrame:
                     "data_hora": r.get("data_hora", r.get("created_at", "N/I")),
                     "usuario": r.get("militar_operador", "SISTEMA"),
                     "acao": r.get("tipo_acao", "AUDITORIA"),
-                    "detalhe": r.get("descricao_detalhada", "")
+                    "detalhe": r.get("descricao_detalhada", ""),
+                    "ip": r.get("ip_origem", "127.0.0.1")
                 })
     except Exception as e:
         print(f"Aviso na consulta de historico_auditoria: {e}")
@@ -335,7 +372,8 @@ def buscar_logs_banco(limite=500) -> pd.DataFrame:
                     "data_hora": r.get("data_hora", "N/I"),
                     "usuario": r.get("usuario_login", "SISTEMA"),
                     "acao": "LOGIN_SESSAO",
-                    "detalhe": f"Acesso efetuado no sistema. IP: {r.get('ip_origem') or 'N/I'}"
+                    "detalhe": f"Acesso efetuado no sistema. Dispositivo: {r.get('user_agent', 'N/I')}",
+                    "ip": r.get("ip_origem", "127.0.0.1")
                 })
     except Exception as e:
         print(f"Aviso na consulta de historico_logins: {e}")
@@ -349,7 +387,8 @@ def buscar_logs_banco(limite=500) -> pd.DataFrame:
                     "data_hora": r.get("data_hora", "N/I"),
                     "usuario": r.get("origem", "SISTEMA TCO"),
                     "acao": r.get("acao", "CUSTÓDIA TCO"),
-                    "detalhe": f"REDS: {r.get('num_reds', 'N/I')} | {r.get('detalhe', '')}"
+                    "detalhe": f"REDS: {r.get('num_reds', 'N/I')} | {r.get('detalhe', '')}",
+                    "ip": "Módulo TCO"
                 })
     except Exception as e:
         print(f"Aviso na consulta de tco_logs: {e}")
@@ -360,4 +399,4 @@ def buscar_logs_banco(limite=500) -> pd.DataFrame:
         df = df.sort_values(by="dt_sort", ascending=False).drop(columns=["dt_sort"])
         return df
 
-    return pd.DataFrame(columns=["data_hora", "usuario", "acao", "detalhe"])
+    return pd.DataFrame(columns=["data_hora", "usuario", "acao", "detalhe", "ip"])

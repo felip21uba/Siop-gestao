@@ -6,7 +6,7 @@ import openpyxl
 from core.database import supabase
 
 def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21º BPM", cargo_operador="MILITAR", perfil_operador="ADMIN"):
-    """Renderiza a Central de Governança, Conformidade e Segurança do SIOP."""
+    """Renderiza a Central de Governança, Compliance & Auditoria do SIOP."""
     st.title("🛡️ Governança, Compliance & Auditoria do Sistema")
     st.caption(f"👤 **Operador:** {cargo_operador} {nome_operador} | 🏛️ **Unidade:** {unidade_operador} | ⚙️ **Perfil:** {perfil_operador}")
     st.divider()
@@ -26,25 +26,34 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
 
         logs_auditoria = []
         if supabase:
-            # 1. Busca da tabela 'historico_auditoria'
+            # 1. Consulta historico_auditoria
             try:
-                res_aud = supabase.table("historico_auditoria").select("*").order("created_at", desc=True).limit(500).execute()
-                logs_auditoria = res_aud.data or []
+                res_aud = supabase.table("historico_auditoria").select("*").order("data_hora", desc=True).limit(500).execute()
+                if res_aud and res_aud.data:
+                    for r in res_aud.data:
+                        logs_auditoria.append({
+                            "data_hora": r.get("data_hora") or r.get("created_at"),
+                            "militar_operador": r.get("militar_operador", "SISTEMA"),
+                            "militar_alvo": r.get("militar_alvo", "GERAL"),
+                            "tipo_acao": r.get("tipo_acao", "EVENTO"),
+                            "descricao_detalhada": r.get("descricao_detalhada", ""),
+                            "ip_origem": r.get("ip_origem", "Sistema SIOP")
+                        })
             except Exception as e:
                 print(f"Aviso ao consultar historico_auditoria: {e}")
 
-            # 2. Complementa com os logs da tabela 'tco_logs'
+            # 2. Unifica com tco_logs
             try:
                 res_tco = supabase.table("tco_logs").select("*").order("data_hora", desc=True).limit(500).execute()
                 if res_tco and res_tco.data:
                     for l_tco in res_tco.data:
                         logs_auditoria.append({
-                            "created_at": l_tco.get("data_hora") or l_tco.get("created_at"),
-                            "militar_operador": l_tco.get("origem") or l_tco.get("usuario") or "SISTEMA",
+                            "data_hora": l_tco.get("data_hora") or l_tco.get("created_at"),
+                            "militar_operador": l_tco.get("origem") or l_tco.get("usuario") or "SISTEMA TCO",
                             "militar_alvo": l_tco.get("destino") or l_tco.get("num_reds") or "GERAL",
                             "tipo_acao": l_tco.get("acao", "EVENTO_TCO"),
                             "descricao_detalhada": f"[{l_tco.get('unidade_origem', '')}] {l_tco.get('detalhe', '')}".strip(),
-                            "ip_origem": "Sistema SIOP"
+                            "ip_origem": "Módulo TCO"
                         })
             except Exception as e:
                 print(f"Aviso ao consultar tco_logs: {e}")
@@ -52,11 +61,8 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
         if logs_auditoria:
             df_aud = pd.DataFrame(logs_auditoria)
             
-            # Tratamento robusto das datas no formato ISO / UTC (+00)
-            col_data = "created_at" if "created_at" in df_aud.columns else ("data_hora" if "data_hora" in df_aud.columns else None)
-            
-            if col_data:
-                df_aud["dt_obj"] = pd.to_datetime(df_aud[col_data], errors="coerce", utc=True)
+            if "data_hora" in df_aud.columns and not df_aud.empty:
+                df_aud["dt_obj"] = pd.to_datetime(df_aud["data_hora"], errors="coerce", utc=True)
                 df_aud.sort_values(by="dt_obj", ascending=False, inplace=True)
                 df_aud["Data / Hora"] = df_aud["dt_obj"].dt.strftime("%d/%m/%Y %H:%M:%S")
             else:
@@ -78,51 +84,57 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             st.info("ℹ️ Nenhum registro de auditoria geral localizado no momento.")
 
     # =========================================================================
-    # ABA 2: HISTÓRICO DE LOGINS & ACESSOS
+    # ABA 2: HISTÓRICO DE LOGINS & ACESSOS (historico_logins)
     # =========================================================================
     with tab_logins:
-        st.subheader("🔑 Registros de Conexão e Sessões")
+        st.subheader("🔑 Registros de Conexão e Sessões (historico_logins)")
         st.caption("Rastreabilidade de acessos por usuário, endereço IP e identificador de dispositivo.")
 
         logins_dados = []
         if supabase:
-            # Pega todos os registros de LOGIN_SUCESSO da tabela historico_auditoria
-            try:
-                res_login_aud = supabase.table("historico_auditoria").select("*").ilike("tipo_acao", "%LOGIN%").order("created_at", desc=True).limit(500).execute()
-                logins_dados = res_login_aud.data or []
-            except Exception as ex:
-                print(f"Aviso ao consultar logins: {ex}")
-
-            # Se houver registros na tabela historico_logins, complementa
+            # 1. Busca da tabela 'historico_logins' usando a coluna exata 'data_hora'
             try:
                 res_logins = supabase.table("historico_logins").select("*").order("data_hora", desc=True).limit(500).execute()
                 if res_logins and res_logins.data:
                     for l_in in res_logins.data:
                         logins_dados.append({
-                            "created_at": l_in.get("data_hora") or l_in.get("created_at"),
-                            "militar_operador": l_in.get("usuario_login"),
+                            "data_hora": l_in.get("data_hora"),
+                            "usuario_login": l_in.get("usuario_login"),
                             "ip_origem": l_in.get("ip_origem", "127.0.0.1"),
-                            "descricao_detalhada": l_in.get("user_agent", "Acesso Web SIOP")
+                            "user_agent": l_in.get("user_agent", "Acesso Web SIOP")
                         })
             except Exception as e:
                 print(f"Aviso ao consultar historico_logins: {e}")
 
+            # 2. Fallback para buscar eventos de LOGIN na historico_auditoria
+            if not logins_dados:
+                try:
+                    res_login_aud = supabase.table("historico_auditoria").select("*").ilike("tipo_acao", "%LOGIN%").order("data_hora", desc=True).limit(500).execute()
+                    if res_login_aud and res_login_aud.data:
+                        for l_aud in res_login_aud.data:
+                            logins_dados.append({
+                                "data_hora": l_aud.get("data_hora"),
+                                "usuario_login": l_aud.get("militar_operador"),
+                                "ip_origem": l_aud.get("ip_origem", "127.0.0.1"),
+                                "user_agent": l_aud.get("descricao_detalhada", "Acesso Web SIOP")
+                            })
+                except Exception as ex:
+                    print(f"Aviso ao consultar fallback de logins: {ex}")
+
         if logins_dados:
             df_logins = pd.DataFrame(logins_dados)
             
-            col_data_l = "created_at" if "created_at" in df_logins.columns else ("data_hora" if "data_hora" in df_logins.columns else None)
-            
-            if col_data_l:
-                df_logins["dt_obj"] = pd.to_datetime(df_logins[col_data_l], errors="coerce", utc=True)
+            if "data_hora" in df_logins.columns and not df_logins.empty:
+                df_logins["dt_obj"] = pd.to_datetime(df_logins["data_hora"], errors="coerce", utc=True)
                 df_logins.sort_values(by="dt_obj", ascending=False, inplace=True)
                 df_logins["Data / Hora Conexão"] = df_logins["dt_obj"].dt.strftime("%d/%m/%Y %H:%M:%S")
             else:
                 df_logins["Data / Hora Conexão"] = "N/I"
 
             df_logins.rename(columns={
-                "militar_operador": "Nº Polícia / Usuário",
+                "usuario_login": "Nº Polícia / Usuário",
                 "ip_origem": "Endereço IP",
-                "descricao_detalhada": "Navegador / Dispositivo"
+                "user_agent": "Navegador / Dispositivo"
             }, inplace=True)
 
             cols_logins = ["Data / Hora Conexão", "Nº Polícia / Usuário", "Endereço IP", "Navegador / Dispositivo"]
