@@ -681,17 +681,15 @@ with st.sidebar:
             st.markdown("---")
             st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
             
-            # Trecho da barra lateral em app.py para consulta resiliente:
-lista_unis = []
-if supabase:
-    try:
-        res_u = supabase.table("configuracao_unidade").select("id, unidade_nome, subunidade_nome").execute()
-        lista_unis = res_u.data or []
-    except Exception as e:
-        # Trata o erro silenciosamente sem travar a interface
-        lista_unis = []
+            lista_unis = []
+            if supabase:
+                try:
+                    res_u = supabase.table("configuracao_unidade").select("id, unidade_nome, subunidade_nome").execute()
+                    lista_unis = res_u.data or []
+                except Exception:
+                    lista_unis = []
 
-        if lista_unis:
+            if lista_unis:
                 opcoes_uni = [f"{u.get('unidade_nome', '')} / {u.get('subunidade_nome', '')}".strip(" /") for u in lista_unis]
                 idx_sel = 0
                 uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
@@ -709,10 +707,10 @@ if supabase:
                 parts = sel_uni_sidebar.split(" / ")
                 st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
                 st.session_state["cfg_subunidade"] = parts[1] if len(parts) > 1 else ""
-    else:
+            else:
                 st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
     else:
-                st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
+        st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
 
     st.divider()
 
