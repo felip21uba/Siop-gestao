@@ -14,7 +14,7 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
     tab_auditoria_geral, tab_logins, tab_conformidade = st.tabs([
         "📜 Histórico Geral de Auditoria",
         "🔑 Histórico de Logins & Acessos",
-        "🔒 Painel de Conformidade & RLS"
+        "🔒 Protocolos de Segurança, RLS & Auditoria de TI"
     ])
 
     # =========================================================================
@@ -92,7 +92,6 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
 
         logins_dados = []
         if supabase:
-            # 1. Busca da tabela 'historico_logins' usando a coluna exata 'data_hora'
             try:
                 res_logins = supabase.table("historico_logins").select("*").order("data_hora", desc=True).limit(500).execute()
                 if res_logins and res_logins.data:
@@ -106,7 +105,6 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             except Exception as e:
                 print(f"Aviso ao consultar historico_logins: {e}")
 
-            # 2. Fallback para buscar eventos de LOGIN na historico_auditoria
             if not logins_dados:
                 try:
                     res_login_aud = supabase.table("historico_auditoria").select("*").ilike("tipo_acao", "%LOGIN%").order("data_hora", desc=True).limit(500).execute()
@@ -161,12 +159,50 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             st.info("ℹ️ Nenhum registro de login capturado até o momento.")
 
     # =========================================================================
-    # ABA 3: CONFORMIDADE & SEGURANÇA (RLS & LGPD)
+    # ABA 3: PROTOCOLOS DE SEGURANÇA, RLS & AUDITORIA DE TI
     # =========================================================================
     with tab_conformidade:
-        st.subheader("🔒 Status de Segurança e Políticas RLS")
-        st.markdown("""
-        * **Ambiente Operacional Multi-Tenant:** Isolamento automático por Unidade e Companhia.
-        * **Governança & Rastreabilidade:** Todos os eventos de alteração de permissão, exclusão ou login são gravados nas tabelas de auditoria.
-        * **Compliance LGPD:** Senhas armazenadas sob criptografia forte SHA-256 e sessões únicas validadas por `session_token`.
-        """)
+        st.subheader("⚙️ Protocolos Técnicos, Regras de Negócio e Travas de Auditoria")
+        st.caption("Detalhamento integral dos mecanismos de proteção, travas operacionais e conformidade regulatória para Fiscalização de TI.")
+        
+        c_sec1, c_sec2 = st.columns(2)
+        
+        with c_sec1:
+            with st.container(border=True):
+                st.markdown("##### 🔑 Autenticação, 2FA e Controle de Sessão")
+                st.markdown("""
+                * **Autenticação Multifator (2FA/TOTP):** Integração com Google Authenticator e Authy.
+                * **Sessão Única Concorrente:** Proteção contra acessos simultâneos com enforçamento de dispositivo único e revogação no Supabase.
+                * **Controle de Timeout:** Encerramento automático por inatividade e expiração de sessão.
+                * **Controle de Acesso Baseado em Função (RBAC):** Escopo dividido em 7 níveis hierárquicos com isolamento de visões.
+                * **Recuperação Dupla:** Redefinição via token por e-mail validado conjuntamente com o QR Code do operador.
+                """)
+
+            with st.container(border=True):
+                st.markdown("##### 🔒 Trava de Auditoria Retroativa & Antichoques")
+                st.markdown("""
+                * **Trava Retroativa Diária:** Bloqueio automático de edições e substituições de serviço em datas anteriores ao dia atual (`data < hoje`) após homologação.
+                * **Trava Antichoques de Guarnição:** Validação em tempo real para impedir duplicidade de lançamento de um militar em equipes distintas na mesma data.
+                * **Gestão Cumulativa de Carga:** Cálculo automatizado de metas individuais (160h ou 80h) com abatimento por Dia Neutro (DN) e Dia Neutro Trabalhado (DNT).
+                """)
+
+        with c_sec2:
+            with st.container(border=True):
+                st.markdown("##### 🛡️ Criptografia, Sanitização e RLS")
+                st.markdown("""
+                * **Criptografia de Senhas:** Armazenamento em hash forte **SHA-256**.
+                * **Tráfego Seguro:** Protocolo **HTTPS / TLS 1.3** criptografado em trânsito.
+                * **Sanitização Anti-Injection (XSS/SQLi):** Higienização e *escaping* de todas as entradas de texto livre em formulários.
+                * **Desarmo de Formula Injection:** Sanitização em exportações e importações de planilhas Excel/CSV.
+                * **PostgreSQL Row Level Security (RLS):** Compatibilidade com políticas de segurança nativas a nível de linha no Supabase.
+                """)
+
+            with st.container(border=True):
+                st.markdown("##### 📜 Rastreabilidade, IP Real e Custódia TCO")
+                st.markdown("""
+                * **Captura de IP Público Real:** Extração de IP de origem via *headers WebSocket / X-Forwarded-For*.
+                * **Trilha do TCO / Custódia:** Histórico imutável de recebimento, aceite de fiel depósito e tramitações (`tco_logs`).
+                * **Histórico Auditável de Conexões:** Registro de conexões com horário, IP e dispositivo (`historico_logins`).
+                * **Auditoria de Operações Sensíveis:** Gravador automático para trocas de perfil, resets, exclusões e cadastro de unidades (`historico_auditoria`).
+                * **Isolamento Multi-Tenant:** Segregação lógica de dados por Unidade (Batalhão) e Subunidade (Companhia).
+                """)
