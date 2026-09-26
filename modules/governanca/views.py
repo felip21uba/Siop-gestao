@@ -3,6 +3,7 @@ import pandas as pd
 import datetime
 import io
 import openpyxl
+import streamlit.components.v1 as components
 from core.database import supabase
 
 def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21º BPM", cargo_operador="MILITAR", perfil_operador="ADMIN"):
@@ -26,7 +27,6 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
 
         logs_auditoria = []
         if supabase:
-            # 1. Consulta historico_auditoria
             try:
                 res_aud = supabase.table("historico_auditoria").select("*").order("data_hora", desc=True).limit(500).execute()
                 if res_aud and res_aud.data:
@@ -42,7 +42,6 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             except Exception as e:
                 print(f"Aviso ao consultar historico_auditoria: {e}")
 
-            # 2. Unifica com tco_logs
             try:
                 res_tco = supabase.table("tco_logs").select("*").order("data_hora", desc=True).limit(500).execute()
                 if res_tco and res_tco.data:
@@ -60,9 +59,7 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
 
         if logs_auditoria:
             df_aud = pd.DataFrame(logs_auditoria)
-            
             if "data_hora" in df_aud.columns and not df_aud.empty:
-                # Converte para UTC e ajusta para o Fuso Horário de Brasília (-3h)
                 df_aud["dt_obj"] = pd.to_datetime(df_aud["data_hora"], errors="coerce", utc=True)
                 df_aud["dt_obj"] = df_aud["dt_obj"].dt.tz_convert("America/Sao_Paulo")
                 df_aud.sort_values(by="dt_obj", ascending=False, inplace=True)
@@ -123,9 +120,7 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
 
         if logins_dados:
             df_logins = pd.DataFrame(logins_dados)
-            
             if "data_hora" in df_logins.columns and not df_logins.empty:
-                # Converte para UTC e ajusta para o Fuso Horário de Brasília (-3h)
                 df_logins["dt_obj"] = pd.to_datetime(df_logins["data_hora"], errors="coerce", utc=True)
                 df_logins["dt_obj"] = df_logins["dt_obj"].dt.tz_convert("America/Sao_Paulo")
                 df_logins.sort_values(by="dt_obj", ascending=False, inplace=True)
@@ -143,7 +138,6 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             cols_reais_logins = [c for c in cols_logins if c in df_logins.columns]
 
             st.dataframe(df_logins[cols_reais_logins], use_container_width=True, hide_index=True)
-
             st.markdown("<br>", unsafe_allow_html=True)
             
             buffer_logins = io.BytesIO()
@@ -163,7 +157,7 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             st.info("ℹ️ Nenhum registro de login capturado até o momento.")
 
     # =========================================================================
-    # ABA 3: ARQUITETURA DE DEFESA & MECANISMOS DE CRIPTOGRAFIA
+    # ABA 3: ARQUITETURA DE DEFESA & MECANISMOS DE CRIPTOGRAFIA (COM IMPRESSÃO)
     # =========================================================================
     with tab_conformidade:
         st.markdown("##### 🏛️ Arquitetura de Defesa e Mecanismos de Criptografia do SIOP")
@@ -204,3 +198,104 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             * **QR Code de Validação Pública:** Impressão de QR Code e código hash SHA-256 no rodapé de todos os documentos oficiais emitidos para conferência em tempo real.
             * **Segunda Via Física Inalterável:** Backup automático do PDF idêntico gerado enviado para o bucket de armazenamento seguro no Supabase Storage.
             """)
+
+        st.divider()
+
+        # =========================================================================
+        # BOTÃO DE IMPRESSÃO / SALVAR PDF DOS 5 PILARES DA GOVERNANÇA
+        # =========================================================================
+        dt_emissao_str = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M:%S")
+
+        html_governanca_pdf = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                * {{ -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }}
+                @media print {{ @page {{ size: A4 portrait; margin: 12mm; }} body {{ background: #ffffff !important; padding: 0 !important; }} }}
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #ffffff; color: #0f172a; padding: 20px; }}
+                .container {{ border: 2px solid #1e3a8a; border-radius: 8px; padding: 25px; max-width: 850px; margin: 0 auto; }}
+                .header {{ text-align: center; border-bottom: 2px solid #cbd5e1; padding-bottom: 12px; margin-bottom: 20px; }}
+                .header h2 {{ margin: 0; font-size: 18px; color: #1e3a8a; text-transform: uppercase; }}
+                .header h3 {{ margin: 3px 0; font-size: 13px; color: #475569; text-transform: uppercase; }}
+                .header h4 {{ margin: 3px 0; font-size: 12px; color: #0f172a; text-transform: uppercase; }}
+                .pillar-title {{ font-size: 13px; font-weight: bold; color: #1e3a8a; margin-top: 14px; margin-bottom: 6px; background-color: #f1f5f9; padding: 6px; border-left: 4px solid #1e3a8a; }}
+                ul {{ margin: 0; padding-left: 20px; font-size: 11px; line-height: 1.5; text-align: justify; }}
+                li {{ margin-bottom: 4px; }}
+                .meta-table {{ width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 11px; }}
+                .meta-table td {{ padding: 5px; border: 1px solid #cbd5e1; }}
+                .footer-info {{ margin-top: 25px; font-size: 10px; color: #64748b; border-top: 1px solid #cbd5e1; padding-top: 10px; text-align: justify; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h2>POLÍCIA MILITAR DE MINAS GERAIS</h2>
+                    <h3>{unidade_operador}</h3>
+                    <h4>RELATÓRIO TÉCNICO DE GOVERNANÇA, ARQUITETURA DE DEFESA E CRIPTOGRAFIA (SIOP)</h4>
+                </div>
+
+                <table class="meta-table">
+                    <tr>
+                        <td style="font-weight:bold; width:25%; background:#f8fafc;">Emissor / Operador:</td>
+                        <td>{cargo_operador} {nome_operador} ({perfil_operador})</td>
+                        <td style="font-weight:bold; width:20%; background:#f8fafc;">Data da Emissão:</td>
+                        <td>{dt_emissao_str}</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight:bold; background:#f8fafc;">Unidade Operacional:</td>
+                        <td colspan="3">{unidade_operador}</td>
+                    </tr>
+                </table>
+
+                <div class="pillar-title">1. AUTENTICAÇÃO, PROTEÇÃO ANTI-FORÇA BRUTA E CONTROLE DE SESSÃO</div>
+                <ul>
+                    <li><b>Autenticação em Duas Etapas (2FA / TOTP):</b> Integração com Google Authenticator e Authy via chaves temporárias base32.</li>
+                    <li><b>Proteção Anti-Brute Force:</b> Bloqueio temporário progressivo por IP e usuário no endpoint do Supabase Auth após 3 tentativas malsucedidas.</li>
+                    <li><b>Controle de Sessão Concorrente (Sessão Única):</b> Validação por <code>token_sessao_ativa</code> no banco de dados. Novo login simultâneo revoga e desconecta o acesso anterior.</li>
+                    <li><b>Gestão de Timeout por Inatividade:</b> Destruição automática de variáveis locais após 20 minutos de ociosidade.</li>
+                </ul>
+
+                <div class="pillar-title">2. PROTEÇÃO DE STORAGE E SANITIZAÇÃO DE UPLOADS (ANTI-MALWARE & TRAVERSAL)</div>
+                <ul>
+                    <li><b>Sanitização Criptográfica de Arquivos:</b> Tratamento de nomes via Regex e unicodedata, eliminando caracteres especiais e caminhos para neutralizar ataques de Directory Traversal.</li>
+                    <li><b>Filtro Estrito por Extensão e MIME-Type:</b> Bloqueio absoluto de arquivos executáveis ou maliciosos (<code>.exe</code>, <code>.php</code>, <code>.js</code>, <code>.py</code>, <code>.sh</code>, <code>.bat</code>). Liberação restrita a documentos validados (PDF, JPEG, PNG).</li>
+                    <li><b>Leitura com Buffer Sanitizado:</b> Leitura de arquivos limitada em RAM para prevenir invasões por estouro de cota/memória (DoS).</li>
+                </ul>
+
+                <div class="pillar-title">3. INTEGRIDADE DO BANCO DE DADOS, ANTI-SQL INJECTION E POSTGRESQL RLS</div>
+                <ul>
+                    <li><b>Anulação de SQL Injection:</b> Comunicação com o PostgreSQL executada exclusivamente por endpoints da API PostgREST/Supabase com parametrização restrita.</li>
+                    <li><b>Row Level Security (RLS - PostgreSQL):</b> Segurança aplicada diretamente nas tabelas do banco de dados, bloqueando consultas não autorizadas por validação de token JWT.</li>
+                    <li><b>Isolamento por Controle de Acesso (RBAC):</b> Restrição de privilégios dividida em 7 níveis funcionais com bloqueio de interface no servidor.</li>
+                </ul>
+
+                <div class="pillar-title">4. TRILHA DE AUDITORIA IMUTÁVEL E TRIGGERS NO POSTGRESQL</div>
+                <ul>
+                    <li><b>Triggers de Bloqueio no Banco (<code>proibir_alteracao_logs</code>):</b> Função em PL/pgSQL executada antes de qualquer comando UPDATE ou DELETE nas tabelas <code>tco_logs</code> e <code>audit_log</code>, retornando exceção do sistema.</li>
+                    <li><b>Imutabilidade Jurídica do Histórico:</b> Todos os registros mantêm carimbo de data/hora em ISO com milissegundos, operador responsável, unidade e payload original alterado.</li>
+                    <li><b>Captura de IP Público Real:</b> Extração automática de IP de origem do cliente via headers WebSocket / X-Forwarded-For.</li>
+                </ul>
+
+                <div class="pillar-title">5. ASSINATURA CRIPTOGRÁFICA SHA-256 E AUTENTICIDADE PÚBLICA</div>
+                <ul>
+                    <li><b>Chancela Eletrônica SHA-256 (Art. 158-A do CPP):</b> Geração de hash combinando o código do recibo JECRIM, descrição dos bens, narrativa fática e carimbo de tempo.</li>
+                    <li><b>QR Code de Validação Pública:</b> Impressão de QR Code e código hash SHA-256 no rodapé de todos os documentos oficiais emitidos.</li>
+                    <li><b>Segunda Via Física Inalterável:</b> Backup automático do PDF idêntico gerado enviado para o bucket de armazenamento seguro no Supabase.</li>
+                </ul>
+
+                <div class="footer-info">
+                    <b>DECLARAÇÃO TÉCNICA:</b> Documento gerado eletronicamente para fins de comprovação de conformidade regulatória, auditoria de TI e fiscalização institucional de segurança do SIOP PMMG.
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+
+        c_g1, c_g2 = st.columns([2, 1])
+        with c_g1:
+            st.caption("📄 Clique no botão para abrir a janela oficial de impressão ou salvar a Matriz dos 5 Pilares em PDF.")
+        with c_g2:
+            if st.button("🖨️ Imprimir Matriz de Segurança (PDF)", type="primary", use_container_width=True):
+                components.html(html_governanca_pdf + "<script>window.print();</script>", height=600, scrolling=True)
