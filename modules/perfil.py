@@ -201,7 +201,7 @@ def exibir_tela_perfil():
             if "data_hora" in df_logs.columns:
                 df_logs["data_hora"] = pd.to_datetime(df_logs["data_hora"], errors="coerce").dt.strftime("%d/%m/%Y %H:%M:%S")
 
-            # Busca por login/num_policia (ex: 1337468) ou nome_guerra
+            # Busca por login/num_policia (ex: 123456) ou nome_guerra
             mask_usuario = (
                 df_logs["usuario"].astype(str).str.upper().str.contains(nome_guerra, na=False) |
                 df_logs["usuario"].astype(str).str.upper().str.contains(usr_key, na=False) |
