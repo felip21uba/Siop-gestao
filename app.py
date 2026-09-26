@@ -528,7 +528,7 @@ if not st.session_state.get("autenticado", False):
         # FLUXO 3: TELA PRINCIPAL DE LOGIN (LOGIN DIRETO SEM QR CODE NO ACESSO DIÁRIO)
         else:
             with st.form("form_login_principal"):
-                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1337468") or "").strip()
+                usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 123456") or "").strip()
                 senha_input = (st.text_input("Senha de Acesso:", type="password", placeholder="••••••••") or "").strip()
                 
                 btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", use_container_width=True)
