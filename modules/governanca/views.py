@@ -14,7 +14,7 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
     tab_auditoria_geral, tab_logins, tab_conformidade = st.tabs([
         "📜 Histórico Geral de Auditoria",
         "🔑 Histórico de Logins & Acessos",
-        "🔒 Protocolos de Segurança, RLS & Auditoria de TI"
+        "🏛️ Arquitetura de Defesa & Mecanismos de Criptografia"
     ])
 
     # =========================================================================
@@ -62,7 +62,7 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             df_aud = pd.DataFrame(logs_auditoria)
             
             if "data_hora" in df_aud.columns and not df_aud.empty:
-                # Converte para UTC e ajusta rigorosamente para o Fuso Horário de Brasília (-3h)
+                # Converte para UTC e ajusta para o Fuso Horário de Brasília (-3h)
                 df_aud["dt_obj"] = pd.to_datetime(df_aud["data_hora"], errors="coerce", utc=True)
                 df_aud["dt_obj"] = df_aud["dt_obj"].dt.tz_convert("America/Sao_Paulo")
                 df_aud.sort_values(by="dt_obj", ascending=False, inplace=True)
@@ -125,7 +125,7 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             df_logins = pd.DataFrame(logins_dados)
             
             if "data_hora" in df_logins.columns and not df_logins.empty:
-                # Converte para UTC e ajusta rigorosamente para o Fuso Horário de Brasília (-3h)
+                # Converte para UTC e ajusta para o Fuso Horário de Brasília (-3h)
                 df_logins["dt_obj"] = pd.to_datetime(df_logins["data_hora"], errors="coerce", utc=True)
                 df_logins["dt_obj"] = df_logins["dt_obj"].dt.tz_convert("America/Sao_Paulo")
                 df_logins.sort_values(by="dt_obj", ascending=False, inplace=True)
@@ -163,50 +163,44 @@ def renderizar_modulo_governanca(nome_operador="OPERADOR", unidade_operador="21�
             st.info("ℹ️ Nenhum registro de login capturado até o momento.")
 
     # =========================================================================
-    # ABA 3: PROTOCOLOS DE SEGURANÇA, RLS & AUDITORIA DE TI
+    # ABA 3: ARQUITETURA DE DEFESA & MECANISMOS DE CRIPTOGRAFIA
     # =========================================================================
     with tab_conformidade:
-        st.subheader("⚙️ Protocolos Técnicos, Regras de Negócio e Travas de Auditoria")
-        st.caption("Detalhamento integral dos mecanismos de proteção, travas operacionais e conformidade regulatória para Fiscalização de TI.")
-        
-        c_sec1, c_sec2 = st.columns(2)
-        
-        with c_sec1:
-            with st.container(border=True):
-                st.markdown("##### 🔑 Autenticação, 2FA e Controle de Sessão")
-                st.markdown("""
-                * **Autenticação Multifator (2FA/TOTP):** Integração com Google Authenticator e Authy.
-                * **Sessão Única Concorrente:** Proteção contra acessos simultâneos com enforçamento de dispositivo único e revogação no Supabase.
-                * **Controle de Timeout:** Encerramento automático por inatividade e expiração de sessão.
-                * **Controle de Acesso Baseado em Função (RBAC):** Escopo dividido em 7 níveis hierárquicos com isolamento de visões.
-                * **Recuperação Dupla:** Redefinição via token por e-mail validado conjuntamente com o QR Code do operador.
-                """)
+        st.markdown("##### 🏛️ Arquitetura de Defesa e Mecanismos de Criptografia do SIOP")
+        st.caption("Estrutura técnica para apresentação à Diretoria de TI e Auditoria Institucional.")
 
-            with st.container(border=True):
-                st.markdown("##### 🔒 Trava de Auditoria Retroativa & Antichoques")
-                st.markdown("""
-                * **Trava Retroativa Diária:** Bloqueio automático de edições e substituições de serviço em datas anteriores ao dia atual (`data < hoje`) após homologação.
-                * **Trava Antichoques de Guarnição:** Validação em tempo real para impedir duplicidade de lançamento de um militar em equipes distintas na mesma data.
-                * **Gestão Cumulativa de Carga:** Cálculo automatizado de metas individuais (160h ou 80h) com abatimento por Dia Neutro (DN) e Dia Neutro Trabalhado (DNT).
-                """)
+        with st.expander("🔑 **1. Autenticação, Proteção Anti-Força Bruta e Controle de Sessão**", expanded=True):
+            st.markdown("""
+            * **Autenticação em Duas Etapas (2FA / TOTP):** Integração com Google Authenticator e Authy via chaves temporárias base32.
+            * **Proteção Anti-Brute Force:** Bloqueio temporário progressivo por IP e usuário no endpoint do Supabase Auth após 3 tentativas malsucedidas.
+            * **Controle de Sessão Concorrente (Sessão Única):** Validação por `token_sessao_ativa` no banco de dados. Caso ocorra novo login simultâneo, o acesso anterior é revogado e desconectado imediatamente.
+            * **Gestão de Timeout por Inatividade:** Destruição automática das variáveis locais (`st.session_state`) após 20 minutos de ociosidade ou fechamento do navegador.
+            """)
 
-        with c_sec2:
-            with st.container(border=True):
-                st.markdown("##### 🛡️ Criptografia, Sanitização e RLS")
-                st.markdown("""
-                * **Criptografia de Senhas:** Armazenamento em hash forte **SHA-256**.
-                * **Tráfego Seguro:** Protocolo **HTTPS / TLS 1.3** criptografado em trânsito.
-                * **Sanitização Anti-Injection (XSS/SQLi):** Higienização e *escaping* de todas as entradas de texto livre em formulários.
-                * **Desarmo de Formula Injection:** Sanitização em exportações e importações de planilhas Excel/CSV.
-                * **PostgreSQL Row Level Security (RLS):** Compatibilidade com políticas de segurança nativas a nível de linha no Supabase.
-                """)
+        with st.expander("🛡️ **2. Proteção de Storage e Sanitização de Uploads (Anti-Malware & Traversal)**", expanded=False):
+            st.markdown("""
+            * **Sanitização Criptográfica de Arquivos (`sanitizar_nome_arquivo`):** Tratamento de nomes via Regex e `unicodedata`, eliminando caracteres especiais, cedilhas e caminhos para neutralizar ataques de *Directory Traversal*.
+            * **Filtro Estrito por Extensão e MIME-Type (`file_validator.py`):** Bloqueio absoluto de arquivos executáveis ou maliciosos (`.exe`, `.php`, `.js`, `.py`, `.sh`, `.bat`). Liberação restrita a documentos validados como `application/pdf`, `image/jpeg` e `image/png`.
+            * **Leitura com Buffer Sanitizado:** Leitura de arquivos limitada em memória RAM para prevenir invasões por estouro de cota e estouro de memória (DoS).
+            """)
 
-            with st.container(border=True):
-                st.markdown("##### 📜 Rastreabilidade, IP Real e Custódia TCO")
-                st.markdown("""
-                * **Captura de IP Público Real:** Extração de IP de origem via *headers WebSocket / X-Forwarded-For*.
-                * **Trilha do TCO / Custódia:** Histórico imutável de recebimento, aceite de fiel depósito e tramitações (`tco_logs`).
-                * **Histórico Auditável de Conexões:** Registro de conexões com horário, IP e dispositivo (`historico_logins`).
-                * **Auditoria de Operações Sensíveis:** Gravador automático para trocas de perfil, resets, exclusões e cadastro de unidades (`historico_auditoria`).
-                * **Isolamento Multi-Tenant:** Segregação lógica de dados por Unidade (Batalhão) e Subunidade (Companhia).
-                """)
+        with st.expander("⚡ **3. Integridade do Banco de Dados, Anti-SQL Injection e PostgreSQL RLS**", expanded=False):
+            st.markdown("""
+            * **Anulação de SQL Injection:** Comunicação com o PostgreSQL executada exclusivamente por endpoints da API PostgREST/Supabase com parametrização restrita de tipos de dados.
+            * **Row Level Security (RLS - PostgreSQL):** Segurança aplicada diretamente nas tabelas do banco de dados, bloqueando consultas não autorizadas via API REST por validação do token JWT do usuário.
+            * **Isolamento por Controle de Acesso (RBAC):** Restrição de privilégios dividida em 7 níveis funcionais com bloqueio de renderização de componentes de interface no servidor.
+            """)
+
+        with st.expander("📜 **4. Trilha de Auditoria Imutável e Triggers no PostgreSQL**", expanded=False):
+            st.markdown("""
+            * **Triggers de Bloqueio no Banco (`proibir_alteracao_logs`):** Função em PL/pgSQL executada antes de qualquer comando `UPDATE` ou `DELETE` nas tabelas `tco_logs` e `audit_log`, retornando exceção do sistema.
+            * **Imutabilidade Jurídica do Histórico:** Todos os registros de ações (Importação, Edição, Tramitação, Exclusão e Aceite) mantêm carimbo de data/hora em ISO com milissegundos, operador responsável, unidade e payload original alterado.
+            * **Captura de IP Público Real:** Extração automática de IP de origem do cliente via *headers WebSocket / X-Forwarded-For*.
+            """)
+
+        with st.expander("🔐 **5. Assinatura Criptográfica SHA-256 e Autenticidade Pública**", expanded=False):
+            st.markdown("""
+            * **Chancela Eletrônica SHA-256 (Art. 158-A do CPP):** Geração de hash combinando o código do recibo JECRIM, descrição dos bens, narrativa fática e carimbo de tempo.
+            * **QR Code de Validação Pública:** Impressão de QR Code e código hash SHA-256 no rodapé de todos os documentos oficiais emitidos para conferência em tempo real.
+            * **Segunda Via Física Inalterável:** Backup automático do PDF idêntico gerado enviado para o bucket de armazenamento seguro no Supabase Storage.
+            """)
