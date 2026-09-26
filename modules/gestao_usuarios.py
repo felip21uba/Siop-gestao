@@ -33,11 +33,12 @@ def exibir_painel_gestao_unidades():
         st.error("⚠️ Conexão com o Supabase indisponível.")
         return
 
+    unidades = []
     try:
         res = supabase.table("configuracao_unidade").select("*").execute()
         unidades = res.data or []
     except Exception as ex:
-        st.error(f"Erro ao carregar lista de unidades: {ex}")
+        print(f"Aviso ao carregar lista de unidades: {ex}")
         unidades = []
 
     if not unidades:
@@ -107,7 +108,6 @@ def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, n
                 try:
                     supabase.table("usuarios").update(payload_update).or_(f"usuario_login.eq.{m_clean},usuario.eq.{m_clean}").execute()
                 except Exception:
-                    # Fallback caso a coluna nome_completo ainda nao exista na tabela usuarios
                     payload_update.pop("nome_completo", None)
                     supabase.table("usuarios").update(payload_update).or_(f"usuario_login.eq.{m_clean},usuario.eq.{m_clean}").execute()
             else:
@@ -166,11 +166,10 @@ def exibir_tela_gestao_usuarios():
     usuarios_banco = []
     if supabase:
         try:
-            # Usa select("*") para evitar erros quando uma coluna especifica nao existe no banco
             res_usrs = supabase.table("usuarios").select("*").execute()
             usuarios_banco = res_usrs.data or []
         except Exception as e:
-            st.warning(f"Aviso ao consultar usuários no Supabase: {e}")
+            print(f"Aviso ao consultar usuários no Supabase: {e}")
             usuarios_banco = []
 
     dict_usuarios_existentes = {}
@@ -215,7 +214,7 @@ def exibir_tela_gestao_usuarios():
 
         st.divider()
 
-        # EDIÇÃO EM LOTE POR SELEÇÃO (COM NOME COMPLETO E NÍVEL GERAL)
+        # EDIÇÃO EM LOTE POR SELEÇÃO
         st.markdown("##### 🎯 Alteração de Perfis em Lote")
         dict_mils_options = {}
         for m in efetivo_banco:
@@ -360,7 +359,7 @@ def exibir_tela_gestao_usuarios():
 
         st.divider()
 
-        # AÇÕES DE COMANDO EMERGENCIAIS (EXIBIÇÃO COM NOME COMPLETO)
+        # AÇÕES DE COMANDO EMERGENCIAIS
         st.markdown("##### 🛠️ Ações de Comando sobre Credenciais")
         col_act1, col_act2, col_act3 = st.columns(3)
         opcoes_acoes = [str(u.get("usuario_login") or u.get("usuario")).strip().upper() for u in usuarios_banco if u.get("usuario_login") or u.get("usuario")] if usuarios_banco else ["Nenhum"]
