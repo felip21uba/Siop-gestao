@@ -6,52 +6,69 @@ from core.permissions import usuario_eh_gestor_creds
 from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
 
 
-def carregar_lista_unidades_creds_exclusivas():
-    """Carrega dinamicamente apenas as unidades oficiais para CREDS-TC e Órgãos Externos."""
-    unidades_creds_oficiais = [
-        "CREDS 35ª CIA PM (UBÁ)",
-        "CREDS 111ª CIA PM (VISCONDE DO RIO BRANCO)",
-        "CREDS 285ª CIA TM (UBÁ)",
-        "CREDS 21º BPM (SEÇÃO DE CUSTÓDIA / UBÁ)",
+def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
+    """
+    Lê dinamicamente todas as CIAs, Batalhões e Unidades cadastradas no banco de dados
+    e gera a lista de CREDS-TC da unidade ativa e das demais unidades do sistema.
+    """
+    # Órgãos externos de destinação padrão
+    orgaos_externos = [
         "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
         "PODER JUDICIÁRIO / TRIBUNAL DE JUSTIÇA (JECRIM)",
         "PERÍCIA TÉCNICA / PERÍCIA OFICIAL",
         "MINISTÉRIO PÚBLICO (MPMG)",
         "OUTRO ÓRGÃO EXTERNO (ESPECIFICAR NAS OBSERVAÇÕES)"
     ]
-    if not supabase:
-        return unidades_creds_oficiais
 
-    try:
-        res = supabase.table("usuarios").select("unidade").execute()
-        if res.data:
-            unidades_banco = set()
-            for u in res.data:
-                unid_raw = str(u.get("unidade") or "").strip().upper()
-                if "35" in unid_raw:
-                    unidades_banco.add("CREDS 35ª CIA PM (UBÁ)")
-                elif "111" in unid_raw:
-                    unidades_banco.add("CREDS 111ª CIA PM (VISCONDE DO RIO BRANCO)")
-                elif "285" in unid_raw:
-                    unidades_banco.add("CREDS 285ª CIA TM (UBÁ)")
-                elif "21" in unid_raw or "BPM" in unid_raw:
-                    unidades_banco.add("CREDS 21º BPM (SEÇÃO DE CUSTÓDIA / UBÁ)")
-                elif unid_raw:
-                    unidades_banco.add(f"CREDS {unid_raw}")
+    unidades_creds_set = set()
 
-            for u in unidades_creds_oficiais:
-                unidades_banco.add(u)
+    # 1. Adiciona o CREDS da unidade ativa do operador no momento
+    if unidade_militar_atual:
+        unid_limpa = str(unidade_militar_atual).strip().upper()
+        if not unid_limpa.startswith("CREDS"):
+            unidades_creds_set.add(f"CREDS {unid_limpa}")
+        else:
+            unidades_creds_set.add(unid_limpa)
 
-            return sorted(list(unidades_banco))
-        return unidades_creds_oficiais
-    except Exception:
-        return unidades_creds_oficiais
+    # 2. Busca dinâmica na tabela 'usuarios' e 'configuracao_unidade' do Supabase
+    if supabase:
+        try:
+            # Varre unidades registradas na tabela usuarios
+            res_u = supabase.table("usuarios").select("unidade").execute()
+            if res_u.data:
+                for row in res_u.data:
+                    u_nome = str(row.get("unidade") or "").strip().upper()
+                    if u_nome and u_nome != "NONE":
+                        if not u_nome.startswith("CREDS"):
+                            unidades_creds_set.add(f"CREDS {u_nome}")
+                        else:
+                            unidades_creds_set.add(u_nome)
+
+            # Varre unidades da tabela de configuracao_unidade
+            res_cfg = supabase.table("configuracao_unidade").select("unidade_nome, subunidade_nome").execute()
+            if res_cfg.data:
+                for row in res_cfg.data:
+                    u_btl = str(row.get("unidade_nome") or "").strip().upper()
+                    u_cia = str(row.get("subunidade_nome") or "").strip().upper()
+                    if u_btl:
+                        unidades_creds_set.add(f"CREDS {u_btl}")
+                    if u_cia:
+                        unidades_creds_set.add(f"CREDS {u_cia}")
+                    if u_btl and u_cia:
+                        unidades_creds_set.add(f"CREDS {u_btl} / {u_cia}")
+        except Exception as e_unid:
+            print(f"Aviso ao carregar unidades dinâmicas: {e_unid}")
+
+    # Converte o conjunto em lista ordenada
+    lista_creds_ordenada = sorted(list(unidades_creds_set))
+
+    # Junta os CREDS dinâmicos com os Órgãos Externos
+    return lista_creds_ordenada + orgaos_externos
 
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     """
-    Renderiza a Aba de Custódia Física com agrupamento por REDS (+), busca por nome completo,
-    destinatários separados por radio button, restrição de fase por perfil e histórico 72h.
+    Renderiza a Aba de Custódia Física com leitura 100% dinâmica dos CREDS de qualquer Batalhão/Companhia.
     """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
     st.caption("Gerencie os bens em sua posse, envie materiais para outros militares/CREDS e consulte seu histórico de envios.")
@@ -59,7 +76,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm_logado = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
 
-    # Verifica se o usuário é gestor do CREDS
+    # Verifica permissão do CREDS-TC
     eh_gestor_creds = usuario_eh_gestor_creds(usr_logado) or any(
         p in str(usr_logado.get("perfil_creds", "")).upper() 
         for p in ["GESTOR", "ADMIN", "PROGRAMADOR"]
@@ -94,7 +111,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if "itens_selecionados_tramite" not in st.session_state:
                 st.session_state["itens_selecionados_tramite"] = {}
 
-            # Carregamento de militares com NOME COMPLETO para busca ampla
+            # Lista de militares para busca ampla
             lista_militares = carregar_militares_supabase() or []
             opcoes_militares = []
             
@@ -114,9 +131,10 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if not opcoes_militares:
                 opcoes_militares = [f"{nome_militar_atual} ({num_pm_logado})"]
 
-            lista_unidades_creds = carregar_lista_unidades_creds_exclusivas()
+            # CARREGAMENTO DINÂMICO DOS CREDS
+            lista_unidades_creds = carregar_lista_unidades_creds_dinamica(unidade_militar_atual)
 
-            # Renderiza expanders por REDS (+)
+            # Expander de REDS (+)
             for num_reds, df_grupo in grupos_reds:
                 qtd_itens_reds = len(df_grupo)
                 
@@ -153,7 +171,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
             st.markdown("---")
 
-            # FORMULÁRIO DE ENVIO
+            # FORMULÁRIO DE TRAMITAÇÃO
             selecionados_map = st.session_state["itens_selecionados_tramite"]
             qtd_sel = len(selecionados_map)
 
@@ -173,7 +191,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         )
 
                     with col_fase:
-                        # Exibe escolha de Fase APENAS se for Gestor CREDS
                         if eh_gestor_creds:
                             fase_destinacao_sel = st.selectbox(
                                 "Atualizar Fase de Destinação (Acesso Gestor CREDS):",
@@ -189,7 +206,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 ]
                             )
                         else:
-                            # Para tropa comum, define a fase automaticamente
                             if tipo_destinatario == "Policial Militar / Fiel Depositário":
                                 fase_destinacao_sel = "Com Fiel Depositário / Policial"
                             else:
@@ -274,7 +290,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         st.markdown("##### 📜 Histórico de Tramitações Enviadas por Você")
         st.caption("Consulte os envios realizados, filtre por REDS/período e cancele tramitações pendentes de aceite em até 72 horas.")
 
-        # Painel de busca e filtro
         with st.container(border=True):
             col_f1, col_f2 = st.columns(2)
             with col_f1:
@@ -316,7 +331,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if "data_envio_tramite" in df_hist.columns:
                 df_hist.sort_values(by="data_envio_tramite", ascending=False, inplace=True)
             
-            # Limita aos 10 últimos REDS únicos
             reds_unicos_10 = list(df_hist["num_reds"].unique())[:10]
             df_10_reds = df_hist[df_hist["num_reds"].isin(reds_unicos_10)]
 
@@ -336,7 +350,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         status_h = item_h.get("status_tramite", "Em Tramitação")
                         dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual")
 
-                        # Validação das 72 horas para habilitação do cancelamento
                         pode_cancelar = False
                         tempo_restante_str = ""
 
