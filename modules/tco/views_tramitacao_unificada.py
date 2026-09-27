@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import datetime
 from core.database import supabase, carregar_militares_supabase
-from modules.tco.database import registrar_log_tco, atualizar_posse_material
+from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
+
 
 def carregar_lista_unidades_creds():
     """Carrega dinamicamente a lista de CIAs, Batalhões e Órgãos Externos para o CREDS-TC."""
@@ -84,6 +85,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         "Devolvido ao Proprietário"
     ]
 
+    # Renderização agrupada por REDS (+)
     for num_reds, df_grupo in grupos_reds:
         qtd_itens_reds = len(df_grupo)
         
@@ -96,7 +98,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                 lacre = str(row.get("involucro_lacre", "SEM LACRE")).strip()
                 autor = str(row.get("autores", "N/I")).strip()
 
-                c_chk, c_info = st.columns([0.5, 9.5])
+                c_chk, c_info = st.columns([0.6, 9.4])
                 
                 with c_chk:
                     is_selected = st.checkbox(
@@ -169,26 +171,28 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                 sucessos = 0
 
                 for id_bem, dados_item in selecionados_map.items():
-                    res_ok = atualizar_posse_material(
-                        id_bem=id_bem,
-                        novo_destinatario=destinatario_final,
-                        nova_unidade_destinatario=unidade_dest_final,
-                        nova_fase=fase_destinacao_sel,
-                        status_tramite="Pendente de Aceite" if "Policial" in tipo_destinatario else "Em Tramitação"
-                    )
+                    payload_update = {
+                        "destinatario_pendente": destinatario_final,
+                        "unidade_destinatario_pendente": unidade_dest_final,
+                        "data_envio_tramite": agora_iso,
+                        "fase_destinacao": fase_destinacao_sel,
+                        "status_tramite": "Pendente de Aceite" if "Policial" in tipo_destinatario else "Em Tramitação"
+                    }
 
-                    if res_ok:
+                    if atualizar_material_supabase(id_bem, payload_update):
                         sucessos += 1
-                        registrar_log_tco(
-                            num_reds=dados_item.get("num_reds", "N/I"),
-                            bem_id=id_bem,
-                            acao="TRAMITACAO_ENVIADA",
-                            origem=nome_militar_atual,
-                            unidade_origem=unidade_militar_atual,
-                            destino=destinatario_final,
-                            unidade_destino=unidade_dest_final,
-                            detalhe=f"Fase: {fase_destinacao_sel} | Obs: {obs_tramite or 'Sem obs'}"
-                        )
+                        registrar_log_supabase({
+                            "data_hora": agora_iso,
+                            "num_reds": dados_item.get("num_reds", "N/I"),
+                            "bem_id": id_bem,
+                            "web_origem": "SIOP_TCO",
+                            "acao": "TRAMITACAO_ENVIADA",
+                            "origem": nome_militar_atual,
+                            "unidade_origem": unidade_militar_atual,
+                            "destino": destinatario_final,
+                            "unidade_destino": unidade_dest_final,
+                            "detalhe": f"Fase: {fase_destinacao_sel} | Obs: {obs_tramite or 'Sem obs'}"
+                        })
 
                 if sucessos > 0:
                     st.success(f"🎉 {sucessos} material(is) tramitado(s) com sucesso para **{destinatario_final}**!")
