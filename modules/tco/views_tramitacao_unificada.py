@@ -8,14 +8,13 @@ from modules.tco.database import registrar_log_supabase, atualizar_material_supa
 
 
 def extrair_partes_unidade(str_unidade):
-    """Extrai partes de Cia, Batalhão e Seções a partir da string cadastrada no banco."""
+    """Extrai partes de Cia, Batalhão e Seções a partir da string cadastrada na tabela usuarios."""
     if not str_unidade or str_unidade == "None":
         return []
     
     partes_encontradas = set()
     raw = str(str_unidade).strip().upper()
 
-    # Separa por barra '/' caso esteja cadastrado como '21º BPM / 35ª CIA PM'
     fragmentos = [p.strip() for p in raw.split('/') if p.strip()]
     for frag in fragmentos:
         if "BPM" in frag or "CIA" in frag or "TM" in frag or "PEL" in frag:
@@ -59,7 +58,7 @@ def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
         except Exception as e_db:
             print(f"Aviso ao consultar unidades da tabela usuarios: {e_db}")
 
-    # Fallback com unidades padrão caso o banco não retorne registros
+    # Fallback com unidades padrão caso o banco esteja indisponível
     if not unidades_creds_set:
         unidades_creds_set.add("CREDS 35ª CIA PM")
         unidades_creds_set.add("CREDS 111ª CIA PM")
@@ -189,8 +188,12 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         tipo_destinatario = st.radio(
                             "Tipo de Destinatário:",
                             ["Policial Militar / Fiel Depositário", "Seção de Custódia (CREDS-TC / Órgão)"],
-                            horizontal=True
+                            horizontal=True,
+                            key="radio_tipo_destinatario_unique"
                         )
+
+                    # Avaliação explícita do modo selecionado
+                    eh_opcao_creds = (tipo_destinatario == "Seção de Custódia (CREDS-TC / Órgão)")
 
                     with col_fase:
                         if eh_gestor_creds:
@@ -205,44 +208,45 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     "Encaminhado para Destruição / Descarte Físico",
                                     "Devolvido ao Proprietário",
                                     "Outro Procedimento (Especificar nas Observações)"
-                                ]
+                                ],
+                                key="sb_fase_creds_unique"
                             )
                         else:
-                            if "Policial" in tipo_destinatario:
+                            if not eh_opcao_creds:
                                 fase_destinacao_sel = "Com Fiel Depositário / Policial"
                             else:
                                 fase_destinacao_sel = "Aguardando no CREDS-TC / Custódia"
                             
-                            st.text_input("Fase de Destinação:", value=fase_destinacao_sel, disabled=True)
+                            st.text_input("Fase de Destinação:", value=fase_destinacao_sel, disabled=True, key="txt_fase_readonly_unique")
 
                     col_dest, col_obs = st.columns(2)
 
-                    # ALTERNÂNCIA ESTRITA DA CAIXA DE SELEÇÃO:
-                    # Avalia explicitamente se a opção 'Seção de Custódia' está selecionada
-                    eh_opcao_creds = "Seção" in tipo_destinatario or "CREDS" in tipo_destinatario or "Órgão" in tipo_destinatario
-
+                    # CAIXAS SEPARADAS COM KEY ÚNICA PARA EVITAR O REUSO DE ESTADO
                     with col_dest:
                         if eh_opcao_creds:
                             destinatario_final = st.selectbox(
                                 "Selecione a Unidade / CREDS Destinatário:",
-                                lista_unidades_creds,
+                                options=lista_unidades_creds,
                                 index=None,
-                                placeholder="Escolha a unidade CREDS-TC ou órgão..."
+                                placeholder="Escolha a unidade CREDS-TC ou órgão...",
+                                key="sb_destinatario_creds_only_unique"
                             )
                             unidade_dest_final = destinatario_final or "CREDS / ÓRGÃO EXTERNO"
                         else:
                             destinatario_final = st.selectbox(
                                 "Selecione o Policial Destinatário:",
-                                opcoes_militares,
+                                options=opcoes_militares,
                                 index=None,
-                                placeholder="Digite qualquer parte do nome do militar..."
+                                placeholder="Digite qualquer parte do nome do militar...",
+                                key="sb_destinatario_policial_only_unique"
                             )
                             unidade_dest_final = unidade_militar_atual
 
                     with col_obs:
                         obs_tramite = st.text_input(
                             "Observações / Motivo da Transferência:",
-                            placeholder="Ex: Passagem de serviço ou entrega na Seção de Custódia"
+                            placeholder="Ex: Passagem de serviço ou entrega na Seção de Custódia",
+                            key="txt_obs_tramite_unique"
                         ).strip()
 
                     st.markdown("<br>", unsafe_allow_html=True)
