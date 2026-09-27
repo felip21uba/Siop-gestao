@@ -5,71 +5,44 @@ from core.database import supabase, registrar_audit_log, atualizar_usuario_supab
 from core.auth import gerar_hash_senha, validar_requisitos_senha
 
 def exibir_tela_perfil():
-    # =========================================================================
-    # 📜 CARD DE COMPROVANTE DO TERMO DE COMPLIANCE (MÓDULO TCO)
-    # =========================================================================
-    usr_dados = st.session_state.get("usuario_dados", {})
-    num_pm = str(usr_dados.get("usuario_login") or usr_dados.get("usuario") or "").strip().upper()
-    nome_mil = usr_dados.get("nome_guerra", "OPERADOR")
-    cargo_mil = usr_dados.get("cargo_funcao", "MILITAR")
-    unid_mil = usr_dados.get("unidade", "21º BPM")
-
-    # Importa as funções do módulo TCO sem interromper o perfil caso falhe
-    try:
-        from modules.tco.compliance import (
-            verificar_aceite_compliance_supabase,
-            gerar_pdf_termo_compliance
-        )
-        termo_aceito = verificar_aceite_compliance_supabase(num_pm)
-    except Exception:
-        termo_aceito = usr_dados.get("termo_compliance_aceito", False)
-        gerar_pdf_termo_compliance = None
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    with st.container(border=True):
-        st.markdown("##### 📜 Termo de Compliance & Segurança da Informação (TCO)")
-        
-        if termo_aceito:
-            dt_aceite = usr_dados.get("data_aceite_compliance") or "Registrado no Banco de Dados"
-            st.success("🟢 **Termo de Compliance Aceito e Ativo**")
-            st.markdown(f"• **Status:** Declaração de ciência assinada eletronicamente.")
-            st.markdown(f"• **Data de Aceite Eletrónico:** `{dt_aceite}`")
-            st.caption("🔒 Documento vinculado à Cadeia de Custódia (Art. 158-A do CPP) e às normas da LGPD/PMMG.")
-
-            # Botão para o militar descarregar a 2ª via do PDF
-            if gerar_pdf_termo_compliance:
-                try:
-                    pdf_bytes = gerar_pdf_termo_compliance(
-                        nome_militar=nome_mil,
-                        cargo_funcao=cargo_mil,
-                        unidade=unid_mil,
-                        num_policia=num_pm,
-                        data_aceite_str=str(dt_aceite)
-                    )
-                    st.download_button(
-                        label="📄 Descarregar 2ª Via do Termo em PDF",
-                        data=pdf_bytes,
-                        file_name=f"Termo_Compliance_{num_pm}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-                except Exception as ex_pdf:
-                    print(f"Aviso ao gerar PDF no Perfil: {ex_pdf}")
-        else:
-            st.warning("🟡 **Pendente de Aceite**")
-            st.caption("O Termo de Compliance será exibido e solicitado automaticamente assim que aceder ao **Módulo TCO / Custódia**.")
     st.title("👤 Perfil do Usuário & Registros de Aceite")
     st.caption("Consulte seus dados funcionais, níveis de acesso, termos de aceite assinados e gerencie suas credenciais.")
     st.divider()
 
     usr = st.session_state.get("usuario_dados") or {}
-    num_login = str(usr.get("usuario_login") or usr.get("usuario") or usr.get("num_policia") or "1337468").strip().upper()
+    num_login = str(usr.get("usuario_login") or usr.get("usuario") or usr.get("num_policia") or "").strip().upper()
     nome_guerra = str(usr.get("nome_guerra") or "OPERADOR").strip().upper()
     nome_completo = str(usr.get("nome_completo") or f"{usr.get('cargo_funcao', '')} {nome_guerra}").strip().upper()
-    cargo_funcao = str(usr.get("cargo_funcao") or usr.get("posto_grad") or "CAP").strip().upper()
-    nivel_acesso = str(usr.get("nivel_acesso") or "ADMIN").strip().upper()
+    cargo_funcao = str(usr.get("cargo_funcao") or usr.get("posto_grad") or "SD").strip().upper()
+    nivel_acesso = str(usr.get("nivel_acesso") or "TROPA").strip().upper()
     unidade_vinculada = st.session_state.get("unidade_ativa_nome") or usr.get("unidade") or "21º BPM / 35ª CIA PM"
     mfa_ativo = bool(usr.get("mfa_habilitado", True))
+
+    # --- CONSULTA EM TEMPO REAL NO SUPABASE DO STATUS DE COMPLIANCE ---
+    termo_aceito = False
+    dt_aceite_str = None
+
+    if supabase and num_login:
+        try:
+            res_u = supabase.table("usuarios").select("termo_compliance_aceito, data_aceite_compliance").or_(
+                f"usuario_login.eq.{num_login},usuario.eq.{num_login}"
+            ).execute()
+            if res_u.data and len(res_u.data) > 0:
+                data_banco = res_u.data[0]
+                termo_aceito = data_banco.get("termo_compliance_aceito", False)
+                dt_aceite_str = data_banco.get("data_aceite_compliance")
+                
+                # Sincroniza estado de memória da sessão
+                if "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
+                    st.session_state["usuario_dados"]["termo_compliance_aceito"] = termo_aceito
+                    st.session_state["usuario_dados"]["data_aceite_compliance"] = dt_aceite_str
+        except Exception as e_chk:
+            print(f"Aviso ao checar compliance no perfil: {e_chk}")
+
+    if not termo_aceito:
+        termo_aceito = usr.get("termo_compliance_aceito", False)
+    if not dt_aceite_str:
+        dt_aceite_str = usr.get("data_aceite_compliance") or "Registrado no Banco de Dados"
 
     # --- CARTÃO DE DADOS PESSOAIS E FUNCIONAIS ---
     with st.container(border=True):
@@ -110,6 +83,41 @@ def exibir_tela_perfil():
         st.subheader("📜 Registros Formais de Aceite e Compromisso de Sigilo")
         st.caption("Histórico de concordância com os termos de fiel depósito (TCO) e declarações de sigilo das informações do SIOP.")
 
+        # CARD RESUMO DO STATUS ATUAL
+        with st.container(border=True):
+            st.markdown("##### 📜 Status do Termo de Compliance (Módulo TCO)")
+            if termo_aceito:
+                st.success("🟢 **Termo de Compliance Aceito e Ativo**")
+                st.markdown(f"• **Status:** Declaração de ciência assinada eletronicamente no primeiro acesso.")
+                st.markdown(f"• **Data de Aceite Eletrônico:** `{dt_aceite_str}`")
+                st.caption("🔒 Documento vinculado à Cadeia de Custódia (Art. 158-A do CPP) e às normas da LGPD/PMMG.")
+
+                # Tenta disponibilizar o botão para baixar a 2ª via em PDF
+                try:
+                    from modules.tco.compliance import gerar_pdf_termo_compliance
+                    pdf_bytes = gerar_pdf_termo_compliance(
+                        nome_militar=nome_guerra,
+                        cargo_funcao=cargo_funcao,
+                        unidade=unidade_vinculada,
+                        num_policia=num_login,
+                        data_aceite_str=str(dt_aceite_str)
+                    )
+                    st.download_button(
+                        label="📄 Baixar 2ª Via do Termo Assinado em PDF",
+                        data=pdf_bytes,
+                        file_name=f"Termo_Compliance_PM_{num_login}.pdf",
+                        mime="application/pdf",
+                        type="primary",
+                        use_container_width=True
+                    )
+                except Exception as ex_pdf:
+                    print(f"Aviso ao gerar PDF no Perfil: {ex_pdf}")
+            else:
+                st.warning("🟡 **Pendente de Aceite**")
+                st.caption("O Termo de Compliance será exibido e solicitado automaticamente assim que acessar o **Módulo TCO / Custódia**.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
         aceites_usuario = []
         if supabase and num_login:
             try:
@@ -141,7 +149,7 @@ def exibir_tela_perfil():
 
             st.dataframe(df_ac[cols_presentes], use_container_width=True, hide_index=True)
         else:
-            st.info("ℹ️ Nenhum registro de aceite do Termo de Fiel Depósito / Compliance localizado para sua matrícula.")
+            st.info("ℹ️ Nenhum registro adicional na tabela 'aceites_compliance' localizado para sua matrícula.")
 
         st.markdown("<br>", unsafe_allow_html=True)
         
