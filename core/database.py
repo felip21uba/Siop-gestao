@@ -1,3 +1,9 @@
+"""
+Módulo de Infraestrutura de Banco de Dados Central (core/database.py) do SIOP PMMG.
+Gerencia a conexão com o Supabase, autenticação de sessão, leitura/escrita do efetivo,
+sincronização de contas de usuários, salvamento de escalas e trilha de auditoria.
+"""
+
 import datetime
 import hashlib
 import os
@@ -6,11 +12,11 @@ import streamlit as st
 from supabase import create_client, Client
 
 # =========================================================================
-# CONEXÃO COM O SUPABASE
+# 1. CONEXÃO COM O SUPABASE
 # =========================================================================
 @st.cache_resource
 def conectar_supabase() -> Client | None:
-    """Abre a conexão com o Supabase usando as chaves do secrets.toml ou variáveis de ambiente."""
+    """Abre e otimiza a conexão estática com o cliente do Supabase."""
     try:
         url = None
         key = None
@@ -29,14 +35,15 @@ def conectar_supabase() -> Client | None:
         st.error(f"❌ Erro crítico ao conectar no Supabase: {e}")
         return None
 
+# Instância estática global do cliente Supabase
 supabase = conectar_supabase()
 
 def init_db():
-    """Garante compatibilidade de inicialização da conexão com o banco de dados."""
+    """Garante compatibilidade de inicialização da conexão no bootstrap da aplicação."""
     pass
 
 # =========================================================================
-# CAPTURA AUTOMÁTICA DO IP REAL DO CLIENTE
+# 2. CAPTURA AUTOMÁTICA DO IP REAL DO CLIENTE
 # =========================================================================
 def obter_ip_cliente_real() -> str:
     """Extrai o IP público/real da conexão do usuário através dos cabeçalhos HTTP do Streamlit."""
@@ -44,26 +51,25 @@ def obter_ip_cliente_real() -> str:
         from streamlit.web.server.websocket_headers import _get_websocket_headers
         headers = _get_websocket_headers()
         if headers:
-            # 1. Tenta capturar do cabeçalho X-Forwarded-For (nuvem / proxies Nginx/Cloudflare/Streamlit Cloud)
+            # Tenta capturar do cabeçalho X-Forwarded-For (Proxies / Streamlit Cloud / Cloudflare)
             x_forwarded_for = headers.get("X-Forwarded-For") or headers.get("x-forwarded-for")
             if x_forwarded_for:
                 ip_cliente = x_forwarded_for.split(",")[0].strip()
                 if ip_cliente:
                     return ip_cliente
             
-            # 2. Tenta capturar do X-Real-IP
+            # Tenta capturar do X-Real-IP
             x_real_ip = headers.get("X-Real-IP") or headers.get("x-real-ip")
             if x_real_ip:
                 return x_real_ip.strip()
 
-            # 3. Fallback para Host / Remote Address
             remote_ip = headers.get("Host") or headers.get("host")
             if remote_ip:
                 return remote_ip.split(":")[0].strip()
     except Exception:
         pass
     
-    # 4. Fallback via st.context (se disponível nas versões recentes do Streamlit)
+    # Fallback via st.context no Streamlit
     try:
         if hasattr(st, "context") and hasattr(st.context, "headers"):
             xf_ctx = st.context.headers.get("x-forwarded-for") or st.context.headers.get("X-Forwarded-For")
@@ -75,10 +81,10 @@ def obter_ip_cliente_real() -> str:
     return "127.0.0.1"
 
 # =========================================================================
-# GESTÃO E ATUALIZAÇÃO DE USUÁRIOS
+# 3. GESTÃO E ATUALIZAÇÃO DE USUÁRIOS
 # =========================================================================
 def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
-    """Atualiza dados do usuário no Supabase por login, usuario ou e-mail."""
+    """Atualiza dados do usuário no Supabase por login, usuario ou e-mail e invalida o cache."""
     if not supabase or not identificador:
         return False
     try:
@@ -96,11 +102,11 @@ def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
         return False
 
 # =========================================================================
-# LEITURA E GRAVAÇÃO DO EFETIVO DE MILITARES & SINCRONIZAÇÃO DE USUÁRIOS
+# 4. LEITURA E GRAVAÇÃO DO EFETIVO DE MILITARES
 # =========================================================================
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, show_spinner=False)
 def carregar_militares_supabase() -> list[dict]:
-    """Busca a lista de militares no banco com busca resiliente nas tabelas efetivo e militares."""
+    """Busca a lista de militares no banco mantendo em memória RAM por 5 minutos para alta performance."""
     if not supabase:
         return []
     try:
@@ -136,7 +142,19 @@ def carregar_militares_supabase() -> list[dict]:
             })
         return militares
     except Exception as e:
-        st.warning(f"Aviso ao carregar militares do Supabase: {e}")
+        print(f"Aviso ao carregar militares do Supabase: {e}")
+        return []
+
+@st.cache_data(ttl=300, show_spinner=False)
+def carregar_unidades_configuradas_cache() -> list[dict]:
+    """Carrega as configurações multi-tenant das unidades com armazenamento em cache."""
+    if not supabase:
+        return []
+    try:
+        res = supabase.table("configuracao_unidade").select("*").execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Aviso ao carregar configuracao_unidade: {e}")
         return []
 
 def sincronizar_contas_usuarios_do_efetivo(lista_militares: list[dict]):
@@ -184,7 +202,7 @@ def sincronizar_contas_usuarios_do_efetivo(lista_militares: list[dict]):
         print(f"Erro ao sincronizar contas de usuários do efetivo: {e}")
 
 def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
-    """Grava/atualiza militares no Supabase e mantêm os dados fixos na sessão local do Streamlit."""
+    """Grava/atualiza militares no Supabase e invalida o cache para recarregamento instantâneo."""
     if not supabase or not lista_militares:
         return False
     try:
@@ -223,9 +241,25 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
         return False
 
 # =========================================================================
-# GRAVAÇÃO DE ESCALAS, PERMUTAS E MENSAGENS P1
+# 5. ESCALAS MENSAIS COM CACHE E RECUPERAÇÃO INSTANTÂNEA
 # =========================================================================
+@st.cache_data(ttl=180, show_spinner=False)
+def carregar_escala_mensal_cache(ano: int, mes: int, equipe_nome: str = None) -> list[dict]:
+    """Recupera as escalas salvas no Supabase com suporte a cache local por 3 minutos."""
+    if not supabase:
+        return []
+    try:
+        q = supabase.table("escalas_mensais").select("*").eq("ano", int(ano)).eq("mes", int(mes))
+        if equipe_nome:
+            q = q.eq("equipe_nome", str(equipe_nome))
+        res = q.execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Aviso ao carregar escala do cache: {e}")
+        return []
+
 def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalidade: str, matriz_dados: dict, elaborado_por: str, homologado_por: str, status: str = "HOMOLOGADA") -> bool:
+    """Insere ou atualiza a matriz de escala mensal na tabela 'escalas_mensais'."""
     if not supabase:
         return False
     try:
@@ -271,6 +305,7 @@ def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalida
             return False
 
 def salvar_permuta_supabase(solicitante_id, solicitante_nome, substituto_id, substituto_nome, data_turno, motivo, documento="N/I", tipo_troca="DIRETA") -> bool:
+    """Salva a solicitação de permuta na tabela 'permutas_servico'."""
     if not supabase:
         return False
     try:
@@ -286,12 +321,14 @@ def salvar_permuta_supabase(solicitante_id, solicitante_nome, substituto_id, sub
             "status": "PENDENTE"
         }
         supabase.table("permutas_servico").insert(payload).execute()
+        st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"Erro ao registrar permuta no Supabase: {e}")
         return False
 
 def salvar_mensagem_p1_supabase(remetente_id, remetente_nome, assunto, mensagem) -> bool:
+    """Envia uma solicitação para a P1 na tabela 'mensagens_p1'."""
     if not supabase:
         return False
     try:
@@ -308,7 +345,7 @@ def salvar_mensagem_p1_supabase(remetente_id, remetente_nome, assunto, mensagem)
         return False
 
 # =========================================================================
-# REGISTRO AUDITÁVEL COM CAPTURA DE IP E BUSCA CONSOLIDADA DE LOGS
+# 6. REGISTRO AUDITÁVEL COM CAPTURA DE IP E BUSCA CONSOLIDADA DE LOGS
 # =========================================================================
 def registrar_audit_log(operador_pm: str, alvo_pm: str | None, tipo_acao: str, descricao: str):
     """Grava o evento de auditoria capturando automaticamente o IP público real da conexão."""
@@ -323,10 +360,12 @@ def registrar_audit_log(operador_pm: str, alvo_pm: str | None, tipo_acao: str, d
                 "descricao_detalhada": str(descricao),
                 "ip_origem": ip_real
             }).execute()
+            st.cache_data.clear()
         except Exception as e:
             print(f"Erro ao gravar audit log no Supabase: {e}")
 
 def registrar_log_banco(usuario_dados, acao, detalhe):
+    """Função auxiliar para salvar logs a partir do dicionário de dados do usuário."""
     if not isinstance(usuario_dados, dict):
         usuario_dados = {}
         
@@ -344,7 +383,7 @@ def registrar_log_banco(usuario_dados, acao, detalhe):
 def buscar_logs_banco(limite=500) -> pd.DataFrame:
     """Busca o histórico unificando 'historico_auditoria', 'historico_logins' e 'tco_logs'."""
     if not supabase:
-        return pd.DataFrame(columns=["data_hora", "usuario", "acao", "detalhe"])
+        return pd.DataFrame(columns=["data_hora", "usuario", "acao", "detalhe", "ip"])
 
     logs = []
 
