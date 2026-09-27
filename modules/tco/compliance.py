@@ -89,7 +89,7 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     elements.append(tabela_id)
     elements.append(Spacer(1, 10))
 
-    # Texto Jurídico
+    # Texto Jurídico de Compliance com todos os Protocolos Técnicos
     texto_juridico = (
         "<b>1. DA CADEIA DE CUSTÓDIA (ART. 158-A CPP):</b> O operador declara ciência formal de que todas as ações "
         "realizadas no Módulo de Custódia e TCO (importação de REDS, alteração de invólucro, transferência física, "
@@ -142,7 +142,7 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
 
 
 def salvar_pdf_termo_no_storage(pdf_bytes, num_policia, nome_militar):
-    """Salva o PDF do Termo no Supabase Storage sem interromper o fluxo do sistema."""
+    """Salva o PDF do Termo no Supabase Storage testando buckets de backup sem interromper o sistema."""
     if not supabase or not pdf_bytes:
         return None
 
@@ -165,7 +165,7 @@ def salvar_pdf_termo_no_storage(pdf_bytes, num_policia, nome_militar):
 
 
 def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao, unidade):
-    """Registra o aceite no Supabase e atualiza a sessão local em tempo real."""
+    """Verifica e grava o aceite no Supabase na tabela usuarios e na aceites_compliance."""
     if not num_policia:
         return True, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
@@ -175,13 +175,13 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
 
     if supabase:
         try:
-            # 1. Atualiza na tabela 'usuarios' usando OR flexível
+            # 1. Atualiza na tabela 'usuarios'
             supabase.table("usuarios").update({
                 "termo_compliance_aceito": True,
                 "data_aceite_compliance": now_str
             }).or_(f"usuario_login.eq.{num_pm_str},usuario.eq.{num_pm_str}").execute()
 
-            # 2. Grava log auditoria na tabela 'aceites_compliance'
+            # 2. Grava log de auditoria na tabela 'aceites_compliance'
             try:
                 ip_cliente = obter_ip_cliente_real()
                 supabase.table("aceites_compliance").insert({
@@ -193,17 +193,17 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
                     "ip_origem": ip_cliente,
                     "data_aceite": now_iso
                 }).execute()
-            except Exception as e_ac:
-                print(f"Aviso aceites_compliance: {e_ac}")
+            except Exception as ex_ins:
+                print(f"Aviso ao inserir aceites_compliance: {ex_ins}")
 
-            # 3. ATUALIZA A SESSÃO LOCAL PARA O PERFIL REFLETIR NA HORA
+            # 3. ATUALIZA A MEMÓRIA DA SESSÃO LOCAL
             if "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
                 st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
                 st.session_state["usuario_dados"]["data_aceite_compliance"] = now_str
 
             st.cache_data.clear()
 
-            # 4. Backup PDF
+            # 4. Backup PDF no Storage
             try:
                 pdf_bytes = gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_pm_str, now_str)
                 salvar_pdf_termo_no_storage(pdf_bytes, num_pm_str, nome_militar)
@@ -212,9 +212,9 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
 
             return True, now_str
         except Exception as e:
-            print(f"Aviso ao registrar aceite no Supabase: {e}")
+            print(f"Aviso ao gravar aceite no Supabase: {e}")
 
-    # Fallback local
+    # Fallback de memória local
     if "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
         st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
         st.session_state["usuario_dados"]["data_aceite_compliance"] = now_str
@@ -223,7 +223,7 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
 
 
 def verificar_aceite_compliance_supabase(num_policia):
-    """Verifica no Supabase se o usuário aceitou o termo de compliance."""
+    """Verifica no Supabase ou no estado da sessão se o usuário aceitou o termo de compliance."""
     usr_sessao = st.session_state.get("usuario_dados", {})
     if usr_sessao.get("termo_compliance_aceito", False):
         return True
@@ -235,7 +235,7 @@ def verificar_aceite_compliance_supabase(num_policia):
         num_pm_str = str(num_policia).strip().upper()
         res = supabase.table("usuarios").select("termo_compliance_aceito, data_aceite_compliance").or_(f"usuario_login.eq.{num_pm_str},usuario.eq.{num_pm_str}").execute()
         if res.data and len(res.data) > 0:
-            aceito = res.data[0].get("termo_compliance_aceito", False)
+            aceito = bool(res.data[0].get("termo_compliance_aceito", False))
             if aceito and "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
                 st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
                 st.session_state["usuario_dados"]["data_aceite_compliance"] = res.data[0].get("data_aceite_compliance")

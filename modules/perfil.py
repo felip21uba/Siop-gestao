@@ -1,8 +1,16 @@
+"""
+==============================================================================
+🛡️ SIOP PMMG - Módulo de Perfil do Usuário
+Arquivo: modules/perfil.py
+==============================================================================
+"""
+
 import streamlit as st
 import pandas as pd
 import datetime
 from core.database import supabase, registrar_audit_log, atualizar_usuario_supabase
 from core.auth import gerar_hash_senha, validar_requisitos_senha
+
 
 def exibir_tela_perfil():
     st.title("👤 Perfil do Usuário & Registros de Aceite")
@@ -10,7 +18,7 @@ def exibir_tela_perfil():
     st.divider()
 
     usr = st.session_state.get("usuario_dados") or {}
-    num_login = str(usr.get("usuario_login") or usr.get("usuario") or usr.get("num_policia") or "").strip().upper()
+    num_login = str(usr.get("usuario_login") or usr.get("usuario") or usr.get("num_policia") or "1337468").strip().upper()
     nome_guerra = str(usr.get("nome_guerra") or "OPERADOR").strip().upper()
     nome_completo = str(usr.get("nome_completo") or f"{usr.get('cargo_funcao', '')} {nome_guerra}").strip().upper()
     cargo_funcao = str(usr.get("cargo_funcao") or usr.get("posto_grad") or "SD").strip().upper()
@@ -18,7 +26,7 @@ def exibir_tela_perfil():
     unidade_vinculada = st.session_state.get("unidade_ativa_nome") or usr.get("unidade") or "21º BPM / 35ª CIA PM"
     mfa_ativo = bool(usr.get("mfa_habilitado", True))
 
-    # --- CONSULTA EM TEMPO REAL NO SUPABASE DO STATUS DE COMPLIANCE ---
+    # --- CONSULTA REAL NO SUPABASE DO COMPLIANCE PARA GARANTIR SINCRONIA ---
     termo_aceito = False
     dt_aceite_str = None
 
@@ -28,16 +36,15 @@ def exibir_tela_perfil():
                 f"usuario_login.eq.{num_login},usuario.eq.{num_login}"
             ).execute()
             if res_u.data and len(res_u.data) > 0:
-                data_banco = res_u.data[0]
-                termo_aceito = data_banco.get("termo_compliance_aceito", False)
-                dt_aceite_str = data_banco.get("data_aceite_compliance")
-                
-                # Sincroniza estado de memória da sessão
-                if "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
-                    st.session_state["usuario_dados"]["termo_compliance_aceito"] = termo_aceito
+                data_b = res_u.data[0]
+                termo_aceito = bool(data_b.get("termo_compliance_aceito", False))
+                dt_aceite_str = data_b.get("data_aceite_compliance")
+
+                if termo_aceito and "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
+                    st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
                     st.session_state["usuario_dados"]["data_aceite_compliance"] = dt_aceite_str
-        except Exception as e_chk:
-            print(f"Aviso ao checar compliance no perfil: {e_chk}")
+        except Exception as e_p:
+            print(f"Aviso consulta perfil: {e_p}")
 
     if not termo_aceito:
         termo_aceito = usr.get("termo_compliance_aceito", False)
@@ -83,16 +90,15 @@ def exibir_tela_perfil():
         st.subheader("📜 Registros Formais de Aceite e Compromisso de Sigilo")
         st.caption("Histórico de concordância com os termos de fiel depósito (TCO) e declarações de sigilo das informações do SIOP.")
 
-        # CARD RESUMO DO STATUS ATUAL
+        # CARD DE STATUS DO TERMO DE COMPLIANCE
         with st.container(border=True):
-            st.markdown("##### 📜 Status do Termo de Compliance (Módulo TCO)")
+            st.markdown("##### 📜 Termo de Compliance & Segurança da Informação (TCO)")
             if termo_aceito:
                 st.success("🟢 **Termo de Compliance Aceito e Ativo**")
                 st.markdown(f"• **Status:** Declaração de ciência assinada eletronicamente no primeiro acesso.")
                 st.markdown(f"• **Data de Aceite Eletrônico:** `{dt_aceite_str}`")
                 st.caption("🔒 Documento vinculado à Cadeia de Custódia (Art. 158-A do CPP) e às normas da LGPD/PMMG.")
 
-                # Tenta disponibilizar o botão para baixar a 2ª via em PDF
                 try:
                     from modules.tco.compliance import gerar_pdf_termo_compliance
                     pdf_bytes = gerar_pdf_termo_compliance(
@@ -149,7 +155,7 @@ def exibir_tela_perfil():
 
             st.dataframe(df_ac[cols_presentes], use_container_width=True, hide_index=True)
         else:
-            st.info("ℹ️ Nenhum registro adicional na tabela 'aceites_compliance' localizado para sua matrícula.")
+            st.info("ℹ️ Nenhum registro na tabela 'aceites_compliance' localizado para sua matrícula.")
 
         st.markdown("<br>", unsafe_allow_html=True)
         
