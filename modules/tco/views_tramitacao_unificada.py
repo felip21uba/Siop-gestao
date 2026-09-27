@@ -11,7 +11,6 @@ def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
     Lê dinamicamente todas as CIAs, Batalhões e Unidades cadastradas no banco de dados
     e gera a lista de CREDS-TC da unidade ativa e das demais unidades do sistema.
     """
-    # Órgãos externos de destinação padrão
     orgaos_externos = [
         "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
         "PODER JUDICIÁRIO / TRIBUNAL DE JUSTIÇA (JECRIM)",
@@ -22,7 +21,12 @@ def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
 
     unidades_creds_set = set()
 
-    # 1. Adiciona o CREDS da unidade ativa do operador no momento
+    # Base Padrão Institucional
+    unidades_creds_set.add("CREDS 35ª CIA PM (UBÁ)")
+    unidades_creds_set.add("CREDS 111ª CIA PM (VISCONDE DO RIO BRANCO)")
+    unidades_creds_set.add("CREDS 285ª CIA TM (UBÁ)")
+    unidades_creds_set.add("CREDS 21º BPM (SEÇÃO DE CUSTÓDIA / UBÁ)")
+
     if unidade_militar_atual:
         unid_limpa = str(unidade_militar_atual).strip().upper()
         if not unid_limpa.startswith("CREDS"):
@@ -30,10 +34,8 @@ def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
         else:
             unidades_creds_set.add(unid_limpa)
 
-    # 2. Busca dinâmica na tabela 'usuarios' e 'configuracao_unidade' do Supabase
     if supabase:
         try:
-            # Varre unidades registradas na tabela usuarios
             res_u = supabase.table("usuarios").select("unidade").execute()
             if res_u.data:
                 for row in res_u.data:
@@ -44,7 +46,6 @@ def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
                         else:
                             unidades_creds_set.add(u_nome)
 
-            # Varre unidades da tabela de configuracao_unidade
             res_cfg = supabase.table("configuracao_unidade").select("unidade_nome, subunidade_nome").execute()
             if res_cfg.data:
                 for row in res_cfg.data:
@@ -54,21 +55,16 @@ def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
                         unidades_creds_set.add(f"CREDS {u_btl}")
                     if u_cia:
                         unidades_creds_set.add(f"CREDS {u_cia}")
-                    if u_btl and u_cia:
-                        unidades_creds_set.add(f"CREDS {u_btl} / {u_cia}")
         except Exception as e_unid:
             print(f"Aviso ao carregar unidades dinâmicas: {e_unid}")
 
-    # Converte o conjunto em lista ordenada
     lista_creds_ordenada = sorted(list(unidades_creds_set))
-
-    # Junta os CREDS dinâmicos com os Órgãos Externos
     return lista_creds_ordenada + orgaos_externos
 
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     """
-    Renderiza a Aba de Custódia Física com leitura 100% dinâmica dos CREDS de qualquer Batalhão/Companhia.
+    Renderiza a Aba de Custódia Física com alternância estrita entre Policial Militar x CREDS/Órgão.
     """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
     st.caption("Gerencie os bens em sua posse, envie materiais para outros militares/CREDS e consulte seu histórico de envios.")
@@ -76,7 +72,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm_logado = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
 
-    # Verifica permissão do CREDS-TC
     eh_gestor_creds = usuario_eh_gestor_creds(usr_logado) or any(
         p in str(usr_logado.get("perfil_creds", "")).upper() 
         for p in ["GESTOR", "ADMIN", "PROGRAMADOR"]
@@ -111,7 +106,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if "itens_selecionados_tramite" not in st.session_state:
                 st.session_state["itens_selecionados_tramite"] = {}
 
-            # Lista de militares para busca ampla
             lista_militares = carregar_militares_supabase() or []
             opcoes_militares = []
             
@@ -131,10 +125,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if not opcoes_militares:
                 opcoes_militares = [f"{nome_militar_atual} ({num_pm_logado})"]
 
-            # CARREGAMENTO DINÂMICO DOS CREDS
             lista_unidades_creds = carregar_lista_unidades_creds_dinamica(unidade_militar_atual)
 
-            # Expander de REDS (+)
             for num_reds, df_grupo in grupos_reds:
                 qtd_itens_reds = len(df_grupo)
                 
@@ -171,7 +163,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
             st.markdown("---")
 
-            # FORMULÁRIO DE TRAMITAÇÃO
+            # FORMULÁRIO DE ENVIO
             selecionados_map = st.session_state["itens_selecionados_tramite"]
             qtd_sel = len(selecionados_map)
 
@@ -206,7 +198,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 ]
                             )
                         else:
-                            if tipo_destinatario == "Policial Militar / Fiel Depositário":
+                            if "Policial" in tipo_destinatario:
                                 fase_destinacao_sel = "Com Fiel Depositário / Policial"
                             else:
                                 fase_destinacao_sel = "Aguardando no CREDS-TC / Custódia"
@@ -216,7 +208,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                     col_dest, col_obs = st.columns(2)
 
                     with col_dest:
-                        if tipo_destinatario == "Policial Militar / Fiel Depositário":
+                        # CHECAGEM CORRIGIDA DA OPÇÃO DO RADIO BUTTON:
+                        if "Policial" in tipo_destinatario:
                             destinatario_final = st.selectbox(
                                 "Selecione o Policial Destinatário:",
                                 opcoes_militares,
@@ -229,7 +222,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 "Selecione a Unidade / CREDS Destinatário:",
                                 lista_unidades_creds,
                                 index=None,
-                                placeholder="Escolha a unidade CREDS-TC ou órgão de custódia..."
+                                placeholder="Escolha a unidade CREDS-TC ou órgão..."
                             )
                             unidade_dest_final = destinatario_final or "CREDS / ÓRGÃO EXTERNO"
 
