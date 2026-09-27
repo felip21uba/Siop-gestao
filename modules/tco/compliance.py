@@ -44,7 +44,7 @@ def criar_draw_qrcode(texto_qr):
 
 
 def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia, data_aceite_str, data_impressao_str=None):
-    """Gera o PDF oficial do Termo de Compliance com todas as cláusulas e protocolos de segurança ativos."""
+    """Gera o PDF oficial da Declaração Individual de Responsabilidade e Sigilo."""
     if not data_impressao_str:
         data_impressao_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
@@ -57,7 +57,7 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     styles = getSampleStyleSheet()
     style_hdr = ParagraphStyle('HeaderComp', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1, textColor=colors.HexColor('#0F172A'))
     style_tit = ParagraphStyle('TitComp', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=1, textColor=colors.HexColor('#1E293B'))
-    style_body = ParagraphStyle('BodyComp', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=11.5, alignment=4, textColor=colors.HexColor('#334155'))
+    style_body = ParagraphStyle('BodyComp', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=13, alignment=4, textColor=colors.HexColor('#334155'))
     style_box = ParagraphStyle('BoxComp', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8.5, leading=13, textColor=colors.HexColor('#0F172A'))
 
     elements = []
@@ -67,16 +67,16 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     elements.append(Spacer(1, 6))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=8))
 
-    elements.append(Paragraph("TERMO DE COMPLIANCE, RESPONSABILIDADE LEGAL E SEGURANÇA DA INFORMAÇÃO", style_tit))
+    elements.append(Paragraph("DECLARAÇÃO INDIVIDUAL DE RESPONSABILIDADE, COMPROMISSO E SIGILO", style_tit))
     elements.append(Spacer(1, 8))
 
     # Bloco de Identificação
     operador_completo = f"{cargo_funcao} {nome_militar}".strip()
-    bloco_id = f"<b>OPERADOR:</b> {operador_completo.upper()}<br/>" \
-               f"<b>IDENTIFICAÇÃO / POLÍCIA:</b> {str(num_policia).upper()}<br/>" \
-               f"<b>UNIDADE:</b> {str(unidade).upper()}<br/>" \
+    bloco_id = f"<b>DECLARANTE / POLICIAL MILITAR:</b> {operador_completo.upper()}<br/>" \
+               f"<b>Nº DE POLÍCIA / MATRÍCULA:</b> {str(num_policia).upper()}<br/>" \
+               f"<b>UNIDADE DE LOTAÇÃO:</b> {str(unidade).upper()}<br/>" \
                f"<b>DATA DE ACEITE ELETRÔNICO:</b> <font color='#166534'>{data_aceite_str}</font><br/>" \
-               f"<b>DATA E HORA DE IMPRESSÃO:</b> {data_impressao_str}"
+               f"<b>DATA DE EMISSÃO DA 2ª VIA:</b> {data_impressao_str}"
     
     tabela_id = Table([[Paragraph(bloco_id, style_box)]], colWidths=[540])
     tabela_id.setStyle(TableStyle([
@@ -89,22 +89,20 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     elements.append(tabela_id)
     elements.append(Spacer(1, 10))
 
-    # Texto Jurídico de Compliance com todos os Protocolos Técnicos
+    # Texto Institucional e Jurídico Sem Jargões Técnicos
     texto_juridico = (
-        "<b>1. DA CADEIA DE CUSTÓDIA (ART. 158-A CPP):</b> O operador declara ciência formal de que todas as ações "
-        "realizadas no Módulo de Custódia e TCO (importação de REDS, alteração de invólucro, transferência física, "
-        "registro de divergências e destinação final) são vinculadas de forma unívoca à sua credencial funcional e endereço IP.<br/><br/>"
-        "<b>2. DA VINCULAÇÃO E IMUTABILIDADE:</b> O aceite deste termo foi registrado eletronicamente no primeiro acesso do "
-        "militar ao sistema e constitui assinatura digital idônea para fins de auditoria interna, correicional e instrução processual.<br/><br/>"
-        "<b>3. DA SEGURANÇA DA INFORMAÇÃO E LGPD:</b> A credencial de acesso é pessoal e intransferível. O uso inadequado "
-        "ou o repasse de senhas/tokens MFA a terceiros ensejará responsabilidade administrativa, civil e penal.<br/><br/>"
-        "<b>4. DOS PROTOCOLOS DE SEGURANÇA E CONFORMIDADE TÉCNICA (PARTE INFORMATIVA Nº 12.4/2026):</b><br/>"
-        "• <b>a. Autenticação e Duplo Papel (RBAC):</b> Controle de acesso em 7 níveis com separação independente de papéis (perfil_creds x perfil_escala) e escopo por Cia/BPM.<br/>"
-        "• <b>b. Autenticação 2FA/TOTP:</b> Validação de identidade via aplicativo TOTP (Google Authenticator/Authy) e trava de dispositivo único.<br/>"
-        "• <b>c. Gestão de Sessão e Timeout:</b> Encerramento automático por ociosidade (30 min) e desconexão emergencial remota.<br/>"
-        "• <b>d. Trilha Universal de Auditoria:</b> Registro imutável de ações de comando e custódia (operador, alvo, IP e carimbo DD/MM/AAAA HH:MM).<br/>"
-        "• <b>e. Proteção de Banco de Dados:</b> Criptografia HTTPS/TLS 1.3 em trânsito e isolamento estrito de registros por Row Level Security (RLS) no PostgreSQL/Supabase.<br/>"
-        "• <b>f. Sanitização e Filtro Anti-Injeção:</b> Escape automático de caracteres e tratamento rigoroso de texto livre contra scripts maliciosos (Anti-XSS e Anti-SQLi)."
+        f"Eu, <b>{operador_completo.upper()}</b>, Nº PM <b>{num_policia}</b>, ciente das minhas obrigações e "
+        f"deveres funcionais no Módulo TCO / Custódia do SIOP, declaro, concordo e me comprometo a cumprir os seguintes termos:<br/><br/>"
+        "<b>1. RESPONSABILIDADE SOBRE MATERIAIS APREENDIDOS:</b> Declaro estar plenamente ciente de que todos os materiais "
+        "e bens sob minha guarda ou recebidos no sistema são de minha estrita responsabilidade funcional e legal.<br/><br/>"
+        "<b>2. VERACIDADE DAS INFORMAÇÕES E VEDAÇÃO A DOCUMENTO FALSO:</b> Comprometo-me a inserir apenas dados verdadeiros e "
+        "fidedignos, estando ciente de que a inserção de informações ou documentos falsos no sistema configura crime e infração disciplinar grave.<br/><br/>"
+        "<b>3. PRESERVAÇÃO DA CADEIA DE CUSTÓDIA:</b> Assumo o dever de zelar pela integridade física dos bens, invólucros, lacres "
+        "e registros de tramitação, garantindo a rastreabilidade probatória em estrita conformidade com a legislação vigente.<br/><br/>"
+        "<b>4. SIGILO DE INFORMAÇÕES PESSOAIS (LGPD):</b> Comprometo-me a manter sigilo absoluto sobre dados pessoais e informações "
+        "sensíveis acessadas no sistema, utilizando-os exclusivamente para o estrito cumprimento do serviço policial militar.<br/><br/>"
+        "<b>5. INTRANSFERIBILIDADE DA SENHA DE ACESSO:</b> Declaro ciência de que minha senha de acesso e credenciais de uso são "
+        "pessoais e intransferíveis, respondendo diretamente por qualquer ação praticada no sistema sob minha identificação."
     )
     elements.append(Paragraph(texto_juridico, style_body))
     elements.append(Spacer(1, 14))
@@ -142,7 +140,7 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
 
 
 def salvar_pdf_termo_no_storage(pdf_bytes, num_policia, nome_militar):
-    """Salva o PDF do Termo no Supabase Storage testando buckets de backup sem interromper o sistema."""
+    """Salva o PDF do Termo no Supabase Storage sem interromper o fluxo do sistema."""
     if not supabase or not pdf_bytes:
         return None
 
@@ -165,7 +163,7 @@ def salvar_pdf_termo_no_storage(pdf_bytes, num_policia, nome_militar):
 
 
 def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao, unidade):
-    """Verifica e grava o aceite no Supabase na tabela usuarios e na aceites_compliance."""
+    """Registra o aceite no Supabase e atualiza a sessão local em tempo real."""
     if not num_policia:
         return True, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
@@ -175,13 +173,13 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
 
     if supabase:
         try:
-            # 1. Atualiza na tabela 'usuarios'
+            # 1. Atualiza na tabela 'usuarios' usando OR flexível
             supabase.table("usuarios").update({
                 "termo_compliance_aceito": True,
                 "data_aceite_compliance": now_str
             }).or_(f"usuario_login.eq.{num_pm_str},usuario.eq.{num_pm_str}").execute()
 
-            # 2. Grava log de auditoria na tabela 'aceites_compliance'
+            # 2. Grava log auditoria na tabela 'aceites_compliance'
             try:
                 ip_cliente = obter_ip_cliente_real()
                 supabase.table("aceites_compliance").insert({
@@ -193,17 +191,17 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
                     "ip_origem": ip_cliente,
                     "data_aceite": now_iso
                 }).execute()
-            except Exception as ex_ins:
-                print(f"Aviso ao inserir aceites_compliance: {ex_ins}")
+            except Exception as e_ac:
+                print(f"Aviso aceites_compliance: {e_ac}")
 
-            # 3. ATUALIZA A MEMÓRIA DA SESSÃO LOCAL
+            # 3. ATUALIZA A SESSÃO LOCAL
             if "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
                 st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
                 st.session_state["usuario_dados"]["data_aceite_compliance"] = now_str
 
             st.cache_data.clear()
 
-            # 4. Backup PDF no Storage
+            # 4. Backup PDF
             try:
                 pdf_bytes = gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_pm_str, now_str)
                 salvar_pdf_termo_no_storage(pdf_bytes, num_pm_str, nome_militar)
@@ -212,9 +210,9 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
 
             return True, now_str
         except Exception as e:
-            print(f"Aviso ao gravar aceite no Supabase: {e}")
+            print(f"Aviso ao registrar aceite no Supabase: {e}")
 
-    # Fallback de memória local
+    # Fallback local
     if "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
         st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
         st.session_state["usuario_dados"]["data_aceite_compliance"] = now_str
@@ -223,7 +221,7 @@ def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao
 
 
 def verificar_aceite_compliance_supabase(num_policia):
-    """Verifica no Supabase ou no estado da sessão se o usuário aceitou o termo de compliance."""
+    """Verifica no Supabase se o usuário aceitou o termo de compliance."""
     usr_sessao = st.session_state.get("usuario_dados", {})
     if usr_sessao.get("termo_compliance_aceito", False):
         return True
@@ -246,13 +244,27 @@ def verificar_aceite_compliance_supabase(num_policia):
 
 
 def exibir_modal_termo_compliance(num_policia, nome_militar, cargo_funcao, unidade):
-    """Exibe a tela para aceite do Termo de Compliance no primeiro acesso."""
-    st.warning("⚠️ **TERMO DE COMPLIANCE E RESPONSABILIDADE LEGAL**")
-    st.markdown(
-        "Para utilizar o Módulo TCO / Custódia, você deve declarar ciência das normas de "
-        "Cadeia de Custódia (Art. 158-A do CPP) e Responsabilidade pela Segurança da Informação."
-    )
-    if st.button("✅ Declarar Ciente e Aceitar Termo", type="primary", use_container_width=True):
+    """Exibe a tela limpa e direta para aceite do Termo de Responsabilidade no primeiro acesso."""
+    st.markdown("## 📜 Termo de Responsabilidade, Fiel Custódia e Sigilo")
+    st.info("⚠️ **Primeiro Acesso ao Módulo TCO / Custódia Detectado**")
+    
+    operador_str = f"{cargo_funcao} {nome_militar}".strip().upper()
+    
+    st.markdown(f"""
+    Eu, **{operador_str}**, Nº PM **{num_policia}**, ciente das minhas obrigações funcionais, declaro, concordo e me comprometo a:
+    
+    1. **Guarda e Custódia de Materiais:** Reconhecer que todos os materiais e bens sob minha guarda ou recebidos no sistema são de minha estrita responsabilidade funcional e legal.
+    2. **Veracidade e Proibição de Documento Falso:** Inserir apenas informações e documentos verdadeiros, ciente de que a inserção de dados falsos no sistema pode configurar crime e infração disciplinar.
+    3. **Cadeia de Custódia:** Zelar pela integridade dos bens, invólucros, lacres e registros de tramitação, garantindo a rastreabilidade conforme prevê a legislação.
+    4. **Sigilo de Dados (LGPD):** Manter sigilo absoluto sobre informações pessoais e operacionais acessadas, não divulgando ou repassando dados sem autorização.
+    5. **Uso de Credenciais Pessoais:** Guardar o sigilo de minha senha de acesso, compreendendo que ela é pessoal e intransferível.
+    """)
+    
+    st.markdown("---")
+    st.markdown(f"👤 **Militar Declarante:** `{operador_str}` | **Nº PM:** `{num_policia}` | **Unidade:** `{unidade}`")
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    if st.button("✅ Declaro Ciente e Concordo com os Termos", type="primary", use_container_width=True):
         obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao, unidade)
         st.session_state["termo_compliance_aceito"] = True
         st.rerun()
