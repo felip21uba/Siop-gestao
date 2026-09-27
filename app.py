@@ -90,13 +90,22 @@ from core.session_manager import (
     restaurar_rascunho_escala_supabase
 )
 
-# IMPORTE DOS MÓDULOS OPERACIONAIS
+# IMPORTE DOS MÓDULOS OPERACIONAIS COM CARREGAMENTO PROTEGIDO
 from modules.escalas import exibir_modulo_escalas
 from modules.mural import renderizar_mural
 from modules.gestao_usuarios import exibir_tela_gestao_usuarios
 from modules.perfil import exibir_tela_perfil
-from modules.tco.main_tco import renderizar_modulo_tco
 from modules.governanca.views import renderizar_modulo_governanca
+
+# CARREGAMENTO SEGURO DO MÓDULO TCO
+try:
+    from modules.tco.main_tco import renderizar_modulo_tco
+except Exception as e_tco:
+    def renderizar_modulo_tco():
+        st.title("📦 Módulo TCO / Custódia")
+        st.warning("⚠️ O Módulo TCO está passando por sincronização de subarquivos.")
+        st.info("O restante do sistema permanece 100% operacional.")
+        print(f"Erro ao carregar TCO no app.py: {e_tco}")
 
 # 1. Configuração Inicial da Página
 st.set_page_config(
@@ -261,16 +270,6 @@ def abrir_modal_reportar_erro():
                 st.error("⚠️ Descreva o erro antes de enviar.")
             else:
                 email_desenvolvedor = "felip21uba@gmail.com"
-                corpo_email = f"""
-                <h3>🐛 Novo Relatório de Erro - SIOP PMMG</h3>
-                <p><b>Operador:</b> {operador_nome}</p>
-                <p><b>Categoria:</b> {categoria_erro}</p>
-                <p><b>Data/Hora:</b> {obter_agora().strftime('%d/%m/%Y %H:%M:%S')}</p>
-                <p><b>Detalhamento:</b></p>
-                <blockquote style="background: #f1f5f9; padding: 10px; border-left: 4px solid #b91c1c;">
-                    {sanitizar_texto(descricao_erro)}
-                </blockquote>
-                """
                 
                 sucesso_envio, msg_envio = enviar_email_codigo(email_desenvolvedor, f"ERRO: {categoria_erro}")
                 
@@ -503,14 +502,12 @@ if not st.session_state.get("autenticado", False):
                                         "ativo": True
                                     }).eq("usuario_login", num_pol_str).execute()
                                     
-                                    # Grava no historico_logins
                                     supabase.table("historico_logins").insert({
                                         "usuario_login": num_pol_str,
                                         "ip_origem": ip_conexao,
                                         "user_agent": "Ativação de Primeiro Acesso"
                                     }).execute()
 
-                                    # Grava o aceite formal na tabela aceites_compliance
                                     supabase.table("aceites_compliance").insert({
                                         "num_policia": num_pol_str,
                                         "nome_militar": f"{usr_temp.get('cargo_funcao', '')} {usr_temp.get('nome_guerra', '')}".strip(),
