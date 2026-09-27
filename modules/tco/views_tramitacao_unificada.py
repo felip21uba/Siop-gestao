@@ -1,15 +1,35 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import re
 from core.database import supabase, carregar_militares_supabase
 from core.permissions import usuario_eh_gestor_creds
 from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
 
 
+def extrair_partes_unidade(str_unidade):
+    """Extrai partes de Cia, Batalhão e Seções a partir da string cadastrada no banco."""
+    if not str_unidade or str_unidade == "None":
+        return []
+    
+    partes_encontradas = set()
+    raw = str(str_unidade).strip().upper()
+
+    # Separa por barra '/' caso esteja cadastrado como '21º BPM / 35ª CIA PM'
+    fragmentos = [p.strip() for p in raw.split('/') if p.strip()]
+    for frag in fragmentos:
+        if "BPM" in frag or "CIA" in frag or "TM" in frag or "PEL" in frag:
+            partes_encontradas.add(f"CREDS {frag}")
+        elif frag:
+            partes_encontradas.add(f"CREDS {frag}")
+
+    return list(partes_encontradas)
+
+
 def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
     """
-    Lê dinamicamente todas as CIAs, Batalhões e Unidades cadastradas no banco de dados
-    e gera a lista de CREDS-TC da unidade ativa e das demais unidades do sistema.
+    Lê a coluna 'unidade' da tabela 'usuarios' no Supabase e gera a lista
+    de CREDS-TC e Órgãos Externos dinamicamente.
     """
     orgaos_externos = [
         "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
@@ -21,42 +41,30 @@ def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
 
     unidades_creds_set = set()
 
-    # Base Padrão Institucional
-    unidades_creds_set.add("CREDS 35ª CIA PM (UBÁ)")
-    unidades_creds_set.add("CREDS 111ª CIA PM (VISCONDE DO RIO BRANCO)")
-    unidades_creds_set.add("CREDS 285ª CIA TM (UBÁ)")
-    unidades_creds_set.add("CREDS 21º BPM (SEÇÃO DE CUSTÓDIA / UBÁ)")
-
+    # Adiciona a unidade do operador logado
     if unidade_militar_atual:
-        unid_limpa = str(unidade_militar_atual).strip().upper()
-        if not unid_limpa.startswith("CREDS"):
-            unidades_creds_set.add(f"CREDS {unid_limpa}")
-        else:
-            unidades_creds_set.add(unid_limpa)
+        for u_fmt in extrair_partes_unidade(unidade_militar_atual):
+            unidades_creds_set.add(u_fmt)
 
+    # Consulta a tabela 'usuarios' no Supabase
     if supabase:
         try:
             res_u = supabase.table("usuarios").select("unidade").execute()
             if res_u.data:
                 for row in res_u.data:
-                    u_nome = str(row.get("unidade") or "").strip().upper()
-                    if u_nome and u_nome != "NONE":
-                        if not u_nome.startswith("CREDS"):
-                            unidades_creds_set.add(f"CREDS {u_nome}")
-                        else:
-                            unidades_creds_set.add(u_nome)
+                    u_db = row.get("unidade")
+                    if u_db:
+                        for u_fmt in extrair_partes_unidade(u_db):
+                            unidades_creds_set.add(u_fmt)
+        except Exception as e_db:
+            print(f"Aviso ao consultar unidades da tabela usuarios: {e_db}")
 
-            res_cfg = supabase.table("configuracao_unidade").select("unidade_nome, subunidade_nome").execute()
-            if res_cfg.data:
-                for row in res_cfg.data:
-                    u_btl = str(row.get("unidade_nome") or "").strip().upper()
-                    u_cia = str(row.get("subunidade_nome") or "").strip().upper()
-                    if u_btl:
-                        unidades_creds_set.add(f"CREDS {u_btl}")
-                    if u_cia:
-                        unidades_creds_set.add(f"CREDS {u_cia}")
-        except Exception as e_unid:
-            print(f"Aviso ao carregar unidades dinâmicas: {e_unid}")
+    # Fallback com unidades padrão caso o banco não retorne registros
+    if not unidades_creds_set:
+        unidades_creds_set.add("CREDS 35ª CIA PM")
+        unidades_creds_set.add("CREDS 111ª CIA PM")
+        unidades_creds_set.add("CREDS 285ª CIA TM")
+        unidades_creds_set.add("CREDS 21º BPM")
 
     lista_creds_ordenada = sorted(list(unidades_creds_set))
     return lista_creds_ordenada + orgaos_externos
@@ -64,7 +72,8 @@ def carregar_lista_unidades_creds_dinamica(unidade_militar_atual=""):
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     """
-    Renderiza a Aba de Custódia Física com alternância estrita entre Policial Militar x CREDS/Órgão.
+    Renderiza a Aba de Custódia Física com alternância garantida de rótulos e listas
+    de destinatários entre Policial Militar vs CREDS/Órgão Externo.
     """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
     st.caption("Gerencie os bens em sua posse, envie materiais para outros militares/CREDS e consulte seu histórico de envios.")
@@ -125,6 +134,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if not opcoes_militares:
                 opcoes_militares = [f"{nome_militar_atual} ({num_pm_logado})"]
 
+            # Carrega dinamicamente a lista de CREDS a partir da tabela 'usuarios'
             lista_unidades_creds = carregar_lista_unidades_creds_dinamica(unidade_militar_atual)
 
             for num_reds, df_grupo in grupos_reds:
@@ -207,17 +217,12 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
                     col_dest, col_obs = st.columns(2)
 
+                    # ALTERNÂNCIA ESTRITA DA CAIXA DE SELEÇÃO:
+                    # Avalia explicitamente se a opção 'Seção de Custódia' está selecionada
+                    eh_opcao_creds = "Seção" in tipo_destinatario or "CREDS" in tipo_destinatario or "Órgão" in tipo_destinatario
+
                     with col_dest:
-                        # CHECAGEM CORRIGIDA DA OPÇÃO DO RADIO BUTTON:
-                        if "Policial" in tipo_destinatario:
-                            destinatario_final = st.selectbox(
-                                "Selecione o Policial Destinatário:",
-                                opcoes_militares,
-                                index=None,
-                                placeholder="Digite qualquer parte do nome do militar..."
-                            )
-                            unidade_dest_final = unidade_militar_atual
-                        else:
+                        if eh_opcao_creds:
                             destinatario_final = st.selectbox(
                                 "Selecione a Unidade / CREDS Destinatário:",
                                 lista_unidades_creds,
@@ -225,6 +230,14 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 placeholder="Escolha a unidade CREDS-TC ou órgão..."
                             )
                             unidade_dest_final = destinatario_final or "CREDS / ÓRGÃO EXTERNO"
+                        else:
+                            destinatario_final = st.selectbox(
+                                "Selecione o Policial Destinatário:",
+                                opcoes_militares,
+                                index=None,
+                                placeholder="Digite qualquer parte do nome do militar..."
+                            )
+                            unidade_dest_final = unidade_militar_atual
 
                     with col_obs:
                         obs_tramite = st.text_input(
@@ -250,7 +263,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     "fase_destinacao": fase_destinacao_sel,
                                     "remetente_ultimo": nome_militar_atual,
                                     "unidade_remetente": unidade_militar_atual,
-                                    "status_tramite": "Pendente de Aceite" if "Policial" in tipo_destinatario else "Em Tramitação"
+                                    "status_tramite": "Pendente de Aceite" if not eh_opcao_creds else "Em Tramitação"
                                 }
 
                                 if atualizar_material_supabase(id_bem, payload_update):
