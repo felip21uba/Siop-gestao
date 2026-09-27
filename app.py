@@ -120,9 +120,12 @@ try:
     from modules.tco.main_tco import renderizar_modulo_tco
 except Exception as e_tco:
     def renderizar_modulo_tco():
-        st.title("📦 Módulo TCO / Custódia")
-        st.warning("⚠️ O Módulo TCO está passando por sincronização de subarquivos.")
-        st.info("O restante do sistema permanece 100% operacional.")
+    try:
+        from modules.tco.main_tco import renderizar_modulo_tco as render_tco
+        render_tco()
+    except Exception as e_tco:
+        st.error("⚠️ Ocorreu uma indisponibilidade temporária no Módulo TCO / Custódia.")
+        st.caption("O restante do SIOP e o Módulo de Escalas continuam operando normalmente.")
         print(f"Erro ao carregar TCO no app.py: {e_tco}")
 
 # 3. MÓDULO DE GOVERNANÇA
