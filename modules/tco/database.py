@@ -33,18 +33,12 @@ def carregar_materiais_supabase() -> list[dict]:
 def salvar_material_supabase(dados_bem: dict) -> bool:
     """
     Insere ou atualiza um material/bem na tabela 'tco_materiais' do Supabase.
-    
-    Parâmetros:
-        dados_bem (dict): Informações completas do bem apreendido.
-        
-    Retorna:
-        bool: True se salvo com sucesso, False em caso de falha.
     """
     if not supabase or not dados_bem:
         return False
     try:
         supabase.table("tco_materiais").upsert(dados_bem, on_conflict="id_bem").execute()
-        st.cache_data.clear()  # Limpa o cache para recarregar a lista atualizada
+        st.cache_data.clear()
         return True
     except Exception as e:
         st.error(f"Erro ao salvar material no Supabase: {e}")
@@ -54,13 +48,6 @@ def salvar_material_supabase(dados_bem: dict) -> bool:
 def atualizar_material_supabase(id_bem: str, payload_update: dict) -> bool:
     """
     Atualiza as informações de um material existente na tabela 'tco_materiais'.
-    
-    Parâmetros:
-        id_bem (str): Código identificador do bem.
-        payload_update (dict): Dados atualizados do bem.
-        
-    Retorna:
-        bool: True se atualizado com sucesso.
     """
     if not supabase or not id_bem:
         return False
@@ -97,12 +84,6 @@ def carregar_logs_supabase() -> list[dict]:
 def registrar_log_supabase(dados_log: dict) -> bool:
     """
     Registra um novo evento de tramitação ou custódia na tabela 'tco_logs'.
-    
-    Parâmetros:
-        dados_log (dict): Evento a ser registrado.
-        
-    Retorna:
-        bool: True se gravado com sucesso.
     """
     if not supabase or not dados_log:
         return False

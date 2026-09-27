@@ -4,7 +4,9 @@ from modules.tco.views import (
     renderizar_aba_importacao,
     renderizar_aba_creds,
     renderizar_aba_logs,
-    renderizar_aba_gestores_creds
+    renderizar_aba_gestores_creds,
+    renderizar_aba_importar_reds,
+    renderizar_aba_painel_creds
 )
 from modules.tco.views_tramitacao_unificada import renderizar_aba_custodia_tramitacao_unificada
 from modules.tco.views_oficios import renderizar_aba_gerador_oficios
@@ -15,7 +17,7 @@ from modules.tco.compliance import (
 )
 
 def renderizar_modulo_tco():
-    """Ponto de entrada do Módulo TCO / Custódia no SIOP com abas na horizontal."""
+    """Ponto de entrada unificado do Módulo TCO / Custódia no SIOP."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -32,7 +34,7 @@ def renderizar_modulo_tco():
         else:
             exibir_modal_termo_compliance(usr_id, nome_militar_atual, cargo_str, unidade_militar_atual)
 
-    # CARD CABEÇALHO DO MÓDULO
+    # CABEÇALHO DO MÓDULO
     st.markdown("### 📦 Custódia de Materiais TCO & Cadeia de Custódia")
     
     with st.container(border=True):
@@ -44,7 +46,7 @@ def renderizar_modulo_tco():
 
     st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
 
-    # 🔓 ACESSO IRRESTRITO E SOBERANO PARA PROGRAMADOR / ADMIN / GESTOR
+    # PERMISSÕES DE ACESSO
     eh_gestor_creds = (
         "PROGRAMADOR" in cargo_str or 
         "DESENVOLVEDOR" in cargo_str or 
@@ -57,11 +59,11 @@ def renderizar_modulo_tco():
         "GESTOR" in perfil_usuario
     )
 
-    # Carregamento dos dados em tempo real do Supabase
-    all_bens_banco = carregar_materiais_supabase()
-    all_logs_banco = carregar_logs_supabase()
+    # Carregamento de dados com tratamento de nulos
+    all_bens_banco = carregar_materiais_supabase() or []
+    all_logs_banco = carregar_logs_supabase() or []
 
-    # 📌 ABAS HORIZONTAIS UNIFICADAS
+    # ABAS HORIZONTAIS UNIFICADAS
     tab_import, tab_custodia, tab_oficios, tab_creds, tab_auditoria, tab_gestores = st.tabs([
         "📥 Importar REDS",
         "🎒 Custódia & Tramitação",
