@@ -89,20 +89,20 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     elements.append(tabela_id)
     elements.append(Spacer(1, 10))
 
-    # Texto Institucional e Jurídico Sem Jargões Técnicos
+    # Texto Corrigido
     texto_juridico = (
         f"Eu, <b>{operador_completo.upper()}</b>, Nº PM <b>{num_policia}</b>, ciente das minhas obrigações e "
-        f"deveres funcionais no Módulo TCO / Custódia do SIOP, declaro, concordo e me comprometo a cumprir os seguintes termos:<br/><br/>"
-        "<b>1. RESPONSABILIDADE SOBRE MATERIAIS APREENDIDOS:</b> Declaro estar plenamente ciente de que todos os materiais "
-        "e bens sob minha guarda ou recebidos no sistema são de minha estrita responsabilidade funcional e legal.<br/><br/>"
-        "<b>2. VERACIDADE DAS INFORMAÇÕES E VEDAÇÃO A DOCUMENTO FALSO:</b> Comprometo-me a inserir apenas dados verdadeiros e "
-        "fidedignos, estando ciente de que a inserção de informações ou documentos falsos no sistema configura crime e infração disciplinar grave.<br/><br/>"
-        "<b>3. PRESERVAÇÃO DA CADEIA DE CUSTÓDIA:</b> Assumo o dever de zelar pela integridade física dos bens, invólucros, lacres "
+        f"deveres funcionais no Módulo TCO / Custódia do SIOP, <b>declaro que estou ciente dos termos, concordo com eles e me comprometo a:</b><br/><br/>"
+        "<b>1. RESPONSABILIDADE SOBRE MATERIAIS APREENDIDOS:</b> Reconhecer que todos os materiais e bens sob minha "
+        "guarda ou recebidos no sistema são de minha estrita responsabilidade funcional e legal.<br/><br/>"
+        "<b>2. VERACIDADE DAS INFORMAÇÕES E VEDAÇÃO A DOCUMENTO FALSO:</b> Inserir apenas dados e documentos verdadeiros, "
+        "estando ciente de que a inserção de informações ou documentos falsos no sistema pode configurar crime e infração disciplinar grave.<br/><br/>"
+        "<b>3. PRESERVAÇÃO DA CADEIA DE CUSTÓDIA:</b> Zelar pela integridade física dos bens, invólucros, lacres "
         "e registros de tramitação, garantindo a rastreabilidade probatória em estrita conformidade com a legislação vigente.<br/><br/>"
-        "<b>4. SIGILO DE INFORMAÇÕES PESSOAIS (LGPD):</b> Comprometo-me a manter sigilo absoluto sobre dados pessoais e informações "
+        "<b>4. SIGILO DE INFORMAÇÕES PESSOAIS (LGPD):</b> Manter sigilo absoluto sobre dados pessoais e informações "
         "sensíveis acessadas no sistema, utilizando-os exclusivamente para o estrito cumprimento do serviço policial militar.<br/><br/>"
-        "<b>5. INTRANSFERIBILIDADE DA SENHA DE ACESSO:</b> Declaro ciência de que minha senha de acesso e credenciais de uso são "
-        "pessoais e intransferíveis, respondendo diretamente por qualquer ação praticada no sistema sob minha identificação."
+        "<b>5. INTRANSFERIBILIDADE DA SENHA DE ACESSO:</b> Guardar o sigilo de minha senha e credenciais de acesso, "
+        "compreendendo que são pessoais e intransferíveis, respondendo diretamente por qualquer ação praticada sob minha identificação."
     )
     elements.append(Paragraph(texto_juridico, style_body))
     elements.append(Spacer(1, 14))
@@ -251,7 +251,7 @@ def exibir_modal_termo_compliance(num_policia, nome_militar, cargo_funcao, unida
     operador_str = f"{cargo_funcao} {nome_militar}".strip().upper()
     
     st.markdown(f"""
-    Eu, **{operador_str}**, Nº PM **{num_policia}**, ciente das minhas obrigações funcionais, declaro, concordo e me comprometo a:
+    Eu, **{operador_str}**, Nº PM **{num_policia}**, ciente das minhas obrigações funcionais, **declaro que estou ciente dos termos, concordo com eles e me comprometo a:**
     
     1. **Guarda e Custódia de Materiais:** Reconhecer que todos os materiais e bens sob minha guarda ou recebidos no sistema são de minha estrita responsabilidade funcional e legal.
     2. **Veracidade e Proibição de Documento Falso:** Inserir apenas informações e documentos verdadeiros, ciente de que a inserção de dados falsos no sistema pode configurar crime e infração disciplinar.
@@ -264,7 +264,7 @@ def exibir_modal_termo_compliance(num_policia, nome_militar, cargo_funcao, unida
     st.markdown(f"👤 **Militar Declarante:** `{operador_str}` | **Nº PM:** `{num_policia}` | **Unidade:** `{unidade}`")
     st.markdown("<br>", unsafe_allow_html=True)
     
-    if st.button("✅ Declaro Ciente e Concordo com os Termos", type="primary", use_container_width=True):
+    if st.button("✅ Declaro que estou Ciente, Concordo e me Comprometo", type="primary", use_container_width=True):
         obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao, unidade)
         st.session_state["termo_compliance_aceito"] = True
         st.rerun()

@@ -12,13 +12,27 @@ from core.database import supabase, registrar_audit_log, atualizar_usuario_supab
 from core.auth import gerar_hash_senha, validar_requisitos_senha
 
 
+def formatar_data_br(dt_val):
+    """Auxiliar para formatar ISO ou datetime para o padrão brasileiro DD/MM/AAAA às HH:MM."""
+    if not dt_val:
+        return "Registrado no Banco de Dados"
+    try:
+        dt_str = str(dt_val).strip()
+        if "T" in dt_str:
+            dt_obj = datetime.datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            return dt_obj.strftime("%d/%m/%Y às %H:%M")
+        return dt_str
+    except Exception:
+        return str(dt_val)
+
+
 def exibir_tela_perfil():
     st.title("👤 Perfil do Usuário & Registros de Aceite")
     st.caption("Consulte seus dados funcionais, níveis de acesso, termos de aceite assinados e gerencie suas credenciais.")
     st.divider()
 
     usr = st.session_state.get("usuario_dados") or {}
-    num_login = str(usr.get("usuario_login") or usr.get("usuario") or usr.get("num_policia") or "1337468").strip().upper()
+    num_login = str(usr.get("usuario_login") or usr.get("usuario") or usr.get("num_policia") or "").strip().upper()
     nome_guerra = str(usr.get("nome_guerra") or "OPERADOR").strip().upper()
     nome_completo = str(usr.get("nome_completo") or f"{usr.get('cargo_funcao', '')} {nome_guerra}").strip().upper()
     cargo_funcao = str(usr.get("cargo_funcao") or usr.get("posto_grad") or "SD").strip().upper()
@@ -50,6 +64,8 @@ def exibir_tela_perfil():
         termo_aceito = usr.get("termo_compliance_aceito", False)
     if not dt_aceite_str:
         dt_aceite_str = usr.get("data_aceite_compliance") or "Registrado no Banco de Dados"
+
+    dt_exibicao_br = formatar_data_br(dt_aceite_str)
 
     # --- CARTÃO DE DADOS PESSOAIS E FUNCIONAIS ---
     with st.container(border=True):
@@ -92,11 +108,11 @@ def exibir_tela_perfil():
 
         # CARD DE STATUS DO TERMO DE COMPLIANCE
         with st.container(border=True):
-            st.markdown("##### 📜 Termo de Compliance & Segurança da Informação (TCO)")
+            st.markdown("##### 📜 Termo de Responsabilidade & Segurança da Informação (TCO)")
             if termo_aceito:
-                st.success("🟢 **Termo de Compliance Aceito e Ativo**")
-                st.markdown(f"• **Status:** Declaração de ciência assinada eletronicamente no primeiro acesso.")
-                st.markdown(f"• **Data de Aceite Eletrônico:** `{dt_aceite_str}`")
+                st.success("🟢 **Termo de Responsabilidade Aceito e Ativo**")
+                st.markdown("**Status:** Declaração de ciência e responsabilidade assinada no primeiro acesso.")
+                st.markdown(f"**Data do Aceite:** {dt_exibicao_br}")
                 st.caption("🔒 Documento vinculado à Cadeia de Custódia (Art. 158-A do CPP) e às normas da LGPD/PMMG.")
 
                 try:
@@ -106,12 +122,12 @@ def exibir_tela_perfil():
                         cargo_funcao=cargo_funcao,
                         unidade=unidade_vinculada,
                         num_policia=num_login,
-                        data_aceite_str=str(dt_aceite_str)
+                        data_aceite_str=str(dt_exibicao_br)
                     )
                     st.download_button(
                         label="📄 Baixar 2ª Via do Termo Assinado em PDF",
                         data=pdf_bytes,
-                        file_name=f"Termo_Compliance_PM_{num_login}.pdf",
+                        file_name=f"Termo_Responsabilidade_PM_{num_login}.pdf",
                         mime="application/pdf",
                         type="primary",
                         use_container_width=True
@@ -120,7 +136,7 @@ def exibir_tela_perfil():
                     print(f"Aviso ao gerar PDF no Perfil: {ex_pdf}")
             else:
                 st.warning("🟡 **Pendente de Aceite**")
-                st.caption("O Termo de Compliance será exibido e solicitado automaticamente assim que acessar o **Módulo TCO / Custódia**.")
+                st.caption("O Termo de Responsabilidade será exibido e solicitado automaticamente assim que acessar o **Módulo TCO / Custódia**.")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -163,13 +179,13 @@ def exibir_tela_perfil():
         with st.expander("🛡️ Termo de Fiel Depósito e Cadeia de Custódia (TCO)", expanded=False):
             st.markdown("""
             > * Declaro estar ciente da custódia física dos materiais apreendidos sob minha responsabilidade.
-            > * Comprometo-me a zelar pela integridade dos invólucros, lacres e da rastreabilidade probatória, cumprindo rigorosamente os artigos 158-A a 158-F do Código de Processamento Penal (Lei nº 13.964/2019 - Pacote Anticrime) e as Instruções Normativas Institucionais de Cadeia de Custódia.
+            > * Comprometo-me a zelar pela integridade dos invólucros, lacres e da rastreabilidade probatória, cumprindo rigorosamente os artigos 158-A a 158-F do Código de Processo Penal (Lei nº 13.964/2019 - Pacote Anticrime).
             """)
 
         with st.expander("🔒 Termo de Compromisso de Sigilo e Proteção de Dados (LGPD / PMMG)", expanded=False):
             st.markdown("""
             > * Declaro ciência de que todas as informações acessadas no SIOP possuem caráter estritamente sigiloso e de uso restrito às atividades operacionais da Polícia Militar de Minas Gerais.
-            > * Comprometo-me a cumprir os ditames da Lei Geral de Proteção de Dados Pessoais (Lei Federal nº 13.709/2018 - LGPD), não divulgando, copiando ou transferindo credenciais de acesso ou dados pessoais de terceiros sem autorização formal do Comando/P1/P3.
+            > * Comprometo-me a cumprir os ditames da Lei Geral de Proteção de Dados Pessoais (Lei Federal nº 13.709/2018 - LGPD), não divulgando, copiando ou transferindo credenciais de acesso ou dados pessoais sem autorização formal.
             """)
 
     # =========================================================================
