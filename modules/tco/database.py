@@ -5,6 +5,7 @@ e logs de tramitação/custódia (tco_logs) no Supabase.
 """
 
 import datetime
+import pandas as pd
 import streamlit as st
 from core.database import supabase
 
