@@ -8,7 +8,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
-from core.database import supabase
+from core.database import supabase, obter_ip_cliente_real
+
 
 def aplicar_estilo_tco():
     """Aplica estilos CSS customizados para o módulo TCO."""
@@ -22,9 +23,11 @@ def aplicar_estilo_tco():
     </style>
     """, unsafe_allow_html=True)
 
+
 def gerar_hash_compliance(texto):
     """Gera chancela SHA-256 para o Termo de Compliance."""
     return hashlib.sha256(str(texto).encode('utf-8')).hexdigest()
+
 
 def criar_draw_qrcode(texto_qr):
     """Gera o elemento gráfico do QR Code no PDF."""
@@ -38,6 +41,7 @@ def criar_draw_qrcode(texto_qr):
         return d
     except Exception:
         return None
+
 
 def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia, data_aceite_str, data_impressao_str=None):
     """Gera o PDF oficial do Termo de Compliance com todas as cláusulas e protocolos de segurança ativos."""
@@ -85,7 +89,7 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     elements.append(tabela_id)
     elements.append(Spacer(1, 10))
 
-    # Texto Jurídico de Compliance com todos os Protocolos Técnicos
+    # Texto Jurídico
     texto_juridico = (
         "<b>1. DA CADEIA DE CUSTÓDIA (ART. 158-A CPP):</b> O operador declara ciência formal de que todas as ações "
         "realizadas no Módulo de Custódia e TCO (importação de REDS, alteração de invólucro, transferência física, "
@@ -136,8 +140,9 @@ def gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_policia,
     buffer.seek(0)
     return buffer.getvalue()
 
+
 def salvar_pdf_termo_no_storage(pdf_bytes, num_policia, nome_militar):
-    """Salva o PDF do Termo no Supabase Storage testando buckets de backup sem interromper o sistema."""
+    """Salva o PDF do Termo no Supabase Storage sem interromper o fluxo do sistema."""
     if not supabase or not pdf_bytes:
         return None
 
@@ -158,51 +163,87 @@ def salvar_pdf_termo_no_storage(pdf_bytes, num_policia, nome_militar):
             continue
     return None
 
+
 def obter_ou_registrar_aceite_compliance(num_policia, nome_militar, cargo_funcao, unidade):
-    """Verifica se o militar possui aceite gravado. Se for o primeiro acesso, registra e gera o PDF de backup."""
-    if not supabase or not num_policia:
+    """Registra o aceite no Supabase e atualiza a sessão local em tempo real."""
+    if not num_policia:
         return True, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    try:
-        num_pm_str = str(num_policia).strip().upper()
-        res = supabase.table("usuarios").select("termo_compliance_aceito, data_aceite_compliance").eq("usuario_login", num_pm_str).execute()
-        
-        data_banco = res.data[0] if res.data else {}
-        aceito = data_banco.get("termo_compliance_aceito", False)
-        data_existente = data_banco.get("data_aceite_compliance")
+    now_iso = datetime.datetime.now().isoformat()
+    now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    num_pm_str = str(num_policia).strip().upper()
 
-        if aceito and data_existente:
-            return True, data_existente
-
-        now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-        
-        supabase.table("usuarios").update({
-            "termo_compliance_aceito": True,
-            "data_aceite_compliance": now_str
-        }).eq("usuario_login", num_pm_str).execute()
-
+    if supabase:
         try:
-            pdf_bytes = gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_pm_str, now_str)
-            salvar_pdf_termo_no_storage(pdf_bytes, num_pm_str, nome_militar)
-        except Exception:
-            pass
+            # 1. Atualiza na tabela 'usuarios' usando OR flexível
+            supabase.table("usuarios").update({
+                "termo_compliance_aceito": True,
+                "data_aceite_compliance": now_str
+            }).or_(f"usuario_login.eq.{num_pm_str},usuario.eq.{num_pm_str}").execute()
 
-        return True, now_str
-    except Exception:
-        return True, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+            # 2. Grava log auditoria na tabela 'aceites_compliance'
+            try:
+                ip_cliente = obter_ip_cliente_real()
+                supabase.table("aceites_compliance").insert({
+                    "num_policia": num_pm_str,
+                    "nome_militar": nome_militar,
+                    "cargo_funcao": cargo_funcao,
+                    "unidade": unidade,
+                    "termo_versao": "CPP_ART_158A_LGPD_V1",
+                    "ip_origem": ip_cliente,
+                    "data_aceite": now_iso
+                }).execute()
+            except Exception as e_ac:
+                print(f"Aviso aceites_compliance: {e_ac}")
+
+            # 3. ATUALIZA A SESSÃO LOCAL PARA O PERFIL REFLETIR NA HORA
+            if "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
+                st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
+                st.session_state["usuario_dados"]["data_aceite_compliance"] = now_str
+
+            st.cache_data.clear()
+
+            # 4. Backup PDF
+            try:
+                pdf_bytes = gerar_pdf_termo_compliance(nome_militar, cargo_funcao, unidade, num_pm_str, now_str)
+                salvar_pdf_termo_no_storage(pdf_bytes, num_pm_str, nome_militar)
+            except Exception:
+                pass
+
+            return True, now_str
+        except Exception as e:
+            print(f"Aviso ao registrar aceite no Supabase: {e}")
+
+    # Fallback local
+    if "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
+        st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
+        st.session_state["usuario_dados"]["data_aceite_compliance"] = now_str
+
+    return True, now_str
+
 
 def verificar_aceite_compliance_supabase(num_policia):
     """Verifica no Supabase se o usuário aceitou o termo de compliance."""
-    if not supabase or not num_policia:
+    usr_sessao = st.session_state.get("usuario_dados", {})
+    if usr_sessao.get("termo_compliance_aceito", False):
         return True
+
+    if not supabase or not num_policia:
+        return False
+
     try:
         num_pm_str = str(num_policia).strip().upper()
-        res = supabase.table("usuarios").select("termo_compliance_aceito").eq("usuario_login", num_pm_str).execute()
+        res = supabase.table("usuarios").select("termo_compliance_aceito, data_aceite_compliance").or_(f"usuario_login.eq.{num_pm_str},usuario.eq.{num_pm_str}").execute()
         if res.data and len(res.data) > 0:
-            return res.data[0].get("termo_compliance_aceito", False)
+            aceito = res.data[0].get("termo_compliance_aceito", False)
+            if aceito and "usuario_dados" in st.session_state and isinstance(st.session_state["usuario_dados"], dict):
+                st.session_state["usuario_dados"]["termo_compliance_aceito"] = True
+                st.session_state["usuario_dados"]["data_aceite_compliance"] = res.data[0].get("data_aceite_compliance")
+            return aceito
         return False
     except Exception:
-        return True
+        return False
+
 
 def exibir_modal_termo_compliance(num_policia, nome_militar, cargo_funcao, unidade):
     """Exibe a tela para aceite do Termo de Compliance no primeiro acesso."""
