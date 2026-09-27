@@ -118,15 +118,15 @@ except Exception as e_escalas:
 # 2. MÓDULO TCO / CUSTÓDIA
 try:
     from modules.tco.main_tco import renderizar_modulo_tco
-except Exception as e_tco:
+except Exception as e_tco_import:
     def renderizar_modulo_tco():
-    try:
-        from modules.tco.main_tco import renderizar_modulo_tco as render_tco
-        render_tco()
-    except Exception as e_tco:
-        st.error("⚠️ Ocorreu uma indisponibilidade temporária no Módulo TCO / Custódia.")
-        st.caption("O restante do SIOP e o Módulo de Escalas continuam operando normalmente.")
-        print(f"Erro ao carregar TCO no app.py: {e_tco}")
+        try:
+            from modules.tco.main_tco import renderizar_modulo_tco as render_tco
+            render_tco()
+        except Exception as e_tco:
+            st.error("⚠️ Ocorreu uma indisponibilidade temporária no Módulo TCO / Custódia.")
+            st.caption("O restante do SIOP e o Módulo de Escalas continuam operando normalmente.")
+            print(f"Erro ao carregar TCO no app.py: {e_tco}")
 
 # 3. MÓDULO DE GOVERNANÇA
 try:
