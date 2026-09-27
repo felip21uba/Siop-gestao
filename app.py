@@ -1,12 +1,13 @@
+"""
+==============================================================================
+🛡️ SIOP PMMG - Sistema Integrado de Operações
+Arquivo Principal: app.py (Roteador Central e Isolamento de Módulos)
+==============================================================================
+"""
+
 import os
 import sys
 import urllib.parse
-
-# 🌐 REGISTRO DO DIRETÓRIO RAIZ NO SYS.PATH
-DIRETORIO_RAIZ = os.path.abspath(os.path.dirname(__file__))
-if DIRETORIO_RAIZ not in sys.path:
-    sys.path.insert(0, DIRETORIO_RAIZ)
-
 import datetime
 from zoneinfo import ZoneInfo
 import hashlib
@@ -18,16 +19,23 @@ import pyotp
 import streamlit as st
 
 # ==============================================================================
+# 🌐 REGISTRO DO DIRETÓRIO RAIZ NO SYS.PATH
+# ==============================================================================
+DIRETORIO_RAIZ = os.path.abspath(os.path.dirname(__file__))
+if DIRETORIO_RAIZ not in sys.path:
+    sys.path.insert(0, DIRETORIO_RAIZ)
+
+# ==============================================================================
 # 🌐 CONFIGURAÇÃO DE FUSO HORÁRIO E FUNÇÕES UTILITÁRIAS
 # ==============================================================================
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 def obter_agora():
-    """Retorna a data/hora atual rigorosamente ajustada para o fuso de Brasília."""
+    """Retorna a data/hora atual ajustada para o fuso horário de Brasília."""
     return datetime.datetime.now(FUSO_BR)
 
 def sanitizar_texto(texto: str) -> str:
-    """Limpa e escapa caracteres perigosos em textos recebidos da interface (Prevenção de XSS e SQLi)."""
+    """Limpa caracteres perigosos de entradas de texto (Prevenção de XSS e SQLi)."""
     if not texto:
         return ""
     texto_limpo = html.escape(str(texto).strip())
@@ -37,7 +45,7 @@ def sanitizar_texto(texto: str) -> str:
     return texto_limpo
 
 def renderizar_rodape_corporativo():
-    """Renderiza o rodapé institucional no final da página."""
+    """Renderiza o rodapé institucional no final da aplicação."""
     st.markdown("<br><hr>", unsafe_allow_html=True)
     col_f1, col_f2, col_f3 = st.columns([1.5, 2, 1.5])
     
@@ -66,6 +74,9 @@ def renderizar_rodape_corporativo():
         st.caption(f"🟢 **Sessão Ativa:** {nome_operador_rodape}")
         st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
+# ==============================================================================
+# 🛠️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
+# ==============================================================================
 from core.database import init_db, obter_ip_cliente_real
 init_db()
 
@@ -90,14 +101,21 @@ from core.session_manager import (
     restaurar_rascunho_escala_supabase
 )
 
-# IMPORTE DOS MÓDULOS OPERACIONAIS COM CARREGAMENTO PROTEGIDO
-from modules.escalas import exibir_modulo_escalas
-from modules.mural import renderizar_mural
-from modules.gestao_usuarios import exibir_tela_gestao_usuarios
-from modules.perfil import exibir_tela_perfil
-from modules.governanca.views import renderizar_modulo_governanca
+# ==============================================================================
+# 🛡️ CARREGAMENTO ISOLADO E SEGURO DOS MÓDULOS OPERACIONAIS (SAFE IMPORTS)
+# ==============================================================================
 
-# CARREGAMENTO SEGURO DO MÓDULO TCO
+# 1. MÓDULO DE ESCALAS
+try:
+    from modules.escalas import exibir_modulo_escalas
+except Exception as e_escalas:
+    def exibir_modulo_escalas():
+        st.title("📅 Módulo de Gestão de Escalas")
+        st.error("⚠️ O Módulo de Escalas está passando por manutenção ou sincronização de arquivos.")
+        st.info("Os demais módulos permanecem funcionais.")
+        print(f"Erro ao carregar Escalas no app.py: {e_escalas}")
+
+# 2. MÓDULO TCO / CUSTÓDIA
 try:
     from modules.tco.main_tco import renderizar_modulo_tco
 except Exception as e_tco:
@@ -107,7 +125,46 @@ except Exception as e_tco:
         st.info("O restante do sistema permanece 100% operacional.")
         print(f"Erro ao carregar TCO no app.py: {e_tco}")
 
-# 1. Configuração Inicial da Página
+# 3. MÓDULO DE GOVERNANÇA
+try:
+    from modules.governanca.views import renderizar_modulo_governanca
+except Exception as e_gov:
+    def renderizar_modulo_governanca(*args, **kwargs):
+        st.title("🛡️ Governança & Segurança")
+        st.error("⚠️ O Módulo de Governança está indisponível no momento.")
+        print(f"Erro ao carregar Governança no app.py: {e_gov}")
+
+# 4. MURAL DE AVISOS
+try:
+    from modules.mural import renderizar_mural
+except Exception as e_mural:
+    def renderizar_mural():
+        st.title("📢 Mural de Avisos")
+        st.error("⚠️ O Mural de Avisos está temporariamente indisponível.")
+        print(f"Erro ao carregar Mural no app.py: {e_mural}")
+
+# 5. GESTÃO DE ACESSOS E USUÁRIOS
+try:
+    from modules.gestao_usuarios import exibir_tela_gestao_usuarios
+except Exception as e_gestao:
+    def exibir_tela_gestao_usuarios():
+        st.title("⚙️ Gestão de Acessos")
+        st.error("⚠️ O Módulo de Gestão de Acessos está temporariamente indisponível.")
+        print(f"Erro ao carregar Gestão de Usuários no app.py: {e_gestao}")
+
+# 6. PERFIL DO USUÁRIO
+try:
+    from modules.perfil import exibir_tela_perfil
+except Exception as e_perfil:
+    def exibir_tela_perfil():
+        st.title("👤 Meu Perfil")
+        st.error("⚠️ A tela de Perfil está temporariamente indisponível.")
+        print(f"Erro ao carregar Perfil no app.py: {e_perfil}")
+
+
+# ==============================================================================
+# ⚙️ 1. CONFIGURAÇÃO INICIAL DA PÁGINA STREAMLIT
+# ==============================================================================
 st.set_page_config(
     page_title="SIOP - Sistema Integrado de Operações",
     page_icon="🛡️",
@@ -115,7 +172,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 🎨 OCULTA A SELEÇÃO NATIVA DE PÁGINAS DA BARRA LATERAL
+# OCULTA A SELEÇÃO NATIVA DE PÁGINAS DO STREAMLIT NA SIDEBAR
 st.markdown(
     """
     <style>
@@ -127,14 +184,21 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# ==============================================================================
 # 🖥️ VERIFICAÇÃO ANTECIPADA DO MODO POP-OUT / SEGUNDA TELA
+# ==============================================================================
 query_params = st.query_params
 if query_params.get("modo_monitor") == "segunda_tela":
-    from modules.escalas.passos.passo5_espelho import renderizar_modo_segunda_tela
-    renderizar_modo_segunda_tela()
+    try:
+        from modules.escalas.passos.passo5_espelho import renderizar_modo_segunda_tela
+        renderizar_modo_segunda_tela()
+    except Exception as e_espelho:
+        st.error(f"Erro ao carregar Modo Segunda Tela: {e_espelho}")
     st.stop()
 
-# 2. Inicialização do Estado de Sessão
+# ==============================================================================
+# 2. INICIALIZAÇÃO DO ESTADO DE SESSÃO (SESSION STATE)
+# ==============================================================================
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 if "usuario_autenticado" not in st.session_state:
@@ -161,7 +225,7 @@ if "tema_visual" not in st.session_state:
     st.session_state["tema_visual"] = "DARK"
 
 # ==============================================================================
-# 🔄 RESTAURAÇÃO DE SESSÃO COM CONTROLE RÍGIDO DE TIMEOUT (20 MINUTOS)
+# 🔄 RESTAURAÇÃO DE SESSÃO VIA TOKEN DE URL COM CONTROLE DE TIMEOUT
 # ==============================================================================
 token_url = query_params.get("session_token")
 
@@ -284,7 +348,7 @@ def abrir_modal_reportar_erro():
                 st.rerun()
 
 # ==============================================================================
-# 🔒 TELA DE LOGIN INSTITUCIONAL 
+# 🔒 TELA DE LOGIN INSTITUCIONAL E FLUXOS DE SEGURANÇA
 # ==============================================================================
 if not st.session_state.get("autenticado", False):
     aplicar_estilo_visual()
@@ -304,7 +368,7 @@ if not st.session_state.get("autenticado", False):
 
         st.divider()
 
-        # FLUXO 1: RECUPERAÇÃO DE SENHA VALIDADO POR E-MAIL + CÓDIGO DO QR CODE (2FA)
+        # FLUXO 1: RECUPERAÇÃO DE SENHA (VALIDAÇÃO E-MAIL + 2FA)
         if st.session_state.get("recuperar_senha_modo", False):
             st.subheader("🔑 Recuperação de Senha & Validação 2FA")
             st.info("Informe seu Nº de Polícia ou e-mail. Para segurança, a redefinição exige a validação do e-mail + o código do QR Code cadastrado.")
@@ -420,7 +484,7 @@ if not st.session_state.get("autenticado", False):
                                 st.session_state["reset_token_dados"] = {}
                                 st.rerun()
 
-        # FLUXO 2: PRIMEIRO ACESSO - CADASTRO DO QR CODE + E-MAIL + CELULAR + TROCA DE SENHA
+        # FLUXO 2: PRIMEIRO ACESSO (CADASTRO 2FA + COMPLIANCE)
         elif st.session_state.get("mfa_setup_mode", False):
             usr_temp = st.session_state.get("temp_user_data", {})
             st.warning("🛡️ **Primeiro Acesso: Cadastro de Segurança & Termo de Aceite**")
@@ -544,7 +608,7 @@ if not st.session_state.get("autenticado", False):
                             st.toast("✅ Primeiro acesso e aceite de termos concluídos com sucesso!", icon="🎉")
                             st.rerun()
 
-        # FLUXO 3: TELA PRINCIPAL DE LOGIN
+        # FLUXO 3: FORMULÁRIO DE LOGIN PRINCIPAL
         else:
             with st.form("form_login_principal"):
                 usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1234567", autocomplete="off") or "").strip()
