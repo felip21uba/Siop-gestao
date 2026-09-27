@@ -21,7 +21,6 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
     unidades_set = set()
 
-    # Tenta ler as unidades diretamente do Supabase
     if supabase:
         try:
             res = supabase.table("usuarios").select("unidade").execute()
@@ -38,7 +37,6 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
         except Exception as e:
             print(f"Aviso ao consultar unidades para o CREDS: {e}")
 
-    # Garante inclusão da unidade do operador logado
     if unidade_militar_atual:
         unid_op = str(unidade_militar_atual).strip().upper()
         fragmentos_op = [f.strip() for f in unid_op.split("/") if f.strip()]
@@ -48,7 +46,6 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
             else:
                 unidades_set.add(frag)
 
-    # Fallback se não houver registros no banco
     if not unidades_set:
         unidades_set.add("CREDS 35ª CIA PM")
         unidades_set.add("CREDS 111ª CIA PM")
@@ -60,7 +57,8 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     """
-    Renderiza a Aba de Custódia Física com alternância estrita entre Policial Militar x CREDS/Órgão.
+    Renderiza a Aba de Custódia Física com alternância estrita entre Policial Militar x CREDS/Órgão
+    sem colunas incompatíveis com o schema do Supabase.
     """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
     st.caption("Gerencie os bens em sua posse, escolha o destino de cada item e consulte seu histórico.")
@@ -166,7 +164,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if qtd_sel > 0:
                 st.markdown(f"### 🔄 Tramitar {qtd_sel} item(ns) Selecionado(s)")
                 
-                # SELETOR DE MODO FORA DO FORMULÁRIO (Garante atualização instantânea do estado da tela)
                 tipo_destinatario = st.radio(
                     "Tipo de Destinatário:",
                     ["Policial Militar / Fiel Depositário", "Seção de Custódia (CREDS-TC / Órgão)"],
@@ -240,13 +237,12 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             sucessos = 0
 
                             for id_bem, dados_item in selecionados_map.items():
+                                # PAYLOAD APENAS COM AS COLUNAS EXISTENTES NO SCHEMA DO SUPABASE
                                 payload_update = {
                                     "destinatario_pendente": destinatario_final,
                                     "unidade_destinatario_pendente": unidade_dest_final,
                                     "data_envio_tramite": agora_iso,
                                     "fase_destinacao": fase_destinacao_sel,
-                                    "remetente_ultimo": nome_militar_atual,
-                                    "unidade_remetente": unidade_militar_atual,
                                     "status_tramite": "Pendente de Aceite" if not eh_opcao_creds else "Em Tramitação"
                                 }
 
@@ -291,7 +287,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
         envios_militar = []
         for b in all_bens:
-            remetente = str(b.get("remetente_ultimo") or b.get("fiel_depositario_atual") or "").upper()
+            remetente = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or "").upper()
             if num_pm_logado in remetente or nome_militar_atual.upper() in remetente or b.get("destinatario_pendente"):
                 envios_militar.append(b)
 
