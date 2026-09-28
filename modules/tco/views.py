@@ -128,7 +128,6 @@ def obter_lista_creds_dinamica():
     if "CREDS TCO - CENTRAL DE CUSTÓDIA" not in lista:
         lista.append("CREDS TCO - CENTRAL DE CUSTÓDIA")
     
-    lista.append("✏️ Outro CREDS / Digitar Manualmente")
     return lista
 
 def gerar_excel_panoramico_tco(lista_bens_filtrados):
@@ -294,12 +293,12 @@ def verificar_existencia_reds_banco(num_reds):
         return False, None, None
 
 # =============================================================================
-# ABA IMPORTAÇÃO / UPLOAD (SEMPRE INDIVIDUAL DO MILITAR LOGADO)
+# ABA 1: IMPORTAÇÃO E UPLOAD (INICIALMENTE NA CUSTÓDIA INDIVIDUAL DO POLICIAL)
 # =============================================================================
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     st.markdown("#### 📄 Importação e Registro Individual de Ocorrência")
-    st.caption(f"👤 **Responsável pela Carga Inicial:** `{nome_militar_atual}` ({unidade_militar_atual})")
+    st.caption(f"👤 **Fiel Depositário Inicial:** `{nome_militar_atual}` ({unidade_militar_atual})")
 
     if "temp_reds_extraido" not in st.session_state:
         st.session_state["temp_reds_extraido"] = None
@@ -520,7 +519,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                         autor_final != str(orig_item.get("autor", "")).strip()
                     )
                     
-                    # GRAVA ESTREITAMENTE NA CUSTÓDIA PESSOAL DO MILITAR LOGADO
+                    # CUSTÓDIA INICIAL É SEMPRE A CARGA PESSOAL DO MILITAR
                     novo_bem = {
                         "id_bem": id_bem_unico,
                         "num_reds": d["num_reds"],
@@ -567,23 +566,143 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 
                 del st.session_state["temp_reds_extraido"]
                 st.session_state["confirmou_duplicidade_reds"] = False
-                st.success(f"Materiais registrados na guarda pessoal de **{nome_militar_atual}**!")
+                st.success(f"Materiais salvos com sucesso na guarda pessoal de **{nome_militar_atual}**!")
                 st.rerun()
 
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA PAINEL CREDS (TRATADO ESTRITAMENTE COMO SEÇÃO DE CUSTÓDIA INSTITUCIONAL)
+# ABA 2: TRAMITAÇÃO INDIVIDUAL (MINHA CUSTÓDIA PESSOAL -> CREDS OU MILITAR)
+# =============================================================================
+def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidade_militar_atual):
+    injetar_css_cards_alternados()
+    st.markdown("#### 🎒 Minha Custódia Pessoal & Tramitação Individual")
+    st.caption("Materiais apreendidos sob sua guarda pessoal. Daqui você pode encaminhar para o CREDS da Unidade/Cia ou transferir para outro militar.")
+
+    # FILTRA APENAS BENS QUE ESTÃO NA CARGA DO MILITAR LOGADO
+    meus_bens = [
+        b for b in (all_bens_banco or [])
+        if nome_militar_atual.upper() in str(b.get("fiel_depositario_atual", "")).upper()
+        and "CREDS" not in str(b.get("fiel_depositario_atual", "")).upper()
+        and "DESTRUÍDO" not in str(b.get("fase_destinacao", "")).upper()
+        and str(b.get("status_tramite", "")) != "Transferido Definitivo"
+    ]
+
+    if not meus_bens:
+        st.info("ℹ️ Você não possui nenhum material sob sua guarda pessoal no momento.")
+        return
+
+    st.markdown(f"##### 📦 Materiais na sua Carga Pessoal ({len(meus_bens)} itens)")
+    
+    if "itens_sel_tramite_pessoal" not in st.session_state:
+        st.session_state["itens_sel_tramite_pessoal"] = {}
+
+    df_meus = pd.DataFrame(meus_bens)
+    grupos_pessoais = df_meus.groupby("num_reds", sort=False)
+
+    idx_p = 0
+    for num_r, df_g in grupos_pessoais:
+        with st.expander(f"📄 **CARD REDS: {num_r}** ({len(df_g)} item/ns na sua guarda)", expanded=True):
+            for _, bem in df_g.iterrows():
+                idx_p += 1
+                id_b = str(bem.get("id_bem") or bem.get("id"))
+                status_t = str(bem.get("status_tramite", ""))
+                dest_p = bem.get("destinatario_pendente")
+
+                col_p1, col_p2 = st.columns([0.6, 9.4])
+                with col_p1:
+                    is_sel = st.checkbox("Selecionar", key=f"chk_indiv_{id_b}_{idx_p}", label_visibility="collapsed")
+                
+                with col_p2:
+                    if dest_p and status_t in ["Pendente de Aceite", "Pendente Aceite"]:
+                        tag_status = f"<strong style='color: #FACC15;'>⏳ Pendente de Aceite por: {dest_p}</strong>"
+                    else:
+                        tag_status = "<strong style='color: #4ADE80;'>🎒 Em sua Custódia Física</strong>"
+
+                    html_p = f"""
+                    <div class="card-blue">
+                        📄 REDS: <b>{bem['num_reds']}</b> | Material: <b>{bem['descricao']}</b> (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})<br/>
+                        🏷️ Lacre: <b>{bem.get('involucro_lacre', 'N/I')}</b> | Autor: <b>{bem.get('autores', 'N/I')}</b><br/>
+                        📍 Situação: {tag_status}
+                    </div>
+                    """
+                    st.markdown(html_p, unsafe_allow_html=True)
+
+                if is_sel:
+                    st.session_state["itens_sel_tramite_pessoal"][id_b] = bem.to_dict()
+                else:
+                    st.session_state["itens_sel_tramite_pessoal"].pop(id_b, None)
+
+    mats_sel_map = st.session_state["itens_sel_tramite_pessoal"]
+    if mats_sel_map:
+        st.markdown("---")
+        st.markdown(f"### 🚀 Tramitar {len(mats_sel_map)} item(ns) Selecionado(s)")
+        
+        destino_tipo = st.radio(
+            "Selecione o Destino da Tramitação:",
+            ["🏛️ Enviar para o CREDS da Unidade / Cia", "👤 Transferir para outro Policial Militar"],
+            horizontal=True,
+            key="radio_destino_pessoal"
+        )
+
+        with st.form("form_tramite_pessoal", clear_on_submit=False):
+            if "CREDS" in destino_tipo:
+                creds_dest = st.selectbox("Selecione o CREDS de Destino:", obter_lista_creds_dinamica(), key="sb_creds_dest_pessoal")
+                destinatario_p_final = creds_dest
+                unidade_p_final = creds_dest.replace("CREDS TCO - ", "").strip()
+            else:
+                lista_m = carregar_militares_supabase() or []
+                opcoes_m = [f"{m.get('posto_grad','PM')} {m.get('nome_completo','MILITAR')} ({m.get('num_policia','')})" for m in lista_m]
+                destinatario_p_final = st.selectbox("Selecione o Policial Destinatário:", opcoes_m, key="sb_pm_dest_pessoal")
+                unidade_p_final = unidade_militar_atual
+
+            obs_p = st.text_input("Observação / Motivo do Envio:", placeholder="Ex: Entrega de material apreendido no plantão", key="txt_obs_pessoal").strip()
+            btn_enviar_p = st.form_submit_button("🚀 Confirmar Envio / Tramitação", type="primary", width="stretch")
+
+            if btn_enviar_p:
+                agora_iso = datetime.datetime.now().isoformat()
+                sucessos_p = 0
+                for id_b_sel, d_b_sel in mats_sel_map.items():
+                    payload_p = {
+                        "destinatario_pendente": destinatario_p_final,
+                        "unidade_destinatario_pendente": unidade_p_final,
+                        "data_envio_tramite": agora_iso,
+                        "status_tramite": "Pendente de Aceite",
+                        "ultimo_gestor_movimentou": nome_militar_atual
+                    }
+                    if atualizar_material_supabase(id_b_sel, payload_p):
+                        sucessos_p += 1
+                        registrar_log_supabase({
+                            "data_hora": agora_iso,
+                            "num_reds": d_b_sel.get("num_reds", "N/I"),
+                            "bem_id": f"{d_b_sel.get('descricao')} (Lacre: {d_b_sel.get('involucro_lacre')})",
+                            "web_origem": "SIOP_TCO",
+                            "acao": "TRAMITACAO_INDIVIDUAL_POLICIAL",
+                            "origem": nome_militar_atual,
+                            "unidade_origem": unidade_militar_atual,
+                            "destino": destinatario_p_final,
+                            "unidade_destino": unidade_p_final,
+                            "detalhe": f"Encaminhado por {nome_militar_atual} para {destinatario_p_final} | Obs: {obs_p or 'Sem obs'}"
+                        })
+
+                if sucessos_p > 0:
+                    st.success(f"🎉 {sucessos_p} material(is) encaminhado(s) com sucesso!")
+                    st.session_state["itens_sel_tramite_pessoal"] = {}
+                    st.cache_data.clear()
+                    st.rerun()
+
+# =============================================================================
+# ABA 3: PAINEL DO CREDS (EXCLUSIVO PARA GESTORES - ACERVO INSTITUCIONAL)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Custódia")
     
     if not eh_gestor_creds:
-        st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO, P1, Comandantes ou Administradores têm acesso às funções deste painel.")
+        st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO, Comandantes ou Administradores têm acesso às funções deste painel.")
         return
 
-    st.caption(f"⚙️ **Gestão Institucional Ativa:** Operando como **CREDS TCO - {unidade_militar_atual}** | Assinatura digital: **{nome_militar_atual}**")
+    st.caption(f"⚙️ **Gestão Institucional Ativa:** Operando como **CREDS TCO - {unidade_militar_atual}** | Assinatura digital do Gestor: **{nome_militar_atual}**")
 
     if "itens_selecionados_creds_painel" not in st.session_state:
         st.session_state["itens_selecionados_creds_painel"] = {}
@@ -653,7 +772,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.divider()
 
-    # TRIAGEM SEPARADA PARA OS 4 RETÂNGULOS DO CREDS
+    # TRIAGEM RIGOROSA DO CREDS (EXCLUI MATERIAIS EM CUSTÓDIA PESSOAL DE POLICIAIS QUE AINDA NÃO FORAM ACEITOS)
     bens_custodia_ativa_creds = []
     bens_aguardando_destruicao = []
     bens_pendentes_aceite_creds = []
@@ -697,7 +816,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             reds_destruidos_encerrados.add(num_r)
             bens_destruidos_encerrados.append(b_copy)
 
-        # 2. AGUARDANDO DESTRUÍÇÃO / DESCARTE FÍSICO NO DEPÓSITO
+        # 2. AGUARDANDO DESTRUÍÇÃO / DESCARTE FÍSICO NO DEPÓSITO DO CREDS
         elif "DESTRUIÇÃO" in fase_d or "DESCARTE" in fase_d:
             reds_destruicao.add(num_r)
             bens_aguardando_destruicao.append(b_copy)
@@ -715,20 +834,19 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         elif status_t == "Transferido Definitivo" or any(term in dest_p or term in fase_d for term in TERMOS_EXTERNOS) or (dest_p and not ("CREDS" in dest_p or "CUSTÓDIA" in dest_p)):
             bens_orgao_externo_tramite.append(b_copy)
 
-        # 6. CUSTÓDIA FÍSICA ATIVA DISPONÍVEL NO CREDS OU COM POLICIAL
+        # 6. CUSTÓDIA FÍSICA CONFIRMADA NO CREDS
+        elif "CREDS" in fiel_atual or "CUSTÓDIA" in fiel_atual or unidade_militar_atual in fiel_atual:
+            reds_custodia_creds.add(num_r)
+            bens_custodia_ativa_creds.append(b_copy)
+            dt_ref_ing = b.get("data_ingestao") or b.get("data_posse_atual")
+            if dt_ref_ing:
+                try:
+                    datas_ingestao_creds.append(pd.to_datetime(dt_ref_ing))
+                except Exception:
+                    pass
         else:
-            if "CREDS" in fiel_atual or "CUSTÓDIA" in fiel_atual or unidade_militar_atual in fiel_atual:
-                reds_custodia_creds.add(num_r)
-                bens_custodia_ativa_creds.append(b_copy)
-                dt_ref_ing = b.get("data_ingestao") or b.get("data_posse_atual")
-                if dt_ref_ing:
-                    try:
-                        datas_ingestao_creds.append(pd.to_datetime(dt_ref_ing))
-                    except Exception:
-                        pass
-            else:
-                reds_custodia_policial.add(num_r)
-                bens_custodia_ativa_creds.append(b_copy)
+            # MATERIAL EM CUSTÓDIA PESSOAL DO POLICIAL (NÃO É MANUSEÁVEL PELO PAINEL DO CREDS ATÉ SER REMETIDO)
+            reds_custodia_policial.add(num_r)
 
     txt_mais_antigo = "N/I"
     if datas_ingestao_creds:
@@ -788,9 +906,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     filtro_card = st.session_state.get("filtro_card_ativo", "TODOS")
 
     # =========================================================================
-    # RETÂNGULO 1: 🎒 ACERVO ATIVO DISPONÍVEL NO CREDS
+    # RETÂNGULO 1: 🎒 ACERVO ATIVO CONFIRMADO NO CREDS
     # =========================================================================
-    if filtro_card in ["TODOS", "CREDS", "POLICIAL", "PARADOS"]:
+    if filtro_card in ["TODOS", "CREDS", "PARADOS"]:
         with st.container(border=True):
             bens_r1 = bens_custodia_ativa_creds.copy()
             if filtro_card == "PARADOS":
@@ -799,15 +917,15 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             df_disp_reds = pd.DataFrame(bens_r1) if bens_r1 else pd.DataFrame()
             qtd_reds_disponiveis = df_disp_reds["num_reds"].nunique() if not df_disp_reds.empty else 0
 
-            st.markdown(f"##### 🎒 1. Acervo Ativo Disponível no CREDS ({qtd_reds_disponiveis} REDS)")
-            st.caption("Materiais armazenados e sob guarda da Seção. Ao destinar para Destruição ou Órgão Externo, o item é removido desta lista.")
+            st.markdown(f"##### 🎒 1. Acervo Ativo no Depósito do CREDS ({qtd_reds_disponiveis} REDS)")
+            st.caption("Apenas materiais com custódia física confirmada no CREDS da Seção. Materiais sob custódia pessoal de policiais aparecem somente na aba individual deles.")
 
             if bens_r1:
                 grupos_creds_reds = df_disp_reds.groupby("num_reds", sort=False)
                 idx_global_card = 0
 
                 for num_reds_c, df_grupo_c in grupos_creds_reds:
-                    with st.expander(f"📦 **CARD REDS: {num_reds_c}** ({len(df_grupo_c)} item/ns ativos)", expanded=False):
+                    with st.expander(f"📦 **CARD REDS: {num_reds_c}** ({len(df_grupo_c)} item/ns sob custódia oficial do CREDS)", expanded=False):
                         for _, bem in df_grupo_c.iterrows():
                             idx_global_card += 1
                             e_marrom = (idx_global_card % 2 != 0)
@@ -835,9 +953,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             else:
                                 st.session_state["itens_selecionados_creds_painel"].pop(id_bem, None)
             else:
-                st.info("ℹ️ Nenhum material disponível para movimentação ativa no acervo do CREDS no momento.")
+                st.info("ℹ️ Nenhum material ativo no acervo oficial do CREDS no momento.")
 
-            # FORMULÁRIO DE MOVIMENTAÇÃO INSTITUCIONAL PELO GESTOR CREDS
+            # FORMULÁRIO DE MOVIMENTAÇÃO INSTITUCIONAL DO CREDS
             selecionados_creds_map = st.session_state["itens_selecionados_creds_painel"]
             qtd_creds_sel = len(selecionados_creds_map)
 
@@ -874,7 +992,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                         fase_final = "Com Fiel Depositário / Policial"
                         eh_definitiva_ext = False
 
-                    obs_creds = st.text_input("Observações / Despacho do Gestor:", placeholder="Ex: Despacho de envio para incineração ou perícia...", key="txt_obs_desp_v4").strip()
+                    obs_creds = st.text_input("Observações / Despacho do Gestor:", placeholder="Ex: Despacho de envio para incineração...", key="txt_obs_desp_v4").strip()
                     btn_confirmar = st.form_submit_button("🚀 Confirmar Movimentação do CREDS", type="primary", width="stretch")
 
                     if btn_confirmar:
@@ -1119,7 +1237,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 st.info("ℹ️ Nenhum material nesta categoria no momento.")
 
 # =============================================================================
-# ABA TRILHA DE AUDITORIA
+# ABA 4: TRILHA DE AUDITORIA
 # =============================================================================
 def renderizar_aba_logs(all_logs_banco):
     st.markdown("#### 📜 Trilha de Auditoria Imutável da Custódia (Supabase)")
@@ -1203,7 +1321,7 @@ def renderizar_aba_logs(all_logs_banco):
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
 # =============================================================================
-# ABA GESTORES CREDS
+# ABA 5: GESTORES CREDS
 # =============================================================================
 def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21º BPM", cargo_operador="MILITAR", perfil_operador="GESTOR"):
     usr_logado = st.session_state.get("usuario_dados", {})
