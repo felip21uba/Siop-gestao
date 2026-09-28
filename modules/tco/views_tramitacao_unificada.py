@@ -81,7 +81,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         st.session_state["fila_tramitacao_mapeada"] = []
 
     # =========================================================================
-    # ABA 1: TRAMITAR MATERIAIS OU REDS SEM MATERIAIS
+    # ABA 1: TRAMITAR MATERIAIS
     # =========================================================================
     with tab_pendentes:
         bens_posse = []
@@ -92,19 +92,16 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             status_tr = str(b.get("status_tramite") or "").strip()
             num_r = str(b.get("num_reds", "")).strip()
 
-            # Bens sob posse direta
             if not b.get("destinatario_pendente") and status_tr not in ["Arquivado/Destinado"]:
                 if num_pm_logado in posse_atual or nome_militar_atual.upper() in posse_atual or unidade_militar_atual in posse_atual or "CUSTÓDIA" in posse_atual:
                     bens_posse.append(b)
 
-            # Mapeia ocorrências/REDS
             if b.get("descricao") == "SEM MATERIAL APREENDIDO" or str(b.get("quantidade")) == "0":
                 reds_sem_materiais.add(num_r)
 
         if not bens_posse and not reds_sem_materiais and not st.session_state["fila_tramitacao_mapeada"]:
             st.info("ℹ️ Nenhum material ou REDS pendente disponível para nova tramitação sob sua custódia no momento.")
         else:
-            # Opção de Tramitar REDS sem materiais apreendidos (Apenas autos)
             if reds_sem_materiais:
                 with st.expander("📄 **REDS sem Materiais Apreendidos (Tramitar Apenas Procedimento/Autos)**", expanded=False):
                     st.caption("Selecione um REDS sem apreensão física para registrar o encaminhamento dos autos ao Judiciário/CREDS.")
@@ -365,23 +362,29 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             st.rerun()
 
     # =========================================================================
-    # ABA 2: CONFIRMAR RETORNO / DEVOLUÇÃO DE ÓRGÃO EXTERNO (PELO OPERADOR)
+    # ABA 2: CONFIRMAR RETORNO / DEVOLUÇÃO DE ÓRGÃO EXTERNO (FILTRO ABRANGENTE)
     # =========================================================================
     with tab_externos:
         st.markdown("##### 🏛️ Materiais em Tramitação Externa (PCMG, JECRIM, Perícia, MP)")
         st.caption("Como usuários de órgãos externos não possuem acesso ao SIOP, o Operador/Gestor do CREDS deve dar o aceite de retorno quando o material for devolvido à unidade.")
+
+        TERMOS_EXTERNOS = [
+            "DELEGACIA", "POLÍCIA CIVIL", "PCMG", "JECRIM", "JUDICIÁRIO", 
+            "PERÍCIA", "MINISTÉRIO PÚBLICO", "MPMG", "ÓRGÃO EXTERNO", "FÓRUM", "TRIBUNAL"
+        ]
 
         bens_em_orgao_externo = []
         for b in all_bens:
             dest_p = str(b.get("destinatario_pendente") or "").upper()
             fase_d = str(b.get("fase_destinacao") or "").upper()
             
-            is_ext = any(o in dest_p or o in fase_d for o in ["DELEGACIA", "POLÍCIA CIVIL", "PCMG", "JECRIM", "JUDICIÁRIO", "PERÍCIA", "MINISTÉRIO PÚBLICO"])
+            # Checagem abrangente em maiúsculas
+            is_ext = any(term in dest_p or term in fase_d for term in TERMOS_EXTERNOS)
             if is_ext:
                 bens_em_orgao_externo.append(b)
 
         if not bens_em_orgao_externo:
-            st.info("ℹ️ Nenhum material atualmente sob custódia de órgãos externos.")
+            st.info("ℹ️ Nenhum material atualmente localizado em trâmite de órgãos externos.")
         else:
             df_ext = pd.DataFrame(bens_em_orgao_externo)
             for num_reds_e, df_grupo_e in df_ext.groupby("num_reds", sort=False):
@@ -428,7 +431,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     st.rerun()
 
     # =========================================================================
-    # ABA 3: HISTÓRICO DE ENVIOS (COM EXPANDER '+' RECOLHÍVEL POR REDS)
+    # ABA 3: HISTÓRICO DE ENVIOS
     # =========================================================================
     with tab_historico:
         st.markdown("##### 📜 Histórico de Tramitações Enviadas por Você")
