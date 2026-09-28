@@ -230,6 +230,9 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", peri
         resultado.append(l)
     return resultado
 
+# =============================================================================
+# TRAVA DE DUPLICIDADE DE REDS (MODAL DE ALERTA E VERIFICAÇÃO NO SUPABASE)
+# =============================================================================
 @st.dialog("🚨 REDS Já Cadastrado na Custódia")
 def modal_alerta_reds_duplicado(num_reds, data_cadastrado, cadastrado_por):
     st.warning(f"**Atenção:** Os materiais do **REDS Nº {num_reds}** já foram inseridos anteriormente no Supabase.")
@@ -251,6 +254,7 @@ def modal_alerta_reds_duplicado(num_reds, data_cadastrado, cadastrado_por):
             st.rerun()
 
 def verificar_existencia_reds_banco(num_reds):
+    """Verifica no Supabase se o REDS já possui materiais gravados."""
     if not supabase or not num_reds or num_reds == "N/A":
         return False, None, None
 
@@ -270,6 +274,9 @@ def verificar_existencia_reds_banco(num_reds):
     except Exception:
         return False, None, None
 
+# =============================================================================
+# ABA IMPORTAÇÃO / INGESTÃO DE REDS
+# =============================================================================
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     if "temp_reds_extraido" not in st.session_state:
@@ -541,6 +548,9 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 
 renderizar_aba_ingestao = renderizar_aba_importacao
 
+# =============================================================================
+# ABA PAINEL CREDS
+# =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Custódia")
@@ -734,6 +744,9 @@ def renderizar_aba_logs(all_logs_banco):
     else:
         st.info("Nenhum registro de auditoria encontrado com os parâmetros selecionados.")
 
+# =============================================================================
+# ABA GESTORES CREDS
+# =============================================================================
 def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21º BPM", cargo_operador="MILITAR", perfil_operador="GESTOR"):
     usr_logado = st.session_state.get("usuario_dados", {})
     eh_autorizado = usuario_eh_gestor_creds(usr_logado)
