@@ -541,7 +541,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA PAINEL CREDS (REGRAS RIGOROSAS DE TRAMITAÇÃO / OCULTAÇÃO APÓS ENVIO)
+# ABA PAINEL CREDS (VISIBILIDADE E TRAMITAÇÃO ATIVA DE MATERIAIS)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -616,12 +616,16 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.divider()
 
-    # Métricas gerais
-    bens_processados = []
+    # Separação do Acervo: Materiais em Custódia x Materiais em Tramitação Pendente
+    bens_em_custodia_disponiveis = []
+    bens_em_tramitacao_pendente = []
+
     q_parados = 0
     q_custodia = 0
     q_pericia = 0
     q_destruicao = 0
+
+    agora_now = datetime.datetime.now()
 
     for b in bens_filtrados_painel:
         ponto_cad, tempo_str, alerta_4d, dias_num = obter_status_gargalo_e_tempo(b, e_marrom=False)
@@ -629,7 +633,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         b_copy["_ponto_cadeia"] = ponto_cad
         b_copy["_tempo_str"] = tempo_str
         b_copy["_alerta_4dias"] = alerta_4d
-        bens_processados.append(b_copy)
+
+        dest_pendente_atual = b.get("destinatario_pendente")
+        status_tramite_atual = str(b.get("status_tramite") or "").strip()
 
         if alerta_4d:
             q_parados += 1
@@ -640,9 +646,15 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         if "Destruição" in str(b.get("fase_destinacao", "")) or "DESTRUÍDO" in str(b.get("fase_destinacao", "")):
             q_destruicao += 1
 
+        # SE TIVER PENDÊNCIA DE ACEITE, SAI DO ACERVO DISPONÍVEL E VAI PARA PAINEL DE TRAMITAÇÃO
+        if dest_pendente_atual and status_tramite_atual in ["Pendente de Aceite", "Pendente Aceite"]:
+            bens_em_tramitacao_pendente.append(b_copy)
+        else:
+            bens_em_custodia_disponiveis.append(b_copy)
+
     kp1, kp2, kp3, kp4 = st.columns(4)
     with kp1:
-        st.metric("📦 Em Custódia", q_custodia)
+        st.metric("📦 Em Custódia Fiel", q_custodia)
     with kp2:
         st.metric("🔬 Em Perícia", q_pericia)
     with kp3:
@@ -650,30 +662,98 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     with kp4:
         st.metric("🚨 Parados > 4 Dias", q_parados)
 
-    st.markdown(f"##### 📦 Acervo Disponível para Gestão ({len(bens_processados)} item/ns):")
-    st.caption("Materiais sob sua gestão direta. Itens encaminhados a terceiros ficam bloqueados para seleção e aguardam aceite.")
+    # =========================================================================
+    # SEÇÃO A: MATERIAIS EM TRAMITAÇÃO / AGUARDANDO ACEITE (COM OPÇÃO DE CANCELAR)
+    # =========================================================================
+    if bens_em_tramitacao_pendente:
+        st.markdown("---")
+        st.markdown(f"##### ⏳ Materiais em Tramitação / Aguardando Aceite do Destinatário ({len(bens_em_tramitacao_pendente)} item/ns):")
+        st.caption("Materiais encaminhados pelo CREDS que estão pendentes de confirmação de recebimento. Você pode cancelar o envio em até 72h.")
 
-    if bens_processados:
-        df_creds_proc = pd.DataFrame(bens_processados)
+        df_pend = pd.DataFrame(bens_em_tramitacao_pendente)
+        for num_reds_p, df_grupo_p in df_pend.groupby("num_reds", sort=False):
+            with st.expander(f"⏳ **REDS: {num_reds_p}** ({len(df_grupo_p)} item/ns encaminhado/s)", expanded=True):
+                for idx_p, item_p in df_grupo_p.iterrows():
+                    id_bem_p = str(item_p.get("id_bem") or item_p.get("id"))
+                    desc_p = item_p.get("descricao", "N/I")
+                    qtd_p_val = item_p.get("quantidade", 1)
+                    dest_p = item_p.get("destinatario_pendente") or "N/I"
+                    dt_env_p_str = item_p.get("data_envio_tramite") or item_p.get("data_posse_atual")
+
+                    pode_cancelar_creds = False
+                    tempo_rest_creds_str = ""
+
+                    if dt_env_p_str:
+                        try:
+                            dt_env_obj = pd.to_datetime(dt_env_p_str).to_pydatetime().replace(tzinfo=None)
+                            horas_passadas = (agora_now - dt_env_obj).total_seconds() / 3600.0
+                            if horas_passadas <= 72.0:
+                                pode_cancelar_creds = True
+                                horas_restantes = max(0.0, 72.0 - horas_passadas)
+                                tempo_rest_creds_str = f"⏱️ {int(horas_restantes)}h {int((horas_restantes % 1)*60)}m restantes para cancelamento"
+                            else:
+                                tempo_rest_creds_str = "⏱️ Prazo de 72h expirado"
+                        except Exception:
+                            pode_cancelar_creds = False
+
+                    col_p1, col_p2 = st.columns([7, 3])
+                    with col_p1:
+                        st.markdown(
+                            f"• **Material:** {desc_p} (Qtd: {qtd_p_val})  \n"
+                            f"• **Encaminhado para:** `{dest_p}` (`{item_p.get('unidade_destinatario_pendente', 'N/I')}`)"
+                        )
+                        if tempo_rest_creds_str:
+                            st.caption(tempo_rest_creds_str)
+
+                    with col_p2:
+                        if pode_cancelar_creds:
+                            if st.button("❌ Cancelar Envio", key=f"btn_canc_creds_{id_bem_p}_{idx_p}", type="primary", use_container_width=True):
+                                payload_canc_creds = {
+                                    "destinatario_pendente": None,
+                                    "unidade_destinatario_pendente": None,
+                                    "status_tramite": "Em Custódia",
+                                    "fiel_depositario_atual": nome_militar_atual,
+                                    "unidade_posse_atual": unidade_militar_atual
+                                }
+                                if atualizar_material_supabase(id_bem_p, payload_canc_creds):
+                                    registrar_log_supabase({
+                                        "data_hora": agora_now.isoformat(),
+                                        "num_reds": num_reds_p,
+                                        "bem_id": f"{desc_p} (ID: {id_bem_p})",
+                                        "web_origem": "SIOP_TCO",
+                                        "acao": "CANCELAMENTO_DESTINACAO_CREDS",
+                                        "origem": nome_militar_atual,
+                                        "unidade_origem": unidade_militar_atual,
+                                        "destino": nome_militar_atual,
+                                        "unidade_destino": unidade_militar_atual,
+                                        "detalhe": f"Envio do CREDS para {dest_p} cancelado pelo gestor dentro das 72h."
+                                    })
+                                    st.success("✅ Destinação cancelada! O material retornou para o acervo do CREDS.")
+                                    st.cache_data.clear()
+                                    st.rerun()
+
+    # =========================================================================
+    # SEÇÃO B: ACERVO DISPONÍVEL NO CREDS (AGRUPADO EM EXPANDERS PAR+ NOVO ENVIO)
+    # =========================================================================
+    st.markdown("---")
+    st.markdown(f"##### 🎒 Acervo Disponível para Destinação ({len(bens_em_custodia_disponiveis)} item/ns):")
+    st.caption("Materiais sob guarda direta do CREDS. Abra o REDS (+) e selecione os itens desejados para aplicar a transferência.")
+
+    if bens_em_custodia_disponiveis:
+        df_creds_proc = pd.DataFrame(bens_em_custodia_disponiveis)
         grupos_creds_reds = df_creds_proc.groupby("num_reds", sort=False)
 
         idx_global_card = 0
         for num_reds_c, df_grupo_c in grupos_creds_reds:
             qtd_reds_c = len(df_grupo_c)
             
-            with st.expander(f"➕ **REDS: {num_reds_c}** ({qtd_reds_c} item/ns registrado/s)", expanded=False):
+            with st.expander(f"➕ **REDS: {num_reds_c}** ({qtd_reds_c} item/ns disponívei/s)", expanded=False):
                 for _, bem in df_grupo_c.iterrows():
                     idx_global_card += 1
                     e_marrom = (idx_global_card % 2 != 0)
                     classe_card = "card-brown" if e_marrom else "card-blue"
                     ponto_cad_card, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
                     id_bem = str(bem.get("id_bem") or bem.get("id"))
-
-                    status_tramite_atual = str(bem.get("status_tramite") or "").strip()
-                    dest_pendente_atual = bem.get("destinatario_pendente")
-
-                    # REGRA DE PROTEÇÃO DE POSSE: Se tiver pendência de aceite, fica desabilitado para novo envio no CREDS
-                    esta_pendente_envio = bool(dest_pendente_atual) or status_tramite_atual in ["Pendente de Aceite", "Pendente Aceite"]
 
                     if e_marrom:
                         tempo_html = f"<strong style='color: #991B1B;'>{tempo_str_card} (PARADO > 4 DIAS)</strong>" if alerta_4d_card else f"<strong style='color: #000000;'>{tempo_str_card}</strong>"
@@ -683,43 +763,35 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     col_c1, col_c2 = st.columns([0.6, 9.4])
                     
                     with col_c1:
-                        if esta_pendente_envio:
-                            st.checkbox(
-                                "Bloqueado",
-                                key=f"chk_creds_dis_{id_bem}_{idx_global_card}",
-                                disabled=True,
-                                label_visibility="collapsed"
-                            )
-                        else:
-                            is_sel_creds = st.checkbox(
-                                "Selecionar", 
-                                key=f"chk_creds_card_{id_bem}_{idx_global_card}",
-                                label_visibility="collapsed"
-                            )
+                        is_sel_creds = st.checkbox(
+                            "Selecionar", 
+                            key=f"chk_creds_card_{id_bem}_{idx_global_card}",
+                            label_visibility="collapsed"
+                        )
 
                     with col_c2:
                         html_item = f"""
                         <div class="{classe_card}">
                             📄 REDS: <b>{bem['num_reds']}</b> | Material: <b>{bem['descricao']}</b> (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})<br/>
                             🏷️ Lacre: <b>{bem.get('involucro_lacre', 'N/I')}</b> | Autor: <b>{bem.get('autores', 'N/I')}</b><br/>
-                            📍 Status: {ponto_cad_card}<br/>
+                            📍 Custodiante Atual: <b>{bem.get('fiel_depositario_atual', 'N/I')}</b> ({bem.get('unidade_posse_atual', 'N/I')})<br/>
                             ⏱️ Tempo Imóvel na Etapa: {tempo_html}
                         </div>
                         """
                         st.markdown(html_item, unsafe_allow_html=True)
 
-                    if not esta_pendente_envio and is_sel_creds:
+                    if is_sel_creds:
                         st.session_state["itens_selecionados_creds_painel"][id_bem] = bem.to_dict()
                     else:
                         st.session_state["itens_selecionados_creds_painel"].pop(id_bem, None)
 
-    # PAINEL DE DESTINAÇÃO INDIVIDUALIZADA
+    # FORMULÁRIO DE DESTINAÇÃO INDIVIDUALIZADA
     selecionados_creds_map = st.session_state["itens_selecionados_creds_painel"]
     qtd_creds_sel = len(selecionados_creds_map)
 
     if qtd_creds_sel > 0:
         st.markdown("---")
-        st.markdown(f"### 🎯 Destinar / Transferir {qtd_creds_sel} item(ns) do Acervo")
+        st.markdown(f"### 🎯 Destinar / Transferir {qtd_creds_sel} item(ns) Selecionado(s)")
         
         lista_militares = carregar_militares_supabase() or []
         opcoes_militares = []
