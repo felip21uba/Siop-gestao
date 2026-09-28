@@ -9,7 +9,7 @@ from modules.tco.database import registrar_log_supabase, atualizar_material_supa
 def extrair_unidades_creds_banco(unidade_militar_atual=""):
     """
     Lê a coluna 'unidade' da tabela 'usuarios' no Supabase, divide fragmentos com '/'
-    e monta dinamicamente os CREDS correspondentes.
+    e monta dinamicamente os CREDS e Órgãos Externos correspondentes.
     """
     orgaos_externos = [
         "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
@@ -57,10 +57,11 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     """
-    Renderiza a Aba de Custódia Física e o Histórico dos últimos 10 REDS agrupados por expansor (+).
+    Renderiza a Custódia Física, Tramitação para Policiais/CREDS/Órgãos Externos,
+    Aceite de Retorno pelo Operador e Suporte a REDS sem Materiais Apreendidos.
     """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
-    st.caption("Gerencie os bens sob sua posse, monte a fila de tramitação definindo o destino específico de cada item e consulte seu histórico.")
+    st.caption("Gerencie os bens sob sua posse, realize remessas para policiais/órgãos e confirme a devolução de materiais vindos de órgãos externos.")
 
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm_logado = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
@@ -70,8 +71,9 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         for p in ["GESTOR", "ADMIN", "PROGRAMADOR"]
     )
 
-    tab_pendentes, tab_historico = st.tabs([
-        "📤 Tramitar Materiais",
+    tab_pendentes, tab_externos, tab_historico = st.tabs([
+        "📤 Tramitar Materiais / REDS",
+        "🏛️ Receber / Confirmar Retorno de Órgão Externo",
         "📜 Histórico de Envios & Pendências (Últimos 10 REDS)"
     ])
 
@@ -79,21 +81,51 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         st.session_state["fila_tramitacao_mapeada"] = []
 
     # =========================================================================
-    # ABA 1: TRAMITAR MATERIAIS
+    # ABA 1: TRAMITAR MATERIAIS OU REDS SEM MATERIAIS
     # =========================================================================
     with tab_pendentes:
         bens_posse = []
+        reds_sem_materiais = set()
+
         for b in all_bens:
             posse_atual = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or "").upper()
             status_tr = str(b.get("status_tramite") or "").strip()
-            
+            num_r = str(b.get("num_reds", "")).strip()
+
+            # Bens sob posse direta
             if not b.get("destinatario_pendente") and status_tr not in ["Arquivado/Destinado"]:
                 if num_pm_logado in posse_atual or nome_militar_atual.upper() in posse_atual or unidade_militar_atual in posse_atual or "CUSTÓDIA" in posse_atual:
                     bens_posse.append(b)
 
-        if not bens_posse and not st.session_state["fila_tramitacao_mapeada"]:
-            st.info("ℹ️ Nenhum material disponível para nova tramitação sob sua custódia física no momento.")
+            # Mapeia ocorrências/REDS
+            if b.get("descricao") == "SEM MATERIAL APREENDIDO" or str(b.get("quantidade")) == "0":
+                reds_sem_materiais.add(num_r)
+
+        if not bens_posse and not reds_sem_materiais and not st.session_state["fila_tramitacao_mapeada"]:
+            st.info("ℹ️ Nenhum material ou REDS pendente disponível para nova tramitação sob sua custódia no momento.")
         else:
+            # Opção de Tramitar REDS sem materiais apreendidos (Apenas autos)
+            if reds_sem_materiais:
+                with st.expander("📄 **REDS sem Materiais Apreendidos (Tramitar Apenas Procedimento/Autos)**", expanded=False):
+                    st.caption("Selecione um REDS sem apreensão física para registrar o encaminhamento dos autos ao Judiciário/CREDS.")
+                    reds_avulso_sel = st.selectbox("Selecione o REDS:", list(reds_sem_materiais), key="sb_reds_sem_mat_tramite")
+                    if st.button("➕ Tramitar Autos deste REDS", key="btn_add_reds_sem_mat"):
+                        id_fake = f"AUTOS-{reds_avulso_sel}"
+                        st.session_state["fila_tramitacao_mapeada"].append({
+                            "id_bem": id_fake,
+                            "num_reds": reds_avulso_sel,
+                            "descricao": "AUTOS DO PROCEDIMENTO (SEM MATERIAL FÍSICO)",
+                            "quantidade": 1,
+                            "unidade_medida": "UN",
+                            "destinatario": "PODER JUDICIÁRIO / TRIBUNAL DE JUSTIÇA (JECRIM)",
+                            "unidade_destinatario": "JECRIM / FÓRUM",
+                            "fase_destinacao": "Entregue ao Poder Judiciário / Fórum",
+                            "observacao": "Encaminhamento ordinário do Termo Circunstanciado de Ocorrência",
+                            "eh_creds": True
+                        })
+                        st.success(f"REDS {reds_avulso_sel} adicionado à fila de confirmação!")
+                        st.rerun()
+
             if bens_posse:
                 st.markdown(f"##### 🎒 Seus Bens em Custódia Física ({len(bens_posse)} item/ns)")
 
@@ -237,6 +269,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     "id_bem": id_bem,
                                     "num_reds": dados_item.get("num_reds", "N/I"),
                                     "descricao": dados_item.get("descricao", "N/I"),
+                                    "involucro_lacre": dados_item.get("involucro_lacre", "SEM LACRE"),
                                     "quantidade": dados_item.get("quantidade", 1),
                                     "unidade_medida": dados_item.get("unidade_medida", "UN"),
                                     "destinatario": destinatario_final,
@@ -309,17 +342,19 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
                             if atualizar_material_supabase(f_item["id_bem"], payload_update):
                                 sucessos += 1
+                                desc_item_log = f"{f_item['descricao']} (Lacre: {f_item.get('involucro_lacre', 'N/I')})"
+                                
                                 registrar_log_supabase({
                                     "data_hora": agora_iso,
                                     "num_reds": f_item["num_reds"],
-                                    "bem_id": f_item["id_bem"],
+                                    "bem_id": desc_item_log,
                                     "web_origem": "SIOP_TCO",
                                     "acao": "TRAMITACAO_ENVIADA",
                                     "origem": nome_militar_atual,
                                     "unidade_origem": unidade_militar_atual,
                                     "destino": f_item["destinatario"],
                                     "unidade_destino": f_item["unidade_destinatario"],
-                                    "detalhe": f"Fase: {f_item['fase_destinacao']} | Obs: {f_item['observacao']}"
+                                    "detalhe": f"Material: {f_item['descricao']} | Fase: {f_item['fase_destinacao']} | Obs: {f_item['observacao']}"
                                 })
 
                         if sucessos > 0:
@@ -330,7 +365,70 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             st.rerun()
 
     # =========================================================================
-    # ABA 2: HISTÓRICO DE ENVIOS (COM EXPANDER '+' RECOLHÍVEL POR REDS)
+    # ABA 2: CONFIRMAR RETORNO / DEVOLUÇÃO DE ÓRGÃO EXTERNO (PELO OPERADOR)
+    # =========================================================================
+    with tab_externos:
+        st.markdown("##### 🏛️ Materiais em Tramitação Externa (PCMG, JECRIM, Perícia, MP)")
+        st.caption("Como usuários de órgãos externos não possuem acesso ao SIOP, o Operador/Gestor do CREDS deve dar o aceite de retorno quando o material for devolvido à unidade.")
+
+        bens_em_orgao_externo = []
+        for b in all_bens:
+            dest_p = str(b.get("destinatario_pendente") or "").upper()
+            fase_d = str(b.get("fase_destinacao") or "").upper()
+            
+            is_ext = any(o in dest_p or o in fase_d for o in ["DELEGACIA", "POLÍCIA CIVIL", "PCMG", "JECRIM", "JUDICIÁRIO", "PERÍCIA", "MINISTÉRIO PÚBLICO"])
+            if is_ext:
+                bens_em_orgao_externo.append(b)
+
+        if not bens_em_orgao_externo:
+            st.info("ℹ️ Nenhum material atualmente sob custódia de órgãos externos.")
+        else:
+            df_ext = pd.DataFrame(bens_em_orgao_externo)
+            for num_reds_e, df_grupo_e in df_ext.groupby("num_reds", sort=False):
+                with st.expander(f"🏛️ **REDS: {num_reds_e}** ({len(df_grupo_e)} item/ns em órgão externo)", expanded=True):
+                    for idx_e, item_e in df_grupo_e.iterrows():
+                        id_bem_e = str(item_e.get("id_bem") or item_e.get("id"))
+                        desc_e = item_e.get("descricao", "N/I")
+                        qtd_e_val = item_e.get("quantidade", 1)
+                        dest_e = item_e.get("destinatario_pendente") or item_e.get("fase_destinacao") or "Órgão Externo"
+
+                        col_e1, col_e2 = st.columns([7, 3])
+                        with col_e1:
+                            st.markdown(
+                                f"• **Material:** {desc_e} (Qtd: {qtd_e_val})  \n"
+                                f"• **Órgão/Destino Atual:** `{dest_e}`"
+                            )
+
+                        with col_e2:
+                            if st.button("📥 Aceitar Retorno / Devolução", key=f"btn_aceite_ext_{id_bem_e}_{idx_e}", type="primary", use_container_width=True):
+                                agora_iso_ext = datetime.datetime.now().isoformat()
+                                payload_retorno = {
+                                    "destinatario_pendente": None,
+                                    "unidade_destinatario_pendente": None,
+                                    "status_tramite": "Em Custódia",
+                                    "fiel_depositario_atual": nome_militar_atual,
+                                    "unidade_posse_atual": unidade_militar_atual,
+                                    "fase_destinacao": "Aguardando no CREDS-TC / Custódia"
+                                }
+                                if atualizar_material_supabase(id_bem_e, payload_retorno):
+                                    registrar_log_supabase({
+                                        "data_hora": agora_iso_ext,
+                                        "num_reds": num_reds_e,
+                                        "bem_id": f"{desc_e} (ID: {id_bem_e})",
+                                        "web_origem": "SIOP_TCO",
+                                        "acao": "ACEITE_DEVOLUCAO_ORGAO_EXTERNO",
+                                        "origem": dest_e,
+                                        "unidade_origem": "Órgão Externo",
+                                        "destino": nome_militar_atual,
+                                        "unidade_destino": unidade_militar_atual,
+                                        "detalhe": f"Aceite de retorno do material {desc_e} confirmado pelo operador {nome_militar_atual}."
+                                    })
+                                    st.success("✅ Retorno confirmado! O material foi reincorporado à custódia do CREDS.")
+                                    st.cache_data.clear()
+                                    st.rerun()
+
+    # =========================================================================
+    # ABA 3: HISTÓRICO DE ENVIOS (COM EXPANDER '+' RECOLHÍVEL POR REDS)
     # =========================================================================
     with tab_historico:
         st.markdown("##### 📜 Histórico de Tramitações Enviadas por Você")
@@ -379,13 +477,11 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if "data_envio_tramite" in df_hist.columns:
                 df_hist.sort_values(by="data_envio_tramite", ascending=False, inplace=True)
             
-            # Limita aos 10 últimos REDS únicos
             reds_unicos_10 = list(df_hist["num_reds"].unique())[:10]
             df_10_reds = df_hist[df_hist["num_reds"].isin(reds_unicos_10)]
 
             agora_now = datetime.datetime.now()
 
-            # RENDERIZAÇÃO EM FORMATO DE EXPANDER '+' POR REDS NO HISTÓRICO
             for num_reds_h, df_grupo_h in df_10_reds.groupby("num_reds", sort=False):
                 qtd_h = len(df_grupo_h)
                 
@@ -440,7 +536,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                         registrar_log_supabase({
                                             "data_hora": agora_now.isoformat(),
                                             "num_reds": num_reds_h,
-                                            "bem_id": id_bem_h,
+                                            "bem_id": f"{desc_h} (ID: {id_bem_h})",
                                             "web_origem": "SIOP_TCO",
                                             "acao": "CANCELAMENTO_TRAMITACAO_REMETER",
                                             "origem": nome_militar_atual,
