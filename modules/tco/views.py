@@ -541,7 +541,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA PAINEL CREDS (VISIBILIDADE E TRAMITAÇÃO ATIVA DE MATERIAIS)
+# ABA PAINEL CREDS (MÉTRICAS E CARDS CALCULADOS POR QTDE DE REDS ÚNICOS)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -616,14 +616,14 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.divider()
 
-    # Separação do Acervo: Materiais em Custódia x Materiais em Tramitação Pendente
     bens_em_custodia_disponiveis = []
     bens_em_tramitacao_pendente = []
 
-    q_parados = 0
-    q_custodia = 0
-    q_pericia = 0
-    q_destruicao = 0
+    # CONJUNTOS PARA CONTAGEM DE REDS ÚNICOS
+    reds_parados = set()
+    reds_custodia = set()
+    reds_pericia = set()
+    reds_destruicao = set()
 
     agora_now = datetime.datetime.now()
 
@@ -634,44 +634,48 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         b_copy["_tempo_str"] = tempo_str
         b_copy["_alerta_4dias"] = alerta_4d
 
+        num_r = str(b.get("num_reds", "")).strip()
         dest_pendente_atual = b.get("destinatario_pendente")
         status_tramite_atual = str(b.get("status_tramite") or "").strip()
 
+        # CONTAGEM DE REDS ÚNICOS NAS MÉTRICAS
         if alerta_4d:
-            q_parados += 1
+            reds_parados.add(num_r)
         if b.get("fase_destinacao") == "Com Fiel Depositário / Policial":
-            q_custodia += 1
+            reds_custodia.add(num_r)
         if "Perícia" in str(b.get("fase_destinacao", "")):
-            q_pericia += 1
+            reds_pericia.add(num_r)
         if "Destruição" in str(b.get("fase_destinacao", "")) or "DESTRUÍDO" in str(b.get("fase_destinacao", "")):
-            q_destruicao += 1
+            reds_destruicao.add(num_r)
 
-        # SE TIVER PENDÊNCIA DE ACEITE, SAI DO ACERVO DISPONÍVEL E VAI PARA PAINEL DE TRAMITAÇÃO
         if dest_pendente_atual and status_tramite_atual in ["Pendente de Aceite", "Pendente Aceite"]:
             bens_em_tramitacao_pendente.append(b_copy)
         else:
             bens_em_custodia_disponiveis.append(b_copy)
 
+    # MÉTRICAS CALCULADAS POR QUANTIDADE DE REDS ÚNICOS
     kp1, kp2, kp3, kp4 = st.columns(4)
     with kp1:
-        st.metric("📦 Em Custódia Fiel", q_custodia)
+        st.metric("📦 REDS em Custódia", len(reds_custodia))
     with kp2:
-        st.metric("🔬 Em Perícia", q_pericia)
+        st.metric("🔬 REDS em Perícia", len(reds_pericia))
     with kp3:
-        st.metric("🔥 Destruição", q_destruicao)
+        st.metric("🔥 REDS para Destruição", len(reds_destruicao))
     with kp4:
-        st.metric("🚨 Parados > 4 Dias", q_parados)
+        st.metric("🚨 REDS Parados > 4 Dias", len(reds_parados))
 
     # =========================================================================
-    # SEÇÃO A: MATERIAIS EM TRAMITAÇÃO / AGUARDANDO ACEITE (COM OPÇÃO DE CANCELAR)
+    # SEÇÃO A: MATERIAIS EM TRAMITAÇÃO / AGUARDANDO ACEITE
     # =========================================================================
     if bens_em_tramitacao_pendente:
         st.markdown("---")
-        st.markdown(f"##### ⏳ Materiais em Tramitação / Aguardando Aceite do Destinatário ({len(bens_em_tramitacao_pendente)} item/ns):")
-        st.caption("Materiais encaminhados pelo CREDS que estão pendentes de confirmação de recebimento. Você pode cancelar o envio em até 72h.")
+        df_pend_reds = pd.DataFrame(bens_em_tramitacao_pendente)
+        qtd_reds_pend = df_pend_reds["num_reds"].nunique() if not df_pend_reds.empty else 0
 
-        df_pend = pd.DataFrame(bens_em_tramitacao_pendente)
-        for num_reds_p, df_grupo_p in df_pend.groupby("num_reds", sort=False):
+        st.markdown(f"##### ⏳ REDS em Tramitação / Aguardando Aceite do Destinatário ({qtd_reds_pend} REDS):")
+        st.caption("Ocorrências e materiais encaminhados pelo CREDS que estão pendentes de confirmação de recebimento.")
+
+        for num_reds_p, df_grupo_p in df_pend_reds.groupby("num_reds", sort=False):
             with st.expander(f"⏳ **REDS: {num_reds_p}** ({len(df_grupo_p)} item/ns encaminhado/s)", expanded=True):
                 for idx_p, item_p in df_grupo_p.iterrows():
                     id_bem_p = str(item_p.get("id_bem") or item_p.get("id"))
@@ -733,21 +737,23 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                     st.rerun()
 
     # =========================================================================
-    # SEÇÃO B: ACERVO DISPONÍVEL NO CREDS (AGRUPADO EM EXPANDERS PAR+ NOVO ENVIO)
+    # SEÇÃO B: ACERVO DISPONÍVEL NO CREDS (CALCULADO POR QTDE DE REDS ÚNICOS)
     # =========================================================================
     st.markdown("---")
-    st.markdown(f"##### 🎒 Acervo Disponível para Destinação ({len(bens_em_custodia_disponiveis)} item/ns):")
-    st.caption("Materiais sob guarda direta do CREDS. Abra o REDS (+) e selecione os itens desejados para aplicar a transferência.")
+    df_disp_reds = pd.DataFrame(bens_em_custodia_disponiveis) if bens_em_custodia_disponiveis else pd.DataFrame()
+    qtd_reds_disponiveis = df_disp_reds["num_reds"].nunique() if not df_disp_reds.empty else 0
+
+    st.markdown(f"##### 🎒 Acervo Disponível no CREDS ({qtd_reds_disponiveis} REDS únicos):")
+    st.caption("Abra o REDS desejado (+) e selecione os itens para aplicação de destinações ou transferências.")
 
     if bens_em_custodia_disponiveis:
-        df_creds_proc = pd.DataFrame(bens_em_custodia_disponiveis)
-        grupos_creds_reds = df_creds_proc.groupby("num_reds", sort=False)
+        grupos_creds_reds = df_disp_reds.groupby("num_reds", sort=False)
 
         idx_global_card = 0
         for num_reds_c, df_grupo_c in grupos_creds_reds:
             qtd_reds_c = len(df_grupo_c)
             
-            with st.expander(f"➕ **REDS: {num_reds_c}** ({qtd_reds_c} item/ns disponívei/s)", expanded=False):
+            with st.expander(f"➕ **REDS: {num_reds_c}** ({qtd_reds_c} item/ns apreendido/s)", expanded=False):
                 for _, bem in df_grupo_c.iterrows():
                     idx_global_card += 1
                     e_marrom = (idx_global_card % 2 != 0)
@@ -921,7 +927,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                         st.rerun()
 
 # =============================================================================
-# ABA TRILHA DE AUDITORIA (COM EXPORTAÇÃO EXCEL / CSV)
+# ABA TRILHA DE AUDITORIA
 # =============================================================================
 def renderizar_aba_logs(all_logs_banco):
     st.markdown("#### 📜 Trilha de Auditoria Imutável da Custódia (Supabase)")
