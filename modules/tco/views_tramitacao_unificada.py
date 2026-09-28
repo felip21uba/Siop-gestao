@@ -57,11 +57,11 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     """
-    Renderiza a Aba de Custódia Física com alternância estrita entre Policial Militar x CREDS/Órgão
-    sem colunas incompatíveis com o schema do Supabase.
+    Renderiza a Aba de Custódia Física com painel prévio de fila de tramitação por item,
+    suporte a múltiplos destinos e controle de pendência de aceite / cancelamento.
     """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
-    st.caption("Gerencie os bens em sua posse, escolha o destino de cada item e consulte seu histórico.")
+    st.caption("Gerencie os bens sob sua posse, monte a fila de tramitação definindo o destino específico de cada item e confirme o envio.")
 
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm_logado = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
@@ -76,104 +76,110 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         "📜 Histórico de Envios & Pendências (Últimos 10 REDS)"
     ])
 
+    # Inicialização da Fila Temporária de Tramitação na Sessão
+    if "fila_tramitacao_mapeada" not in st.session_state:
+        st.session_state["fila_tramitacao_mapeada"] = []
+
     # =========================================================================
-    # ABA 1: TRAMITAR MATERIAIS
+    # ABA 1: TRAMITAR MATERIAIS (COM FILA DE DESTINOS)
     # =========================================================================
     with tab_pendentes:
         bens_posse = []
         for b in all_bens:
             posse_atual = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or "").upper()
-            if num_pm_logado in posse_atual or nome_militar_atual.upper() in posse_atual or unidade_militar_atual in posse_atual or "CUSTÓDIA" in posse_atual:
-                bens_posse.append(b)
-
-        if not bens_posse:
-            bens_posse = [b for b in all_bens if b.get("status_tramite") != "Arquivado/Destinado"]
-
-        if not bens_posse:
-            st.info("ℹ️ Nenhum material sob sua custódia física no momento.")
-        else:
-            st.markdown(f"##### 🎒 Seus Bens em Custódia Física ({len(bens_posse)} item/ns)")
-
-            df_bens = pd.DataFrame(bens_posse)
-            grupos_reds = df_bens.groupby("num_reds")
-
-            if "itens_selecionados_tramite" not in st.session_state:
-                st.session_state["itens_selecionados_tramite"] = {}
-
-            lista_militares = carregar_militares_supabase() or []
-            opcoes_militares = []
+            status_tr = str(b.get("status_tramite") or "").strip()
             
-            for m in lista_militares:
-                posto = str(m.get('posto_grad') or m.get('cargo_funcao') or 'PM').strip().upper()
-                nome_comp = str(m.get('nome_completo') or m.get('nome_guerra') or 'MILITAR').strip().upper()
-                nome_guerra = str(m.get('nome_guerra') or '').strip().upper()
-                num_pol = str(m.get('num_policia') or m.get('usuario_login') or '').strip().upper()
+            # Não exibe itens que já estão pendentes de aceite ou já tramitados
+            if status_tr not in ["Pendente de Aceite", "Em Tramitação", "Arquivado/Destinado"]:
+                if num_pm_logado in posse_atual or nome_militar_atual.upper() in posse_atual or unidade_militar_atual in posse_atual or "CUSTÓDIA" in posse_atual:
+                    bens_posse.append(b)
+
+        if not bens_posse and not st.session_state["fila_tramitacao_mapeada"]:
+            st.info("ℹ️ Nenhum material disponível para nova tramitação sob sua custódia física no momento.")
+        else:
+            if bens_posse:
+                st.markdown(f"##### 🎒 Seus Bens em Custódia Física ({len(bens_posse)} item/ns)")
+
+                df_bens = pd.DataFrame(bens_posse)
+                grupos_reds = df_bens.groupby("num_reds")
+
+                if "itens_selecionados_tramite" not in st.session_state:
+                    st.session_state["itens_selecionados_tramite"] = {}
+
+                lista_militares = carregar_militares_supabase() or []
+                opcoes_militares = []
                 
-                if nome_guerra and nome_guerra not in nome_comp:
-                    label_mil = f"{posto} {nome_comp} ({nome_guerra} - {num_pol})"
-                else:
-                    label_mil = f"{posto} {nome_comp} ({num_pol})"
+                for m in lista_militares:
+                    posto = str(m.get('posto_grad') or m.get('cargo_funcao') or 'PM').strip().upper()
+                    nome_comp = str(m.get('nome_completo') or m.get('nome_guerra') or 'MILITAR').strip().upper()
+                    nome_guerra = str(m.get('nome_guerra') or '').strip().upper()
+                    num_pol = str(m.get('num_policia') or m.get('usuario_login') or '').strip().upper()
                     
-                opcoes_militares.append(label_mil)
-
-            if not opcoes_militares:
-                opcoes_militares = [f"{nome_militar_atual} ({num_pm_logado})"]
-
-            lista_unidades_creds = extrair_unidades_creds_banco(unidade_militar_atual)
-
-            for num_reds, df_grupo in grupos_reds:
-                qtd_itens_reds = len(df_grupo)
-                
-                with st.expander(f"➕ **REDS: {num_reds}** ({qtd_itens_reds} item/ns apreendido/s)", expanded=False):
-                    for idx, row in df_grupo.iterrows():
-                        id_bem = str(row.get("id_bem") or row.get("id"))
-                        desc = str(row.get("descricao", "SEM DESCRIÇÃO")).strip()
-                        qtd = row.get("quantidade", 1)
-                        unid = row.get("unidade_medida", "UN")
-                        lacre = str(row.get("involucro_lacre", "SEM LACRE")).strip()
-                        autor = str(row.get("autores", "N/I")).strip()
-
-                        c_chk, c_info = st.columns([0.6, 9.4])
+                    if nome_guerra and nome_guerra not in nome_comp:
+                        label_mil = f"{posto} {nome_comp} ({nome_guerra} - {num_pol})"
+                    else:
+                        label_mil = f"{posto} {nome_comp} ({num_pol})"
                         
-                        with c_chk:
-                            is_selected = st.checkbox(
-                                "Tramitar", 
-                                key=f"chk_tramite_{id_bem}",
-                                label_visibility="collapsed"
-                            )
+                    opcoes_militares.append(label_mil)
 
-                        with c_info:
-                            st.markdown(
-                                f"<div style='font-size: 0.95rem; font-weight: 500; color: #E2E8F0; line-height: 1.5;'>"
-                                f"<b>Item:</b> {desc} | <b>Qtd:</b> {qtd} {unid} | <b>Lacre:</b> {lacre} | <b>Autor:</b> {autor}"
-                                f"</div>",
-                                unsafe_allow_html=True
-                            )
+                if not opcoes_militares:
+                    opcoes_militares = [f"{nome_militar_atual} ({num_pm_logado})"]
 
-                        if is_selected:
-                            st.session_state["itens_selecionados_tramite"][id_bem] = row.to_dict()
-                        else:
-                            st.session_state["itens_selecionados_tramite"].pop(id_bem, None)
+                lista_unidades_creds = extrair_unidades_creds_banco(unidade_militar_atual)
 
-            st.markdown("---")
+                # Renderiza expanders por REDS (+)
+                for num_reds, df_grupo in grupos_reds:
+                    qtd_itens_reds = len(df_grupo)
+                    
+                    with st.expander(f"➕ **REDS: {num_reds}** ({qtd_itens_reds} item/ns apreendido/s)", expanded=False):
+                        for idx, row in df_grupo.iterrows():
+                            id_bem = str(row.get("id_bem") or row.get("id"))
+                            desc = str(row.get("descricao", "SEM DESCRIÇÃO")).strip()
+                            qtd = row.get("quantidade", 1)
+                            unid = row.get("unidade_medida", "UN")
+                            lacre = str(row.get("involucro_lacre", "SEM LACRE")).strip()
+                            autor = str(row.get("autores", "N/I")).strip()
 
-            # FORMULÁRIO DE ENVIO
-            selecionados_map = st.session_state["itens_selecionados_tramite"]
-            qtd_sel = len(selecionados_map)
+                            c_chk, c_info = st.columns([0.6, 9.4])
+                            
+                            with c_chk:
+                                is_selected = st.checkbox(
+                                    "Selecionar", 
+                                    key=f"chk_tramite_{id_bem}",
+                                    label_visibility="collapsed"
+                                )
 
-            if qtd_sel > 0:
-                st.markdown(f"### 🔄 Tramitar {qtd_sel} item(ns) Selecionado(s)")
-                
-                tipo_destinatario = st.radio(
-                    "Tipo de Destinatário:",
-                    ["Policial Militar / Fiel Depositário", "Seção de Custódia (CREDS-TC / Órgão)"],
-                    horizontal=True,
-                    key="radio_tipo_destinatario_dynamic"
-                )
+                            with c_info:
+                                st.markdown(
+                                    f"<div style='font-size: 0.95rem; font-weight: 500; color: #E2E8F0; line-height: 1.5;'>"
+                                    f"<b>Item:</b> {desc} | <b>Qtd:</b> {qtd} {unid} | <b>Lacre:</b> {lacre} | <b>Autor:</b> {autor}"
+                                    f"</div>",
+                                    unsafe_allow_html=True
+                                )
 
-                eh_opcao_creds = (tipo_destinatario == "Seção de Custódia (CREDS-TC / Órgão)")
+                            if is_selected:
+                                st.session_state["itens_selecionados_tramite"][id_bem] = row.to_dict()
+                            else:
+                                st.session_state["itens_selecionados_tramite"].pop(id_bem, None)
 
-                with st.form("form_tramitacao_unificada_tco", clear_on_submit=False):
+                st.markdown("---")
+
+                # FORMULÁRIO DE MAPEAMENTO DO DESTINO PARA OS ITENS SELECIONADOS
+                selecionados_map = st.session_state["itens_selecionados_tramite"]
+                qtd_sel = len(selecionados_map)
+
+                if qtd_sel > 0:
+                    st.markdown(f"### 🎯 Definir Destino para {qtd_sel} item(ns) Selecionado(s)")
+                    
+                    tipo_destinatario = st.radio(
+                        "Tipo de Destinatário:",
+                        ["Policial Militar / Fiel Depositário", "Seção de Custódia (CREDS-TC / Órgão)"],
+                        horizontal=True,
+                        key="radio_tipo_destinatario_dynamic"
+                    )
+
+                    eh_opcao_creds = (tipo_destinatario == "Seção de Custódia (CREDS-TC / Órgão)")
+
                     col_dest, col_fase = st.columns([1.2, 1])
 
                     with col_dest:
@@ -227,50 +233,113 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                     ).strip()
 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    btn_confirmar_envio = st.form_submit_button("🚀 Confirmar Envio / Tramitação", type="primary", use_container_width=True)
-
-                    if btn_confirmar_envio:
+                    if st.button("➕ Adicionar à Fila de Tramitação", type="secondary", use_container_width=True):
                         if not destinatario_final:
-                            st.error("⚠️ Por favor, selecione um destinatário antes de confirmar o envio.")
+                            st.error("⚠️ Selecione o destinatário antes de adicionar à fila.")
                         else:
-                            agora_iso = datetime.datetime.now().isoformat()
-                            sucessos = 0
-
+                            # Adiciona cada item à fila temporária de envio
                             for id_bem, dados_item in selecionados_map.items():
-                                # PAYLOAD APENAS COM AS COLUNAS EXISTENTES NO SCHEMA DO SUPABASE
-                                payload_update = {
-                                    "destinatario_pendente": destinatario_final,
-                                    "unidade_destinatario_pendente": unidade_dest_final,
-                                    "data_envio_tramite": agora_iso,
+                                item_fila = {
+                                    "id_bem": id_bem,
+                                    "num_reds": dados_item.get("num_reds", "N/I"),
+                                    "descricao": dados_item.get("descricao", "N/I"),
+                                    "quantidade": dados_item.get("quantidade", 1),
+                                    "unidade_medida": dados_item.get("unidade_medida", "UN"),
+                                    "destinatario": destinatario_final,
+                                    "unidade_destinatario": unidade_dest_final,
                                     "fase_destinacao": fase_destinacao_sel,
-                                    "status_tramite": "Pendente de Aceite" if not eh_opcao_creds else "Em Tramitação"
+                                    "observacao": obs_tramite or "Sem obs",
+                                    "eh_creds": eh_opcao_creds
                                 }
+                                # Evita duplicidade na fila temporária
+                                st.session_state["fila_tramitacao_mapeada"] = [
+                                    f for f in st.session_state["fila_tramitacao_mapeada"] if f["id_bem"] != id_bem
+                                ]
+                                st.session_state["fila_tramitacao_mapeada"].append(item_fila)
 
-                                if atualizar_material_supabase(id_bem, payload_update):
-                                    sucessos += 1
-                                    registrar_log_supabase({
-                                        "data_hora": agora_iso,
-                                        "num_reds": dados_item.get("num_reds", "N/I"),
-                                        "bem_id": id_bem,
-                                        "web_origem": "SIOP_TCO",
-                                        "acao": "TRAMITACAO_ENVIADA",
-                                        "origem": nome_militar_atual,
-                                        "unidade_origem": unidade_militar_atual,
-                                        "destino": destinatario_final,
-                                        "unidade_destino": unidade_dest_final,
-                                        "detalhe": f"Fase: {fase_destinacao_sel} | Detalhes/Obs: {obs_tramite or 'Sem obs'}"
-                                    })
+                            st.session_state["itens_selecionados_tramite"] = {}
+                            st.toast("✅ Itens e destinos adicionados ao painel de confirmação!", icon="📋")
+                            st.rerun()
 
-                            if sucessos > 0:
-                                st.success(f"🎉 {sucessos} material(is) tramitado(s) com sucesso para **{destinatario_final}**!")
-                                st.session_state["itens_selecionados_tramite"] = {}
-                                st.cache_data.clear()
+            # =================================================================
+            # 📦 RETÂNGULO DESTACADO: FILA DE TRAMITAÇÃO MAPEADA (PRE-CONFIRMAÇÃO)
+            # =================================================================
+            fila_atual = st.session_state["fila_tramitacao_mapeada"]
+            if fila_atual:
+                st.markdown("---")
+                st.markdown(f"#### 📋 Retângulo de Confirmação: Fila de Envio ({len(fila_atual)} item/ns)")
+                st.caption("Confira os materiais selecionados e seus respetivos destinos antes de efetivar a transferência.")
+
+                with st.container(border=True):
+                    for idx_f, item_f in enumerate(fila_atual):
+                        col_f_desc, col_f_dest, col_f_del = st.columns([5, 4, 1])
+                        
+                        with col_f_desc:
+                            st.markdown(
+                                f"📦 **Material:** {item_f['descricao']} (Qtd: {item_f['quantidade']} {item_f['unidade_medida']})  \n"
+                                f"📄 **REDS:** `{item_f['num_reds']}`"
+                            )
+
+                        with col_f_dest:
+                            st.markdown(
+                                f"🎯 **Destino:** `{item_f['destinatario']}`  \n"
+                                f"🏷️ **Fase:** `{item_f['fase_destinacao']}`"
+                            )
+
+                        with col_f_del:
+                            if st.button("🗑️", key=f"btn_del_fila_{item_f['id_bem']}_{idx_f}", help="Remover este item da fila"):
+                                st.session_state["fila_tramitacao_mapeada"].pop(idx_f)
                                 st.rerun()
-                            else:
-                                st.error("❌ Ocorreu um erro ao atualizar os registros no Supabase.")
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    col_cf1, col_cf2 = st.columns(2)
+                    
+                    with col_cf1:
+                        btn_finalizar_tudo = st.button("🚀 Confirmar Envio / Tramitação da Fila", type="primary", use_container_width=True)
+                    with col_cf2:
+                        btn_limpar_fila = st.button("❌ Cancelar / Limpar Fila", use_container_width=True)
+
+                    if btn_limpar_fila:
+                        st.session_state["fila_tramitacao_mapeada"] = []
+                        st.rerun()
+
+                    if btn_finalizar_tudo:
+                        agora_iso = datetime.datetime.now().isoformat()
+                        sucessos = 0
+
+                        for f_item in fila_atual:
+                            payload_update = {
+                                "destinatario_pendente": f_item["destinatario"],
+                                "unidade_destinatario_pendente": f_item["unidade_destinatario"],
+                                "data_envio_tramite": agora_iso,
+                                "fase_destinacao": f_item["fase_destinacao"],
+                                "status_tramite": "Pendente de Aceite" if not f_item["eh_creds"] else "Em Tramitação"
+                            }
+
+                            if atualizar_material_supabase(f_item["id_bem"], payload_update):
+                                sucessos += 1
+                                registrar_log_supabase({
+                                    "data_hora": agora_iso,
+                                    "num_reds": f_item["num_reds"],
+                                    "bem_id": f_item["id_bem"],
+                                    "web_origem": "SIOP_TCO",
+                                    "acao": "TRAMITACAO_ENVIADA",
+                                    "origem": nome_militar_atual,
+                                    "unidade_origem": unidade_militar_atual,
+                                    "destino": f_item["destinatario"],
+                                    "unidade_destino": f_item["unidade_destinatario"],
+                                    "detalhe": f"Fase: {f_item['fase_destinacao']} | Obs: {f_item['observacao']}"
+                                })
+
+                        if sucessos > 0:
+                            st.success(f"🎉 {sucessos} material(is) tramitado(s) com sucesso! Ficando pendentes de aceite.")
+                            st.session_state["fila_tramitacao_mapeada"] = []
+                            st.session_state["itens_selecionados_tramite"] = {}
+                            st.cache_data.clear()
+                            st.rerun()
 
     # =========================================================================
-    # ABA 2: HISTÓRICO DE ENVIOS & CANCELAMENTO (REGRA DAS 72H)
+    # ABA 2: HISTÓRICO DE ENVIOS & CANCELAMENTO (REGRA DAS 72H / APÓS ACEITE)
     # =========================================================================
     with tab_historico:
         st.markdown("##### 📜 Histórico de Tramitações Enviadas por Você")
@@ -339,7 +408,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         pode_cancelar = False
                         tempo_restante_str = ""
 
-                        if dt_env_str and status_h == "Pendente de Aceite":
+                        # REGRA DE SEGURANÇA: Só aceita cancelamento se ainda estiver PENDENTE DE ACEITE e dentro das 72h
+                        if status_h == "Pendente de Aceite" and dt_env_str:
                             try:
                                 dt_env_obj = pd.to_datetime(dt_env_str).to_pydatetime().replace(tzinfo=None)
                                 horas_passadas = (agora_now - dt_env_obj).total_seconds() / 3600.0
@@ -351,6 +421,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     tempo_restante_str = "Prazo de 72h expirado"
                             except Exception:
                                 pode_cancelar = False
+                        elif status_h in ["Em Custódia", "Aceito", "Em Tramitação"]:
+                            tempo_restante_str = "✅ Recebido pelo Destinatário (Imutável)"
 
                         col_info_h, col_act_h = st.columns([7, 3])
                         
