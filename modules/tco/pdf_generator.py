@@ -1,7 +1,7 @@
 import io
 import datetime
 import hashlib
-import json
+from zoneinfo import ZoneInfo
 import streamlit as st
 import pandas as pd
 from reportlab.lib.pagesizes import letter
@@ -10,9 +10,12 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.graphics.barcode import qr
 from reportlab.graphics.shapes import Drawing
-from core.database import supabase
-from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
-from modules.tco.storage import upload_oficio_pdf_supabase, deletar_arquivo_storage_supabase
+
+FUSO_BR = ZoneInfo("America/Sao_Paulo")
+
+def obter_agora_br():
+    """Retorna data/hora no fuso horário oficial de Brasília (UTC-3)."""
+    return datetime.datetime.now(FUSO_BR)
 
 def gerar_hash_oficio(conteudo_str):
     """Gera assinatura SHA-256 para o documento oficial."""
@@ -32,12 +35,14 @@ def criar_draw_qrcode(texto_qr):
         return None
 
 def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_destino, lista_materiais, pa_oficio, corpo_texto, emissor_nome, emissor_cargo, emissor_unidade):
-    """Gera o arquivo PDF do Ofício de Encaminhamento com tabela unificada e QR Code."""
+    """Gera o arquivo PDF do Ofício de Encaminhamento ajustado ao fuso de Brasília."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=letter,
         rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36
     )
+
+    agora_br = obter_agora_br()
 
     styles = getSampleStyleSheet()
     style_header = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1, textColor=colors.HexColor('#1E293B'))
@@ -56,10 +61,9 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     elements.append(Spacer(1, 8))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=12))
 
-    # Metadados do Ofício (Ajustado para REFERÊNCIA e data em DD/MM/AAAA)
     meta_text = f"<b>OFÍCIO Nº:</b> {num_oficio}<br/>" \
                 f"<b>REFERÊNCIA:</b> {pa_oficio if pa_oficio else 'N/A'}<br/>" \
-                f"<b>DATA DE EMISSÃO:</b> {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                f"<b>DATA DE EMISSÃO:</b> {agora_br.strftime('%d/%m/%Y %H:%M')}"
     elements.append(Paragraph(meta_text, style_meta))
     elements.append(Spacer(1, 12))
 
@@ -125,7 +129,7 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     rodape_p1 = Paragraph(
         f"<b>CHANCELA ELETRÔNICA DE AUTENTICIDADE (ART. 158-A CPP):</b><br/>"
         f"<font size=7 color='#64748B'>SHA-256: {hash_doc}</font><br/>"
-        f"<font size=7 color='#64748B'>Documento gerado pelo Sistema SIOP em {datetime.datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}.</font>",
+        f"<font size=7 color='#64748B'>Documento gerado pelo Sistema SIOP em {agora_br.strftime('%d/%m/%Y às %H:%M:%S')}.</font>",
         ParagraphStyle('RodapeStyle', parent=styles['Normal'], alignment=0)
     )
 

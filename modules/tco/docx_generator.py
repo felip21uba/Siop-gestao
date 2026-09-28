@@ -1,13 +1,21 @@
 import io
 import datetime
+from zoneinfo import ZoneInfo
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 
+FUSO_BR = ZoneInfo("America/Sao_Paulo")
+
+def obter_agora_br():
+    """Retorna data/hora no fuso horário oficial de Brasília (UTC-3)."""
+    return datetime.datetime.now(FUSO_BR)
+
 def gerar_docx_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_destino, lista_materiais, pa_oficio, corpo_texto, emissor_nome, emissor_cargo, emissor_unidade):
-    """Gera a versão editável em DOCX (Microsoft Word) do Ofício de Encaminhamento."""
+    """Gera a versão editável em DOCX (Microsoft Word) do Ofício de Encaminhamento no fuso de Brasília."""
     doc = Document()
+    agora_br = obter_agora_br()
     
     # Configuração de Margens (2 cm)
     sections = doc.sections
@@ -35,11 +43,11 @@ def gerar_docx_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_d
 
     doc.add_paragraph("─" * 55).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # Metadados do Ofício (Ajustado para REFERÊNCIA e data em DD/MM/AAAA)
+    # Metadados do Ofício
     p_meta = doc.add_paragraph()
     p_meta.add_run(f"OFÍCIO Nº: {num_oficio}\n").bold = True
     p_meta.add_run(f"REFERÊNCIA: {pa_oficio if pa_oficio else 'N/A'}\n").bold = True
-    p_meta.add_run(f"DATA DE EMISSÃO: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}\n").bold = True
+    p_meta.add_run(f"DATA DE EMISSÃO: {agora_br.strftime('%d/%m/%Y %H:%M')}\n").bold = True
 
     # Destinatário
     p_dest = doc.add_paragraph()
