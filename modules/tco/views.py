@@ -19,9 +19,6 @@ from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergen
 from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registrar_aceite_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
-# =============================================================================
-# INJEÇÃO DO CSS PERSONALIZADO PARA CARDS
-# =============================================================================
 def injetar_css_cards_alternados():
     st.markdown("""
     <style>
@@ -137,6 +134,7 @@ def gerar_excel_panoramico_tco(lista_bens_filtrados):
             "Nº Lacre / Invólucro": str(b.get("involucro_lacre", "N/I")),
             "Autor(es) Vinculado(s)": str(b.get("autores", "N/I")),
             "Custodiante Atual": str(b.get("fiel_depositario_atual", "N/I")),
+            "Destinatário Pendente": str(b.get("destinatario_pendente", "NENHUM (CUSTÓDIA CONFIRMADA)")),
             "Unidade / Posse Atual": str(b.get("unidade_posse_atual", "N/A")),
             "Fase / Destinação Final": str(b.get("fase_destinacao", "N/I")),
             "Status do Trâmite": str(b.get("status_tramite", "N/I")),
@@ -177,6 +175,7 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
     status_tr = bem.get("status_tramite", "Em Custódia")
     fase_dest = bem.get("fase_destinacao", "Com Fiel Depositário / Policial")
     dt_ref = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao")
+    dest_pend = bem.get("destinatario_pendente")
     
     texto_tempo, e_alerta_4dias, dias_num = calcular_tempo_decorrido_detalhado(dt_ref)
     
@@ -185,8 +184,8 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
             return f"<strong style='color: #000000;'>{txt}</strong>"
         return f"<span style='color: #4ADE80; font-weight: bold;'>{txt}</span>"
 
-    if status_tr == "Pendente Aceite":
-        ponto_cadeia = f"⏳ <b>Aguardando Aceite:</b> {tag_destaque(bem.get('destinatario_pendente', 'N/I'))} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
+    if dest_pend and status_tr in ["Pendente de Aceite", "Pendente Aceite"]:
+        ponto_cadeia = f"⏳ <b>Aguardando Aceite por:</b> {tag_destaque(dest_pend)} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
     elif status_tr == "Divergência Registrada":
         ponto_cadeia = f"🚨 <b>Divergência Registrada:</b> Pendente de Apuração pelo Gestor CREDS"
     elif "Perícia" in fase_dest:
@@ -517,14 +516,14 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                     }
                     salvar_material_supabase(novo_bem)
                     
-                    detalhe_log = f"Importação de {qtd_final} {unid_final} - {desc_final} (Lacre: {inv_final})"
+                    detalhe_log = f"Importação do bem '{desc_final}' (Qtd: {qtd_final} {unid_final} | Lacre: {inv_final})"
                     if foi_editado:
                         detalhe_log += f" | EDITADO NA IMPORTAÇÃO"
 
                     registrar_log_supabase({
                         "data_hora": now_iso,
                         "num_reds": d["num_reds"],
-                        "bem_id": id_bem_unico,
+                        "bem_id": f"{desc_final} (Lacre: {inv_final})",
                         "web_origem": "SIOP_TCO",
                         "acao": "IMPORTAÇÃO / CUSTÓDIA INICIAL",
                         "origem": f"REDS JECRIM (Relator: {d['redator']})",
@@ -542,7 +541,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA PAINEL CREDS (EM EXPANDERS RECOLHÍVEIS POR REDS)
+# ABA PAINEL CREDS (REGRAS RIGOROSAS DE TRAMITAÇÃO / OCULTAÇÃO APÓS ENVIO)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -651,10 +650,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     with kp4:
         st.metric("🚨 Parados > 4 Dias", q_parados)
 
-    st.markdown(f"##### 📦 Acervo Exibido ({len(bens_processados)} item/ns):")
-    st.caption("Expandidores agrupados por REDS (+). Abra o REDS desejado e selecione os itens para aplicação de despachos.")
+    st.markdown(f"##### 📦 Acervo Disponível para Gestão ({len(bens_processados)} item/ns):")
+    st.caption("Materiais sob sua gestão direta. Itens encaminhados a terceiros ficam bloqueados para seleção e aguardam aceite.")
 
-    # AGRUPAMENTO POR REDS EM EXPANDERS (+)
     if bens_processados:
         df_creds_proc = pd.DataFrame(bens_processados)
         grupos_creds_reds = df_creds_proc.groupby("num_reds", sort=False)
@@ -671,6 +669,12 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     ponto_cad_card, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
                     id_bem = str(bem.get("id_bem") or bem.get("id"))
 
+                    status_tramite_atual = str(bem.get("status_tramite") or "").strip()
+                    dest_pendente_atual = bem.get("destinatario_pendente")
+
+                    # REGRA DE PROTEÇÃO DE POSSE: Se tiver pendência de aceite, fica desabilitado para novo envio no CREDS
+                    esta_pendente_envio = bool(dest_pendente_atual) or status_tramite_atual in ["Pendente de Aceite", "Pendente Aceite"]
+
                     if e_marrom:
                         tempo_html = f"<strong style='color: #991B1B;'>{tempo_str_card} (PARADO > 4 DIAS)</strong>" if alerta_4d_card else f"<strong style='color: #000000;'>{tempo_str_card}</strong>"
                     else:
@@ -679,11 +683,19 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     col_c1, col_c2 = st.columns([0.6, 9.4])
                     
                     with col_c1:
-                        is_sel_creds = st.checkbox(
-                            "Selecionar", 
-                            key=f"chk_creds_card_{id_bem}_{idx_global_card}",
-                            label_visibility="collapsed"
-                        )
+                        if esta_pendente_envio:
+                            st.checkbox(
+                                "Bloqueado",
+                                key=f"chk_creds_dis_{id_bem}_{idx_global_card}",
+                                disabled=True,
+                                label_visibility="collapsed"
+                            )
+                        else:
+                            is_sel_creds = st.checkbox(
+                                "Selecionar", 
+                                key=f"chk_creds_card_{id_bem}_{idx_global_card}",
+                                label_visibility="collapsed"
+                            )
 
                     with col_c2:
                         html_item = f"""
@@ -696,7 +708,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                         """
                         st.markdown(html_item, unsafe_allow_html=True)
 
-                    if is_sel_creds:
+                    if not esta_pendente_envio and is_sel_creds:
                         st.session_state["itens_selecionados_creds_painel"][id_bem] = bem.to_dict()
                     else:
                         st.session_state["itens_selecionados_creds_painel"].pop(id_bem, None)
@@ -804,6 +816,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     sucessos_c = 0
 
                     for id_bem_c, dados_c in selecionados_creds_map.items():
+                        desc_bem_log = str(dados_c.get("descricao", "MATERIAL N/I")).strip()
+                        lacre_bem_log = str(dados_c.get("involucro_lacre", "SEM LACRE")).strip()
+
                         payload_creds = {
                             "destinatario_pendente": destinatario_creds_final,
                             "unidade_destinatario_pendente": unidade_creds_dest,
@@ -817,14 +832,14 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             registrar_log_supabase({
                                 "data_hora": agora_iso,
                                 "num_reds": dados_c.get("num_reds", "N/I"),
-                                "bem_id": id_bem_c,
+                                "bem_id": f"{desc_bem_log} (Lacre: {lacre_bem_log})",
                                 "web_origem": "SIOP_TCO",
                                 "acao": "DESTINACAO_GESTOR_CREDS",
                                 "origem": nome_militar_atual,
                                 "unidade_origem": unidade_militar_atual,
                                 "destino": destinatario_creds_final,
                                 "unidade_destino": unidade_creds_dest,
-                                "detalhe": f"Fase Final: {fase_creds_sel} | Despacho: {obs_creds or 'Sem obs'}"
+                                "detalhe": f"Material: {desc_bem_log} | Lacre: {lacre_bem_log} | Fase Final: {fase_creds_sel} | Despacho: {obs_creds or 'Sem obs'}"
                             })
 
                     if sucessos_c > 0:
@@ -868,7 +883,22 @@ def renderizar_aba_logs(all_logs_banco):
         cols_exibicao = ["data_hora", "num_reds", "bem_id", "acao", "origem", "unidade_origem", "destino", "unidade_destino", "detalhe"]
         cols_reais = [c for c in cols_exibicao if c in df_l.columns]
         
-        st.dataframe(df_l[cols_reais], use_container_width=True, hide_index=True)
+        st.dataframe(
+            df_l[cols_reais],
+            column_config={
+                "data_hora": "Data/Hora",
+                "num_reds": "Nº REDS",
+                "bem_id": "Material / Identificador",
+                "acao": "Ação Realizada",
+                "origem": "Remetente / Origem",
+                "unidade_origem": "Unid. Origem",
+                "destino": "Destinatário",
+                "unidade_destino": "Unid. Destino",
+                "detalhe": "Detalhamento Auditoria"
+            },
+            use_container_width=True, 
+            hide_index=True
+        )
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_exp_log1, col_exp_log2 = st.columns(2)
