@@ -57,11 +57,11 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     """
-    Renderiza a Aba de Custódia Física com painel prévio de fila de tramitação por item,
-    suporte a múltiplos destinos e controle de pendência de aceite / cancelamento.
+    Renderiza a Aba de Custódia Física com suporte a cancelamento dentro de 72h 
+    para envios destinados tanto a Policiais quanto a CREDS/Unidades.
     """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
-    st.caption("Gerencie os bens sob sua posse, monte a fila de tramitação definindo o destino específico de cada item e confirme o envio.")
+    st.caption("Gerencie os bens em sua posse, monte a fila de tramitação definindo o destino específico de cada item e confirme o envio.")
 
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm_logado = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
@@ -76,12 +76,11 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         "📜 Histórico de Envios & Pendências (Últimos 10 REDS)"
     ])
 
-    # Inicialização da Fila Temporária de Tramitação na Sessão
     if "fila_tramitacao_mapeada" not in st.session_state:
         st.session_state["fila_tramitacao_mapeada"] = []
 
     # =========================================================================
-    # ABA 1: TRAMITAR MATERIAIS (COM FILA DE DESTINOS)
+    # ABA 1: TRAMITAR MATERIAIS
     # =========================================================================
     with tab_pendentes:
         bens_posse = []
@@ -89,8 +88,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             posse_atual = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or "").upper()
             status_tr = str(b.get("status_tramite") or "").strip()
             
-            # Não exibe itens que já estão pendentes de aceite ou já tramitados
-            if status_tr not in ["Pendente de Aceite", "Em Tramitação", "Arquivado/Destinado"]:
+            # Oculta da lista de novos envios o que já tiver pendência ativa de recebimento
+            if not b.get("destinatario_pendente") and status_tr not in ["Arquivado/Destinado"]:
                 if num_pm_logado in posse_atual or nome_militar_atual.upper() in posse_atual or unidade_militar_atual in posse_atual or "CUSTÓDIA" in posse_atual:
                     bens_posse.append(b)
 
@@ -127,7 +126,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
                 lista_unidades_creds = extrair_unidades_creds_banco(unidade_militar_atual)
 
-                # Renderiza expanders por REDS (+)
                 for num_reds, df_grupo in grupos_reds:
                     qtd_itens_reds = len(df_grupo)
                     
@@ -164,7 +162,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
                 st.markdown("---")
 
-                # FORMULÁRIO DE MAPEAMENTO DO DESTINO PARA OS ITENS SELECIONADOS
                 selecionados_map = st.session_state["itens_selecionados_tramite"]
                 qtd_sel = len(selecionados_map)
 
@@ -237,7 +234,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         if not destinatario_final:
                             st.error("⚠️ Selecione o destinatário antes de adicionar à fila.")
                         else:
-                            # Adiciona cada item à fila temporária de envio
                             for id_bem, dados_item in selecionados_map.items():
                                 item_fila = {
                                     "id_bem": id_bem,
@@ -251,7 +247,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     "observacao": obs_tramite or "Sem obs",
                                     "eh_creds": eh_opcao_creds
                                 }
-                                # Evita duplicidade na fila temporária
                                 st.session_state["fila_tramitacao_mapeada"] = [
                                     f for f in st.session_state["fila_tramitacao_mapeada"] if f["id_bem"] != id_bem
                                 ]
@@ -261,9 +256,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             st.toast("✅ Itens e destinos adicionados ao painel de confirmação!", icon="📋")
                             st.rerun()
 
-            # =================================================================
-            # 📦 RETÂNGULO DESTACADO: FILA DE TRAMITAÇÃO MAPEADA (PRE-CONFIRMAÇÃO)
-            # =================================================================
+            # PAINEL DA FILA DE ENVIOS
             fila_atual = st.session_state["fila_tramitacao_mapeada"]
             if fila_atual:
                 st.markdown("---")
@@ -287,7 +280,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             )
 
                         with col_f_del:
-                            if st.button("🗑️", key=f"btn_del_fila_{item_f['id_bem']}_{idx_f}", help="Remover este item da fila"):
+                            if st.button("🗑️", key=f"btn_del_fila_{item_f['id_bem']}_{idx_f}", help="Remover da fila"):
                                 st.session_state["fila_tramitacao_mapeada"].pop(idx_f)
                                 st.rerun()
 
@@ -313,7 +306,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 "unidade_destinatario_pendente": f_item["unidade_destinatario"],
                                 "data_envio_tramite": agora_iso,
                                 "fase_destinacao": f_item["fase_destinacao"],
-                                "status_tramite": "Pendente de Aceite" if not f_item["eh_creds"] else "Em Tramitação"
+                                "status_tramite": "Pendente de Aceite"
                             }
 
                             if atualizar_material_supabase(f_item["id_bem"], payload_update):
@@ -332,18 +325,18 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 })
 
                         if sucessos > 0:
-                            st.success(f"🎉 {sucessos} material(is) tramitado(s) com sucesso! Ficando pendentes de aceite.")
+                            st.success(f"🎉 {sucessos} material(is) tramitado(s) com sucesso!")
                             st.session_state["fila_tramitacao_mapeada"] = []
                             st.session_state["itens_selecionados_tramite"] = {}
                             st.cache_data.clear()
                             st.rerun()
 
     # =========================================================================
-    # ABA 2: HISTÓRICO DE ENVIOS & CANCELAMENTO (REGRA DAS 72H / APÓS ACEITE)
+    # ABA 2: HISTÓRICO DE ENVIOS & CANCELAMENTO (PM E CREDS EM 72H)
     # =========================================================================
     with tab_historico:
         st.markdown("##### 📜 Histórico de Tramitações Enviadas por Você")
-        st.caption("Consulte os envios realizados, filtre por REDS/período e cancele tramitações pendentes de aceite em até 72 horas.")
+        st.caption("Consulte os envios realizados, filtre por REDS/período e cancele tramitações para Policiais ou CREDS pendentes de aceite em até 72 horas.")
 
         with st.container(border=True):
             col_f1, col_f2 = st.columns(2)
@@ -357,7 +350,10 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         envios_militar = []
         for b in all_bens:
             remetente = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or "").upper()
-            if num_pm_logado in remetente or nome_militar_atual.upper() in remetente or b.get("destinatario_pendente"):
+            dest_pendente = b.get("destinatario_pendente")
+            
+            # Traz todos os itens enviados pelo militar que tenham destino registrado
+            if (num_pm_logado in remetente or nome_militar_atual.upper() in remetente) and dest_pendente:
                 envios_militar.append(b)
 
         if busca_reds_hist:
@@ -401,27 +397,27 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         id_bem_h = str(item_h.get("id_bem") or item_h.get("id"))
                         desc_h = item_h.get("descricao", "N/I")
                         qtd_h_val = item_h.get("quantidade", 1)
-                        dest_h = item_h.get("destinatario_pendente") or item_h.get("fiel_depositario_atual") or "N/I"
-                        status_h = item_h.get("status_tramite", "Em Tramitação")
+                        dest_h = item_h.get("destinatario_pendente") or "N/I"
+                        status_h = item_h.get("status_tramite", "Pendente de Aceite")
                         dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual")
 
                         pode_cancelar = False
                         tempo_restante_str = ""
 
-                        # REGRA DE SEGURANÇA: Só aceita cancelamento se ainda estiver PENDENTE DE ACEITE e dentro das 72h
-                        if status_h == "Pendente de Aceite" and dt_env_str:
+                        # REGRA ATUALIZADA: Permite cancelamento TANTO para PM QUANTO para CREDS se houver pendência e estiver em até 72h
+                        if dest_h != "N/I" and status_h in ["Pendente de Aceite", "Em Tramitação"] and dt_env_str:
                             try:
                                 dt_env_obj = pd.to_datetime(dt_env_str).to_pydatetime().replace(tzinfo=None)
                                 horas_passadas = (agora_now - dt_env_obj).total_seconds() / 3600.0
                                 if horas_passadas <= 72.0:
                                     pode_cancelar = True
                                     horas_restantes = max(0.0, 72.0 - horas_passadas)
-                                    tempo_restante_str = f"{int(horas_restantes)}h {int((horas_restantes % 1)*60)}m restantes para cancelamento"
+                                    tempo_restante_str = f"⏱️ {int(horas_restantes)}h {int((horas_restantes % 1)*60)}m restantes para cancelamento"
                                 else:
-                                    tempo_restante_str = "Prazo de 72h expirado"
+                                    tempo_restante_str = "⏱️ Prazo de 72h expirado"
                             except Exception:
                                 pode_cancelar = False
-                        elif status_h in ["Em Custódia", "Aceito", "Em Tramitação"]:
+                        else:
                             tempo_restante_str = "✅ Recebido pelo Destinatário (Imutável)"
 
                         col_info_h, col_act_h = st.columns([7, 3])
@@ -432,11 +428,11 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 f"• **Destinatário:** `{dest_h}` | **Status:** `{status_h}`"
                             )
                             if tempo_restante_str:
-                                st.caption(f"⏱️ {tempo_restante_str}")
+                                st.caption(tempo_restante_str)
 
                         with col_act_h:
                             if pode_cancelar:
-                                if st.button("❌ Cancelar Envio", key=f"btn_canc_{id_bem_h}", type="primary", use_container_width=True):
+                                if st.button("❌ Cancelar Envio", key=f"btn_canc_{id_bem_h}_{idx_h}", type="primary", use_container_width=True):
                                     payload_canc = {
                                         "destinatario_pendente": None,
                                         "unidade_destinatario_pendente": None,
