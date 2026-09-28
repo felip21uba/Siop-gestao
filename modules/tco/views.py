@@ -50,6 +50,16 @@ def injetar_css_cards_alternados():
     .card-brown small,
     .card-brown i { color: #000000 !important; }
 
+    .card-fire {
+      background-color: #451a03;
+      border: 2px solid #b45309;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      color: #fef3c7 !important;
+    }
+    .card-fire b, .card-fire strong { color: #ffffff !important; }
+
     .card-trava {
       background-color: #262626;
       border: 2px solid #525252;
@@ -210,7 +220,7 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
         ponto_cadeia = f"⚖️ <b>Entregue no JECRIM / Fórum:</b> Encaminhado por {tag_destaque(ultimo_op)}"
     elif "Destruição" in fase_dest or "Descarte" in fase_dest:
         ponto_cadeia = f"🔥 <b>Aguardando Destruição no Depósito:</b> Separado por {tag_destaque(ultimo_op)}"
-    elif "DESTRUÍDO" in fase_dest or "ENCERRADO" in fase_dest:
+    elif "DESTRUÍDO" in fase_dest or "ENCERRADO" in status_tr.upper():
         ponto_cadeia = f"🔒 <b>Material Destruído / Processo Encerrado por:</b> {tag_destaque(ultimo_op)}"
     else:
         ponto_cadeia = f"🎒 <b>Em Custódia de:</b> {tag_destaque(bem.get('fiel_depositario_atual', 'N/I'))} ({bem.get('unidade_posse_atual', 'N/I')})"
@@ -556,7 +566,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA PAINEL CREDS (SELETOR DE MODO: SEÇÃO DO CREDS VS CARGA PESSOAL)
+# ABA PAINEL CREDS (ESTRUTURA DE 4 RETÂNGULOS)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -566,8 +576,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO, P1, Comandantes ou Administradores têm acesso a esta área.")
         return
 
-    # 1. SELETOR DE CONTEXTO DE ATUAÇÃO DO OPERADOR / GESTOR
-    st.info("🎯 **Selecione abaixo em qual contexto você deseja realizar movimentações cartorárias:**")
+    st.info("🎯 **Selecione abaixo o contexto de atuação para movimentação cartorária:**")
     modo_atuacao = st.radio(
         "Modo de Atuação Ativo:",
         ["🏛️ Caixa da Seção do CREDS (Acervo Geral da Unidade / Atuação Institucional)", "👤 Minha Carga Pessoal (Bens Sob Guarda Pessoal do Militar)"],
@@ -608,7 +617,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
         bens_filtrados_painel = all_bens_banco.copy() if all_bens_banco else []
 
-        # SE ESTIVER EM MODO CARGA PESSOAL, FILTRA APENAS BENS DO MILITAR LOGADO
         if not eh_modo_creds:
             bens_filtrados_painel = [
                 b for b in bens_filtrados_painel
@@ -658,9 +666,10 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.divider()
 
-    # TRIAGEM RIGOROSA E CÁLCULO DE MÉTRICAS DINÂMICAS POR REDS ÚNICOS
+    # TRIAGEM SEPARADA PARA OS 4 RETÂNGULOS
+    bens_custodia_ativa_creds = []
+    bens_aguardando_destruicao = []
     bens_pendentes_aceite_creds = []
-    bens_custodia_fisica_creds = []
     bens_orgao_externo_tramite = []
     bens_destruidos_encerrados = []
 
@@ -669,7 +678,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     reds_destruicao = set()
     reds_custodia_creds = set()
     reds_parados = set()
-    reds_orgao_externo = set()
+    reds_destruidos_encerrados = set()
 
     datas_ingestao_creds = []
 
@@ -696,19 +705,20 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         if alerta_4d:
             reds_parados.add(num_r)
 
-        # 1. BENS EFETIVAMENTE DESTRUÍDOS OU ENCERRADOS
+        # 1. MATERIAL EFETIVAMENTE DESTRUÍDO / ENCERRADO (ARQUIVADO)
         if "DESTRUÍDO" in fase_d or "ENCERRADO" in status_t.upper():
+            reds_destruidos_encerrados.add(num_r)
             bens_destruidos_encerrados.append(b_copy)
 
-        # 2. EM PERÍCIA TÉCNICA
+        # 2. AGUARDANDO DESTRUÍÇÃO / DESCARTE FÍSICO NO DEPÓSITO
+        elif "DESTRUIÇÃO" in fase_d or "DESCARTE" in fase_d:
+            reds_destruicao.add(num_r)
+            bens_aguardando_destruicao.append(b_copy)
+
+        # 3. EM PERÍCIA TÉCNICA
         elif "PERÍCIA" in fase_d or "PERÍCIA" in dest_p:
             reds_pericia.add(num_r)
             bens_orgao_externo_tramite.append(b_copy)
-        
-        # 3. AGUARDANDO DESTRUÍÇÃO / DESCARTE FÍSICO
-        elif "DESTRUIÇÃO" in fase_d or "DESCARTE" in fase_d:
-            reds_destruicao.add(num_r)
-            bens_custodia_fisica_creds.append(b_copy)
 
         # 4. PENDENTE DE ACEITE PELO CREDS
         elif dest_p and ("CREDS" in dest_p or "CUSTÓDIA" in dest_p or unidade_militar_atual in dest_p or nome_militar_atual.upper() in dest_p) and status_t in ["Pendente de Aceite", "Pendente Aceite"]:
@@ -716,15 +726,13 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
         # 5. EM ÓRGÃO EXTERNO OU TRANSFERIDO DEFINITIVO
         elif status_t == "Transferido Definitivo" or any(term in dest_p or term in fase_d for term in TERMOS_EXTERNOS) or (dest_p and not ("CREDS" in dest_p or "CUSTÓDIA" in dest_p)):
-            reds_orgao_externo.add(num_r)
             bens_orgao_externo_tramite.append(b_copy)
 
-        # 6. CUSTÓDIA FÍSICA NO CREDS OU COM MILITAR
+        # 6. CUSTÓDIA FÍSICA ATIVA DISPONÍVEL
         else:
             if "CREDS" in fiel_atual or "CUSTÓDIA" in fiel_atual or unidade_militar_atual in fiel_atual:
                 reds_custodia_creds.add(num_r)
-                bens_custodia_fisica_creds.append(b_copy)
-                
+                bens_custodia_ativa_creds.append(b_copy)
                 dt_ref_ing = b.get("data_ingestao") or b.get("data_posse_atual")
                 if dt_ref_ing:
                     try:
@@ -733,7 +741,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                         pass
             else:
                 reds_custodia_policial.add(num_r)
-                bens_custodia_fisica_creds.append(b_copy)
+                bens_custodia_ativa_creds.append(b_copy)
 
     txt_mais_antigo = "N/I"
     if datas_ingestao_creds:
@@ -741,10 +749,10 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         dias_antigo = (agora_now - dt_min.to_pydatetime().replace(tzinfo=None)).days
         txt_mais_antigo = f"{dt_min.strftime('%d/%m/%Y')} ({dias_antigo}d)"
 
-    # CARDS CLICÁVEIS DE MÉTRICAS (FILTRAGEM INTERATIVA)
-    kp1, kp2, kp3, kp4, kp5 = st.columns(5)
+    # CARDS DE FILTROS SUPERIORES
+    kp1, kp2, kp3, kp4, kp5, kp6 = st.columns(6)
     with kp1:
-        st.metric("🎒 REDS em Custódia (Policial)", len(reds_custodia_policial))
+        st.metric("🎒 REDS Custódia Policial", len(reds_custodia_policial))
         if st.button("Filtrar Policial", key="btn_f_policial", width="stretch"):
             st.session_state["filtro_card_ativo"] = "POLICIAL"
             st.rerun()
@@ -756,7 +764,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             st.rerun()
 
     with kp3:
-        st.metric("🔥 REDS para Destruição", len(reds_destruicao))
+        st.metric("🔥 Aguard. Destruição", len(reds_destruicao))
         if st.button("Filtrar Destruição", key="btn_f_destruicao", width="stretch"):
             st.session_state["filtro_card_ativo"] = "DESTRUICAO"
             st.rerun()
@@ -768,9 +776,15 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             st.rerun()
 
     with kp5:
-        st.metric("🚨 REDS Parados > 4 Dias", len(reds_parados))
+        st.metric("🚨 Parados > 4 Dias", len(reds_parados))
         if st.button("Filtrar Parados", key="btn_f_parados", width="stretch"):
             st.session_state["filtro_card_ativo"] = "PARADOS"
+            st.rerun()
+
+    with kp6:
+        st.metric("🔒 Destruídos / Encerrados", len(reds_destruidos_encerrados))
+        if st.button("Filtrar Arquivo", key="btn_f_arquivo", width="stretch"):
+            st.session_state["filtro_card_ativo"] = "ARQUIVO"
             st.rerun()
 
     if st.session_state.get("filtro_card_ativo") != "TODOS":
@@ -784,64 +798,47 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
-
     filtro_card = st.session_state.get("filtro_card_ativo", "TODOS")
 
     # =========================================================================
-    # RETÂNGULO 1: 🎒 ACERVO DISPONÍVEL SOB CUSTÓDIA FÍSICA
+    # RETÂNGULO 1: 🎒 ACERVO ATIVO DISPONÍVEL NO CREDS
     # =========================================================================
-    if filtro_card in ["TODOS", "CREDS", "POLICIAL", "DESTRUICAO", "PARADOS"]:
+    if filtro_card in ["TODOS", "CREDS", "POLICIAL", "PARADOS"]:
         with st.container(border=True):
-            bens_r1 = bens_custodia_fisica_creds.copy()
+            bens_r1 = bens_custodia_ativa_creds.copy()
             if filtro_card == "PARADOS":
                 bens_r1 = [b for b in bens_r1 if b.get("_alerta_4dias")]
-            elif filtro_card == "DESTRUICAO":
-                bens_r1 = [b for b in bens_r1 if "DESTRUIÇÃO" in str(b.get("fase_destinacao", "")).upper()]
 
             df_disp_reds = pd.DataFrame(bens_r1) if bens_r1 else pd.DataFrame()
             qtd_reds_disponiveis = df_disp_reds["num_reds"].nunique() if not df_disp_reds.empty else 0
 
-            st.markdown(f"##### 🎒 1. Acervo Disponível ({qtd_reds_disponiveis} REDS em guarda física)")
-            st.caption("Materiais armazenados e sob guarda direta. Selecione itens ativos para transferir, destinar a órgãos ou confirmar a destruição física.")
+            st.markdown(f"##### 🎒 1. Acervo Ativo Disponível ({qtd_reds_disponiveis} REDS)")
+            st.caption("Materiais em manuseio ativo no CREDS. Ao encaminhar para Destruição ou Órgão Externo, o item é removido desta lista.")
 
             if bens_r1:
                 grupos_creds_reds = df_disp_reds.groupby("num_reds", sort=False)
-
                 idx_global_card = 0
+
                 for num_reds_c, df_grupo_c in grupos_creds_reds:
-                    qtd_reds_c = len(df_grupo_c)
-                    
-                    with st.expander(f"📦 **CARD REDS: {num_reds_c}** ({qtd_reds_c} item/ns no acervo físico)", expanded=False):
+                    with st.expander(f"📦 **CARD REDS: {num_reds_c}** ({len(df_grupo_c)} item/ns ativos)", expanded=False):
                         for _, bem in df_grupo_c.iterrows():
                             idx_global_card += 1
                             e_marrom = (idx_global_card % 2 != 0)
                             classe_card = "card-brown" if e_marrom else "card-blue"
-                            ponto_cad_card, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
+                            _, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
                             id_bem = str(bem.get("id_bem") or bem.get("id"))
-                            ultimo_gestor = bem.get("ultimo_gestor_movimentou") or "N/I"
-
-                            if e_marrom:
-                                tempo_html = f"<strong style='color: #991B1B;'>{tempo_str_card} (PARADO > 4 DIAS)</strong>" if alerta_4d_card else f"<strong style='color: #000000;'>{tempo_str_card}</strong>"
-                            else:
-                                tempo_html = f"<span style='color: #F87171; font-weight: bold;'>{tempo_str_card} (PARADO > 4 DIAS)</span>" if alerta_4d_card else f"<span style='color: #4ADE80; font-weight: bold;'>{tempo_str_card}</span>"
 
                             col_c1, col_c2 = st.columns([0.6, 9.4])
-                            
                             with col_c1:
-                                is_sel_creds = st.checkbox(
-                                    "Selecionar", 
-                                    key=f"chk_creds_card_{id_bem}_{idx_global_card}",
-                                    label_visibility="collapsed"
-                                )
+                                is_sel_creds = st.checkbox("Selecionar", key=f"chk_creds_card_{id_bem}_{idx_global_card}", label_visibility="collapsed")
 
                             with col_c2:
                                 html_item = f"""
                                 <div class="{classe_card}">
                                     📄 REDS: <b>{bem['num_reds']}</b> | Material: <b>{bem['descricao']}</b> (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})<br/>
                                     🏷️ Lacre: <b>{bem.get('involucro_lacre', 'N/I')}</b> | Autor: <b>{bem.get('autores', 'N/I')}</b><br/>
-                                    📍 Custodiante Atual: <b>{bem.get('fiel_depositario_atual', 'N/I')}</b> ({bem.get('unidade_posse_atual', 'N/I')})<br/>
-                                    👤 Última Movimentação Por: <b>{ultimo_gestor}</b><br/>
-                                    ⏱️ Tempo Imóvel na Etapa: {tempo_html}
+                                    📍 Custodiante: <b>{bem.get('fiel_depositario_atual', 'N/I')}</b> ({bem.get('unidade_posse_atual', 'N/I')})<br/>
+                                    👤 Último Gestor: <b>{bem.get('ultimo_gestor_movimentou', 'N/I')}</b>
                                 </div>
                                 """
                                 st.markdown(html_item, unsafe_allow_html=True)
@@ -851,9 +848,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             else:
                                 st.session_state["itens_selecionados_creds_painel"].pop(id_bem, None)
             else:
-                st.info("ℹ️ Nenhum material disponível sob custódia física direta no momento.")
+                st.info("ℹ️ Nenhum material disponível para movimentação ativa no momento.")
 
-            # FORMULÁRIO DE DESTINAÇÃO PARCIAL / TOTAL E CONFIRMAÇÃO DE DESTRUIÇÃO
+            # FORMULÁRIO DE MOVIMENTAÇÃO DO RETÂNGULO 1
             selecionados_creds_map = st.session_state["itens_selecionados_creds_painel"]
             qtd_creds_sel = len(selecionados_creds_map)
 
@@ -861,192 +858,167 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 st.markdown("---")
                 st.markdown(f"### 🎯 Destinar / Transferir {qtd_creds_sel} item(ns) Selecionado(s)")
                 
-                lista_militares = carregar_militares_supabase() or []
-                opcoes_militares = []
-                for m in lista_militares:
-                    posto = str(m.get('posto_grad') or m.get('cargo_funcao') or 'PM').strip().upper()
-                    nome_comp = str(m.get('nome_completo') or m.get('nome_guerra') or 'MILITAR').strip().upper()
-                    nome_guerra = str(m.get('nome_guerra') or '').strip().upper()
-                    num_pol = str(m.get('num_policia') or m.get('usuario_login') or '').strip().upper()
-                    
-                    if nome_guerra and nome_guerra not in nome_comp:
-                        label_mil = f"{posto} {nome_comp} ({nome_guerra} - {num_pol})"
-                    else:
-                        label_mil = f"{posto} {nome_comp} ({num_pol})"
-                    opcoes_militares.append(label_mil)
-
-                if not opcoes_militares:
-                    opcoes_militares = [f"{nome_militar_atual}"]
-
-                lista_unidades_dest_creds = [
-                    "CREDS 35ª CIA PM (UBÁ)",
-                    "CREDS 111ª CIA PM (VISCONDE DO RIO BRANCO)",
-                    "CREDS 285ª CIA TM (UBÁ)",
-                    "CREDS 21º BPM (SEÇÃO DE CUSTÓDIA / UBÁ)",
-                    "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
-                    "PODER JUDICIÁRIO / TRIBUNAL DE JUSTIÇA (JECRIM)",
-                    "PERÍCIA TÉCNICA / PERÍCIA OFICIAL",
-                    "MINISTÉRIO PÚBLICO (MPMG)",
-                    "DEVOLVIDO AO PROPRIETÁRIO"
-                ]
-
                 tipo_dest_creds = st.radio(
-                    "Tipo de Destinatário:",
-                    ["Policial Militar / Fiel Depositário", "Seção de Custódia / Órgão Externo"],
+                    "Selecione o Tipo de Destinação:",
+                    ["🔥 Encaminhar para a Caixa de Destruição no Depósito", "🏛️ Enviar para Órgão Externo (PCMG / Perícia / JECRIM)", "👤 Transferir para Policial / Fiel Depositário"],
                     horizontal=True,
-                    key="radio_tipo_destinatario_creds_panel"
+                    key="radio_tipo_destinatario_creds_v4"
                 )
 
-                eh_creds_orgao = (tipo_dest_creds == "Seção de Custódia / Órgão Externo")
-
-                with st.form("form_destinar_creds_individual", clear_on_submit=False):
-                    col_cd1, col_cd2 = st.columns([1.2, 1])
-
-                    with col_cd1:
-                        if eh_creds_orgao:
-                            destinatario_creds_final = st.selectbox(
-                                "Selecione o CREDS ou Órgão Final:",
-                                options=lista_unidades_dest_creds,
-                                index=None,
-                                placeholder="Escolha a destinação do material...",
-                                key="sb_dest_creds_orgao_sel"
-                            )
-                            unidade_creds_dest = destinatario_creds_final or "CREDS / ÓRGÃO EXTERNO"
-
-                            eh_definitiva_ext = st.radio(
-                                "A transferência para este Órgão Externo é definitiva ou o material irá retornar?",
-                                ["🔄 Com Retorno (Aguardando Devolução da PCMG/Perícia/Fórum)", "🔒 Definitiva (Procedimento Encerrado/Sem Retorno)"],
-                                key="radio_eh_definitiva_ext"
-                            )
-                        else:
-                            destinatario_creds_final = st.selectbox(
-                                "Selecione o Policial Destinatário:",
-                                options=opcoes_militares,
-                                index=None,
-                                placeholder="Digite qualquer parte do nome do militar...",
-                                key="sb_dest_creds_pm_sel"
-                            )
-                            unidade_creds_dest = unidade_militar_atual
-                            eh_definitiva_ext = "🔄 Com Retorno"
-
-                    with col_cd2:
-                        fase_creds_sel = st.selectbox(
-                            "Atualizar Fase de Destinação Final:",
-                            [
-                                "Com Fiel Depositário / Policial",
-                                "Aguardando no CREDS-TC / Custódia",
-                                "Encaminhado à Polícia Civil (PCMG)",
-                                "Entregue ao Poder Judiciário / Fórum",
-                                "Encaminhado para Perícia Técnica",
-                                "Aguardando Destruição / Descarte Físico",
-                                "DESTRUÍDO / ENCERRADO (Baixa Definitiva por Incineração)",
-                                "Devolvido ao Proprietário"
-                            ],
-                            key="sb_fase_creds_dest_final"
+                with st.form("form_destinar_creds_v4", clear_on_submit=False):
+                    if "Destruição" in tipo_dest_creds:
+                        st.warning("🔥 Os materiais selecionados serão movidos para o **Retângulo 2 (Materiais Aguardando Destruição no Depósito)**.")
+                        destinatario_final = "DEPÓSITO DE CUSTÓDIA / AGUARDANDO DESTRUIÇÃO"
+                        fase_final = "Aguardando Destruição / Descarte Físico"
+                        eh_definitiva_ext = False
+                    elif "Órgão Externo" in tipo_dest_creds:
+                        destinatario_final = st.selectbox(
+                            "Selecione o Órgão Destinatário:",
+                            ["DELEGACIA DE POLÍCIA CIVIL (PCMG)", "PODER JUDICIÁRIO / TRIBUNAL DE JUSTIÇA (JECRIM)", "PERÍCIA TÉCNICA / PERÍCIA OFICIAL", "MINISTÉRIO PÚBLICO (MPMG)"],
+                            key="sb_orgao_ext_v4"
                         )
-
-                    eh_baixa_destruicao = ("DESTRUÍDO" in fase_creds_sel)
-                    
-                    if eh_baixa_destruicao:
-                        num_ordem_destruicao = st.text_input(
-                            "Nº do BOS / Ordem Judicial / Auto de Incineração (OBRIGATÓRIO):",
-                            placeholder="Ex: BOS Nº 2026-000123 / Ordem Judicial nº 001/2026",
-                            key="txt_ordem_destruicao_obrig"
-                        ).strip()
+                        fase_final = st.selectbox("Fase de Destinação:", ["Encaminhado à Polícia Civil (PCMG)", "Entregue ao Poder Judiciário / Fórum", "Encaminhado para Perícia Técnica"], key="sb_fase_orgao_v4")
+                        tipo_ret = st.radio("Natureza do Envio:", ["🔄 Com Retorno (Em Tramitação)", "🔒 Definitiva (Procedimento Encerrado/Sem Retorno)"], key="radio_def_v4")
+                        eh_definitiva_ext = ("Definitiva" in tipo_ret)
                     else:
-                        num_ordem_destruicao = ""
+                        lista_m = carregar_militares_supabase() or []
+                        opcoes_mil = [f"{m.get('posto_grad','PM')} {m.get('nome_completo','MILITAR')} ({m.get('num_policia','')})" for m in lista_m]
+                        destinatario_final = st.selectbox("Selecione o Policial Destinatário:", opcoes_mil, key="sb_mil_v4")
+                        fase_final = "Com Fiel Depositário / Policial"
+                        eh_definitiva_ext = False
 
-                    obs_creds = st.text_input(
-                        "Observações / Despacho do Gestor:",
-                        placeholder="Ex: Despacho de descarte físico ou envio para perícia oficial",
-                        key="txt_obs_creds_despacho"
-                    ).strip()
+                    obs_creds = st.text_input("Observações / Despacho do Gestor:", placeholder="Ex: Separado para comboio de incineração...", key="txt_obs_desp_v4").strip()
+                    btn_confirmar = st.form_submit_button("🚀 Confirmar Movimentação", type="primary", width="stretch")
 
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    btn_confirmar_dest_creds = st.form_submit_button("🚀 Confirmar Movimentação / Destinação", type="primary", width="stretch")
+                    if btn_confirmar:
+                        agora_iso = datetime.datetime.now().isoformat()
+                        sucessos = 0
 
-                    if btn_confirmar_dest_creds:
-                        if not destinatario_creds_final and not eh_baixa_destruicao:
-                            st.error("⚠️ Selecione o destinatário antes de confirmar.")
-                        elif eh_baixa_destruicao and not num_ordem_destruicao:
-                            st.error("⚠️ Para confirmar a destruição definitiva, informe o Nº do BOS ou Ordem Judicial.")
-                        else:
-                            agora_iso = datetime.datetime.now().isoformat()
-                            sucessos_c = 0
-                            e_definitivo_val = ("Definitiva" in eh_definitiva_ext) or eh_baixa_destruicao
+                        for id_bem_c, dados_c in selecionados_creds_map.items():
+                            status_final = "Transferido Definitivo" if eh_definitiva_ext else ("Pendente de Aceite" if "Policial" in tipo_dest_creds else "Em Tramitação")
+                            
+                            payload = {
+                                "destinatario_pendente": destinatario_final if "Policial" in tipo_dest_creds else None,
+                                "unidade_destinatario_pendente": unidade_militar_atual if "Policial" in tipo_dest_creds else destinatario_final,
+                                "data_envio_tramite": agora_iso,
+                                "fase_destinacao": fase_final,
+                                "status_tramite": status_final,
+                                "ultimo_gestor_movimentou": nome_militar_atual
+                            }
 
-                            # DEFINE ORIGEM COM BASE NO MODO DE ATUAÇÃO SELECIONADO
-                            if eh_modo_creds:
-                                origem_rotulo = f"CREDS TCO - {unidade_militar_atual} (Gestor: {nome_militar_atual})"
-                                custodiante_novo = f"CREDS TCO - {unidade_militar_atual}" if not e_definitivo_val else None
-                            else:
-                                origem_rotulo = f"{nome_militar_atual} ({unidade_militar_atual})"
-                                custodiante_novo = nome_militar_atual
+                            if atualizar_material_supabase(id_bem_c, payload):
+                                sucessos += 1
+                                registrar_log_supabase({
+                                    "data_hora": agora_iso,
+                                    "num_reds": dados_c.get("num_reds", "N/I"),
+                                    "bem_id": f"{dados_c.get('descricao')} (Lacre: {dados_c.get('involucro_lacre')})",
+                                    "web_origem": "SIOP_TCO",
+                                    "acao": "MOVIMENTACAO_GESTOR_CREDS",
+                                    "origem": nome_militar_atual,
+                                    "unidade_origem": unidade_militar_atual,
+                                    "destino": destinatario_final,
+                                    "unidade_destino": unidade_militar_atual,
+                                    "detalhe": f"Destinado para: {fase_final} | Despacho: {obs_creds or 'Sem obs'}"
+                                })
 
-                            for id_bem_c, dados_c in selecionados_creds_map.items():
-                                desc_bem_log = str(dados_c.get("descricao", "MATERIAL N/I")).strip()
-                                lacre_bem_log = str(dados_c.get("involucro_lacre", "SEM LACRE")).strip()
-
-                                if eh_baixa_destruicao:
-                                    status_tr_final = "Destruído / Encerrado"
-                                    dest_pend_final = None
-                                elif e_definitivo_val:
-                                    status_tr_final = "Transferido Definitivo"
-                                    dest_pend_final = None
-                                else:
-                                    status_tr_final = "Pendente de Aceite" if not eh_creds_orgao else "Em Tramitação"
-                                    dest_pend_final = destinatario_creds_final
-
-                                payload_creds = {
-                                    "destinatario_pendente": dest_pend_final,
-                                    "unidade_destinatario_pendente": unidade_creds_dest if dest_pend_final else None,
-                                    "data_envio_tramite": agora_iso,
-                                    "fase_destinacao": fase_creds_sel,
-                                    "status_tramite": status_tr_final,
-                                    "ultimo_gestor_movimentou": nome_militar_atual
-                                }
-
-                                if atualizar_material_supabase(id_bem_c, payload_creds):
-                                    sucessos_c += 1
-                                    detalhe_audit = f"Material: {desc_bem_log} | Lacre: {lacre_bem_log} | Movimentado por: {nome_militar_atual} | Fase Final: {fase_creds_sel} | Despacho: {obs_creds or 'Sem obs'}"
-                                    if eh_baixa_destruicao:
-                                        detalhe_audit += f" | ORDEM/BOS DESTRUICAO: {num_ordem_destruicao}"
-
-                                    registrar_log_supabase({
-                                        "data_hora": agora_iso,
-                                        "num_reds": dados_c.get("num_reds", "N/I"),
-                                        "bem_id": f"{desc_bem_log} (Lacre: {lacre_bem_log})",
-                                        "web_origem": "SIOP_TCO",
-                                        "acao": "BAIXA_DESTRUICAO_DEFINITIVA" if eh_baixa_destruicao else "DESTINACAO_GESTOR_CREDS",
-                                        "origem": origem_rotulo,
-                                        "unidade_origem": unidade_militar_atual,
-                                        "destino": destinatario_creds_final or "DESTRUIÇÃO / INCINERAÇÃO",
-                                        "unidade_destino": unidade_creds_dest,
-                                        "detalhe": detalhe_audit
-                                    })
-
-                            if sucessos_c > 0:
-                                st.success(f"🎉 {sucessos_c} material(is) movimentado(s) por {nome_militar_atual} com sucesso!")
-                                st.session_state["itens_selecionados_creds_painel"] = {}
-                                st.cache_data.clear()
-                                st.rerun()
+                        if sucessos > 0:
+                            st.success(f"🎉 {sucessos} material(is) movimentado(s) com sucesso!")
+                            st.session_state["itens_selecionados_creds_painel"] = {}
+                            st.cache_data.clear()
+                            st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 2: ⏳ MATERIAIS PENDENTES DE ACEITE PELO CREDS OU PELO MILITAR
+    # RETÂNGULO 2 (NOVO): 🔥 MATERIAIS AGUARDANDO DESTRUÍÇÃO NO DEPÓSITO
+    # =========================================================================
+    if filtro_card in ["TODOS", "DESTRUICAO"]:
+        with st.container(border=True):
+            df_dest_reds = pd.DataFrame(bens_aguardando_destruicao) if bens_aguardando_destruicao else pd.DataFrame()
+            qtd_reds_dest = df_dest_reds["num_reds"].nunique() if not df_dest_reds.empty else 0
+
+            st.markdown(f"##### 🔥 2. Materiais no Depósito Aguardando Destruição ({qtd_reds_dest} REDS)")
+            st.caption("Materiais separados para descarte físico. Para confirmar o encerramento, informe o Nº do BOS/Ordem Judicial de Incineração.")
+
+            if bens_aguardando_destruicao:
+                for num_reds_d, df_grupo_d in df_dest_reds.groupby("num_reds", sort=False):
+                    with st.expander(f"🔥 **CARD REDS: {num_reds_d}** ({len(df_grupo_d)} item/ns para destruição)", expanded=True):
+                        for idx_d, item_d in df_grupo_d.iterrows():
+                            id_bem_d = str(item_d.get("id_bem") or item_d.get("id"))
+                            desc_d = item_d.get("descricao", "N/I")
+                            qtd_d_val = item_d.get("quantidade", 1)
+                            lacre_d = item_d.get("involucro_lacre", "N/I")
+                            gestor_sep = item_d.get("ultimo_gestor_movimentou", "Gestor CREDS")
+
+                            col_d1, col_d2 = st.columns([6, 4])
+                            with col_d1:
+                                html_fire = f"""
+                                <div class="card-fire">
+                                    🔥 <b>Material Separado para Incineração:</b> {desc_d} (Qtd: {qtd_d_val})<br/>
+                                    🏷️ <b>Lacre:</b> {lacre_d} | 👤 <b>Separado por:</b> {gestor_sep}
+                                </div>
+                                """
+                                st.markdown(html_fire, unsafe_allow_html=True)
+
+                            with col_d2:
+                                with st.popover("🔥 Confirmar Baixa por Incineração", width="stretch"):
+                                    bos_ordem = st.text_input("Nº do BOS / Auto de Incineração (OBRIGATÓRIO):", placeholder="Ex: BOS 2026-000123", key=f"txt_bos_{id_bem_d}").strip()
+                                    if st.button("🔒 Dar Baixa Definitiva", key=f"btn_baixa_dest_{id_bem_d}_{idx_d}", type="primary", width="stretch"):
+                                        if not bos_ordem:
+                                            st.error("Informe o Nº do BOS ou Auto de Incineração.")
+                                        else:
+                                            payload_baixa = {
+                                                "destinatario_pendente": None,
+                                                "fase_destinacao": "DESTRUÍDO / ENCERRADO (Baixa Definitiva por Incineração)",
+                                                "status_tramite": "Destruído / Encerrado",
+                                                "ultimo_gestor_movimentou": nome_militar_atual
+                                            }
+                                            if atualizar_material_supabase(id_bem_d, payload_baixa):
+                                                registrar_log_supabase({
+                                                    "data_hora": agora_now.isoformat(),
+                                                    "num_reds": num_reds_d,
+                                                    "bem_id": f"{desc_d} (Lacre: {lacre_d})",
+                                                    "web_origem": "SIOP_TCO",
+                                                    "acao": "BAIXA_DESTRUICAO_DEFINITIVA",
+                                                    "origem": nome_militar_atual,
+                                                    "unidade_origem": unidade_militar_atual,
+                                                    "destino": "DESTRUIÇÃO / INCINERAÇÃO",
+                                                    "unidade_destino": unidade_militar_atual,
+                                                    "detalhe": f"Baixa de destruição efetuada com sucesso. Auto/BOS: {bos_ordem}"
+                                                })
+                                                st.success("✅ Material destruído com sucesso e movido para o Arquivo Final!")
+                                                st.cache_data.clear()
+                                                st.rerun()
+
+                                if st.button("🔄 Cancelar Destruição", key=f"btn_canc_dest_{id_bem_d}_{idx_d}", width="stretch"):
+                                    payload_canc_d = {
+                                        "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
+                                        "status_tramite": "Em Custódia",
+                                        "ultimo_gestor_movimentou": nome_militar_atual
+                                    }
+                                    if atualizar_material_supabase(id_bem_d, payload_canc_d):
+                                        st.warning("Material retornado para a lista de acervo ativo.")
+                                        st.cache_data.clear()
+                                        st.rerun()
+            else:
+                st.info("ℹ️ Nenhum material aguardando destruição no momento.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # =========================================================================
+    # RETÂNGULO 3: ⏳ MATERIAIS PENDENTES DE ACEITE PELO CREDS/MILITAR
     # =========================================================================
     if filtro_card in ["TODOS", "CREDS"]:
         with st.container(border=True):
             df_pend_creds = pd.DataFrame(bens_pendentes_aceite_creds) if bens_pendentes_aceite_creds else pd.DataFrame()
             qtd_reds_pend = df_pend_creds["num_reds"].nunique() if not df_pend_creds.empty else 0
 
-            st.markdown(f"##### ⏳ 2. Materiais Pendentes de Aceite ({qtd_reds_pend} REDS)")
-            st.caption("Materiais encaminhados pela tropa/outras Cias aguardando a conferência e o clique de aceite/recusa do operador.")
+            st.markdown(f"##### ⏳ 3. Materiais Pendentes de Aceite ({qtd_reds_pend} REDS)")
+            st.caption("Materiais encaminhados aguardando a conferência e o aceite do operador.")
 
             if bens_pendentes_aceite_creds:
                 for num_reds_p, df_grupo_p in df_pend_creds.groupby("num_reds", sort=False):
-                    with st.expander(f"📥 **REDS: {num_reds_p}** ({len(df_grupo_p)} item/ns aguardando aceite)", expanded=True):
+                    with st.expander(f"📥 **REDS: {num_reds_p}** ({len(df_grupo_p)} item/ns pendentes)", expanded=True):
                         for idx_p, item_p in df_grupo_p.iterrows():
                             id_bem_p = str(item_p.get("id_bem") or item_p.get("id"))
                             desc_p = item_p.get("descricao", "N/I")
@@ -1085,18 +1057,18 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                 "unidade_origem": item_p.get("unidade_remetente", "N/I"),
                                                 "destino": nome_militar_atual,
                                                 "unidade_destino": unidade_militar_atual,
-                                                "detalhe": f"Aceite de custódia do material '{desc_p}' confirmado pelo operador {nome_militar_atual}."
+                                                "detalhe": f"Aceite de custódia do material '{desc_p}' confirmado por {nome_militar_atual}."
                                             })
-                                            st.success(f"✅ Aceite de '{desc_p}' registrado com sucesso por {nome_militar_atual}!")
+                                            st.success("✅ Aceite registrado com sucesso!")
                                             st.cache_data.clear()
                                             st.rerun()
 
                                 with col_bt_r:
                                     with st.popover("❌ Recusar", width="stretch"):
-                                        motivo_recusa = st.text_input("Motivo da Recusa:", placeholder="Ex: Lacre violado ou divergência na quantidade", key=f"txt_motivo_rec_{id_bem_p}").strip()
+                                        motivo_recusa = st.text_input("Motivo da Recusa:", placeholder="Ex: Lacre violado", key=f"txt_motivo_rec_{id_bem_p}").strip()
                                         if st.button("Confirmar Recusa", key=f"btn_confirm_recusa_{id_bem_p}_{idx_p}", type="primary", width="stretch"):
                                             if not motivo_recusa:
-                                                st.error("Informe o motivo da recusa.")
+                                                st.error("Informe o motivo.")
                                             else:
                                                 payload_recusa = {
                                                     "destinatario_pendente": None,
@@ -1105,19 +1077,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                     "ultimo_gestor_movimentou": nome_militar_atual
                                                 }
                                                 if atualizar_material_supabase(id_bem_p, payload_recusa):
-                                                    registrar_log_supabase({
-                                                        "data_hora": agora_now.isoformat(),
-                                                        "num_reds": num_reds_p,
-                                                        "bem_id": f"{desc_p} (Lacre: {lacre_p})",
-                                                        "web_origem": "SIOP_TCO",
-                                                        "acao": "RECUSA_TRAMITACAO_CREDS",
-                                                        "origem": nome_militar_atual,
-                                                        "unidade_origem": unidade_militar_atual,
-                                                        "destino": remetente_p,
-                                                        "unidade_destino": item_p.get("unidade_remetente", "N/I"),
-                                                        "detalhe": f"Recusa do material '{desc_p}' por {nome_militar_atual}. Motivo: {motivo_recusa}"
-                                                    })
-                                                    st.warning(f"Material '{desc_p}' recusado e retornado ao remetente.")
+                                                    st.warning("Material recusado e retornado ao remetente.")
                                                     st.cache_data.clear()
                                                     st.rerun()
             else:
@@ -1126,110 +1086,50 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 3: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / DESTINADOS (COM REGISTRO DO OPERADOR)
+    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS OU ARQUIVADOS / DESTRUÍDOS
     # =========================================================================
-    if filtro_card in ["TODOS", "PERICIA", "PARADOS"]:
+    if filtro_card in ["TODOS", "PERICIA", "PARADOS", "ARQUIVO"]:
         with st.container(border=True):
-            bens_r3 = bens_orgao_externo_tramite.copy()
-            if filtro_card == "PERICIA":
-                bens_r3 = [b for b in bens_r3 if "PERÍCIA" in str(b.get("fase_destinacao", "")).upper() or "PERÍCIA" in str(b.get("destinatario_pendente", "")).upper()]
-            elif filtro_card == "PARADOS":
-                bens_r3 = [b for b in bens_r3 if b.get("_alerta_4dias")]
+            bens_r4 = bens_orgao_externo_tramite.copy()
+            if filtro_card == "ARQUIVO":
+                bens_r4 = bens_destruidos_encerrados.copy()
 
-            df_ext_reds = pd.DataFrame(bens_r3) if bens_r3 else pd.DataFrame()
+            df_ext_reds = pd.DataFrame(bens_r4) if bens_r4 else pd.DataFrame()
             qtd_reds_ext = df_ext_reds["num_reds"].nunique() if not df_ext_reds.empty else 0
 
-            st.markdown(f"##### 🏛️ 3. Materiais em Órgãos Externos / Destinados ({qtd_reds_ext} REDS)")
-            st.caption("Acompanhamento individual dos materiais remetidos para Polícia Civil, JECRIM, Perícia ou com transferência definitiva.")
+            st.markdown(f"##### 🏛️ 4. Materiais em Órgãos Externos / Arquivo Final ({qtd_reds_ext} REDS)")
+            st.caption("Acompanhamento de materiais remetidos para PCMG, Perícia, JECRIM ou destruídos definitivamente.")
 
-            if bens_r3:
+            if bens_r4:
                 for num_reds_ext, df_grupo_ext in df_ext_reds.groupby("num_reds", sort=False):
-                    with st.expander(f"🏛️ **CARD REDS: {num_reds_ext}** ({len(df_grupo_ext)} item/ns nesta situação)", expanded=False):
+                    with st.expander(f"🏛️ **CARD REDS: {num_reds_ext}** ({len(df_grupo_ext)} item/ns)", expanded=False):
                         for idx_e, item_e in df_grupo_ext.iterrows():
                             id_bem_e = str(item_e.get("id_bem") or item_e.get("id"))
                             desc_e = item_e.get("descricao", "N/I")
                             qtd_e_val = item_e.get("quantidade", 1)
                             dest_e = item_e.get("destinatario_pendente") or item_e.get("fase_destinacao") or "Órgão Externo"
-                            unid_dest_e = item_e.get("unidade_destinatario_pendente") or item_e.get("unidade_posse_atual") or "N/I"
                             lacre_e = item_e.get("involucro_lacre", "N/I")
-                            remetente_orig = item_e.get("ultimo_gestor_movimentou") or item_e.get("fiel_depositario_atual") or "Gestor CREDS"
-                            dt_env_e_str = item_e.get("data_envio_tramite") or item_e.get("data_posse_atual")
+                            remetente_orig = item_e.get("ultimo_gestor_movimentou") or "Gestor CREDS"
                             status_tr_e = str(item_e.get("status_tramite") or "")
 
-                            dt_env_fmt = "Data N/I"
-                            tempo_no_orgao_str = "N/I"
-                            pode_canc_e = False
+                            e_destruido = ("Destruído" in status_tr_e or "DESTRUÍDO" in str(item_e.get("fase_destinacao","")))
+                            classe_item_ext = "card-trava" if e_destruido else "card-blue"
 
-                            if dt_env_e_str:
-                                try:
-                                    dt_env_obj = pd.to_datetime(dt_env_e_str).to_pydatetime().replace(tzinfo=None)
-                                    dt_env_fmt = dt_env_obj.strftime("%d/%m/%Y às %H:%M")
-                                    
-                                    delta_ev = agora_now - dt_env_obj
-                                    dias_ev = delta_ev.days
-                                    horas_ev = delta_ev.seconds // 3600
-                                    
-                                    if dias_ev > 0:
-                                        tempo_no_orgao_str = f"{dias_ev} dia(s) e {horas_ev} hora(s)"
-                                    else:
-                                        tempo_no_orgao_str = f"{horas_ev} hora(s) e {(delta_ev.seconds % 3600) // 60} minuto(s)"
+                            if e_destruido:
+                                tag_situacao = "<strong style='color: #EF4444;'>🔒 MATERIAL DESTRUÍDO / ENCERRADO</strong>"
+                            else:
+                                tag_situacao = "<strong style='color: #60A5FA;'>🔄 EM TRÂMITE NO ÓRGÃO EXTERNO</strong>"
 
-                                    if (delta_ev.total_seconds() / 3600.0) <= 72.0:
-                                        pode_canc_e = True
-                                except Exception:
-                                    pass
-
-                            e_definitivo = (status_tr_e == "Transferido Definitivo")
-                            classe_item_ext = "card-trava" if e_definitivo else "card-blue"
-
-                            col_card1, col_card2 = st.columns([7, 3])
-                            with col_card1:
-                                if e_definitivo:
-                                    tag_situacao = "<strong style='color: #F87171;'>🔒 DEFINITIVO (SEM RETORNO)</strong>"
-                                else:
-                                    tag_situacao = "<strong style='color: #60A5FA;'>🔄 COM RETORNO / EM TRÂMITE</strong>"
-
-                                html_ext = f"""
-                                <div class="{classe_item_ext}">
-                                    📦 <b>Material:</b> {desc_e} (Qtd: {qtd_e_val}) | 🏷️ <b>Lacre:</b> {lacre_e}<br/>
-                                    📍 <b>Destino/Fase:</b> {dest_e} ({unid_dest_e}) | Situação: {tag_situacao}<br/>
-                                    👤 <b>Movimentado/Encaminhado por:</b> {remetente_orig} em {dt_env_fmt}<br/>
-                                    ⏱️ <b>Tempo Imóvel:</b> {tempo_no_orgao_str}
-                                </div>
-                                """
-                                st.markdown(html_ext, unsafe_allow_html=True)
-
-                            with col_card2:
-                                if pode_canc_e:
-                                    if st.button("❌ Cancelar Envio (Janela 72h)", key=f"btn_canc_ext_indiv_{id_bem_e}_{idx_e}", type="primary", width="stretch"):
-                                        payload_canc_ext = {
-                                            "destinatario_pendente": None,
-                                            "unidade_destinatario_pendente": None,
-                                            "status_tramite": "Em Custódia",
-                                            "fiel_depositario_atual": f"CREDS TCO - {unidade_militar_atual}" if eh_modo_creds else nome_militar_atual,
-                                            "unidade_posse_atual": unidade_militar_atual,
-                                            "ultimo_gestor_movimentou": nome_militar_atual
-                                        }
-                                        if atualizar_material_supabase(id_bem_e, payload_canc_ext):
-                                            registrar_log_supabase({
-                                                "data_hora": agora_now.isoformat(),
-                                                "num_reds": num_reds_ext,
-                                                "bem_id": f"{desc_e} (Lacre: {lacre_e})",
-                                                "web_origem": "SIOP_TCO",
-                                                "acao": "CANCELAMENTO_TRAMITACAO_CREDS",
-                                                "origem": nome_militar_atual,
-                                                "unidade_origem": unidade_militar_atual,
-                                                "destino": nome_militar_atual,
-                                                "unidade_destino": unidade_militar_atual,
-                                                "detalhe": f"Envio do item '{desc_e}' cancelado individualmente por {nome_militar_atual} dentro das 72h."
-                                            })
-                                            st.success("✅ Envio cancelado! O item retornou para o acervo ativo.")
-                                            st.cache_data.clear()
-                                            st.rerun()
-                                else:
-                                    st.caption("🔒 Posse Confirmada / Transferência Consolidada")
+                            html_ext = f"""
+                            <div class="{classe_item_ext}">
+                                📦 <b>Material:</b> {desc_e} (Qtd: {qtd_e_val}) | 🏷️ <b>Lacre:</b> {lacre_e}<br/>
+                                📍 <b>Destino / Fase:</b> {dest_e} | Situação: {tag_situacao}<br/>
+                                👤 <b>Movimentado por:</b> {remetente_orig}
+                            </div>
+                            """
+                            st.markdown(html_ext, unsafe_allow_html=True)
             else:
-                st.info("ℹ️ Nenhum material localizado em trâmite de órgãos externos no momento.")
+                st.info("ℹ️ Nenhum material nesta categoria no momento.")
 
 # =============================================================================
 # ABA TRILHA DE AUDITORIA
