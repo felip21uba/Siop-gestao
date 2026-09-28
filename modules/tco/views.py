@@ -787,14 +787,14 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
                             col_c1, col_c2 = st.columns([0.6, 9.4])
                             
-                            with c_c1:
+                            with col_c1:  # CORRIGIDO: Nome exato da variável definida acima
                                 is_sel_creds = st.checkbox(
                                     "Selecionar", 
                                     key=f"chk_creds_card_{id_bem}_{idx_global_card}",
                                     label_visibility="collapsed"
                                 )
 
-                            with c_c2:
+                            with col_c2:
                                 html_item = f"""
                                 <div class="{classe_card}">
                                     📄 REDS: <b>{bem['num_reds']}</b> | Material: <b>{bem['descricao']}</b> (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})<br/>
@@ -837,7 +837,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 if not opcoes_militares:
                     opcoes_militares = [f"{nome_militar_atual}"]
 
-                # LISTA DE ÓRGÃOS SEM A OPÇÃO DE DESTRUIÇÃO
                 lista_unidades_dest_creds = [
                     "CREDS 35ª CIA PM (UBÁ)",
                     "CREDS 111ª CIA PM (VISCONDE DO RIO BRANCO)",
@@ -873,7 +872,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             )
                             unidade_creds_dest = destinatario_creds_final or "CREDS / ÓRGÃO EXTERNO"
 
-                            # PERGUNTA SE A TRANSFERÊNCIA PARA ÓRGÃO EXTERNO É DEFINITIVA OU RETORNA
                             eh_definitiva_ext = st.radio(
                                 "A transferência para este Órgão Externo é definitiva ou o material irá retornar?",
                                 ["🔄 Com Retorno (Aguardando Devolução da PCMG/Perícia/Fórum)", "🔒 Definitiva (Procedimento Encerrado/Sem Retorno)"],
@@ -906,7 +904,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             key="sb_fase_creds_dest_final"
                         )
 
-                    # EXIGE OBRIGATORIAMENTE NÚMERO DO BOS / ORDEM JUDICIAL QUANDO FOR DESTRUÍDO
                     eh_baixa_destruicao = ("DESTRUÍDO" in fase_creds_sel)
                     
                     if eh_baixa_destruicao:
