@@ -57,11 +57,10 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     """
-    Renderiza a Aba de Custódia Física com suporte a cancelamento dentro de 72h 
-    para envios destinados tanto a Policiais quanto a CREDS/Unidades.
+    Renderiza a Aba de Custódia Física e o Histórico dos últimos 10 REDS agrupados por expansor (+).
     """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
-    st.caption("Gerencie os bens em sua posse, monte a fila de tramitação definindo o destino específico de cada item e confirme o envio.")
+    st.caption("Gerencie os bens sob sua posse, monte a fila de tramitação definindo o destino específico de cada item e consulte seu histórico.")
 
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm_logado = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
@@ -88,7 +87,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             posse_atual = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or "").upper()
             status_tr = str(b.get("status_tramite") or "").strip()
             
-            # Oculta da lista de novos envios o que já tiver pendência ativa de recebimento
             if not b.get("destinatario_pendente") and status_tr not in ["Arquivado/Destinado"]:
                 if num_pm_logado in posse_atual or nome_militar_atual.upper() in posse_atual or unidade_militar_atual in posse_atual or "CUSTÓDIA" in posse_atual:
                     bens_posse.append(b)
@@ -332,7 +330,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             st.rerun()
 
     # =========================================================================
-    # ABA 2: HISTÓRICO DE ENVIOS & CANCELAMENTO (PM E CREDS EM 72H)
+    # ABA 2: HISTÓRICO DE ENVIOS (COM EXPANDER '+' RECOLHÍVEL POR REDS)
     # =========================================================================
     with tab_historico:
         st.markdown("##### 📜 Histórico de Tramitações Enviadas por Você")
@@ -352,7 +350,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             remetente = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or "").upper()
             dest_pendente = b.get("destinatario_pendente")
             
-            # Traz todos os itens enviados pelo militar que tenham destino registrado
             if (num_pm_logado in remetente or nome_militar_atual.upper() in remetente) and dest_pendente:
                 envios_militar.append(b)
 
@@ -382,17 +379,17 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if "data_envio_tramite" in df_hist.columns:
                 df_hist.sort_values(by="data_envio_tramite", ascending=False, inplace=True)
             
+            # Limita aos 10 últimos REDS únicos
             reds_unicos_10 = list(df_hist["num_reds"].unique())[:10]
             df_10_reds = df_hist[df_hist["num_reds"].isin(reds_unicos_10)]
 
             agora_now = datetime.datetime.now()
 
+            # RENDERIZAÇÃO EM FORMATO DE EXPANDER '+' POR REDS NO HISTÓRICO
             for num_reds_h, df_grupo_h in df_10_reds.groupby("num_reds", sort=False):
                 qtd_h = len(df_grupo_h)
                 
-                with st.container(border=True):
-                    st.markdown(f"📄 **REDS: {num_reds_h}** ({qtd_h} item/ns)")
-                    
+                with st.expander(f"➕ **REDS: {num_reds_h}** ({qtd_h} item/ns tramitado/s)", expanded=False):
                     for idx_h, item_h in df_grupo_h.iterrows():
                         id_bem_h = str(item_h.get("id_bem") or item_h.get("id"))
                         desc_h = item_h.get("descricao", "N/I")
@@ -404,7 +401,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         pode_cancelar = False
                         tempo_restante_str = ""
 
-                        # REGRA ATUALIZADA: Permite cancelamento TANTO para PM QUANTO para CREDS se houver pendência e estiver em até 72h
                         if dest_h != "N/I" and status_h in ["Pendente de Aceite", "Em Tramitação"] and dt_env_str:
                             try:
                                 dt_env_obj = pd.to_datetime(dt_env_str).to_pydatetime().replace(tzinfo=None)
