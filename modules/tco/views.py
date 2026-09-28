@@ -49,6 +49,16 @@ def injetar_css_cards_alternados():
     .card-brown b,
     .card-brown small,
     .card-brown i { color: #000000 !important; }
+
+    .card-trava {
+      background-color: #262626;
+      border: 2px solid #525252;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+      color: #a3a3a3 !important;
+    }
+    .card-trava strong, .card-trava b { color: #f5f5f5 !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -188,6 +198,8 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
         ponto_cadeia = f"⏳ <b>Aguardando Aceite por:</b> {tag_destaque(dest_pend)} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
     elif status_tr == "Divergência Registrada":
         ponto_cadeia = f"🚨 <b>Divergência Registrada:</b> Pendente de Apuração pelo Gestor CREDS"
+    elif status_tr == "Transferido Definitivo":
+        ponto_cadeia = f"🔒 <b>Transferência Definitiva:</b> Encaminhado em definitivo para {tag_destaque(fase_dest)}"
     elif "Perícia" in fase_dest:
         ponto_cadeia = f"🔬 <b>Em Perícia Técnica:</b> Responsável: {tag_destaque(bem.get('fiel_depositario_atual', 'N/I'))}"
     elif "PCMG" in fase_dest or "Delegacia" in fase_dest:
@@ -541,7 +553,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA PAINEL CREDS (REGRAS AJUSTADAS: TRANSFERÊNCIA DEFINITIVA VS RETORNO E DESTRUÍDOS)
+# ABA PAINEL CREDS (GERENCIAMENTO INDIVIDUALIZADO DE ITENS EM CADAS CARD)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -657,8 +669,8 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         if alerta_4d:
             reds_parados.add(num_r)
 
-        # 1. BENS EFETIVAMENTE DESTRUÍDOS / ENCERRADOS (SAEM DA ÁREA DE MANUSEIO)
-        if "DESTRUÍDO" in fase_d or "ENCERRADO" in status_t.upper() or "TRANSFERIDO DEFINITIVO" in status_t.upper():
+        # 1. BENS EFETIVAMENTE DESTRUÍDOS OU ENCERRADOS
+        if "DESTRUÍDO" in fase_d or "ENCERRADO" in status_t.upper():
             bens_destruidos_encerrados.append(b_copy)
 
         # 2. EM PERÍCIA TÉCNICA
@@ -675,8 +687,8 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         elif dest_p and ("CREDS" in dest_p or "CUSTÓDIA" in dest_p or unidade_militar_atual in dest_p) and status_t in ["Pendente de Aceite", "Pendente Aceite"]:
             bens_pendentes_aceite_creds.append(b_copy)
 
-        # 5. EM ÓRGÃO EXTERNO OU OUTRO MILITAR
-        elif any(term in dest_p or term in fase_d for term in TERMOS_EXTERNOS) or (dest_p and not ("CREDS" in dest_p or "CUSTÓDIA" in dest_p)):
+        # 5. EM ÓRGÃO EXTERNO OU TRANSFERIDO DEFINITIVO
+        elif status_t == "Transferido Definitivo" or any(term in dest_p or term in fase_d for term in TERMOS_EXTERNOS) or (dest_p and not ("CREDS" in dest_p or "CUSTÓDIA" in dest_p)):
             reds_orgao_externo.add(num_r)
             bens_orgao_externo_tramite.append(b_copy)
 
@@ -763,7 +775,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             qtd_reds_disponiveis = df_disp_reds["num_reds"].nunique() if not df_disp_reds.empty else 0
 
             st.markdown(f"##### 🎒 1. Acervo Disponível no CREDS ({qtd_reds_disponiveis} REDS em guarda física)")
-            st.caption("Materiais armazenados e sob guarda direta da Seção. Selecione itens para transferir, destinar a órgãos ou confirmar a destruição física.")
+            st.caption("Materiais armazenados e sob guarda direta da Seção. Selecione itens ativos para transferir, destinar a órgãos ou confirmar a destruição física.")
 
             if bens_r1:
                 grupos_creds_reds = df_disp_reds.groupby("num_reds", sort=False)
@@ -772,7 +784,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 for num_reds_c, df_grupo_c in grupos_creds_reds:
                     qtd_reds_c = len(df_grupo_c)
                     
-                    with st.expander(f"📦 **CARD REDS: {num_reds_c}** ({qtd_reds_c} item/ns no acervo)", expanded=False):
+                    with st.expander(f"📦 **CARD REDS: {num_reds_c}** ({qtd_reds_c} item/ns no acervo físico)", expanded=False):
                         for _, bem in df_grupo_c.iterrows():
                             idx_global_card += 1
                             e_marrom = (idx_global_card % 2 != 0)
@@ -787,7 +799,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
                             col_c1, col_c2 = st.columns([0.6, 9.4])
                             
-                            with col_c1:  # CORRIGIDO: Nome exato da variável definida acima
+                            with col_c1:
                                 is_sel_creds = st.checkbox(
                                     "Selecionar", 
                                     key=f"chk_creds_card_{id_bem}_{idx_global_card}",
@@ -1074,7 +1086,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 3: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / EM TRÂMITE (COM RETORNO HABILITADO)
+    # RETÂNGULO 3: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / EM TRÂMITE (COM JANELA 72H)
     # =========================================================================
     if filtro_card in ["TODOS", "PERICIA", "PARADOS"]:
         with st.container(border=True):
@@ -1087,12 +1099,12 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             df_ext_reds = pd.DataFrame(bens_r3) if bens_r3 else pd.DataFrame()
             qtd_reds_ext = df_ext_reds["num_reds"].nunique() if not df_ext_reds.empty else 0
 
-            st.markdown(f"##### 🏛️ 3. Materiais em Órgãos Externos / Em Tramitação ({qtd_reds_ext} REDS)")
-            st.caption("Acompanhamento dos materiais remetidos para Polícia Civil, JECRIM, Perícia ou Militares com previsão de retorno.")
+            st.markdown(f"##### 🏛️ 3. Materiais em Órgãos Externos / Destinados ({qtd_reds_ext} REDS)")
+            st.caption("Acompanhamento individual dos materiais remetidos para Polícia Civil, JECRIM, Perícia ou com transferência definitiva.")
 
             if bens_r3:
                 for num_reds_ext, df_grupo_ext in df_ext_reds.groupby("num_reds", sort=False):
-                    with st.expander(f"🏛️ **CARD REDS: {num_reds_ext}** ({len(df_grupo_ext)} item/ns fora da custódia física)", expanded=False):
+                    with st.expander(f"🏛️ **CARD REDS: {num_reds_ext}** ({len(df_grupo_ext)} item/ns nesta situação)", expanded=False):
                         for idx_e, item_e in df_grupo_ext.iterrows():
                             id_bem_e = str(item_e.get("id_bem") or item_e.get("id"))
                             desc_e = item_e.get("descricao", "N/I")
@@ -1102,6 +1114,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             lacre_e = item_e.get("involucro_lacre", "N/I")
                             remetente_orig = item_e.get("remetente_ultimo") or item_e.get("fiel_depositario_atual") or "Gestor CREDS"
                             dt_env_e_str = item_e.get("data_envio_tramite") or item_e.get("data_posse_atual")
+                            status_tr_e = str(item_e.get("status_tramite") or "")
 
                             dt_env_fmt = "Data N/I"
                             tempo_no_orgao_str = "N/I"
@@ -1121,23 +1134,35 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                     else:
                                         tempo_no_orgao_str = f"{horas_ev} hora(s) e {(delta_ev.seconds % 3600) // 60} minuto(s)"
 
-                                    if item_e.get("destinatario_pendente") and (delta_ev.total_seconds() / 3600.0) <= 72.0:
+                                    # Janela individual de 72 horas para cancelamento
+                                    if (delta_ev.total_seconds() / 3600.0) <= 72.0:
                                         pode_canc_e = True
                                 except Exception:
                                     pass
 
+                            e_definitivo = (status_tr_e == "Transferido Definitivo")
+                            classe_item_ext = "card-trava" if e_definitivo else "card-blue"
+
                             col_card1, col_card2 = st.columns([7, 3])
                             with col_card1:
-                                st.markdown(
-                                    f"📦 **Material:** {desc_e} (Qtd: {qtd_e_val}) | **Lacre:** `{lacre_e}`  \n"
-                                    f"📍 **Localização/Destino:** `{dest_e}` (`{unid_dest_e}`)  \n"
-                                    f"👤 **Enviado por:** `{remetente_orig}` em `{dt_env_fmt}`  \n"
-                                    f"⏱️ **Tempo no Órgão / Trâmite:** `{tempo_no_orgao_str}`"
-                                )
+                                if e_definitivo:
+                                    tag_situacao = "<strong style='color: #F87171;'>🔒 DEFINITIVO (SEM RETORNO)</strong>"
+                                else:
+                                    tag_situacao = "<strong style='color: #60A5FA;'>🔄 COM RETORNO / EM TRÂMITE</strong>"
+
+                                html_ext = f"""
+                                <div class="{classe_item_ext}">
+                                    📦 <b>Material:</b> {desc_e} (Qtd: {qtd_e_val}) | 🏷️ <b>Lacre:</b> {lacre_e}<br/>
+                                    📍 <b>Destino/Fase:</b> {dest_e} ({unid_dest_e}) | Situação: {tag_situacao}<br/>
+                                    👤 <b>Enviado por:</b> {remetente_orig} em {dt_env_fmt}<br/>
+                                    ⏱️ <b>Tempo Imóvel:</b> {tempo_no_orgao_str}
+                                </div>
+                                """
+                                st.markdown(html_ext, unsafe_allow_html=True)
 
                             with col_card2:
                                 if pode_canc_e:
-                                    if st.button("❌ Cancelar Envio", key=f"btn_canc_ext_card_{id_bem_e}_{idx_e}", type="primary", width="stretch"):
+                                    if st.button("❌ Cancelar Envio (Janela 72h)", key=f"btn_canc_ext_indiv_{id_bem_e}_{idx_e}", type="primary", width="stretch"):
                                         payload_canc_ext = {
                                             "destinatario_pendente": None,
                                             "unidade_destinatario_pendente": None,
@@ -1156,13 +1181,13 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                 "unidade_origem": unidade_militar_atual,
                                                 "destino": nome_militar_atual,
                                                 "unidade_destino": unidade_militar_atual,
-                                                "detalhe": f"Envio para {dest_e} cancelado pelo gestor dentro das 72h."
+                                                "detalhe": f"Envio do item '{desc_e}' para {dest_e} cancelado individualmente dentro das 72h."
                                             })
-                                            st.success("✅ Envio cancelado! O material retornou para o acervo do CREDS.")
+                                            st.success("✅ Envio cancelado! O item retornou para o acervo ativo do CREDS.")
                                             st.cache_data.clear()
                                             st.rerun()
                                 else:
-                                    st.caption("🔒 Posse Confirmada / Registro Imutável")
+                                    st.caption("🔒 Posse Confirmada / Transferência Consolidada")
             else:
                 st.info("ℹ️ Nenhum material localizado em trâmite de órgãos externos no momento.")
 
