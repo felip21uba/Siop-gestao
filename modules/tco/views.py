@@ -542,7 +542,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA PAINEL CREDS (EM CARDS COM DESTINAÇÃO INDIVIDUALIZADA)
+# ABA PAINEL CREDS (EM EXPANDERS RECOLHÍVEIS POR REDS)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -617,6 +617,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.divider()
 
+    # Métricas gerais
     bens_processados = []
     q_parados = 0
     q_custodia = 0
@@ -650,45 +651,57 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     with kp4:
         st.metric("🚨 Parados > 4 Dias", q_parados)
 
-    st.markdown(f"##### 📦 Acervo Exibido em Cards ({len(bens_processados)} item/ns):")
-    st.caption("Marque os materiais desejados para aplicar novas destinações ou transferências de forma individualizada.")
+    st.markdown(f"##### 📦 Acervo Exibido ({len(bens_processados)} item/ns):")
+    st.caption("Expandidores agrupados por REDS (+). Abra o REDS desejado e selecione os itens para aplicação de despachos.")
 
-    for idx_creds, bem in enumerate(bens_processados):
-        e_marrom = (idx_creds % 2 != 0)
-        classe_card = "card-brown" if e_marrom else "card-blue"
-        ponto_cad_card, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
-        id_bem = str(bem.get("id_bem") or bem.get("id"))
+    # AGRUPAMENTO POR REDS EM EXPANDERS (+)
+    if bens_processados:
+        df_creds_proc = pd.DataFrame(bens_processados)
+        grupos_creds_reds = df_creds_proc.groupby("num_reds", sort=False)
 
-        if e_marrom:
-            tempo_html = f"<strong style='color: #991B1B;'>{tempo_str_card} (PARADO > 4 DIAS)</strong>" if alerta_4d_card else f"<strong style='color: #000000;'>{tempo_str_card}</strong>"
-        else:
-            tempo_html = f"<span style='color: #F87171; font-weight: bold;'>{tempo_str_card} (PARADO > 4 DIAS)</span>" if alerta_4d_card else f"<span style='color: #4ADE80; font-weight: bold;'>{tempo_str_card}</span>"
+        idx_global_card = 0
+        for num_reds_c, df_grupo_c in grupos_creds_reds:
+            qtd_reds_c = len(df_grupo_c)
+            
+            with st.expander(f"➕ **REDS: {num_reds_c}** ({qtd_reds_c} item/ns registrado/s)", expanded=False):
+                for _, bem in df_grupo_c.iterrows():
+                    idx_global_card += 1
+                    e_marrom = (idx_global_card % 2 != 0)
+                    classe_card = "card-brown" if e_marrom else "card-blue"
+                    ponto_cad_card, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
+                    id_bem = str(bem.get("id_bem") or bem.get("id"))
 
-        col_c1, col_c2 = st.columns([0.6, 9.4])
-        
-        with col_c1:
-            is_sel_creds = st.checkbox(
-                "Selecionar", 
-                key=f"chk_creds_card_{id_bem}_{idx_creds}",
-                label_visibility="collapsed"
-            )
+                    if e_marrom:
+                        tempo_html = f"<strong style='color: #991B1B;'>{tempo_str_card} (PARADO > 4 DIAS)</strong>" if alerta_4d_card else f"<strong style='color: #000000;'>{tempo_str_card}</strong>"
+                    else:
+                        tempo_html = f"<span style='color: #F87171; font-weight: bold;'>{tempo_str_card} (PARADO > 4 DIAS)</span>" if alerta_4d_card else f"<span style='color: #4ADE80; font-weight: bold;'>{tempo_str_card}</span>"
 
-        with col_c2:
-            html_item = f"""
-            <div class="{classe_card}">
-                📄 REDS: <b>{bem['num_reds']}</b> | Material: <b>{bem['descricao']}</b> (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})<br/>
-                🏷️ Lacre: <b>{bem.get('involucro_lacre', 'N/I')}</b> | Autor: <b>{bem.get('autores', 'N/I')}</b><br/>
-                📍 Status: {ponto_cad_card}<br/>
-                ⏱️ Tempo Imóvel na Etapa: {tempo_html}
-            </div>
-            """
-            st.markdown(html_item, unsafe_allow_html=True)
+                    col_c1, col_c2 = st.columns([0.6, 9.4])
+                    
+                    with col_c1:
+                        is_sel_creds = st.checkbox(
+                            "Selecionar", 
+                            key=f"chk_creds_card_{id_bem}_{idx_global_card}",
+                            label_visibility="collapsed"
+                        )
 
-        if is_sel_creds:
-            st.session_state["itens_selecionados_creds_painel"][id_bem] = bem
-        else:
-            st.session_state["itens_selecionados_creds_painel"].pop(id_bem, None)
+                    with col_c2:
+                        html_item = f"""
+                        <div class="{classe_card}">
+                            📄 REDS: <b>{bem['num_reds']}</b> | Material: <b>{bem['descricao']}</b> (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})<br/>
+                            🏷️ Lacre: <b>{bem.get('involucro_lacre', 'N/I')}</b> | Autor: <b>{bem.get('autores', 'N/I')}</b><br/>
+                            📍 Status: {ponto_cad_card}<br/>
+                            ⏱️ Tempo Imóvel na Etapa: {tempo_html}
+                        </div>
+                        """
+                        st.markdown(html_item, unsafe_allow_html=True)
 
+                    if is_sel_creds:
+                        st.session_state["itens_selecionados_creds_painel"][id_bem] = bem.to_dict()
+                    else:
+                        st.session_state["itens_selecionados_creds_painel"].pop(id_bem, None)
+
+    # PAINEL DE DESTINAÇÃO INDIVIDUALIZADA
     selecionados_creds_map = st.session_state["itens_selecionados_creds_painel"]
     qtd_creds_sel = len(selecionados_creds_map)
 
