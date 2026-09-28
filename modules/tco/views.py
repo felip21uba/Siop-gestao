@@ -552,7 +552,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO, P1, Comandantes ou Administradores têm acesso a esta área.")
         return
 
-    # Inicializa estado para itens selecionados no painel CREDS
     if "itens_selecionados_creds_painel" not in st.session_state:
         st.session_state["itens_selecionados_creds_painel"] = {}
 
@@ -618,7 +617,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.divider()
 
-    # Métricas gerais
     bens_processados = []
     q_parados = 0
     q_custodia = 0
@@ -655,7 +653,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown(f"##### 📦 Acervo Exibido em Cards ({len(bens_processados)} item/ns):")
     st.caption("Marque os materiais desejados para aplicar novas destinações ou transferências de forma individualizada.")
 
-    # Renderização em CARDS com checkbox para seleção individual
     for idx_creds, bem in enumerate(bens_processados):
         e_marrom = (idx_creds % 2 != 0)
         classe_card = "card-brown" if e_marrom else "card-blue"
@@ -692,7 +689,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         else:
             st.session_state["itens_selecionados_creds_painel"].pop(id_bem, None)
 
-    # PAINEL DE DESTINAÇÃO INDIVIDUALIZADA (SÓ EXIBE SE HOUVER ITENS SELECIONADOS)
     selecionados_creds_map = st.session_state["itens_selecionados_creds_painel"]
     qtd_creds_sel = len(selecionados_creds_map)
 
@@ -980,10 +976,10 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                 if st.button("💾 Salvar Função CREDS", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
                     if atualizar_usuario_supabase(num_pm, {"perfil_creds": novo_perfil_creds}):
                         registrar_audit_log(
-                            usuario=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
-                            alvo=num_pm,
-                            acao="ALTERAÇÃO_FUNÇÃO_CREDS",
-                            detalhe=f"Função CREDS do militar {militar_obj.get('nome_guerra')} ({num_pm}) alterada para {novo_perfil_creds}."
+                            operador_pm=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
+                            alvo_pm=num_pm,
+                            tipo_acao="ALTERAÇÃO_FUNÇÃO_CREDS",
+                            descricao=f"Função CREDS do militar {militar_obj.get('nome_guerra')} ({num_pm}) alterada para {novo_perfil_creds}."
                         )
                         st.success(f"Função CREDS de **{militar_obj.get('nome_guerra')}** atualizada para **{opcoes_perfis[novo_perfil_creds]}**!")
                         st.rerun()
@@ -1026,10 +1022,10 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                                     if st.button("🔻 Retornar a Tropa", key=f"btn_revogar_creds_{pm_key}_{idx_g}", use_container_width=True):
                                         if atualizar_usuario_supabase(pm_key, {"perfil_creds": "TROPA"}):
                                             registrar_audit_log(
-                                                usuario=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
-                                                alvo=pm_key,
-                                                acao="REVOGAÇÃO_FUNÇÃO_CREDS",
-                                                detalhe=f"Função CREDS do militar {pm_key} retornada para TROPA."
+                                                operador_pm=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
+                                                alvo_pm=pm_key,
+                                                tipo_acao="REVOGAÇÃO_FUNÇÃO_CREDS",
+                                                descricao=f"Função CREDS do militar {pm_key} retornada para TROPA."
                                             )
                                             st.success("Função alterada para TROPA!")
                                             st.rerun()
