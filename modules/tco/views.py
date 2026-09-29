@@ -22,7 +22,7 @@ from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sani
 def injetar_css_cards_alternados():
     st.markdown("""
     <style>
-    .card-content { color: #e2e8f0; }
+    .card-content { color: #e2e8f0; font-size: 1rem; }
     .card-content strong, .card-content b { color: #ffffff; }
 
     .card-blue {
@@ -32,6 +32,7 @@ def injetar_css_cards_alternados():
       padding: 14px 18px;
       margin-bottom: 12px;
       color: #e2e8f0 !important;
+      font-size: 1rem !important;
     }
     .card-blue b, .card-blue strong { color: #ffffff !important; }
 
@@ -42,6 +43,7 @@ def injetar_css_cards_alternados():
       padding: 14px 18px;
       margin-bottom: 12px;
       color: #000000 !important;
+      font-size: 1rem !important;
     }
     .card-brown .card-title,
     .card-brown .status-text,
@@ -57,6 +59,7 @@ def injetar_css_cards_alternados():
       padding: 14px 18px;
       margin-bottom: 12px;
       color: #fef3c7 !important;
+      font-size: 1rem !important;
     }
     .card-fire b, .card-fire strong { color: #ffffff !important; }
 
@@ -67,8 +70,21 @@ def injetar_css_cards_alternados():
       padding: 14px 18px;
       margin-bottom: 12px;
       color: #a3a3a3 !important;
+      font-size: 1rem !important;
     }
     .card-trava strong, .card-trava b { color: #f5f5f5 !important; }
+
+    /* ESTILO DA TAG VERDE COM FONTE AUMENTADA */
+    .tag-verde-destaque {
+      color: #4ADE80 !important;
+      font-weight: bold !important;
+      font-size: 1.05rem !important;
+      background-color: rgba(74, 222, 128, 0.1) !important;
+      padding: 2px 8px !important;
+      border-radius: 4px !important;
+      display: inline-block !important;
+      letter-spacing: 0.3px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -202,8 +218,8 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
     
     def tag_destaque(txt):
         if e_marrom:
-            return f"<strong style='color: #000000;'>{txt}</strong>"
-        return f"<span style='color: #4ADE80; font-weight: bold;'>{txt}</span>"
+            return f"<strong style='color: #000000; font-size: 1.05rem;'>{txt}</strong>"
+        return f"<span class='tag-verde-destaque'>{txt}</span>"
 
     if dest_pend and status_tr in ["Pendente de Aceite", "Pendente Aceite"]:
         ponto_cadeia = f"⏳ <b>Aguardando Aceite por:</b> {tag_destaque(dest_pend)} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
@@ -1480,7 +1496,7 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
             }
 
             if opcoes_militar:
-                militar_sel_key = st.selectbox("Selecione o Policial Militar:", list(opcoes_militar.keys()), key="sel_mil_creds_aba7")
+                militar_sel_key = st.selectbox("Selecione o Policial Militar:", list(opcoes_militar.keys()), key="sel_novo_perfil_creds_aba7")
                 militar_obj = opcoes_militar[militar_sel_key]
                 num_pm = str(militar_obj.get("num_policia", "")).strip()
 
@@ -1505,7 +1521,7 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                     options=chaves_disponiveis,
                     format_func=lambda x: opcoes_perfis[x],
                     index=index_default,
-                    key="sel_novo_perfil_creds_aba7"
+                    key="sel_novo_perfil_creds_aba7_select"
                 )
 
                 if st.button("💾 Salvar Função CREDS", type="primary", width="stretch", key="btn_add_creds_aba7"):
