@@ -35,11 +35,14 @@ def exibir_painel_gestao_unidades():
 
     unidades = []
     try:
-        res = supabase.table("configuracao_unidade").select("*").execute()
+        res = supabase.table("unidades_config").select("*").execute()
         unidades = res.data or []
     except Exception as ex:
-        print(f"Aviso ao carregar lista de unidades: {ex}")
-        unidades = []
+        try:
+            res = supabase.table("configuracao_unidade").select("*").execute()
+            unidades = res.data or []
+        except Exception:
+            unidades = []
 
     if not unidades:
         st.info("ℹ️ Nenhuma unidade cadastrada no momento.")
@@ -47,15 +50,16 @@ def exibir_painel_gestao_unidades():
 
     for uni in unidades:
         id_uni = uni.get("id")
-        unidade_nome = uni.get("unidade_nome", "Não Informada")
-        subunidade_nome = uni.get("subunidade_nome", "Não Informada")
+        unidade_nome = uni.get("batalhao") or uni.get("unidade_nome", "Não Informada")
+        subunidade_nome = uni.get("companhia") or uni.get("subunidade_nome", "Não Informada")
+        municipio_nome = uni.get("municipio", "N/I")
 
         with st.container():
             col_info, col_acao = st.columns([4, 1])
             
             with col_info:
                 st.markdown(f"**🏛️ Unidade:** {unidade_nome}")
-                st.caption(f"📍 **Subunidade / Cia:** {subunidade_nome}")
+                st.caption(f"📍 **Subunidade / Cia:** {subunidade_nome} | **Município/Sede:** {municipio_nome}")
             
             with col_acao:
                 if st.button("🗑️ Excluir", key=f"btn_del_uni_{id_uni}", type="secondary"):
@@ -68,7 +72,7 @@ def exibir_painel_gestao_unidades():
                 with c_sim:
                     if st.button("✅ Confirmar Exclusão", key=f"btn_conf_yes_{id_uni}", type="primary"):
                         try:
-                            supabase.table("configuracao_unidade").delete().eq("id", id_uni).execute()
+                            supabase.table("unidades_config").delete().eq("id", id_uni).execute()
                             st.success(f"Unidade '{unidade_nome}' excluída!")
                             st.session_state[f"confirm_del_{id_uni}"] = False
                             st.rerun()
@@ -157,7 +161,7 @@ def exibir_tela_gestao_usuarios():
 
     aba_permissao_efetivo, aba_cadastrar_unidade, aba_lista_unidades = st.tabs([
         "👥 Efetivo & Sincronização de Contas",
-        "🏛️ Cadastrar Nova Unidade / Batalhão",
+        "🏛️️ Cadastrar Nova Unidade / Batalhão",
         "📋 Lista de Unidades Cadastradas"
     ])
 
@@ -270,7 +274,7 @@ def exibir_tela_gestao_usuarios():
         with st.expander("📜 Tabela Geral de Permissões Duplas e Nível Geral (Clique para expandir)", expanded=True):
             col_q1, col_q2 = st.columns([3, 1])
             with col_q1: 
-                st.caption("💡 **Nível Geral (Perfil do Sistema):** Define o nível de autoridade no menu principal (ex: **TROPA** acessa apenas sua escala/mensagens; **P1/P3/COMANDANTE_CIA** gerenciam o efetivo da unidade; **ADMIN/PROGRAMADOR** acessam governança, logs e gestão de acessos).")
+                st.caption("💡 **Nível Geral (Perfil do Sistema):** Define o nível de autoridade no menu principal.")
             with col_q2: 
                 if st.button("🔄 Recarregar Tabela", use_container_width=True):
                     st.session_state["gestao_usr_version"] += 1
@@ -357,130 +361,42 @@ def exibir_tela_gestao_usuarios():
                     st.success("✅ Permissões salvas com sucesso!")
                     st.rerun()
 
-        st.divider()
-
-        # AÇÕES DE COMANDO EMERGENCIAIS
-        st.markdown("##### 🛠️ Ações de Comando sobre Credenciais")
-        col_act1, col_act2, col_act3 = st.columns(3)
-        opcoes_acoes = [str(u.get("usuario_login") or u.get("usuario")).strip().upper() for u in usuarios_banco if u.get("usuario_login") or u.get("usuario")] if usuarios_banco else ["Nenhum"]
-
-        def formatar_usuario_acao(login_key):
-            if login_key == "Nenhum":
-                return "Nenhum"
-            m_found = next((m for m in efetivo_banco if str(m.get("num_policia")).strip().upper() == login_key), None)
-            if m_found:
-                pg = m_found.get("posto_grad", "")
-                nc = m_found.get("nome_completo") or m_found.get("nome_guerra", "")
-                return f"[{login_key}] {pg} {nc}".strip()
-
-            u_found = next((u for u in usuarios_banco if (str(u.get('usuario_login')).upper() == login_key or str(u.get('usuario')).upper() == login_key)), None)
-            if u_found:
-                pg = u_found.get("cargo_funcao", "")
-                nc = u_found.get("nome_completo") or u_found.get("nome_guerra", "")
-                return f"[{login_key}] {pg} {nc}".strip()
-
-            return login_key
-
-        with col_act1:
-            st.markdown("**🛑 Derrubar Sessão Ativa:**")
-            milit_derrubar_pm = st.selectbox(
-                "Selecione o usuário:",
-                opcoes_acoes,
-                format_func=formatar_usuario_acao,
-                key="sel_derrubar_s"
-            )
-            if st.button("🚫 Desconectar Dispositivo", use_container_width=True):
-                if supabase and milit_derrubar_pm != "Nenhum":
-                    try:
-                        supabase.table("usuarios").update({"token_sessao_ativa": "REVOGADO", "token_recuperacao": "REVOGADO"}).or_(f"usuario_login.eq.{milit_derrubar_pm},usuario.eq.{milit_derrubar_pm}").execute()
-                        st.cache_data.clear()
-                    except Exception:
-                        pass
-                registrar_audit_log(usr_id_operador, milit_derrubar_pm, "DERRUBAR_SESSAO", "Sessão encerrada remotamente pelo Gestor")
-                st.success("✅ Sessão do usuário desconectada!")
-
-        with col_act2:
-            st.markdown("**🔄 Resetar para Senha Padrão:**")
-            milit_reset_pm = st.selectbox(
-                "Selecione o usuário:",
-                opcoes_acoes,
-                format_func=formatar_usuario_acao,
-                key="sel_reset_s"
-            )
-            if st.button("🔑 Resetar Credenciais Iniciais", use_container_width=True):
-                if milit_reset_pm != "Nenhum":
-                    pm_limpo = str(milit_reset_pm).replace("-", "").replace(".", "").strip().upper()
-                    senha_reset = pm_limpo
-                    hash_reset = gerar_hash_senha(senha_reset)
-                    
-                    if supabase:
-                        try:
-                            supabase.table("usuarios").update({
-                                "senha": senha_reset,
-                                "senha_hash": hash_reset,
-                                "primeiro_acesso": True,
-                                "mfa_habilitado": False,
-                                "mfa_secret": None,
-                                "token_sessao_ativa": None,
-                                "token_recuperacao": None,
-                                "ativo": True
-                            }).or_(f"usuario_login.eq.{milit_reset_pm},usuario.eq.{pm_limpo}").execute()
-                            st.cache_data.clear()
-                        except Exception as e:
-                            print(f"Erro ao resetar conta: {e}")
-                            
-                    registrar_audit_log(usr_id_operador, milit_reset_pm, "RESET_SENHA", "Credenciais resetadas para a senha padrão (matrícula).")
-                    st.success("✅ Conta restaurada e desbloqueada com sucesso!")
-
-        with col_act3:
-            st.markdown("**📱 Resetar Apenas o 2FA (Novo Celular):**")
-            milit_2fa_pm = st.selectbox(
-                "Selecione o usuário:",
-                opcoes_acoes,
-                format_func=formatar_usuario_acao,
-                key="sel_2fa_s"
-            )
-            if st.button("📲 Gerar Novo QR Code 2FA", use_container_width=True):
-                if supabase and milit_2fa_pm != "Nenhum":
-                    try:
-                        supabase.table("usuarios").update({
-                            "mfa_habilitado": False,
-                            "mfa_secret": None
-                        }).or_(f"usuario_login.eq.{milit_2fa_pm},usuario.eq.{milit_2fa_pm}").execute()
-                        st.cache_data.clear()
-                    except Exception:
-                        pass
-                registrar_audit_log(usr_id_operador, milit_2fa_pm, "RESET_2FA", "Vínculo de autenticador 2FA removido.")
-                st.success("✅ Vínculo de 2FA removido com sucesso!")
-
-    # ABA 2: FORMULÁRIO DE CADASTRO DE UNIDADES
+    # ABA 2: FORMULÁRIO DE CADASTRO DE UNIDADES COM MUNICÍPIO/SEDE
     with aba_cadastrar_unidade:
         st.markdown("##### 🏛️ Cadastro de Novas Unidades / Batalhões (Multi-Tenant)")
         with st.form("form_nova_unidade_multitenant", clear_on_submit=True):
             c_un_a, c_un_b = st.columns(2)
             with c_un_a:
                 nova_unidade_nome = st.text_input("Nome da Nova Unidade / Batalhão:", placeholder="Ex: 47º BPM / 4ª RPM").strip().upper()
-                nova_subunidade_nome = st.text_input("Companhia / Subunidade Principal:", placeholder="Ex: 75ª CIA PM / CARANGOLA").strip().upper()
+                nova_subunidade_nome = st.text_input("Companhia / Subunidade Principal:", placeholder="Ex: 75ª CIA PM").strip().upper()
+                novo_pelotao_nome = st.text_input("Pelotão / Subseção (Opcional):", placeholder="Ex: 1º PELOTÃO").strip().upper()
             with c_un_b:
+                novo_municipio_nome = st.text_input("Município / Sede (OBRIGATÓRIO):", placeholder="Ex: CARANGOLA").strip().upper()
                 nova_brasao_url = st.text_input("URL do Brasão da Unidade (Opcional):", value="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png").strip()
 
             st.markdown("<br>", unsafe_allow_html=True)
-            btn_cadastrar_unidade = st.form_submit_button("🏛️ Cadastrar Nova Unidade no SIOP")
+            btn_cadastrar_unidade = st.form_submit_button("🏛️ Cadastrar Nova Unidade no SIOP", type="primary", use_container_width=True)
 
-            if btn_cadastrar_unidade and nova_unidade_nome and nova_subunidade_nome:
-                if supabase:
-                    try:
-                        supabase.table("configuracao_unidade").insert({
-                            "unidade_nome": nova_unidade_nome,
-                            "subunidade_nome": nova_subunidade_nome,
-                            "brasao_url": nova_brasao_url
-                        }).execute()
-                        st.cache_data.clear()
-                        registrar_audit_log(usr_id_operador, None, "CADASTRAR_UNIDADE", f"Nova unidade cadastrada: {nova_unidade_nome} / {nova_subunidade_nome}")
-                        st.success(f"✅ Unidade '{nova_unidade_nome}' cadastrada no Supabase!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar unidade: {e}")
+            if btn_cadastrar_unidade:
+                if not nova_unidade_nome or not nova_subunidade_nome or not novo_municipio_nome:
+                    st.error("⚠️ Preencha os campos obrigatórios: Batalhão, Companhia e Município/Sede.")
+                else:
+                    if supabase:
+                        try:
+                            payload_uni = {
+                                "batalhao": nova_unidade_nome,
+                                "companhia": nova_subunidade_nome,
+                                "pelotao": novo_pelotao_nome if novo_pelotao_nome else "N/A",
+                                "municipio": novo_municipio_nome,
+                                "url_brasao": nova_brasao_url
+                            }
+                            supabase.table("unidades_config").upsert(payload_uni, on_conflict="batalhao,companhia,pelotao,municipio").execute()
+                            st.cache_data.clear()
+                            registrar_audit_log(usr_id_operador, None, "CADASTRAR_UNIDADE", f"Nova unidade cadastrada: {nova_unidade_nome} / {nova_subunidade_nome} ({novo_municipio_nome})")
+                            st.success(f"✅ Unidade '{nova_unidade_nome} / {nova_subunidade_nome} ({novo_municipio_nome})' cadastrada no Supabase!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao salvar unidade: {e}")
 
     # ABA 3: LISTAGEM E EXCLUSÃO DE UNIDADES
     with aba_lista_unidades:
