@@ -374,7 +374,7 @@ if not st.session_state.get("autenticado", False):
         with c_logo:
             st.image(obter_imagem_brasao(), width=100)
         with c_tit:
-            st.markdown("## 🛡️️ **SIOP PMMG**")
+            st.markdown("## 🛡️ **SIOP PMMG**")
             st.markdown("##### Sistema Integrado de Operações")
             st.caption("Polícia Militar de Minas Gerais — Polícia de Cidadania")
 
@@ -393,7 +393,7 @@ if not st.session_state.get("autenticado", False):
                     with c_rec1:
                         btn_gerar_codigo = st.form_submit_button("📩 Solicitar Código por E-mail", type="primary", width="stretch")
                     with c_rec2:
-                        btn_voltar_rec = st.form_submit_button("⬅️️ Voltar ao Login", width="stretch")
+                        btn_voltar_rec = st.form_submit_button("⬅️ Voltar ao Login", width="stretch")
 
                     if btn_voltar_rec:
                         st.session_state["recuperar_senha_modo"] = False

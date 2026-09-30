@@ -83,7 +83,7 @@ def expurgar_equipe_em_cascata(eq_alvo):
 def abrir_modal_nova_equipe():
     with st.form("form_inserir_equipe_p1_modal", clear_on_submit=True):
         nova_equipe_input = st.text_input("Nome da Nova Equipe:", placeholder="Ex: TM ALPHA, GEPAR, CPU...").strip().upper()
-        btn_salvar_eq = st.form_submit_button("💾 Inserir Equipe", type="primary", use_container_width=True)
+        btn_salvar_eq = st.form_submit_button("💾 Inserir Equipe", type="primary", width="stretch")
         if btn_salvar_eq and nova_equipe_input:
             if nova_equipe_input not in st.session_state["lista_equipes"]:
                 st.session_state["lista_equipes"].append(nova_equipe_input)
@@ -111,7 +111,7 @@ def abrir_modal_excluir_equipes():
         with c_nome:
             st.markdown(f"🛡️ **{eq}**")
         with c_btn:
-            if st.button("🗑️ Excluir", key=f"btn_del_eq_modal_{eq}", use_container_width=True):
+            if st.button("🗑️ Excluir", key=f"btn_del_eq_modal_{eq}", width="stretch"):
                 expurgar_equipe_em_cascata(eq)
                 st.success(f"Equipe '{eq}' e seus lançamentos foram totalmente removidos!")
                 st.rerun()
@@ -143,7 +143,7 @@ def renderizar_passo1():
                     brasao_in = st.text_input("URL do Brasão / Logo:", value=st.session_state.get("cfg_brasao_url", "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"), key="txt_brasao_p1").strip()
 
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💾 Salvar Unidade no Banco de Dados", use_container_width=True, type="primary", key="btn_salvar_unid_p1"):
+                if st.button("💾 Salvar Unidade no Banco de Dados", width="stretch", type="primary", key="btn_salvar_unid_p1"):
                     if not batalhao_in or not companhia_in or not municipio_in:
                         st.error("⚠️ Preencha os campos Batalhão, Companhia e Município.")
                     else:
@@ -158,7 +158,7 @@ def renderizar_passo1():
             with tab_cad_planilha:
                 file_plan = st.file_uploader("Suba a planilha (.xlsx ou .csv) com colunas Batalhao, Companhia, Pelotao, Municipio:", type=["xlsx", "xls", "csv"], key="upl_plan_p1")
                 if file_plan:
-                    if st.button("⚡ Processar Planilha de Unidades", type="primary", use_container_width=True):
+                    if st.button("⚡ Processar Planilha de Unidades", type="primary", width="stretch"):
                         qtd_ok = processar_planilha_unidades(file_plan.getvalue(), file_plan.name)
                         if qtd_ok > 0:
                             st.success(f"🎉 {qtd_ok} unidade(s) importada(s) e gravada(s) no Supabase!")
@@ -166,7 +166,7 @@ def renderizar_passo1():
 
         st.divider()
 
-        st.markdown("#### 🛡️ Gestão de Equipes e Portfólios")
+        st.markdown("#### 🛡️️ Gestão de Equipes e Portfólios")
         col_equipes_disp, col_gestao = st.columns([3.5, 1.2], gap="large")
         
         with col_equipes_disp:
@@ -180,7 +180,7 @@ def renderizar_passo1():
                 for idx, eq_nome in enumerate(grupo_equipes):
                     eh_ativa = (eq_nome == st.session_state.get("equipe_ativa"))
                     with cols[idx]:
-                        if st.button(f"🛡️ {eq_nome}", key=f"btn_eq_p1_{eq_nome}", type="primary" if eh_ativa else "secondary", use_container_width=True):
+                        if st.button(f"🛡️ {eq_nome}", key=f"btn_eq_p1_{eq_nome}", type="primary" if eh_ativa else "secondary", width="stretch"):
                             sincronizar_efetivo_equipe_ativa(eq_nome)
                             st.rerun()
 
@@ -189,8 +189,8 @@ def renderizar_passo1():
 
         with col_gestao:
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("➕ Cadastrar Nova Equipe", use_container_width=True, type="primary", key="btn_abrir_modal_add_eq"):
+            if st.button("➕ Cadastrar Nova Equipe", width="stretch", type="primary", key="btn_abrir_modal_add_eq"):
                 abrir_modal_nova_equipe()
 
-            if st.button("🗑️ Excluir Equipes", use_container_width=True, key="btn_abrir_modal_del_eq"):
+            if st.button("🗑️ Excluir Equipes", width="stretch", key="btn_abrir_modal_del_eq"):
                 abrir_modal_excluir_equipes()

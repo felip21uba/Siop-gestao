@@ -161,7 +161,7 @@ def exibir_tela_gestao_usuarios():
 
     aba_permissao_efetivo, aba_cadastrar_unidade, aba_lista_unidades = st.tabs([
         "👥 Efetivo & Sincronização de Contas",
-        "🏛️️ Cadastrar Nova Unidade / Batalhão",
+        "🏛️ Cadastrar Nova Unidade / Batalhão",
         "📋 Lista de Unidades Cadastradas"
     ])
 
@@ -189,7 +189,7 @@ def exibir_tela_gestao_usuarios():
             st.markdown("##### ⚡ Sincronização em Bloco do Efetivo")
             st.caption(f"Total de Militares: **{len(efetivo_banco)}** | Contas em 'Usuários': **{len(usuarios_banco)}**")
         with c_sync2:
-            if st.button("🚀 Sincronizar Todas as Contas", type="primary", use_container_width=True):
+            if st.button("🚀 Sincronizar Todas as Contas", type="primary", width="stretch"):
                 if not efetivo_banco:
                     st.warning("Nenhum militar cadastrado no Efetivo.")
                 else:
@@ -242,7 +242,7 @@ def exibir_tela_gestao_usuarios():
                 idx_tropa = PERFIS_NIVEL_GERAL.index("TROPA") if "TROPA" in PERFIS_NIVEL_GERAL else 0
                 nivel_geral_lote = st.selectbox("Nível Geral (Menu):", PERFIS_NIVEL_GERAL, index=idx_tropa)
 
-            if st.button("⚡ Aplicar Perfis e Nível Geral aos Selecionados", type="primary", use_container_width=True):
+            if st.button("⚡ Aplicar Perfis e Nível Geral aos Selecionados", type="primary", width="stretch"):
                 if not selecionados:
                     st.warning("Selecione ao menos um militar.")
                 else:
@@ -276,7 +276,7 @@ def exibir_tela_gestao_usuarios():
             with col_q1: 
                 st.caption("💡 **Nível Geral (Perfil do Sistema):** Define o nível de autoridade no menu principal.")
             with col_q2: 
-                if st.button("🔄 Recarregar Tabela", use_container_width=True):
+                if st.button("🔄 Recarregar Tabela", width="stretch"):
                     st.session_state["gestao_usr_version"] += 1
                     st.rerun()
 
@@ -316,7 +316,7 @@ def exibir_tela_gestao_usuarios():
                     df_display, 
                     column_config=config_cols, 
                     hide_index=True, 
-                    use_container_width=True, 
+                    width="stretch", 
                     key=chave_editor
                 )
 
@@ -375,7 +375,7 @@ def exibir_tela_gestao_usuarios():
                 nova_brasao_url = st.text_input("URL do Brasão da Unidade (Opcional):", value="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png").strip()
 
             st.markdown("<br>", unsafe_allow_html=True)
-            btn_cadastrar_unidade = st.form_submit_button("🏛️ Cadastrar Nova Unidade no SIOP", type="primary", use_container_width=True)
+            btn_cadastrar_unidade = st.form_submit_button("🏛️ Cadastrar Nova Unidade no SIOP", type="primary", width="stretch")
 
             if btn_cadastrar_unidade:
                 if not nova_unidade_nome or not nova_subunidade_nome or not novo_municipio_nome:
