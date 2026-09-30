@@ -1,6 +1,12 @@
 import json
 import streamlit as st
 from core.database import supabase
+from modules.escalas.unidades_view import (
+    carregar_unidades_cadastradas,
+    salvar_unidade_manual,
+    processar_planilha_unidades,
+    renderizar_seletor_programador
+)
 
 def carregar_equipes_persistidas():
     """Carrega as equipes salvas do Supabase ou usa o padrão inicial."""
@@ -112,21 +118,51 @@ def abrir_modal_excluir_equipes():
 
 def renderizar_passo1():
     carregar_equipes_persistidas()
+    usr_logado = st.session_state.get("usuario_dados", {})
+
     if "equipe_ativa" not in st.session_state or st.session_state["equipe_ativa"] not in st.session_state["lista_equipes"]:
         st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
 
-    with st.expander("📌 PASSO 1: Configuração da Unidade, Brasão e Gestão de Equipes", expanded=True):
-        with st.expander("➕ 🏛️ Dados da Unidade Operacional & Brasão", expanded=False):
-            col_u1, col_u2, col_u3 = st.columns([2, 2, 1.2])
-            with col_u1:
-                st.session_state["cfg_unidade"] = st.text_input("Unidade Operacional:", value=st.session_state.get("cfg_unidade", "21º BPM / 4ª RPM")).strip().upper()
-                st.session_state["cfg_subunidade"] = st.text_input("Subunidade / Cia:", value=st.session_state.get("cfg_subunidade", "35ª CIA PM / UBÁ")).strip().upper()
-            with col_u2:
-                st.session_state["cfg_brasao_url"] = st.text_input("URL do Brasão / Logo:", value=st.session_state.get("cfg_brasao_url", "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png")).strip()
-            with col_u3:
+    with st.expander("📌 PASSO 1: Configuração da Unidade, Brasão, Município e Gestão de Equipes", expanded=True):
+        
+        # 🌐 SELETOR DE VISUALIZAÇÃO PARA PROGRAMADOR
+        renderizar_seletor_programador(usr_logado)
+
+        with st.expander("🏛️ Dados da Unidade Operacional, Município & Brasão", expanded=False):
+            tab_cad_manual, tab_cad_planilha = st.tabs(["📝 Inclusão Manual", "📊 Importar Planilha em Lote"])
+            
+            with tab_cad_manual:
+                col_u1, col_u2 = st.columns(2)
+                with col_u1:
+                    batalhao_in = st.text_input("Batalhão / Unidade:", value=st.session_state.get("cfg_unidade", "21º BPM"), key="txt_bat_p1").strip().upper()
+                    companhia_in = st.text_input("Companhia / Subunidade:", value=st.session_state.get("cfg_subunidade", "35ª CIA PM"), key="txt_cia_p1").strip().upper()
+                    pelotao_in = st.text_input("Pelotão / Subseção (Opcional):", placeholder="Ex: 1º PELOTÃO", key="txt_pel_p1").strip().upper()
+
+                with col_u2:
+                    municipio_in = st.text_input("Município / Sede (OBRIGATÓRIO):", value=st.session_state.get("cfg_municipio", "UBÁ"), key="txt_mun_p1").strip().upper()
+                    brasao_in = st.text_input("URL do Brasão / Logo:", value=st.session_state.get("cfg_brasao_url", "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"), key="txt_brasao_p1").strip()
+
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💾 Salvar Dados", use_container_width=True, type="primary"):
-                    st.success("✅ Configurações salvas!")
+                if st.button("💾 Salvar Unidade no Banco de Dados", use_container_width=True, type="primary", key="btn_salvar_unid_p1"):
+                    if not batalhao_in or not companhia_in or not municipio_in:
+                        st.error("⚠️ Preencha os campos Batalhão, Companhia e Município.")
+                    else:
+                        if salvar_unidade_manual(batalhao_in, companhia_in, pelotao_in, municipio_in, brasao_in):
+                            st.session_state["cfg_unidade"] = batalhao_in
+                            st.session_state["cfg_subunidade"] = companhia_in
+                            st.session_state["cfg_municipio"] = municipio_in
+                            st.session_state["cfg_brasao_url"] = brasao_in
+                            st.success(f"✅ Unidade **{batalhao_in} / {companhia_in} ({municipio_in})** salva com sucesso!")
+                            st.rerun()
+
+            with tab_cad_planilha:
+                file_plan = st.file_uploader("Suba a planilha (.xlsx ou .csv) com colunas Batalhao, Companhia, Pelotao, Municipio:", type=["xlsx", "xls", "csv"], key="upl_plan_p1")
+                if file_plan:
+                    if st.button("⚡ Processar Planilha de Unidades", type="primary", use_container_width=True):
+                        qtd_ok = processar_planilha_unidades(file_plan.getvalue(), file_plan.name)
+                        if qtd_ok > 0:
+                            st.success(f"🎉 {qtd_ok} unidade(s) importada(s) e gravada(s) no Supabase!")
+                            st.rerun()
 
         st.divider()
 
