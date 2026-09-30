@@ -31,11 +31,9 @@ if DIRETORIO_RAIZ not in sys.path:
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 def obter_agora():
-    """Retorna a data/hora atual ajustada para o fuso horário de Brasília."""
     return datetime.datetime.now(FUSO_BR)
 
 def sanitizar_texto(texto: str) -> str:
-    """Limpa caracteres perigosos de entradas de texto (Prevenção de XSS e SQLi)."""
     if not texto:
         return ""
     texto_limpo = html.escape(str(texto).strip())
@@ -45,7 +43,6 @@ def sanitizar_texto(texto: str) -> str:
     return texto_limpo
 
 def renderizar_rodape_corporativo():
-    """Renderiza o rodapé institucional no final da aplicação."""
     st.markdown("<br><hr>", unsafe_allow_html=True)
     col_f1, col_f2, col_f3 = st.columns([1.5, 2, 1.5])
     
@@ -184,7 +181,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# OCULTA A SELEÇÃO NATIVA DE PÁGINAS DO STREAMLIT NA SIDEBAR
 st.markdown(
     """
     <style>
@@ -273,7 +269,6 @@ if not st.session_state.get("autenticado", False) and token_url:
         except Exception as ex:
             print(f"Erro ao restaurar sessão pelo F5: {ex}")
 
-# CONSTANTES VISUAIS INSTITUCIONAIS
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
 
@@ -343,7 +338,7 @@ def abrir_modal_reportar_erro():
 
         if btn_enviar_reporte:
             if not descricao_erro.strip():
-                st.error("⚠️ Descreva o erro antes de enviar.")
+                st.error("⚠️️ Descreva o erro antes de enviar.")
             else:
                 email_desenvolvedor = "felip21uba@gmail.com"
                 
@@ -795,30 +790,35 @@ with st.sidebar:
             if lista_unis:
                 opcoes_uni = []
                 for u in lista_unis:
-                    bat = u.get('batalhao') or u.get('unidade_nome') or '21º BPM'
-                    cia = u.get('companhia') or u.get('subunidade_nome') or '35ª CIA PM'
-                    mun = u.get('municipio', '')
-                    rotulo = f"{bat} / {cia}"
-                    if mun:
-                        rotulo += f" ({mun})"
-                    opcoes_uni.append(rotulo)
+                    if isinstance(u, dict):
+                        bat = u.get('batalhao') or u.get('unidade_nome') or '21º BPM'
+                        cia = u.get('companhia') or u.get('subunidade_nome') or '35ª CIA PM'
+                        mun = u.get('municipio', '')
+                        rotulo = f"{bat} / {cia}"
+                        if mun:
+                            rotulo += f" ({mun})"
+                        if rotulo not in opcoes_uni:
+                            opcoes_uni.append(rotulo)
 
-                idx_sel = 0
-                uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
-                if uni_atual_sessao and uni_atual_sessao in opcoes_uni:
-                    idx_sel = opcoes_uni.index(uni_atual_sessao)
+                if opcoes_uni:
+                    idx_sel = 0
+                    uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
+                    if uni_atual_sessao and uni_atual_sessao in opcoes_uni:
+                        idx_sel = opcoes_uni.index(uni_atual_sessao)
 
-                sel_uni_sidebar = st.selectbox(
-                    "Unidade em Operação:",
-                    opcoes_uni,
-                    index=idx_sel,
-                    key="sb_multi_tenant_unidade_nav",
-                    label_visibility="collapsed"
-                )
-                st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
-                parts = sel_uni_sidebar.split(" / ")
-                st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
-                st.session_state["cfg_subunidade"] = parts[1].split(" (")[0] if len(parts) > 1 else ""
+                    sel_uni_sidebar = st.selectbox(
+                        "Unidade em Operação:",
+                        opcoes_uni,
+                        index=idx_sel,
+                        key="sb_multi_tenant_unidade_nav",
+                        label_visibility="collapsed"
+                    )
+                    st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
+                    parts = sel_uni_sidebar.split(" / ")
+                    st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
+                    st.session_state["cfg_subunidade"] = parts[1].split(" (")[0] if len(parts) > 1 else ""
+                else:
+                    st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
             else:
                 st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
     else:

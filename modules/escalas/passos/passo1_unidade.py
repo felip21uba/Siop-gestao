@@ -1,15 +1,111 @@
 import json
+import io
+import pandas as pd
 import streamlit as st
 from core.database import supabase
-from modules.escalas.unidades_view import (
-    carregar_unidades_cadastradas,
-    salvar_unidade_manual,
-    processar_planilha_unidades,
-    renderizar_seletor_programador
-)
+
+# =========================================================================
+# FUNÇÕES DE BANCO E AUXILIARES INTERNAS DE UNIDADES (SEM IMPORTAÇÃO CIRCULAR)
+# =========================================================================
+
+def carregar_unidades_cadastradas_p1() -> list[dict]:
+    if not supabase:
+        return []
+    try:
+        res = supabase.table("unidades_config").select("*").order("batalhao", desc=False).execute()
+        return res.data or []
+    except Exception:
+        return []
+
+def salvar_unidade_manual_p1(batalhao: str, companhia: str, pelotao: str, municipio: str, url_brasao: str) -> bool:
+    if not supabase:
+        return False
+    payload = {
+        "batalhao": batalhao.strip().upper(),
+        "companhia": companhia.strip().upper(),
+        "pelotao": pelotao.strip().upper() if pelotao else "N/A",
+        "municipio": municipio.strip().upper(),
+        "url_brasao": url_brasao.strip() if url_brasao else None
+    }
+    try:
+        supabase.table("unidades_config").upsert(payload, on_conflict="batalhao,companhia,pelotao,municipio").execute()
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar unidade: {e}")
+        return False
+
+def processar_planilha_unidades_p1(file_bytes, filename: str) -> int:
+    if not supabase or not file_bytes:
+        return 0
+    try:
+        if filename.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(file_bytes))
+        else:
+            df = pd.read_excel(io.BytesIO(file_bytes))
+
+        df.columns = [str(c).strip().lower() for c in df.columns]
+
+        col_bat = next((c for c in df.columns if "bat" in c or "unidade" in c), "batalhao")
+        col_cia = next((c for c in df.columns if "cia" in c or "comp" in c), "companhia")
+        col_pel = next((c for c in df.columns if "pel" in c), "pelotao")
+        col_mun = next((c for c in df.columns if "mun" in c or "cidade" in c or "sede" in c), "municipio")
+        col_brasao = next((c for c in df.columns if "bras" in c or "url" in c or "img" in c), "url_brasao")
+
+        sucessos = 0
+        for _, row in df.iterrows():
+            bat_v = str(row.get(col_bat, "")).strip().upper()
+            cia_v = str(row.get(col_cia, "")).strip().upper()
+            pel_v = str(row.get(col_pel, "N/A")).strip().upper()
+            mun_v = str(row.get(col_mun, "")).strip().upper()
+            bras_v = str(row.get(col_brasao, "")).strip()
+
+            if bat_v and cia_v and mun_v:
+                payload = {
+                    "batalhao": bat_v,
+                    "companhia": cia_v,
+                    "pelotao": pel_v if pel_v and pel_v != "NAN" else "N/A",
+                    "municipio": mun_v,
+                    "url_brasao": bras_v if bras_v and bras_v != "NAN" else None
+                }
+                supabase.table("unidades_config").upsert(payload, on_conflict="batalhao,companhia,pelotao,municipio").execute()
+                sucessos += 1
+
+        st.cache_data.clear()
+        return sucessos
+    except Exception as e:
+        st.error(f"Erro ao processar planilha: {e}")
+        return 0
+
+def renderizar_seletor_programador_p1(usr_logado: dict):
+    cargo = str(usr_logado.get("cargo_funcao", "")).upper()
+    perfil = str(usr_logado.get("nivel_acesso") or usr_logado.get("perfil") or "").upper()
+
+    eh_programador = any(p in cargo or p in perfil for p in ["PROGRAMADOR", "DESENVOLVEDOR", "ADMIN"])
+
+    if eh_programador:
+        unidades_banco = carregar_unidades_cadastradas_p1()
+
+        lista_opcoes = ["🌐 VISÃO GLOBAL (TODAS AS UNIDADES)"]
+        for u in unidades_banco:
+            rotulo = f"{u.get('batalhao','21º BPM')} / {u.get('companhia','35ª CIA PM')} - {u.get('municipio','UBÁ')}"
+            if rotulo not in lista_opcoes:
+                lista_opcoes.append(rotulo)
+
+        with st.container(border=True):
+            st.markdown("##### 🛠️ Seletor de Visualização (Modo Programador)")
+            unidade_selecionada = st.selectbox(
+                "Selecione a Unidade para Filtrar/Leitura de Dados:",
+                options=lista_opcoes,
+                key="sb_modo_programador_unidade_p1"
+            )
+            st.session_state["unidade_visualizacao_ativa"] = unidade_selecionada
+
+# =========================================================================
+# GESTÃO DE EQUIPES DA ESCALA
+# =========================================================================
 
 def carregar_equipes_persistidas():
-    """Carrega as equipes salvas do Supabase ou usa o padrão inicial."""
     if "lista_equipes" not in st.session_state:
         equipes_padrao = ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP", "TM ALPHA", "GEPAR"]
         if supabase:
@@ -25,7 +121,6 @@ def carregar_equipes_persistidas():
             st.session_state["lista_equipes"] = equipes_padrao
 
 def salvar_equipes_persistidas(lista):
-    """Persiste a lista de equipes no session_state e no banco de dados Supabase."""
     st.session_state["lista_equipes"] = lista
     if supabase:
         try:
@@ -37,7 +132,6 @@ def salvar_equipes_persistidas(lista):
             pass
 
 def sincronizar_efetivo_equipe_ativa(eq_nome):
-    """Carrega no Passo 3 apenas os militares que pertencem à equipe selecionada no Passo 5."""
     st.session_state["equipe_ativa"] = str(eq_nome)
     chaves = st.session_state.get("militares_no_quadro_chaves", [])
     mils_da_equipe = [
@@ -47,7 +141,6 @@ def sincronizar_efetivo_equipe_ativa(eq_nome):
     st.session_state["militares_selecionados_ids"] = mils_da_equipe
 
 def expurgar_equipe_em_cascata(eq_alvo):
-    """Exclui a equipe e expurga seus lançamentos sem reatribuir militares automaticamente."""
     eq_alvo_str = str(eq_alvo).strip()
 
     if "lista_equipes" in st.session_state and eq_alvo_str in st.session_state["lista_equipes"]:
@@ -126,7 +219,7 @@ def renderizar_passo1():
     with st.expander("📌 PASSO 1: Configuração da Unidade, Brasão, Município e Gestão de Equipes", expanded=True):
         
         # 🌐 SELETOR DE VISUALIZAÇÃO PARA PROGRAMADOR
-        renderizar_seletor_programador(usr_logado)
+        renderizar_seletor_programador_p1(usr_logado)
 
         with st.expander("🏛️ Dados da Unidade Operacional, Município & Brasão", expanded=False):
             tab_cad_manual, tab_cad_planilha = st.tabs(["📝 Inclusão Manual", "📊 Importar Planilha em Lote"])
@@ -147,7 +240,7 @@ def renderizar_passo1():
                     if not batalhao_in or not companhia_in or not municipio_in:
                         st.error("⚠️ Preencha os campos Batalhão, Companhia e Município.")
                     else:
-                        if salvar_unidade_manual(batalhao_in, companhia_in, pelotao_in, municipio_in, brasao_in):
+                        if salvar_unidade_manual_p1(batalhao_in, companhia_in, pelotao_in, municipio_in, brasao_in):
                             st.session_state["cfg_unidade"] = batalhao_in
                             st.session_state["cfg_subunidade"] = companhia_in
                             st.session_state["cfg_municipio"] = municipio_in
@@ -159,14 +252,14 @@ def renderizar_passo1():
                 file_plan = st.file_uploader("Suba a planilha (.xlsx ou .csv) com colunas Batalhao, Companhia, Pelotao, Municipio:", type=["xlsx", "xls", "csv"], key="upl_plan_p1")
                 if file_plan:
                     if st.button("⚡ Processar Planilha de Unidades", type="primary", width="stretch"):
-                        qtd_ok = processar_planilha_unidades(file_plan.getvalue(), file_plan.name)
+                        qtd_ok = processar_planilha_unidades_p1(file_plan.getvalue(), file_plan.name)
                         if qtd_ok > 0:
                             st.success(f"🎉 {qtd_ok} unidade(s) importada(s) e gravada(s) no Supabase!")
                             st.rerun()
 
         st.divider()
 
-        st.markdown("#### 🛡️️ Gestão de Equipes e Portfólios")
+        st.markdown("#### 🛡️ Gestão de Equipes e Portfólios")
         col_equipes_disp, col_gestao = st.columns([3.5, 1.2], gap="large")
         
         with col_equipes_disp:
