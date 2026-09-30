@@ -143,6 +143,14 @@ def extrair_unidade_mae_creds(str_unidade):
 
     return None
 
+def formatar_data_hora_exata(str_dh):
+    if not str_dh or str_dh in ["N/I", "N/A", "None", ""]:
+        return "Data N/I"
+    try:
+        return pd.to_datetime(str_dh).strftime("%d/%m/%Y às %H:%M")
+    except Exception:
+        return str(str_dh)[:16]
+
 def obter_lista_creds_dinamica():
     unidades_set = set()
     all_m = carregar_militares_supabase() or []
@@ -181,13 +189,7 @@ def gerar_excel_panoramico_tco(lista_bens_filtrados):
     for b in lista_bens_filtrados:
         _, _, alerta_4d, dias_num = obter_status_gargalo_e_tempo(b, e_marrom=False)
         dt_ing = b.get("data_ingestao") or b.get("data_posse_atual") or ""
-        if dt_ing:
-            try:
-                dt_ing_fmt = pd.to_datetime(dt_ing).strftime("%d/%m/%Y %H:%M")
-            except Exception:
-                dt_ing_fmt = str(dt_ing)[:16]
-        else:
-            dt_ing_fmt = "N/I"
+        dt_ing_fmt = formatar_data_hora_exata(dt_ing)
 
         dados_excel.append({
             "Nº REDS": str(b.get("num_reds", "N/I")),
@@ -295,46 +297,6 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", peri
                     pass
         resultado.append(l)
     return resultado
-
-@st.dialog("🚨 REDS Já Cadastrado na Custódia")
-def modal_alerta_reds_duplicado(num_reds, data_cadastrado, cadastrado_por):
-    st.warning(f"**Atenção:** Os materiais do **REDS Nº {num_reds}** já foram inseridos anteriormente no Supabase.")
-    st.markdown(
-        f"📅 **Data do Cadastro (DD/MM/AAAA):** `{data_cadastrado}`  \n"
-        f"👤 **Cadastrado Por:** `{cadastrado_por}`"
-    )
-    st.info("Esta verificação é feita estritamente pelo Número do REDS para evitar duplicidade de registros na Cadeia de Custódia.")
-    
-    col_m1, col_m2 = st.columns(2)
-    with col_m1:
-        if st.button("⚠️ Confirmar e Inserir Novamente", type="primary", width="stretch"):
-            st.session_state["confirmou_duplicidade_reds"] = True
-            st.rerun()
-    with col_m2:
-        if st.button("❌ Cancelar Operação", width="stretch"):
-            st.session_state["temp_reds_extraido"] = None
-            st.session_state["confirmou_duplicidade_reds"] = False
-            st.rerun()
-
-def verificar_existencia_reds_banco(num_reds):
-    if not supabase or not num_reds or num_reds == "N/A":
-        return False, None, None
-
-    try:
-        res = supabase.table("tco_materiais").select("created_at, fiel_depositario_atual").eq("num_reds", str(num_reds).strip()).execute()
-        if res.data and len(res.data) > 0:
-            item = res.data[0]
-            dt_raw = item.get("created_at", "")
-            try:
-                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y %H:%M")
-            except Exception:
-                dt_fmt = str(dt_raw)[:16]
-            
-            operador = item.get("fiel_depositario_atual", "Operador Anterior")
-            return True, dt_fmt, operador
-        return False, None, None
-    except Exception:
-        return False, None, None
 
 # =============================================================================
 # ABA 1: IMPORTAÇÃO E UPLOAD
@@ -615,234 +577,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA 2: TRAMITAÇÃO INDIVIDUAL
-# =============================================================================
-def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidade_militar_atual):
-    injetar_css_cards_alternados()
-    st.markdown("### 🎒 Minha Custódia Pessoal & Tramitação Individual")
-    st.caption("Materiais sob sua guarda pessoal. Escolha o destino para remessa.")
-
-    agora_now = datetime.datetime.now()
-
-    for b_check in (all_bens_banco or []):
-        if nome_militar_atual.upper() in str(b_check.get("fiel_depositario_atual", "")).upper() and str(b_check.get("status_tramite", "")) in ["Pendente de Aceite", "Pendente Aceite"]:
-            dt_env = b_check.get("data_envio_tramite") or b_check.get("data_posse_atual")
-            if dt_env:
-                try:
-                    delta_hours = (agora_now - pd.to_datetime(dt_env).to_pydatetime().replace(tzinfo=None)).total_seconds() / 3600.0
-                    if delta_hours > 72.0:
-                        payload_exp = {
-                            "destinatario_pendente": None,
-                            "unidade_destinatario_pendente": None,
-                            "status_tramite": "Em Custódia",
-                            "ultimo_gestor_movimentou": "SISTEMA_EXPIRACAO_72H"
-                        }
-                        atualizar_material_supabase(str(b_check.get("id_bem") or b_check.get("id")), payload_exp)
-                except Exception:
-                    pass
-
-    meus_bens = [
-        b for b in (all_bens_banco or [])
-        if nome_militar_atual.upper() in str(b.get("fiel_depositario_atual", "")).upper()
-        and "CREDS" not in str(b.get("fiel_depositario_atual", "")).upper()
-        and "DESTRUÍDO" not in str(b.get("fase_destinacao", "")).upper()
-        and str(b.get("status_tramite", "")) != "Transferido Definitivo"
-    ]
-
-    if not meus_bens:
-        st.info("ℹ️ Você não possui nenhum material sob sua guarda pessoal no momento.")
-        return
-
-    st.markdown(f"##### 📦 Materiais na sua Carga Pessoal ({len(meus_bens)} itens)")
-    
-    if "itens_sel_tramite_pessoal" not in st.session_state:
-        st.session_state["itens_sel_tramite_pessoal"] = {}
-
-    df_meus = pd.DataFrame(meus_bens)
-    grupos_pessoais = df_meus.groupby("num_reds", sort=False)
-
-    idx_p = 0
-    for num_r, df_g in grupos_pessoais:
-        with st.expander(f"📄 **CARD REDS: {num_r}** ({len(df_g)} item/ns na sua guarda)", expanded=True):
-            for _, bem in df_g.iterrows():
-                idx_p += 1
-                id_b = str(bem.get("id_bem") or bem.get("id"))
-                status_t = str(bem.get("status_tramite", ""))
-                dest_p = bem.get("destinatario_pendente")
-                dt_env_str = bem.get("data_envio_tramite")
-
-                col_p1, col_p2 = st.columns([0.6, 9.4])
-                with col_p1:
-                    is_sel = st.checkbox("Selecionar", key=f"chk_indiv_{id_b}_{idx_p}", label_visibility="collapsed")
-                
-                with col_p2:
-                    pode_cancelar = False
-                    if dest_p and status_t in ["Pendente de Aceite", "Pendente Aceite"]:
-                        tempo_m, _, _ = calcular_tempo_decorrido_detalhado(dt_env_str)
-                        tag_status = f"<strong style='color: #FACC15;'>⏳ Pendente de Aceite por: {dest_p} (há {tempo_m})</strong>"
-                        pode_cancelar = True
-                    else:
-                        tag_status = "<strong style='color: #4ADE80;'>🎒 Em sua Custódia Física</strong>"
-
-                    html_p = f"""
-                    <div class="card-blue">
-                        📄 REDS: <b>{bem['num_reds']}</b> | Material: <b>{bem['descricao']}</b> (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})<br/>
-                        🏷️ Lacre: <b>{bem.get('involucro_lacre', 'N/I')}</b> | Autor: <b>{bem.get('autores', 'N/I')}</b><br/>
-                        📍 Situação: {tag_status}
-                    </div>
-                    """
-                    st.markdown(html_p, unsafe_allow_html=True)
-
-                    if pode_cancelar:
-                        if st.button("❌ Cancelar Envio (Retornar Custódia)", key=f"btn_canc_pess_{id_b}_{idx_p}"):
-                            payload_c = {
-                                "destinatario_pendente": None,
-                                "unidade_destinatario_pendente": None,
-                                "status_tramite": "Em Custódia",
-                                "ultimo_gestor_movimentou": nome_militar_atual
-                            }
-                            if atualizar_material_supabase(id_b, payload_c):
-                                st.success("Envio cancelado com sucesso!")
-                                st.cache_data.clear()
-                                st.rerun()
-
-                if is_sel:
-                    st.session_state["itens_sel_tramite_pessoal"][id_b] = bem.to_dict()
-                else:
-                    st.session_state["itens_sel_tramite_pessoal"].pop(id_b, None)
-
-    mats_sel_map = st.session_state["itens_sel_tramite_pessoal"]
-    if mats_sel_map:
-        st.markdown("---")
-        st.markdown(f"### 🚀 Definir Destino para {len(mats_sel_map)} item(ns) Selecionado(s)")
-        
-        destino_tipo = st.radio(
-            "Tipo de Destinatário:",
-            ["Policial Militar / Fiel Depositário", "Seção de Custódia (CREDS-TC / Órgão)"],
-            horizontal=True,
-            key="radio_destino_pessoal_v6"
-        )
-
-        eh_secao_orgao = ("Seção de Custódia" in destino_tipo)
-
-        with st.form("form_tramite_pessoal_v6", clear_on_submit=False):
-            if not eh_secao_orgao:
-                st.info("👤 **Custódia Individual:** O material será encaminhado para a guarda pessoal do Policial Militar selecionado.")
-                lista_m = carregar_militares_supabase() or []
-                opcoes_m = [f"{m.get('posto_grad','PM')} {m.get('nome_completo','MILITAR')} ({m.get('num_policia','')})" for m in lista_m]
-                destinatario_p_final = st.selectbox("Selecione o Policial Destinatário:", opcoes_m, key="sb_pm_dest_v6")
-                
-                unidade_p_final = unidade_militar_atual
-                fase_p_final = "Com Fiel Depositário / Policial"
-                status_tr_final = "Pendente de Aceite"
-                eh_orgao_ext = False
-                num_oficio_p = ""
-                foto_recibo_p = None
-
-            else:
-                opcoes_secoes = [
-                    "CREDS 35ª CIA PM (UBÁ)",
-                    "CREDS 111ª CIA PM (VISCONDE DO RIO BRANCO)",
-                    "CREDS 285ª CIA TM (UBÁ)",
-                    "CREDS 21º BPM (SEÇÃO DE CUSTÓDIA / UBÁ)",
-                    "PODER JUDICIÁRIO / TRIBUNAL DE JUSTIÇA (JECRIM)",
-                    "PERÍCIA TÉCNICA / PERÍCIA OFICIAL",
-                    "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
-                    "OUTROS ÓRGÃOS / ENTIDADES"
-                ]
-                destinatario_p_final = st.selectbox("Selecione a Unidade / CREDS / Órgão Destinatário:", opcoes_secoes, key="sb_secao_orgao_v6")
-                unidade_p_final = destinatario_p_final
-
-                eh_orgao_ext = any(term in destinatario_p_final for term in ["JUDICIÁRIO", "PERÍCIA", "POLÍCIA CIVIL", "OUTROS"])
-
-                if eh_orgao_ext:
-                    st.warning(f"🏛️ **Entrega em Órgão Externo ({destinatario_p_final}):** Registre a modalidade e o número do ofício de entrega.")
-                    natureza_envio_p = st.radio(
-                        "A transferência para este Órgão Externo é definitiva ou o material irá retornar?",
-                        ["🔄 Com Retorno (Aguardando Devolução da PCMG/Perícia/Fórum)", "🔒 Definitiva (Procedimento Encerrado/Sem Retorno)"],
-                        key="radio_nat_pessoal_v6"
-                    )
-                    eh_definitivo_orgao = ("Definitiva" in natureza_envio_p)
-                    status_tr_final = "Transferido Definitivo" if eh_definitivo_orgao else "Em Tramitação"
-                    num_oficio_p = st.text_input("Nº do Ofício / Protocolo de Entrega (OBRIGATÓRIO):", placeholder="Ex: Ofício 123/2026-35ªCIA", key="txt_ofic_pessoal_v6").strip()
-                    foto_recibo_p = st.file_uploader("Foto ou PDF do Recibo Assinado / Termo de Aceite do Órgão (OPCIONAL):", type=["jpg", "jpeg", "png", "pdf"], key="upl_rec_pessoal_v6")
-                    fase_p_final = f"Entregue ao {destinatario_p_final} (Ofício: {num_oficio_p})"
-                else:
-                    st.info(f"🏢 **Remessa Institucional:** O material será enviado para a caixa do {destinatario_p_final} e aguardará aceite do operador.")
-                    fase_p_final = "Aguardando no CREDS-TC / Custódia"
-                    status_tr_final = "Pendente de Aceite"
-                    num_oficio_p = ""
-                    foto_recibo_p = None
-
-            obs_p = st.text_input("Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", placeholder="Ex: 2º SGT HILDEWARGO CLEWERTON MOREIRA MENDES (1137371)", key="txt_obs_pessoal_v6").strip()
-            btn_enviar_p = st.form_submit_button("🚀 Confirmar Envio / Tramitação", type="primary", width="stretch")
-
-            if btn_enviar_p:
-                if not obs_p:
-                    st.error("⚠️ O preenchimento do Nome Completo e Matrícula de quem recebeu é OBRIGATÓRIO.")
-                elif eh_secao_orgao and eh_orgao_ext and not num_oficio_p:
-                    st.error("⚠️ Para entrega a órgãos externos, o preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
-                else:
-                    agora_iso = datetime.datetime.now().isoformat()
-                    sucessos_p = 0
-
-                    for id_b_sel, d_b_sel in mats_sel_map.items():
-                        if foto_recibo_p:
-                            upload_midia_supabase(
-                                file_bytes=foto_recibo_p.getvalue(),
-                                file_name=sanitizar_nome_arquivo(foto_recibo_p.name),
-                                file_type=foto_recibo_p.type,
-                                num_reds=d_b_sel.get("num_reds", "N/I"),
-                                id_bem=id_b_sel
-                            )
-
-                        if not eh_secao_orgao:
-                            fiel_novo = d_b_sel.get("fiel_depositario_atual")
-                            dest_pend_novo = destinatario_p_final
-                        elif eh_orgao_ext:
-                            fiel_novo = destinatario_p_final
-                            dest_pend_novo = None
-                        else:
-                            fiel_novo = d_b_sel.get("fiel_depositario_atual")
-                            dest_pend_novo = destinatario_p_final
-
-                        payload_p = {
-                            "destinatario_pendente": dest_pend_novo,
-                            "unidade_destinatario_pendente": unidade_p_final if dest_pend_novo else None,
-                            "fiel_depositario_atual": fiel_novo,
-                            "data_envio_tramite": agora_iso,
-                            "status_tramite": status_tr_final,
-                            "fase_destinacao": fase_p_final,
-                            "ultimo_gestor_movimentou": nome_militar_atual
-                        }
-
-                        if atualizar_material_supabase(id_b_sel, payload_p):
-                            sucessos_p += 1
-                            detalhes_log_p = f"Tramitado por {nome_militar_atual} para {destinatario_p_final} | Recebido por: {obs_p}"
-                            if eh_orgao_ext:
-                                detalhes_log_p += f" | Ofício/Protocolo: {num_oficio_p}"
-
-                            registrar_log_supabase({
-                                "data_hora": agora_iso,
-                                "num_reds": d_b_sel.get("num_reds", "N/I"),
-                                "bem_id": f"{d_b_sel.get('descricao')} (Lacre: {d_b_sel.get('involucro_lacre')})",
-                                "web_origem": "SIOP_TCO",
-                                "acao": "TRAMITACAO_INDIVIDUAL_POLICIAL",
-                                "origem": nome_militar_atual,
-                                "unidade_origem": unidade_militar_atual,
-                                "destino": destinatario_p_final,
-                                "unidade_destino": unidade_p_final,
-                                "detalhe": detalhes_log_p
-                            })
-
-                    if sucessos_p > 0:
-                        st.success(f"🎉 {sucessos_p} material(is) tramitado(s) com sucesso!")
-                        st.session_state["itens_sel_tramite_pessoal"] = {}
-                        st.cache_data.clear()
-                        st.rerun()
-
-# =============================================================================
-# ABA 3: PAINEL DO CREDS (GESTÃO INSTITUCIONAL COM SUPORTE A ACEITE/RETORNO)
+# ABA 3: PAINEL DO CREDS (GESTÃO INSTITUCIONAL - COM DATA E HORA EXATAS)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -1072,6 +807,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             classe_card = "card-brown" if e_marrom else "card-blue"
                             _, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
                             id_bem = str(bem.get("id_bem") or bem.get("id"))
+                            dt_mov_exata = formatar_data_hora_exata(bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao"))
 
                             col_c1, col_c2 = st.columns([0.6, 9.4])
                             with col_c1:
@@ -1083,7 +819,8 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                     📄 REDS: <b>{bem['num_reds']}</b> | Material: <b>{bem['descricao']}</b> (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})<br/>
                                     🏷️ Lacre: <b>{bem.get('involucro_lacre', 'N/I')}</b> | Autor: <b>{bem.get('autores', 'N/I')}</b><br/>
                                     📍 Custodiante: <b>{bem.get('fiel_depositario_atual', 'N/I')}</b> ({bem.get('unidade_posse_atual', 'N/I')})<br/>
-                                    👤 Último Gestor: <b>{bem.get('ultimo_gestor_movimentou', 'N/I')}</b>
+                                    👤 Último Gestor: <b>{bem.get('ultimo_gestor_movimentou', 'N/I')}</b><br/>
+                                    ⏱️ <b>Data/Hora do Trâmite:</b> <code class="st-emotion-cache-znj1k1">{dt_mov_exata}</code>
                                 </div>
                                 """
                                 st.markdown(html_item, unsafe_allow_html=True)
@@ -1158,7 +895,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 key="sb_fase_orgao_v4_enabled"
                             )
 
-                    obs_creds = st.text_input("Informe Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", placeholder="Ex: 2º SGT HILDEWARGO CLEWERTON MOREIRA MENDES (1137371)", key="txt_obs_desp_v4").strip()
+                    obs_creds = st.text_input("Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", placeholder="nome e matricula", key="txt_obs_desp_v4").strip()
                     btn_confirmar = st.form_submit_button("🚀 Confirmar Movimentação do CREDS", type="primary", width="stretch")
 
                     if btn_confirmar:
@@ -1223,13 +960,15 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             qtd_d_val = item_d.get("quantidade", 1)
                             lacre_d = item_d.get("involucro_lacre", "N/I")
                             gestor_sep = item_d.get("ultimo_gestor_movimentou", "Gestor CREDS")
+                            dt_d_exata = formatar_data_hora_exata(item_d.get("data_envio_tramite") or item_d.get("data_posse_atual"))
 
                             col_d1, col_d2 = st.columns([6, 4])
                             with col_d1:
                                 html_fire = f"""
                                 <div class="card-fire">
                                     🔥 <b>Material Autorizado para Incineração:</b> {desc_d} (Qtd: {qtd_d_val})<br/>
-                                    🏷️ <b>Lacre:</b> {lacre_d} | 👤 <b>Autorizado por:</b> {gestor_sep}
+                                    🏷️ <b>Lacre:</b> {lacre_d} | 👤 <b>Autorizado por:</b> {gestor_sep}<br/>
+                                    ⏱️ <b>Data/Hora:</b> <code class="st-emotion-cache-znj1k1">{dt_d_exata}</code>
                                 </div>
                                 """
                                 st.markdown(html_fire, unsafe_allow_html=True)
@@ -1299,12 +1038,14 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             qtd_p_val = item_p.get("quantidade", 1)
                             lacre_p = item_p.get("involucro_lacre", "N/I")
                             remetente_p = item_p.get("remetente_ultimo") or item_p.get("fiel_depositario_atual") or "Policial Remetente"
+                            dt_p_exata = formatar_data_hora_exata(item_p.get("data_envio_tramite") or item_p.get("data_posse_atual"))
 
                             col_pa1, col_pa2 = st.columns([6, 4])
                             with col_pa1:
                                 st.markdown(
                                     f"📦 **Material:** {desc_p} (Qtd: {qtd_p_val}) | **Lacre:** `{lacre_p}`  \n"
-                                    f"👤 **Enviado por:** `{remetente_p}` (`{item_p.get('unidade_remetente', 'N/I')}`)"
+                                    f"👤 **Enviado por:** `{remetente_p}` (`{item_p.get('unidade_remetente', 'N/I')}`)  \n"
+                                    f"⏱️ **Data/Hora do Envio:** `{dt_p_exata}`"
                                 )
 
                             with col_pa2:
@@ -1361,7 +1102,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL
+    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL (EXIBE DATA/HORA)
     # =========================================================================
     if filtro_card in ["TODOS", "PERICIA", "PARADOS", "ARQUIVO"]:
         with st.container(border=True):
@@ -1386,6 +1127,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             lacre_e = item_e.get("involucro_lacre", "N/I")
                             remetente_orig = item_e.get("ultimo_gestor_movimentou") or "Gestor CREDS"
                             status_tr_e = str(item_e.get("status_tramite") or "")
+                            dt_ext_exata = formatar_data_hora_exata(item_e.get("data_envio_tramite") or item_e.get("data_posse_atual"))
 
                             e_destruido = ("Destruído" in status_tr_e or "DESTRUÍDO" in str(item_e.get("fase_destinacao","")))
                             e_confirmado_orgao = (status_tr_e == "Transferido Definitivo")
@@ -1406,7 +1148,8 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                     📦 <b>Material:</b> {desc_e} (Qtd: {qtd_e_val}) | 🏷️ <b>Lacre:</b> {lacre_e}<br/>
                                     📍 <b>Destino / Fase:</b> <code class="st-emotion-cache-znj1k1">{dest_e}</code><br/>
                                     📊 Situação: {tag_situacao}<br/>
-                                    👤 <b>Movimentado por:</b> {remetente_orig}
+                                    👤 <b>Movimentado por:</b> {remetente_orig}<br/>
+                                    ⏱️ <b>Data/Hora da Transferência:</b> <code class="st-emotion-cache-znj1k1">{dt_ext_exata}</code>
                                 </div>
                                 """
                                 st.markdown(html_ext, unsafe_allow_html=True)
