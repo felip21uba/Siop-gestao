@@ -133,7 +133,7 @@ try:
     from modules.governanca.views import renderizar_modulo_governanca
 except Exception as e_gov:
     def renderizar_modulo_governanca(*args, **kwargs):
-        st.title("🛡️ Governança & Segurança")
+        st.title("🛡️️ Governança & Segurança")
         st.error("⚠️ O Módulo de Governança está indisponível no momento.")
         print(f"Erro ao carregar Governança no app.py: {e_gov}")
 
@@ -371,7 +371,7 @@ if not st.session_state.get("autenticado", False):
 
         st.divider()
 
-        # FLUXO 1: RECUPERAÇÃO DE SENHA (VALIDAÇÃO E-MAIL + 2FA)
+        # FLUXO 1: RECUPERAÇÃO DE SENHA
         if st.session_state.get("recuperar_senha_modo", False):
             st.subheader("🔑 Recuperação de Senha & Validação 2FA")
             st.info("Informe seu Nº de Polícia ou e-mail. Para segurança, a redefinição exige a validação do e-mail + o código do QR Code cadastrado.")
@@ -487,7 +487,7 @@ if not st.session_state.get("autenticado", False):
                                 st.session_state["reset_token_dados"] = {}
                                 st.rerun()
 
-        # FLUXO 2: PRIMEIRO ACESSO (CADASTRO 2FA + COMPLIANCE)
+        # FLUXO 2: PRIMEIRO ACESSO
         elif st.session_state.get("mfa_setup_mode", False):
             usr_temp = st.session_state.get("temp_user_data", {})
             st.warning("🛡️ **Primeiro Acesso: Cadastro de Segurança & Termo de Aceite**")
@@ -760,7 +760,7 @@ with st.sidebar:
             st.markdown("🛡️")
 
     if eh_gestor_real:
-        if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa_nav"):
+        if st.toggle("👁️️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa_nav"):
             st.session_state["simular_visao_tropa"] = True
             st.rerun()
         elif st.session_state.get("simular_visao_tropa", False):
@@ -771,16 +771,30 @@ with st.sidebar:
             st.markdown("---")
             st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
             
+            # CORREÇÃO CRÍTICA DO NOME DA TABELA: 'unidades_config'
             lista_unis = []
             if supabase:
                 try:
-                    res_u = supabase.table("configuracao_unidade").select("id, unidade_nome, subunidade_nome").execute()
+                    res_u = supabase.table("unidades_config").select("id, batalhao, companhia, municipio").execute()
                     lista_unis = res_u.data or []
                 except Exception:
-                    lista_unis = []
+                    try:
+                        res_u = supabase.table("unidades").select("*").execute()
+                        lista_unis = res_u.data or []
+                    except Exception:
+                        lista_unis = []
 
             if lista_unis:
-                opcoes_uni = [f"{u.get('unidade_nome', '')} / {u.get('subunidade_nome', '')}".strip(" /") for u in lista_unis]
+                opcoes_uni = []
+                for u in lista_unis:
+                    bat = u.get('batalhao') or u.get('unidade_nome') or '21º BPM'
+                    cia = u.get('companhia') or u.get('subunidade_nome') or '35ª CIA PM'
+                    mun = u.get('municipio', '')
+                    rotulo = f"{bat} / {cia}"
+                    if mun:
+                        rotulo += f" ({mun})"
+                    opcoes_uni.append(rotulo)
+
                 idx_sel = 0
                 uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
                 if uni_atual_sessao and uni_atual_sessao in opcoes_uni:
@@ -796,7 +810,7 @@ with st.sidebar:
                 st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
                 parts = sel_uni_sidebar.split(" / ")
                 st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
-                st.session_state["cfg_subunidade"] = parts[1] if len(parts) > 1 else ""
+                st.session_state["cfg_subunidade"] = parts[1].split(" (")[0] if len(parts) > 1 else ""
             else:
                 st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
     else:
