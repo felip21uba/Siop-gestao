@@ -1,21 +1,43 @@
 import streamlit as st
 import pandas as pd
 import io
-from core.database import supabase
+from core.database import supabase, carregar_militares_supabase
+
 
 def carregar_unidades_cadastradas() -> list[dict]:
-    """Busca todas as unidades cadastradas no Supabase."""
-    if not supabase:
-        return []
-    try:
-        res = supabase.table("unidades_config").select("*").order("batalhao", desc=False).execute()
-        return res.data or []
-    except Exception as e:
-        st.warning(f"Aviso ao consultar unidades: {e}")
-        return []
+    """Busca unidades salvas na tabela unidades_config. Se estiver vazia, gera fallback dinâmico."""
+    unidades = []
+    if supabase:
+        try:
+            res = supabase.table("unidades_config").select("*").order("batalhao", desc=False).execute()
+            unidades = res.data or []
+        except Exception:
+            unidades = []
+
+    # FALLBACK AUTOMÁTICO: Se o banco estiver zerado, extrai unidades dos militares/usuários
+    if not unidades:
+        militares = carregar_militares_supabase() or []
+        unidades_set = set()
+        for m in militares:
+            unid_m = str(m.get("unidade") or m.get("nome_unidade") or "").strip().upper()
+            if unid_m and unid_m != "NONE":
+                unidades_set.add(unid_m)
+
+        for idx, u_nome in enumerate(sorted(list(unidades_set))):
+            unidades.append({
+                "id": str(idx),
+                "batalhao": u_nome,
+                "companhia": "SEÇÃO / CIA",
+                "pelotao": "N/A",
+                "municipio": "UBÁ",
+                "url_brasao": None
+            })
+
+    return unidades
+
 
 def salvar_unidade_manual(batalhao: str, companhia: str, pelotao: str, municipio: str, url_brasao: str) -> bool:
-    """Insere uma unidade manualmente no banco de dados."""
+    """Insere ou atualiza uma unidade na tabela unidades_config."""
     if not supabase:
         return False
     payload = {
@@ -27,13 +49,15 @@ def salvar_unidade_manual(batalhao: str, companhia: str, pelotao: str, municipio
     }
     try:
         supabase.table("unidades_config").upsert(payload, on_conflict="batalhao,companhia,pelotao,municipio").execute()
+        st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar unidade: {e}")
+        st.error(f"Erro ao salvar unidade no Supabase: {e}")
         return False
 
+
 def processar_planilha_unidades(file_bytes, filename: str) -> int:
-    """Lê planilha Excel/CSV e cadastra unidades em lote."""
+    """Lê planilha Excel/CSV contendo Batalhao, Companhia, Pelotao, Municipio e Url_Brasao."""
     if not supabase or not file_bytes:
         return 0
     try:
@@ -42,9 +66,8 @@ def processar_planilha_unidades(file_bytes, filename: str) -> int:
         else:
             df = pd.read_excel(io.BytesIO(file_bytes))
 
-        # Padroniza nomes de colunas
         df.columns = [str(c).strip().lower() for c in df.columns]
-        
+
         col_bat = next((c for c in df.columns if "bat" in c or "unidade" in c), "batalhao")
         col_cia = next((c for c in df.columns if "cia" in c or "comp" in c), "companhia")
         col_pel = next((c for c in df.columns if "pel" in c), "pelotao")
@@ -70,42 +93,40 @@ def processar_planilha_unidades(file_bytes, filename: str) -> int:
                 supabase.table("unidades_config").upsert(payload, on_conflict="batalhao,companhia,pelotao,municipio").execute()
                 sucessos += 1
 
+        st.cache_data.clear()
         return sucessos
     except Exception as e:
         st.error(f"Erro ao processar planilha: {e}")
         return 0
 
+
 def renderizar_seletor_programador(usr_logado: dict):
-    """Renderiza a caixa de seleção de visualização para Programadores/Admins."""
+    """Exibe o seletor de modo de visualização para Programadores/Admins."""
     cargo = str(usr_logado.get("cargo_funcao", "")).upper()
     perfil = str(usr_logado.get("nivel_acesso") or usr_logado.get("perfil") or "").upper()
-    
-    eh_programador = ("PROGRAMADOR" in cargo or "DESENVOLVEDOR" in cargo or "ADMIN" in perfil or "PROGRAMADOR" in perfil)
+
+    eh_programador = any(p in cargo or p in perfil for p in ["PROGRAMADOR", "DESENVOLVEDOR", "ADMIN"])
 
     if eh_programador:
         unidades_banco = carregar_unidades_cadastradas()
-        
+
         lista_opcoes = ["🌐 VISÃO GLOBAL (TODAS AS UNIDADES)"]
         for u in unidades_banco:
             rotulo = f"{u['batalhao']} / {u['companhia']} - {u['municipio']}"
             if rotulo not in lista_opcoes:
                 lista_opcoes.append(rotulo)
 
-        st.markdown("#### 🛠️ Painel de Controle e Visualização (Programador)")
-        unidade_selecionada = st.selectbox(
-            "Selecione a Unidade para Visualização / Leitura de Dados:",
-            options=lista_opcoes,
-            key="sb_modo_programador_unidade"
-        )
-        st.session_state["unidade_visualizacao_ativa"] = unidade_selecionada
-        st.divider()
+        with st.container(border=True):
+            st.markdown("##### 🛠️ Seletor de Visualização (Modo Programador)")
+            unidade_selecionada = st.selectbox("Selecione a Unidade para Filtrar/Leitura de Dados:", options=lista_opcoes, key="sb_modo_programador_unidade")
+            st.session_state["unidade_visualizacao_ativa"] = unidade_selecionada
+
 
 def renderizar_modulo_gestao_unidades(usr_logado: dict):
-    """Renderiza a tela de cadastro e gestão de Unidades/Batalhões."""
+    """Renderiza a interface principal de cadastro de Unidades."""
     st.markdown("### 🏛️ Cadastro de Novas Unidades / Batalhões (Multi-Tenant)")
-    st.caption("Cadastre manualmente ou suba uma planilha com a estrutura dos Batalhões, Companhias, Pelotões e Municípios do SIOP.")
+    st.caption("Cadastre manualmente ou importe uma planilha com a estrutura de Batalhões, Companhias, Pelotões e Municípios.")
 
-    # Renderiza o seletor para Programador no topo
     renderizar_seletor_programador(usr_logado)
 
     tab_manual, tab_planilha, tab_lista = st.tabs([
@@ -114,72 +135,53 @@ def renderizar_modulo_gestao_unidades(usr_logado: dict):
         "📋 Unidades Cadastradas"
     ])
 
-    # =========================================================================
-    # TAB 1: INCLUSÃO MANUAL
-    # =========================================================================
+    # 1. FORMULÁRIO MANUAL COM MUNICÍPIO
     with tab_manual:
         with st.container(border=True):
-            st.markdown("##### 🏛️ Dados da Nova Unidade")
-            
-            c_m1, c_m2 = st.columns(2)
-            with c_m1:
+            st.markdown("##### 🏛️️ Cadastro Manual de Unidade")
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
                 batalhao_input = st.text_input("Nome do Batalhão / Unidade:", placeholder="Ex: 47º BPM / 4ª RPM", key="txt_bat_man").strip().upper()
                 companhia_input = st.text_input("Companhia / Subunidade Principal:", placeholder="Ex: 75ª CIA PM", key="txt_cia_man").strip().upper()
                 pelotao_input = st.text_input("Pelotão / Subseção (Opcional):", placeholder="Ex: 1º PELOTÃO", key="txt_pel_man").strip().upper()
 
-            with c_m2:
-                municipio_input = st.text_input("Município / Sede (OBRIGATÓRIO PARA LEITURAS):", placeholder="Ex: CARANGOLA", key="txt_mun_man").strip().upper()
+            with c_m2 := col_m2:
+                municipio_input = st.text_input("Município / Sede (OBRIGATÓRIO):", placeholder="Ex: CARANGOLA", key="txt_mun_man").strip().upper()
                 brasao_url = st.text_input("URL do Brasão da Unidade (Opcional):", placeholder="https://link-da-imagem.png", key="txt_brasao_man").strip()
 
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("🏛️ Cadastrar Nova Unidade no SIOP", type="primary", width="stretch", key="btn_salvar_unid_man"):
                 if not batalhao_input or not companhia_input or not municipio_input:
-                    st.error("⚠️ Preencha os campos Batalhão, Companhia e Município.")
+                    st.error("⚠️ Preencha obrigatoriamente Batalhão, Companhia e Município.")
                 else:
                     if salvar_unidade_manual(batalhao_input, companhia_input, pelotao_input, municipio_input, brasao_url):
-                        st.success(f"✅ Unidade **{batalhao_input} / {companhia_input} ({municipio_input})** cadastrada com sucesso!")
-                        st.cache_data.clear()
+                        st.success(f"✅ Unidade **{batalhao_input} / {companhia_input} ({municipio_input})** salva no Supabase!")
                         st.rerun()
 
-    # =========================================================================
-    # TAB 2: IMPORTAÇÃO VIA PLANILHA
-    # =========================================================================
+    # 2. IMPORTAÇÃO POR PLANILHA
     with tab_planilha:
         with st.container(border=True):
             st.markdown("##### 📊 Leitura de Planilha (Excel ou CSV)")
-            st.caption("A planilha deve conter colunas equivalentes a: **Batalhao, Companhia, Pelotao, Municipio, Url_Brasao**.")
+            st.caption("A planilha deve conter as colunas: **Batalhao, Companhia, Pelotao, Municipio, Url_Brasao**.")
             
             file_upl = st.file_uploader("Selecione o arquivo Excel (.xlsx) ou CSV:", type=["xlsx", "xls", "csv"], key="upl_planilha_unidades")
 
             if file_upl:
-                f_bytes = file_upl.getvalue()
                 if st.button("⚡ Processar e Cadastrar Unidades em Lote", type="primary", width="stretch", key="btn_proc_lote_unid"):
-                    with st.spinner("Lendo planilha e salvando no Supabase..."):
-                        qtd_salva = processar_planilha_unidades(f_bytes, file_upl.name)
-                        if qtd_salva > 0:
-                            st.success(f"🎉 {qtd_salva} unidade(s) importada(s) e atualizada(s) com sucesso!")
-                            st.cache_data.clear()
+                    with st.spinner("Gravando no banco..."):
+                        qtd = processar_planilha_unidades(file_upl.getvalue(), file_upl.name)
+                        if qtd > 0:
+                            st.success(f"🎉 {qtd} unidade(s) importada(s) com sucesso!")
                             st.rerun()
                         else:
-                            st.error("Nenhuma unidade válida foi importada. Verifique o cabeçalho da planilha.")
+                            st.error("Nenhuma unidade válida foi importada. Verifique as colunas da planilha.")
 
-            with st.expander("💡 Modelo de Estrutura da Planilha"):
-                st.code("""
-Batalhao | Companhia | Pelotao | Municipio | Url_Brasao
-47º BPM  | 75ª CIA PM| 1º PEL   | CARANGOLA | https://...
-21º BPM  | 35ª CIA PM| 2º PEL   | UBÁ       | https://...
-11º BPM  | 29ª CIA PM| N/A      | MANHUMIRIM| 
-                """, language="text")
-
-    # =========================================================================
-    # TAB 3: LISTA E LEITURA DE UNIDADES
-    # =========================================================================
+    # 3. TABELA DE EXIBIÇÃO
     with tab_lista:
         unidades_cad = carregar_unidades_cadastradas()
         if unidades_cad:
             df_u = pd.DataFrame(unidades_cad)
-            st.markdown(f"##### 📋 Unidades Ativas no Banco ({len(unidades_cad)} registradas)")
-            
+            st.markdown(f"##### 📋 Unidades no Sistema ({len(unidades_cad)} registradas)")
             st.dataframe(
                 df_u[["batalhao", "companhia", "pelotao", "municipio", "url_brasao"]],
                 column_config={
@@ -193,4 +195,4 @@ Batalhao | Companhia | Pelotao | Municipio | Url_Brasao
                 hide_index=True
             )
         else:
-            st.info("Nenhuma unidade cadastrada no banco no momento.")
+            st.info("Nenhuma unidade cadastrada.")
