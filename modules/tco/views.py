@@ -89,8 +89,8 @@ def injetar_css_cards_alternados():
     }
     .card-trava strong, .card-trava b { color: #f5f5f5 !important; }
 
-    /* TAG VERDE EXATAMENTE CONFORME ESPECIFICAÇÃO CSS SOLICITADA */
-    .tag-verde-destaque {
+    /* MAPEAMENTO DA CLASSE NATIVA DO STREAMLIT MOSTRADA NA FOTO DO DEVTOOLS */
+    .st-emotion-cache-znj1k1, .tag-verde-destaque, code {
       padding: 0.2em 0.4em !important;
       overflow-wrap: break-word !important;
       white-space: pre-wrap !important;
@@ -250,7 +250,7 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
     def tag_destaque(txt):
         if e_marrom:
             return f"<strong style='color: #000000;'>{txt}</strong>"
-        return f"<span class='tag-verde-destaque'>{txt}</span>"
+        return f"<code class='st-emotion-cache-znj1k1'>{txt}</code>"
 
     if dest_pend and status_tr in ["Pendente de Aceite", "Pendente Aceite"]:
         ponto_cadeia = f"⏳ <b>Aguardando Aceite por:</b> {tag_destaque(dest_pend)} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
@@ -345,7 +345,7 @@ def verificar_existencia_reds_banco(num_reds):
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     st.markdown("### 📄 Importação e Registro Individual de Ocorrência")
-    st.markdown(f"👤 **Fiel Depositário Inicial:** <span class='tag-verde-destaque'>{nome_militar_atual}</span> ({unidade_militar_atual})", unsafe_allow_html=True)
+    st.markdown(f"👤 **Fiel Depositário Inicial:** <code class='st-emotion-cache-znj1k1'>{nome_militar_atual}</code> ({unidade_militar_atual})", unsafe_allow_html=True)
 
     if "temp_reds_extraido" not in st.session_state:
         st.session_state["temp_reds_extraido"] = None
@@ -1304,7 +1304,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                 "unidade_origem": item_p.get("unidade_remetente", "N/I"),
                                                 "destino": f"CREDS TCO - {unidade_militar_atual}",
                                                 "unidade_destino": unidade_militar_atual,
-                                                "detalhe": f"Aceite de custódia confirmado pelo operador {nome_militar_atual}."
+                                                "detalhe": f"Aceite de custódia confirmed pelo operador {nome_militar_atual}."
                                             })
                                             st.success("✅ Aceite de custódia registrado com sucesso!")
                                             st.cache_data.clear()
@@ -1333,7 +1333,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 4: 🏛️️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL
+    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL
     # =========================================================================
     if filtro_card in ["TODOS", "PERICIA", "PARADOS", "ARQUIVO"]:
         with st.container(border=True):
@@ -1376,7 +1376,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 html_ext = f"""
                                 <div class="{classe_item_ext}">
                                     📦 <b>Material:</b> {desc_e} (Qtd: {qtd_e_val}) | 🏷️ <b>Lacre:</b> {lacre_e}<br/>
-                                    📍 <b>Destino / Fase:</b> <span class="tag-verde-destaque">{dest_e}</span><br/>
+                                    📍 <b>Destino / Fase:</b> <code class="st-emotion-cache-znj1k1">{dest_e}</code><br/>
                                     📊 Situação: {tag_situacao}<br/>
                                     👤 <b>Movimentado por:</b> {remetente_orig}
                                 </div>
