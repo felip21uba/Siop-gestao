@@ -1,7 +1,7 @@
 """
 ==============================================================================
 🛡️ SIOP PMMG - Sistema Integrado de Operações
-Arquivo Principal: app.py (Roteador Central e Isolamento de Módulos)
+Arquivo Principal: app.py (Roteador Central e Isolamento Independente de Módulos)
 ==============================================================================
 """
 
@@ -102,67 +102,76 @@ from core.session_manager import (
 )
 
 # ==============================================================================
-# 🛡️ CARREGAMENTO ISOLADO E SEGURO DOS MÓDULOS OPERACIONAIS (SAFE IMPORTS)
+# 🛡️ CARREGAMENTO ISOLADO E INDEPENDENTE DOS MÓDULOS (SANDBOX IMPORTS)
 # ==============================================================================
 
-# 1. MÓDULO DE ESCALAS
+# 1. MÓDULO DE ESCALAS (ISOLADO)
 try:
     from modules.escalas import exibir_modulo_escalas
-except Exception as e_escalas:
+except Exception as err_import_escalas:
+    erro_msg_escala = str(err_import_escalas)
     def exibir_modulo_escalas():
         st.title("📅 Módulo de Gestão de Escalas")
-        st.error("⚠️ O Módulo de Escalas está passando por manutenção ou sincronização de arquivos.")
-        st.info("Os demais módulos permanecem funcionais.")
-        print(f"Erro ao carregar Escalas no app.py: {e_escalas}")
+        st.error("⚠️ O Módulo de Escalas encontrou um erro técnico e está em manutenção.")
+        st.info("💡 **Isolamento de Segurança:** Os Módulos TCO, Governança, Mural e Acessos permanecem 100% operacionais.")
+        with st.expander("🔍 Ver Detalhes Técnicos do Erro (Escalas)"):
+            st.code(erro_msg_escala, language="text")
 
-# 2. MÓDULO TCO / CUSTÓDIA
+# 2. MÓDULO TCO / CUSTÓDIA (ISOLADO)
 try:
     from modules.tco.main_tco import renderizar_modulo_tco
-except Exception as e_tco_import:
+except Exception as err_import_tco:
+    erro_msg_tco = str(err_import_tco)
     def renderizar_modulo_tco():
-        try:
-            from modules.tco.main_tco import renderizar_modulo_tco as render_tco
-            render_tco()
-        except Exception as e_tco:
-            st.error("⚠️ Ocorreu uma indisponibilidade temporária no Módulo TCO / Custódia.")
-            st.caption("O restante do SIOP e o Módulo de Escalas continuam operando normalmente.")
-            print(f"Erro ao carregar TCO no app.py: {e_tco}")
+        st.title("📦 Módulo TCO / Cadeia de Custódia")
+        st.error("⚠️ O Módulo TCO encontrou uma indisponibilidade temporária.")
+        st.info("💡 Os demais módulos permanecem funcionais.")
+        with st.expander("🔍 Ver Detalhes Técnicos do Erro (TCO)"):
+            st.code(erro_msg_tco, language="text")
 
-# 3. MÓDULO DE GOVERNANÇA
+# 3. MÓDULO DE GOVERNANÇA (ISOLADO)
 try:
     from modules.governanca.views import renderizar_modulo_governanca
-except Exception as e_gov:
+except Exception as err_import_gov:
+    erro_msg_gov = str(err_import_gov)
     def renderizar_modulo_governanca(*args, **kwargs):
-        st.title("🛡️️ Governança & Segurança")
+        st.title("🛡️ Governança & Segurança")
         st.error("⚠️ O Módulo de Governança está indisponível no momento.")
-        print(f"Erro ao carregar Governança no app.py: {e_gov}")
+        with st.expander("🔍 Ver Detalhes Técnicos do Erro (Governança)"):
+            st.code(erro_msg_gov, language="text")
 
-# 4. MURAL DE AVISOS
+# 4. MURAL DE AVISOS (ISOLADO)
 try:
     from modules.mural import renderizar_mural
-except Exception as e_mural:
+except Exception as err_import_mural:
+    erro_msg_mural = str(err_import_mural)
     def renderizar_mural():
         st.title("📢 Mural de Avisos")
         st.error("⚠️ O Mural de Avisos está temporariamente indisponível.")
-        print(f"Erro ao carregar Mural no app.py: {e_mural}")
+        with st.expander("🔍 Ver Detalhes Técnicos do Erro (Mural)"):
+            st.code(erro_msg_mural, language="text")
 
-# 5. GESTÃO DE ACESSOS E USUÁRIOS
+# 5. GESTÃO DE ACESSOS E USUÁRIOS (ISOLADO)
 try:
     from modules.gestao_usuarios import exibir_tela_gestao_usuarios
-except Exception as e_gestao:
+except Exception as err_import_gestao:
+    erro_msg_gestao = str(err_import_gestao)
     def exibir_tela_gestao_usuarios():
         st.title("⚙️ Gestão de Acessos")
         st.error("⚠️ O Módulo de Gestão de Acessos está temporariamente indisponível.")
-        print(f"Erro ao carregar Gestão de Usuários no app.py: {e_gestao}")
+        with st.expander("🔍 Ver Detalhes Técnicos do Erro (Gestão Acessos)"):
+            st.code(erro_msg_gestao, language="text")
 
-# 6. PERFIL DO USUÁRIO
+# 6. PERFIL DO USUÁRIO (ISOLADO)
 try:
     from modules.perfil import exibir_tela_perfil
-except Exception as e_perfil:
+except Exception as err_import_perfil:
+    erro_msg_perfil = str(err_import_perfil)
     def exibir_tela_perfil():
         st.title("👤 Meu Perfil")
         st.error("⚠️ A tela de Perfil está temporariamente indisponível.")
-        print(f"Erro ao carregar Perfil no app.py: {e_perfil}")
+        with st.expander("🔍 Ver Detalhes Técnicos do Erro (Perfil)"):
+            st.code(erro_msg_perfil, language="text")
 
 
 # ==============================================================================
@@ -760,7 +769,7 @@ with st.sidebar:
             st.markdown("🛡️")
 
     if eh_gestor_real:
-        if st.toggle("👁️️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa_nav"):
+        if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa_nav"):
             st.session_state["simular_visao_tropa"] = True
             st.rerun()
         elif st.session_state.get("simular_visao_tropa", False):
@@ -771,7 +780,7 @@ with st.sidebar:
             st.markdown("---")
             st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
             
-            # CORREÇÃO CRÍTICA DO NOME DA TABELA: 'unidades_config'
+            # CONSULTA DA TABELA DE UNIDADES
             lista_unis = []
             if supabase:
                 try:
@@ -878,7 +887,7 @@ with st.sidebar:
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
 
-        if st.button("🛡️ Governança & Segurança", key="k_btn_mod_governanca_nav", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
+        if st.button("🛡️️ Governança & Segurança", key="k_btn_mod_governanca_nav", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
             st.session_state["modulo_ativo"] = "GOVERNANCA"
             st.rerun()
 
@@ -961,7 +970,7 @@ if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO",
             btn_enviar_msg = st.form_submit_button("📤 Enviar Mensagem à P1", type="primary", use_container_width=True)
             if btn_enviar_msg:
                 if not assunto_msg or not texto_msg:
-                    st.error("⚠️ Preencha o assunto e o texto da mensagem.")
+                    st.error("⚠️️ Preencha o assunto e o texto da mensagem.")
                 else:
                     assunto_limpo = sanitizar_texto(assunto_msg)
                     texto_limpo = sanitizar_texto(texto_msg)
