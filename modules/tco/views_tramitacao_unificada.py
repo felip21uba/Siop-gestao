@@ -9,10 +9,6 @@ from utils.file_validator import sanitizar_nome_arquivo
 
 
 def extrair_unidades_creds_banco(unidade_militar_atual=""):
-    """
-    Lê a coluna 'unidade' da tabela 'usuarios' no Supabase, divide fragmentos com '/'
-    e monta dinamicamente os CREDS e Órgãos Externos correspondentes.
-    """
     orgaos_externos = [
         "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
         "PODER JUDICIÁRIO / TRIBUNAL DE JUSTIÇA (JECRIM)",
@@ -58,11 +54,6 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
-    """
-    Renderiza a Custódia Física, Tramitação para Policiais/CREDS/Órgãos Externos,
-    Aceite de Retorno pelo Operador, Suporte a REDS sem Materiais Apreendidos
-    e Histórico Permanente com busca por REDS.
-    """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
     st.caption("Gerencie os bens sob sua posse, realize remessas para policiais/órgãos e consulte o histórico imutável das movimentações.")
 
@@ -202,7 +193,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         "Tipo de Destinatário:",
                         ["Policial Militar / Fiel Depositário", "Seção de Custódia (CREDS-TC / Órgão)"],
                         horizontal=True,
-                        key="radio_tipo_destinatario_unificado_v7"
+                        key="radio_tipo_destinatario_unificado_v8"
                     )
 
                     eh_opcao_creds = (tipo_destinatario == "Seção de Custódia (CREDS-TC / Órgão)")
@@ -216,7 +207,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 options=lista_unidades_creds,
                                 index=None,
                                 placeholder="Escolha o CREDS da Cia, Batalhão ou Órgão...",
-                                key="sb_destinatario_creds_unificado_v7"
+                                key="sb_destinatario_creds_unificado_v8"
                             )
                             unidade_dest_final = destinatario_final or "CREDS / ÓRGÃO EXTERNO"
                         else:
@@ -225,19 +216,18 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 options=opcoes_militares,
                                 index=None,
                                 placeholder="Digite qualquer parte do nome do militar...",
-                                key="sb_destinatario_policial_unificado_v7"
+                                key="sb_destinatario_policial_unificado_v8"
                             )
                             unidade_dest_final = unidade_militar_atual
 
                     with col_fase:
                         if not eh_opcao_creds:
-                            # 🔒 TRAVA OBRIGATÓRIA EM FIEL DEPOSITÁRIO QUANDO FOR POLICIAL MILITAR
                             fase_destinacao_sel = st.selectbox(
                                 "Atualizar Fase de Destinação (Automático):",
                                 options=["Com Fiel Depositário / Policial"],
                                 index=0,
                                 disabled=True,
-                                key="sb_fase_policial_locked_v7"
+                                key="sb_fase_policial_locked_v8"
                             )
                         else:
                             if eh_gestor_creds:
@@ -251,7 +241,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                         "Encaminhado para Destruição / Descarte Físico",
                                         "Devolvido ao Proprietário"
                                     ],
-                                    key="sb_fase_creds_unificado_enabled_v7"
+                                    key="sb_fase_creds_unificado_enabled_v8"
                                 )
                             else:
                                 fase_destinacao_sel = "Aguardando no CREDS-TC / Custódia"
@@ -260,41 +250,43 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     options=["Aguardando no CREDS-TC / Custódia"],
                                     index=0,
                                     disabled=True,
-                                    key="sb_fase_creds_unificado_readonly_v7"
+                                    key="sb_fase_creds_unificado_readonly_v8"
                                 )
 
-                    # SE FOR ÓRGÃO EXTERNO, EXIGE O CAMPO DO OFÍCIO
                     eh_orgao_ext_unid = eh_opcao_creds and any(term in str(destinatario_final) for term in ["JUDICIÁRIO", "PERÍCIA", "POLÍCIA CIVIL", "OUTRO"])
 
                     if eh_orgao_ext_unid:
-                        st.warning("🏛️ **Entrega em Órgão Externo:** Preencha a natureza do envio e o número do ofício.")
+                        st.warning("🏛️ **Entrega em Órgão Externo:** Defina a modalidade de envio e registre a documentação.")
                         col_ext1, col_ext2 = st.columns(2)
                         with col_ext1:
                             nat_envio_unid = st.radio(
-                                "Natureza da Transferência:",
-                                ["🔄 Com Retorno (Em Tramitação)", "🔒 Definitiva (Procedimento Encerrado/Sem Retorno)"],
-                                key="radio_nat_unificado_v7"
+                                "Natureza da Transferência para Órgão Externo:",
+                                ["🔄 Com Retorno (Aguardando Devolução / Em Tramitação)", "🔒 Definitiva (Procedimento Encerrado / Sem Retorno)"],
+                                key="radio_nat_unificado_v8"
                             )
                             eh_definitivo_val = ("Definitiva" in nat_envio_unid)
                         with col_ext2:
-                            num_oficio_unid = st.text_input("Nº do Ofício / Protocolo de Entrega (OBRIGATÓRIO):", placeholder="Ex: Ofício 123/2026", key="txt_ofic_unificado_v7").strip()
+                            num_oficio_unid = st.text_input("Nº do Ofício / Protocolo de Entrega (OBRIGATÓRIO):", placeholder="Ex: Ofício 123/2026", key="txt_ofic_unificado_v8").strip()
                         
-                        recibo_unid_file = st.file_uploader("Foto ou PDF do Recibo Assinado (OPCIONAL):", type=["jpg", "jpeg", "png", "pdf"], key="upl_rec_unificado_v7")
+                        recibo_unid_file = st.file_uploader("Foto ou PDF do Recibo Assinado / Termo de Aceite (OPCIONAL):", type=["jpg", "jpeg", "png", "pdf"], key="upl_rec_unificado_v8")
                     else:
                         eh_definitivo_val = False
                         num_oficio_unid = ""
                         recibo_unid_file = None
 
-                    obs_tramite = st.text_input(
-                        "Observações / Motivo da Transferência:",
-                        placeholder="Ex: Passagem de serviço ou entrega na Seção de Custódia",
-                        key="txt_obs_tramite_form_v7"
+                    # PLACEHOLDER PLACEBO ATUALIZADO SEM DADOS REAIS
+                    recebedor_info = st.text_input(
+                        "Informe Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", 
+                        placeholder="nome e matricula", 
+                        key="txt_recebedor_info_v11"
                     ).strip()
 
                     st.markdown("<br>", unsafe_allow_html=True)
                     if st.button("➕ Adicionar à Fila de Tramitação", type="secondary", width="stretch"):
                         if not destinatario_final:
                             st.error("⚠️ Selecione o destinatário antes de adicionar à fila.")
+                        elif not recebedor_info:
+                            st.error("⚠️ O preenchimento do Nome Completo e Matrícula de quem recebeu é OBRIGATÓRIO.")
                         elif eh_orgao_ext_unid and not num_oficio_unid:
                             st.error("⚠️ O preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO para órgãos externos.")
                         else:
@@ -309,7 +301,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     "destinatario": destinatario_final,
                                     "unidade_destinatario": unidade_dest_final,
                                     "fase_destinacao": fase_destinacao_sel,
-                                    "observacao": obs_tramite or "Sem obs",
+                                    "observacao": recebedor_info,
                                     "eh_creds": eh_opcao_creds,
                                     "eh_orgao_ext": eh_orgao_ext_unid,
                                     "eh_definitivo": eh_definitivo_val,
@@ -325,7 +317,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             st.toast("✅ Itens adicionados à fila de confirmação!", icon="📋")
                             st.rerun()
 
-            # PAINEL DA FILA DE ENVIOS
             fila_atual = st.session_state["fila_tramitacao_mapeada"]
             if fila_atual:
                 st.markdown("---")
@@ -345,7 +336,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         with col_f_dest:
                             st.markdown(
                                 f"🎯 **Destino:** `{item_f['destinatario']}`  \n"
-                                f"🏷️ **Fase:** `{item_f['fase_destinacao']}`"
+                                f"🏷️ **Fase:** `{item_f['fase_destinacao']}`  \n"
+                                f"👤 **Recebedor:** `{item_f['observacao']}`"
                             )
 
                         with col_f_del:
@@ -404,7 +396,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             if atualizar_material_supabase(f_item["id_bem"], payload_update):
                                 sucessos += 1
                                 desc_item_log = f"{f_item['descricao']} (Lacre: {f_item.get('involucro_lacre', 'N/I')})"
-                                detalhe_txt = f"Material: {f_item['descricao']} | Fase: {fase_f} | Obs: {f_item['observacao']}"
+                                detalhe_txt = f"Material: {f_item['descricao']} | Fase: {fase_f} | Recebido por: {f_item['observacao']}"
                                 
                                 if f_item.get("num_oficio"):
                                     detalhe_txt += f" | Ofício/Protocolo: {f_item['num_oficio']}"
@@ -434,7 +426,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     # =========================================================================
     with tab_externos:
         st.markdown("##### 🏛️ Materiais em Tramitação Externa (PCMG, JECRIM, Perícia, MP)")
-        st.caption("Como usuários de órgãos externos não possuem acesso ao SIOP, o Operador/Gestor do CREDS deve dar o aceite de retorno quando o material for devolvido à unidade.")
+        st.caption("Como usuários de órgãos externos não possuem acesso ao SIOP, o Operador/Militar do TCO dá o aceite de retorno quando o material for devolvido à unidade.")
 
         TERMOS_EXTERNOS = [
             "DELEGACIA", "POLÍCIA CIVIL", "PCMG", "JECRIM", "JUDICIÁRIO", 
@@ -447,7 +439,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             fase_d = str(b.get("fase_destinacao") or "").upper()
             status_t = str(b.get("status_tramite") or "").strip()
             
-            # Exibe itens em órgãos externos que estejam em tramitação (Com retorno)
             if status_t != "Transferido Definitivo" and any(term in dest_p or term in fase_d for term in TERMOS_EXTERNOS):
                 bens_em_orgao_externo.append(b)
 
@@ -480,7 +471,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     "status_tramite": "Em Custódia",
                                     "fiel_depositario_atual": nome_militar_atual,
                                     "unidade_posse_atual": unidade_militar_atual,
-                                    "fase_destinacao": "Aguardando no CREDS-TC / Custódia"
+                                    "fase_destinacao": "Com Fiel Depositário / Policial"
                                 }
                                 if atualizar_material_supabase(id_bem_e, payload_retorno):
                                     registrar_log_supabase({
@@ -493,14 +484,14 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                         "unidade_origem": "Órgão Externo",
                                         "destino": nome_militar_atual,
                                         "unidade_destino": unidade_militar_atual,
-                                        "detalhe": f"Aceite de retorno do material {desc_e} confirmado pelo operador {nome_militar_atual}."
+                                        "detalhe": f"Aceite de retorno do material {desc_e} confirmado na guarda de {nome_militar_atual}."
                                     })
-                                    st.success("✅ Retorno confirmado! O material foi reincorporado à custódia do CREDS.")
+                                    st.success("✅ Retorno confirmado! O material foi reincorporado à sua custódia individual.")
                                     st.cache_data.clear()
                                     st.rerun()
 
     # =========================================================================
-    # ABA 3: HISTÓRICO PERMANENTE DE ENVIOS & OCORRÊNCIAS
+    # ABA 3: HISTÓRICO PERMANENTE DE ENVIOS & OCORRÊNCIAS (COM DATA E HORA EXATAS)
     # =========================================================================
     with tab_historico:
         st.markdown("##### 📜 Histórico Permanente de Envios & Ocorrências")
@@ -515,14 +506,12 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                 dt_30d = dt_hoje - datetime.timedelta(days=90)
                 intervalo_datas = st.date_input("🗓️ Filtrar por Período:", value=(dt_30d, dt_hoje), format="DD/MM/YYYY", key="date_hist_envios_v8")
 
-        # CONSULTA ABRANGENTE: INCLUI BENS ENVIADOS, DEFINITIVOS E HISTÓRICOS DA UNIDADE/MILITAR
         envios_militar = []
         for b in all_bens or []:
             remetente = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or b.get("ultimo_gestor_movimentou") or "").upper()
             dest_pendente = b.get("destinatario_pendente")
             status_t = str(b.get("status_tramite", ""))
 
-            # Inclui materiais da carga do militar OU enviados definitivamente por ele/unidade
             if (num_pm_logado in remetente or nome_militar_atual.upper() in remetente or unidade_militar_atual in remetente) or dest_pendente or status_t == "Transferido Definitivo":
                 envios_militar.append(b)
 
@@ -567,7 +556,15 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         qtd_h_val = item_h.get("quantidade", 1)
                         dest_h = item_h.get("destinatario_pendente") or item_h.get("fase_destinacao") or "N/I"
                         status_h = item_h.get("status_tramite", "Em Custódia")
-                        dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual")
+                        dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual") or item_h.get("data_ingestao")
+
+                        # EXIBIÇÃO DA DATA E HORA EXATAS
+                        dt_fmt_exata = "Data N/I"
+                        if dt_env_str:
+                            try:
+                                dt_fmt_exata = pd.to_datetime(dt_env_str).strftime("%d/%m/%Y às %H:%M")
+                            except Exception:
+                                dt_fmt_exata = str(dt_env_str)[:16]
 
                         pode_cancelar = False
                         tempo_restante_str = ""
@@ -579,7 +576,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 if horas_passadas <= 72.0:
                                     pode_cancelar = True
                                     horas_restantes = max(0.0, 72.0 - horas_passadas)
-                                    tempo_restante_str = f"⏱️ {int(horas_restantes)}h {int((horas_restantes % 1)*60)}m restantes para cancelamento de envio"
+                                    tempo_restante_str = f"⏱️ {int(horas_restantes)}h {int((horas_restantes % 1)*60)}m restantes para cancelamento"
                                 else:
                                     tempo_restante_str = "⏱️ Janela de cancelamento de 72h expirada"
                             except Exception:
@@ -594,7 +591,9 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         with col_info_h:
                             st.markdown(
                                 f"• **Material:** {desc_h} (Qtd: {qtd_h_val})  \n"
-                                f"• **Destino / Fase:** `{dest_h}` | **Status:** `{status_h}`"
+                                f"• **Destino / Fase:** <code class='st-emotion-cache-znj1k1'>{dest_h}</code> | **Status:** `{status_h}`  \n"
+                                f"• **Data/Hora da Transferência:** `{dt_fmt_exata}`",
+                                unsafe_allow_html=True
                             )
                             if tempo_restante_str:
                                 st.caption(tempo_restante_str)
