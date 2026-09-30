@@ -22,7 +22,7 @@ from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sani
 def injetar_css_cards_alternados():
     st.markdown("""
     <style>
-    /* TIPOGRAFIA E ESTILIZAÇÃO GERAL */
+    /* TIPOGRAFIA E ESTILIZAÇÃO GERAL DE PÁGINA */
     html, body, [class*="css"] {
         font-size: 1.05rem;
     }
@@ -89,17 +89,18 @@ def injetar_css_cards_alternados():
     }
     .card-trava strong, .card-trava b { color: #f5f5f5 !important; }
 
-    /* TAG VERDE DESTACADA (CONFORME FOTO 2) */
+    /* TAG VERDE EXATAMENTE IGUAL À SEGUNDA FOTO (FONTE AUMENTADA + CAIXA ESCURA) */
     .tag-verde-destaque {
       color: #22c55e !important;
       font-weight: 700 !important;
-      font-size: 1.15rem !important;
-      background-color: #0f231c !important;
-      border: 1px solid #15803d !important;
-      padding: 4px 12px !important;
+      font-size: 1.2rem !important;
+      background-color: #111923 !important;
+      border: 1px solid #1e3a2b !important;
+      padding: 5px 14px !important;
       border-radius: 6px !important;
       display: inline-block !important;
-      letter-spacing: 0.5px !important;
+      letter-spacing: 0.6px !important;
+      font-family: 'Courier New', Courier, monospace, sans-serif !important;
     }
 
     /* CARDS DE MÉTRICAS */
@@ -247,7 +248,7 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
     
     def tag_destaque(txt):
         if e_marrom:
-            return f"<strong style='color: #000000; font-size: 1.15rem;'>{txt}</strong>"
+            return f"<strong style='color: #000000; font-size: 1.2rem;'>{txt}</strong>"
         return f"<span class='tag-verde-destaque'>{txt}</span>"
 
     if dest_pend and status_tr in ["Pendente de Aceite", "Pendente Aceite"]:
@@ -338,7 +339,7 @@ def verificar_existencia_reds_banco(num_reds):
         return False, None, None
 
 # =============================================================================
-# ABA 1: IMPORTAÇÃO E UPLOAD (CUSTÓDIA INITIAL DO MILITAR)
+# ABA 1: IMPORTAÇÃO E UPLOAD (CUSTÓDIA INICIAL DO MILITAR)
 # =============================================================================
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -389,7 +390,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                     btn_man = st.form_submit_button("➕ Adicionar à Lista", type="primary", width="stretch")
                     if btn_man:
                         if not man_reds or not man_desc:
-                            st.error("⚠️️ Preencha o Nº do REDS e a Descrição do Material.")
+                            st.error("⚠️ Preencha o Nº do REDS e a Descrição do Material.")
                         else:
                             existe_reds_man, dt_cad_m, op_cad_m = verificar_existencia_reds_banco(man_reds)
                             if existe_reds_man and not st.session_state.get("confirmou_duplicidade_reds", False):
@@ -652,7 +653,7 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
     ]
 
     if not meus_bens:
-        st.info("ℹ️ Você não possui nenhum material sob sua guarda pessoal no momento.")
+        st.info("ℹ️️ Você não possui nenhum material sob sua guarda pessoal no momento.")
         return
 
     st.markdown(f"##### 📦 Materiais na sua Carga Pessoal ({len(meus_bens)} itens)")
@@ -720,7 +721,7 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
         
         destino_tipo = st.radio(
             "Tipo de Destinatário:",
-            ["Policial Militar / Fiel Depositário", "Seção de Custódia (CREDS-TC / Órgão Externo)"],
+            ["Policial Militar / Fiel Depositário", "Seção de Custódia (CREDS-TC / Órgão)"],
             horizontal=True,
             key="radio_destino_pessoal_v5"
         )
@@ -1175,19 +1176,19 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 2: 🔥 MATERIAIS AGUARDANDO DESTRUÍÇÃO NO DEPÓSITO
+    # RETÂNGULO 2: 🔥 MATERIAIS AGUARDANDO DESTRUÍÇÃO / INCINERAÇÃO
     # =========================================================================
     if filtro_card in ["TODOS", "DESTRUICAO"]:
         with st.container(border=True):
             df_dest_reds = pd.DataFrame(bens_aguardando_destruicao) if bens_aguardando_destruicao else pd.DataFrame()
             qtd_reds_dest = df_dest_reds["num_reds"].nunique() if not df_dest_reds.empty else 0
 
-            st.markdown(f"##### 🔥 2. Materiais no Depósito Aguardando Destruição ({qtd_reds_dest} REDS)")
-            st.caption("Materiais separados para descarte físico no depósito. Para dar baixa e arquivar, informe o BOS/Auto de Incineração.")
+            st.markdown(f"##### 🔥 2. Materiais Autorizados Aguardando Incineração ({qtd_reds_dest} REDS)")
+            st.caption("Materiais autorizados para destruição física. Para dar a baixa e encerramento definitivo, informe o BOS/Auto de Incineração.")
 
             if bens_aguardando_destruicao:
                 for num_reds_d, df_grupo_d in df_dest_reds.groupby("num_reds", sort=False):
-                    with st.expander(f"🔥 **CARD REDS: {num_reds_d}** ({len(df_grupo_d)} item/ns para destruição)", expanded=True):
+                    with st.expander(f"🔥 **CARD REDS: {num_reds_d}** ({len(df_grupo_d)} item/ns autorizados para destruição)", expanded=True):
                         for idx_d, item_d in df_grupo_d.iterrows():
                             id_bem_d = str(item_d.get("id_bem") or item_d.get("id"))
                             desc_d = item_d.get("descricao", "N/I")
@@ -1199,16 +1200,16 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             with col_d1:
                                 html_fire = f"""
                                 <div class="card-fire">
-                                    🔥 <b>Material Separado para Incineração:</b> {desc_d} (Qtd: {qtd_d_val})<br/>
-                                    🏷️ <b>Lacre:</b> {lacre_d} | 👤 <b>Separado por:</b> {gestor_sep}
+                                    🔥 <b>Material Autorizado para Incineração:</b> {desc_d} (Qtd: {qtd_d_val})<br/>
+                                    🏷️ <b>Lacre:</b> {lacre_d} | 👤 <b>Autorizado por:</b> {gestor_sep}
                                 </div>
                                 """
                                 st.markdown(html_fire, unsafe_allow_html=True)
 
                             with col_d2:
-                                with st.popover("🔥 Confirmar Baixa por Incineração", width="stretch"):
+                                with st.popover("🔥 Confirmar Baixa e Encerramento Definitivo", width="stretch"):
                                     bos_ordem = st.text_input("Nº do BOS / Auto de Incineração (OBRIGATÓRIO):", placeholder="Ex: BOS 2026-000123", key=f"txt_bos_{id_bem_d}").strip()
-                                    if st.button("🔒 Dar Baixa Definitiva", key=f"btn_baixa_dest_{id_bem_d}_{idx_d}", type="primary", width="stretch"):
+                                    if st.button("🔒 Confirmar Destruído / Encerrado", key=f"btn_baixa_dest_{id_bem_d}_{idx_d}", type="primary", width="stretch"):
                                         if not bos_ordem:
                                             st.error("Informe o Nº do BOS ou Auto de Incineração.")
                                         else:
@@ -1229,24 +1230,24 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                     "unidade_origem": unidade_militar_atual,
                                                     "destino": "DESTRUIÇÃO / INCINERAÇÃO",
                                                     "unidade_destino": unidade_militar_atual,
-                                                    "detalhe": f"Incineração confirmada por {nome_militar_atual}. Auto/BOS: {bos_ordem}"
+                                                    "detalhe": f"Incineração e encerramento confirmados por {nome_militar_atual}. Auto/BOS: {bos_ordem}"
                                                 })
-                                                st.success("✅ Material destruído com sucesso e movido para o Arquivo Final!")
+                                                st.success("✅ Material destruído e encerrado definitivamente!")
                                                 st.cache_data.clear()
                                                 st.rerun()
 
-                                if st.button("🔄 Cancelar Destruição", key=f"btn_canc_dest_{id_bem_d}_{idx_d}", width="stretch"):
+                                if st.button("🔄 Cancelar Autorização", key=f"btn_canc_dest_{id_bem_d}_{idx_d}", width="stretch"):
                                     payload_canc_d = {
                                         "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
                                         "status_tramite": "Em Custódia",
                                         "ultimo_gestor_movimentou": nome_militar_atual
                                     }
                                     if atualizar_material_supabase(id_bem_d, payload_canc_d):
-                                        st.warning("Material retornado para a lista de acervo ativo.")
+                                        st.warning("Material retornado para o acervo ativo do CREDS.")
                                         st.cache_data.clear()
                                         st.rerun()
             else:
-                st.info("ℹ️ Nenhum material aguardando destruição no momento.")
+                st.info("ℹ️ Nenhum material aguardando destruição/incineração no momento.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1259,7 +1260,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             qtd_reds_pend = df_pend_creds["num_reds"].nunique() if not df_pend_creds.empty else 0
 
             st.markdown(f"##### ⏳ 3. Materiais Pendentes de Aceite pelo CREDS ({qtd_reds_pend} REDS)")
-            st.caption("Materiais encaminhados por policiais aguardando conferência e aceite físico do CREDS.")
+            st.caption("Materiais encaminhados por policiais aguardando conferência e aceite do CREDS.")
 
             if bens_pendentes_aceite_creds:
                 for num_reds_p, df_grupo_p in df_pend_creds.groupby("num_reds", sort=False):
@@ -1331,7 +1332,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 4: 🏛️️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL
+    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL
     # =========================================================================
     if filtro_card in ["TODOS", "PERICIA", "PARADOS", "ARQUIVO"]:
         with st.container(border=True):
@@ -1342,7 +1343,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             df_ext_reds = pd.DataFrame(bens_r4) if bens_r4 else pd.DataFrame()
             qtd_reds_ext = df_ext_reds["num_reds"].nunique() if not df_ext_reds.empty else 0
 
-            st.markdown(f"##### 🏛️ 4. Materiais em Órgãos Externos / Arquivo Final ({qtd_reds_ext} REDS)")
+            st.markdown(f"##### 🏛️ 4. Materiais em Órgãos Externos / Arquivo Definitivo ({qtd_reds_ext} REDS)")
             st.caption("Acompanhamento de materiais remetidos para PCMG, Perícia, JECRIM ou destruídos definitivamente.")
 
             if bens_r4:
