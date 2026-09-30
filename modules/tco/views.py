@@ -774,7 +774,7 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
                     num_oficio_p = ""
                     foto_recibo_p = None
 
-            obs_p = st.text_input("Informe Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", placeholder="Ex: Carlos Eduardo Silva - Matrícula 123456", key="txt_obs_pessoal_v6").strip()
+            obs_p = st.text_input("Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", placeholder="Ex: 2º SGT HILDEWARGO CLEWERTON MOREIRA MENDES (1137371)", key="txt_obs_pessoal_v6").strip()
             btn_enviar_p = st.form_submit_button("🚀 Confirmar Envio / Tramitação", type="primary", width="stretch")
 
             if btn_enviar_p:
@@ -852,7 +852,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO, Comandantes ou Administradores têm acesso às funções deste painel.")
         return
 
-    st.caption(f"⚙️️ **Gestão Institucional Ativa:** Operando como **CREDS TCO - {unidade_militar_atual}** | Assinatura digital do Gestor: **{nome_militar_atual}**")
+    st.caption(f"⚙ **Gestão Institucional Ativa:** Operando como **CREDS TCO - {unidade_militar_atual}** | Assinatura digital do Gestor: **{nome_militar_atual}**")
 
     if "itens_selecionados_creds_painel" not in st.session_state:
         st.session_state["itens_selecionados_creds_painel"] = {}
@@ -1158,7 +1158,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 key="sb_fase_orgao_v4_enabled"
                             )
 
-                    obs_creds = st.text_input("Informe Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", placeholder="Ex: Carlos Eduardo Silva - Matrícula 123456", key="txt_obs_desp_v4").strip()
+                    obs_creds = st.text_input("Informe Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", placeholder="Ex: 2º SGT HILDEWARGO CLEWERTON MOREIRA MENDES (1137371)", key="txt_obs_desp_v4").strip()
                     btn_confirmar = st.form_submit_button("🚀 Confirmar Movimentação do CREDS", type="primary", width="stretch")
 
                     if btn_confirmar:
@@ -1361,7 +1361,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL (DIFERENCIA RETORNO DE ENCERRAMENTO)
+    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL
     # =========================================================================
     if filtro_card in ["TODOS", "PERICIA", "PARADOS", "ARQUIVO"]:
         with st.container(border=True):
@@ -1413,7 +1413,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
                             with col_e2:
                                 if not e_destruido and not e_confirmado_orgao:
-                                    # BOTÃO 1: CONFIRMAR RETORNO AO CREDS (LIBERA O MATERIAL NO DEPÓSITO DE NOVO)
                                     if st.button("📥 Confirmar Devolução ao CREDS", key=f"btn_devolucao_creds_{id_bem_e}_{idx_e}", type="primary", width="stretch"):
                                         agora_iso_r = datetime.datetime.now().isoformat()
                                         payload_ret = {
@@ -1443,14 +1442,13 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                             st.cache_data.clear()
                                             st.rerun()
 
-                                    # BOTÃO 2: ENCERRAMENTO DEFINITIVO COM OFÍCIO
                                     with st.popover("📄 Encerrar Procedimento / Definitivo", width="stretch"):
                                         num_oficio_rec = st.text_input("Nº do Ofício / Protocolo / Laudo (OBRIGATÓRIO):", placeholder="Ex: Ofício 45/2026-PCMG", key=f"txt_ofic_{id_bem_e}").strip()
                                         foto_recibo = st.file_uploader("Foto ou PDF do Recibo/Laudo (OPCIONAL):", type=["jpg", "jpeg", "png", "pdf"], key=f"upl_rec_{id_bem_e}")
                                         
                                         if st.button("🔒 Confirmar Encerramento Definitivo", key=f"btn_conf_ext_manual_{id_bem_e}_{idx_e}", type="primary", width="stretch"):
                                             if not num_oficio_rec:
-                                                st.error("⚠️️ O preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
+                                                st.error("⚠️ O preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
                                             else:
                                                 now_iso_c = datetime.datetime.now().isoformat()
                                                 midia_recibo_obj = None
