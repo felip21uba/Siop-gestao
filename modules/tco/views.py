@@ -89,7 +89,7 @@ def injetar_css_cards_alternados():
     }
     .card-trava strong, .card-trava b { color: #f5f5f5 !important; }
 
-    /* MAPEAMENTO DA CLASSE NATIVA DO STREAMLIT */
+    /* MAPEAMENTO DA CLASSE NATIVA DO STREAMLIT MOSTRADA NO DEVTOOLS */
     .st-emotion-cache-znj1k1, .tag-verde-destaque, code {
       padding: 0.2em 0.4em !important;
       overflow-wrap: break-word !important;
@@ -391,7 +391,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                     btn_man = st.form_submit_button("➕ Adicionar à Lista", type="primary", width="stretch")
                     if btn_man:
                         if not man_reds or not man_desc:
-                            st.error("⚠️️ Preencha o Nº do REDS e a Descrição do Material.")
+                            st.error("⚠️ Preencha o Nº do REDS e a Descrição do Material.")
                         else:
                             existe_reds_man, dt_cad_m, op_cad_m = verificar_existencia_reds_banco(man_reds)
                             if existe_reds_man and not st.session_state.get("confirmou_duplicidade_reds", False):
@@ -618,7 +618,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA 2: TRAMITAÇÃO INDIVIDUAL (COM SUPORTE A ÓRGÃO EXTERNO E TERMO DE ACEITE)
+# ABA 2: TRAMITAÇÃO INDIVIDUAL (TRAVA FASE EM FIEL DEPOSITÁRIO QUANDO FOR POLICIAL MILITAR)
 # =============================================================================
 def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -731,14 +731,28 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
 
         with st.form("form_tramite_pessoal_v5", clear_on_submit=False):
             if not eh_secao_orgao:
-                lista_m = carregar_militares_supabase() or []
-                opcoes_m = [f"{m.get('posto_grad','PM')} {m.get('nome_completo','MILITAR')} ({m.get('num_policia','')})" for m in lista_m]
-                destinatario_p_final = st.selectbox("Selecione o Policial Destinatário:", opcoes_m, key="sb_pm_dest_pessoal_v5")
-                unidade_p_final = unidade_militar_atual
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    lista_m = carregar_militares_supabase() or []
+                    opcoes_m = [f"{m.get('posto_grad','PM')} {m.get('nome_completo','MILITAR')} ({m.get('num_policia','')})" for m in lista_m]
+                    destinatario_p_final = st.selectbox("Selecione o Policial Destinatário:", opcoes_m, key="sb_pm_dest_pessoal_v5")
+                    unidade_p_final = unidade_militar_atual
+
+                with col_m2:
+                    # TRAVA OBRIGATÓRIA EM FIEL DEPOSITÁRIO PARA POLICIAL MILITAR
+                    st.selectbox(
+                        "Fase de Destinação (Automático / Fiel Depositário):",
+                        options=["Com Fiel Depositário / Policial"],
+                        index=0,
+                        disabled=True,
+                        key="sb_fase_pm_lock_v5"
+                    )
+
                 eh_orgao_ext_p_check = False
                 eh_definitivo_orgao = False
                 num_oficio_p = ""
                 foto_recibo_p = None
+
             else:
                 opcoes_secoes = [
                     "CREDS 35ª CIA PM (UBÁ)",
@@ -774,7 +788,7 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
 
             if btn_enviar_p:
                 if eh_orgao_ext_p_check and not num_oficio_p:
-                    st.error("⚠️ Para entrega a órgãos externos, o preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
+                    st.error("⚠️️ Para entrega a órgãos externos, o preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
                 else:
                     agora_iso = datetime.datetime.now().isoformat()
                     sucessos_p = 0
@@ -1137,6 +1151,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
                     with col_f2:
                         if eh_policial_dest:
+                            # BLOQUEIA E CRAVA EM FIEL DEPOSITÁRIO QUANDO FOR POLICIAL MILITAR
                             fase_final = st.selectbox(
                                 "Atualizar Fase de Destinação (Acesso Gestor CREDS):",
                                 options=["Com Fiel Depositário / Policial"],
