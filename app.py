@@ -334,9 +334,9 @@ def abrir_modal_reportar_erro():
 
         col_rep1, col_rep2 = st.columns(2)
         with col_rep1:
-            btn_enviar_reporte = st.form_submit_button("📤 Enviar Relatório", type="primary", use_container_width=True)
+            btn_enviar_reporte = st.form_submit_button("📤 Enviar Relatório", type="primary", width="stretch")
         with col_rep2:
-            btn_cancelar_reporte = st.form_submit_button("❌ Cancelar", use_container_width=True)
+            btn_cancelar_reporte = st.form_submit_button("❌ Cancelar", width="stretch")
 
         if btn_cancelar_reporte:
             st.rerun()
@@ -374,7 +374,7 @@ if not st.session_state.get("autenticado", False):
         with c_logo:
             st.image(obter_imagem_brasao(), width=100)
         with c_tit:
-            st.markdown("## 🛡️ **SIOP PMMG**")
+            st.markdown("## 🛡️️ **SIOP PMMG**")
             st.markdown("##### Sistema Integrado de Operações")
             st.caption("Polícia Militar de Minas Gerais — Polícia de Cidadania")
 
@@ -391,9 +391,9 @@ if not st.session_state.get("autenticado", False):
                     
                     c_rec1, c_rec2 = st.columns(2)
                     with c_rec1:
-                        btn_gerar_codigo = st.form_submit_button("📩 Solicitar Código por E-mail", type="primary", use_container_width=True)
+                        btn_gerar_codigo = st.form_submit_button("📩 Solicitar Código por E-mail", type="primary", width="stretch")
                     with c_rec2:
-                        btn_voltar_rec = st.form_submit_button("⬅️ Voltar ao Login", use_container_width=True)
+                        btn_voltar_rec = st.form_submit_button("⬅️️ Voltar ao Login", width="stretch")
 
                     if btn_voltar_rec:
                         st.session_state["recuperar_senha_modo"] = False
@@ -445,9 +445,9 @@ if not st.session_state.get("autenticado", False):
 
                     col_res1, col_res2 = st.columns(2)
                     with col_res1:
-                        btn_finalizar_reset = st.form_submit_button("✅ Redefinir Senha & Desbloquear", type="primary", use_container_width=True)
+                        btn_finalizar_reset = st.form_submit_button("✅ Redefinir Senha & Desbloquear", type="primary", width="stretch")
                     with col_res2:
-                        btn_cancelar_reset = st.form_submit_button("❌ Cancelar", use_container_width=True)
+                        btn_cancelar_reset = st.form_submit_button("❌ Cancelar", width="stretch")
 
                     if btn_cancelar_reset:
                         st.session_state["recuperar_senha_modo"] = False
@@ -534,9 +534,9 @@ if not st.session_state.get("autenticado", False):
 
                 col_s1, col_s2 = st.columns(2)
                 with col_s1:
-                    btn_confirmar_setup = st.form_submit_button("💾 Salvar Cadastro & Ativar Conta", type="primary", use_container_width=True)
+                    btn_confirmar_setup = st.form_submit_button("💾 Salvar Cadastro & Ativar Conta", type="primary", width="stretch")
                 with col_s2:
-                    btn_cancelar_setup = st.form_submit_button("❌ Cancelar", use_container_width=True)
+                    btn_cancelar_setup = st.form_submit_button("❌ Cancelar", width="stretch")
 
                 if btn_cancelar_setup:
                     st.session_state["mfa_setup_mode"] = False
@@ -626,7 +626,7 @@ if not st.session_state.get("autenticado", False):
                 usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1234567", autocomplete="off") or "").strip()
                 senha_input = (st.text_input("Senha de Acesso:", type="password", placeholder="••••••••", autocomplete="new-password") or "").strip()
                 
-                btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", use_container_width=True)
+                btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", width="stretch")
 
                 if btn_entrar:
                     if not usuario_input or not senha_input:
@@ -700,10 +700,10 @@ if not st.session_state.get("autenticado", False):
 
             col_b1, col_b2 = st.columns([1, 1])
             with col_b1:
-                if st.button("🐛 Reportar Defeito", use_container_width=True):
+                if st.button("🐛 Reportar Defeito", width="stretch"):
                     abrir_modal_reportar_erro()
             with col_b2:
-                if st.button("❓ Esqueci a Senha / Desbloquear Conta", use_container_width=True):
+                if st.button("❓ Esqueci a Senha / Desbloquear Conta", width="stretch"):
                     st.session_state["recuperar_senha_modo"] = True
                     st.rerun()
 
@@ -764,7 +764,7 @@ with st.sidebar:
     c_l, c_mid, c_r = st.columns([1, 1.5, 1])
     with c_mid:
         try:
-            st.image(obter_imagem_brasao(), use_container_width=True)
+            st.image(obter_imagem_brasao(), width="stretch")
         except Exception:
             st.markdown("🛡️")
 
@@ -780,7 +780,6 @@ with st.sidebar:
             st.markdown("---")
             st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
             
-            # CONSULTA DA TABELA DE UNIDADES
             lista_unis = []
             if supabase:
                 try:
@@ -830,7 +829,7 @@ with st.sidebar:
     st.markdown("##### 🧩 Módulos do Sistema")
     with st.container(border=True):
         if eh_gestor_ou_admin:
-            if st.button("📅 Módulo Escalas", key="k_btn_mod_escalas_nav", use_container_width=True, type="primary" if modulo_ativo == "ESCALAS" else "secondary"):
+            if st.button("📅 Módulo Escalas", key="k_btn_mod_escalas_nav", width="stretch", type="primary" if modulo_ativo == "ESCALAS" else "secondary"):
                 st.session_state["modulo_ativo"] = "ESCALAS"
                 st.rerun()
 
@@ -853,11 +852,11 @@ with st.sidebar:
                 )
                 st.session_state["passo_escala_ativo"] = passo_sel
         else:
-            if st.button("📅 Minha Escala Individual", key="k_btn_mod_minha_escala_nav", use_container_width=True, type="primary" if modulo_ativo == "MINHA_ESCALA" else "secondary"):
+            if st.button("📅 Minha Escala Individual", key="k_btn_mod_minha_escala_nav", width="stretch", type="primary" if modulo_ativo == "MINHA_ESCALA" else "secondary"):
                 st.session_state["modulo_ativo"] = "MINHA_ESCALA"
                 st.rerun()
 
-        if st.button("📦 Módulo TCO / Custódia", key="k_btn_mod_tco_nav", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
+        if st.button("📦 Módulo TCO / Custódia", key="k_btn_mod_tco_nav", width="stretch", type="primary" if modulo_ativo == "TCO" else "secondary"):
             st.session_state["modulo_ativo"] = "TCO"
             st.rerun()
 
@@ -878,22 +877,22 @@ with st.sidebar:
             )
             st.session_state["subnav_tco"] = subnav_tco_sel
 
-        if st.button("⚖️ Módulo Procedimentos", key="k_btn_mod_procedimentos_nav", use_container_width=True, type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
+        if st.button("⚖️ Módulo Procedimentos", key="k_btn_mod_procedimentos_nav", width="stretch", type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
             st.session_state["modulo_ativo"] = "PROCEDIMENTOS"
             st.rerun()
 
         if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR"]):
-            if st.button("⚙️ Gestão de Acessos", key="k_btn_mod_gestao_acessos_nav", use_container_width=True, type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
+            if st.button("⚙️ Gestão de Acessos", key="k_btn_mod_gestao_acessos_nav", width="stretch", type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
 
-        if st.button("🛡️️ Governança & Segurança", key="k_btn_mod_governanca_nav", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
+        if st.button("🛡️ Governança & Segurança", key="k_btn_mod_governanca_nav", width="stretch", type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
             st.session_state["modulo_ativo"] = "GOVERNANCA"
             st.rerun()
 
     qtd_novas_mensagens = 0 
     badge_msg = f" 🔴 ({qtd_novas_mensagens})" if qtd_novas_mensagens > 0 else ""
-    if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", key="k_btn_mural_avisos_nav", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
+    if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", key="k_btn_mural_avisos_nav", width="stretch", type="primary" if modulo_ativo == "MURAL" else "secondary"):
         st.session_state["modulo_ativo"] = "MURAL"
         st.rerun()
 
@@ -901,7 +900,7 @@ with st.sidebar:
 
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        if st.button("👤 Perfil", key="k_btn_perfil_nav", use_container_width=True, type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
+        if st.button("👤 Perfil", key="k_btn_perfil_nav", width="stretch", type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
             st.session_state["modulo_ativo"] = "MEU_PERFIL"
             st.rerun()
             
@@ -913,7 +912,7 @@ with st.sidebar:
             st.session_state["tema_visual"] = "DARK" if novo_tema_toggle else "LIGHT"
             st.rerun()
 
-    if st.button("🚪 Sair do Sistema", key="k_btn_logout_nav", use_container_width=True):
+    if st.button("🚪 Sair do Sistema", key="k_btn_logout_nav", width="stretch"):
         usr_m = str(usr.get("usuario_login") or usr.get("usuario") or "").strip().upper()
         if supabase and usr_m:
             try:
@@ -953,7 +952,7 @@ if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO",
                 df_escala["MILITAR"].astype(str).str.contains(nome_user, na=False)
             ]
             if not df_individual.empty:
-                st.dataframe(df_individual, use_container_width=True, hide_index=True)
+                st.dataframe(df_individual, width="stretch", hide_index=True)
             else:
                 st.warning("Nenhum turno cadastrado para você na escala publicada deste mês.")
         else:
@@ -967,10 +966,10 @@ if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO",
             assunto_msg = (st.text_input("Assunto / Motivo:") or "").strip()
             texto_msg = (st.text_area("Detalhamento da Solicitação:", height=120) or "").strip()
             
-            btn_enviar_msg = st.form_submit_button("📤 Enviar Mensagem à P1", type="primary", use_container_width=True)
+            btn_enviar_msg = st.form_submit_button("📤 Enviar Mensagem à P1", type="primary", width="stretch")
             if btn_enviar_msg:
                 if not assunto_msg or not texto_msg:
-                    st.error("⚠️️ Preencha o assunto e o texto da mensagem.")
+                    st.error("⚠️ Preencha o assunto e o texto da mensagem.")
                 else:
                     assunto_limpo = sanitizar_texto(assunto_msg)
                     texto_limpo = sanitizar_texto(texto_msg)
