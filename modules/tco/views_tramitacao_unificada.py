@@ -60,11 +60,11 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     """
     Renderiza a Custódia Física, Tramitação para Policiais/CREDS/Órgãos Externos,
-    Aceite de Retorno pelo Operador e Suporte a REDS sem Materiais Apreendidos.
-    Sintaxe 100% atualizada para o Streamlit 2026.
+    Aceite de Retorno pelo Operador, Suporte a REDS sem Materiais Apreendidos
+    e Histórico Permanente com busca por REDS.
     """
     st.subheader("🎒 Custódia Física & Tramitação Unificada")
-    st.caption("Gerencie os bens sob sua posse, realize remessas para policiais/órgãos e confirme a devolução de materiais vindos de órgãos externos.")
+    st.caption("Gerencie os bens sob sua posse, realize remessas para policiais/órgãos e consulte o histórico imutável das movimentações.")
 
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm_logado = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
@@ -77,7 +77,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     tab_pendentes, tab_externos, tab_historico = st.tabs([
         "📤 Tramitar Materiais / REDS",
         "🏛️ Receber / Confirmar Retorno de Órgão Externo",
-        "📜 Histórico de Envios & Pendências (Últimos 10 REDS)"
+        "📜 Histórico Permanente de Envios & Ocorrências"
     ])
 
     if "fila_tramitacao_mapeada" not in st.session_state:
@@ -98,7 +98,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             status_tr = str(b.get("status_tramite") or "").strip()
             num_r = str(b.get("num_reds", "")).strip()
 
-            if not b.get("destinatario_pendente") and status_tr not in ["Arquivado/Destinado"]:
+            if not b.get("destinatario_pendente") and status_tr not in ["Arquivado/Destinado", "Transferido Definitivo", "Destruído / Encerrado"]:
                 if num_pm_logado in posse_atual or nome_militar_atual.upper() in posse_atual or unidade_militar_atual in posse_atual or "CUSTÓDIA" in posse_atual:
                     bens_posse.append(b)
 
@@ -106,7 +106,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                 reds_sem_materiais.add(num_r)
 
         if not bens_posse and not reds_sem_materiais and not st.session_state["fila_tramitacao_mapeada"]:
-            st.info("ℹ️ Nenhum material ou REDS pendente disponível para nova tramitação sob sua custódia no momento.")
+            st.info("ℹ️ Nenhum material ativo pendente de nova tramitação na sua custódia individual no momento.")
         else:
             if reds_sem_materiais:
                 with st.expander("📄 **REDS sem Materiais Apreendidos (Tramitar Apenas Procedimento/Autos)**", expanded=False):
@@ -275,11 +275,13 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 ["🔄 Com Retorno (Em Tramitação)", "🔒 Definitiva (Procedimento Encerrado/Sem Retorno)"],
                                 key="radio_nat_unificado_v7"
                             )
+                            eh_definitivo_val = ("Definitiva" in nat_envio_unid)
                         with col_ext2:
                             num_oficio_unid = st.text_input("Nº do Ofício / Protocolo de Entrega (OBRIGATÓRIO):", placeholder="Ex: Ofício 123/2026", key="txt_ofic_unificado_v7").strip()
                         
                         recibo_unid_file = st.file_uploader("Foto ou PDF do Recibo Assinado (OPCIONAL):", type=["jpg", "jpeg", "png", "pdf"], key="upl_rec_unificado_v7")
                     else:
+                        eh_definitivo_val = False
                         num_oficio_unid = ""
                         recibo_unid_file = None
 
@@ -310,6 +312,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     "observacao": obs_tramite or "Sem obs",
                                     "eh_creds": eh_opcao_creds,
                                     "eh_orgao_ext": eh_orgao_ext_unid,
+                                    "eh_definitivo": eh_definitivo_val,
                                     "num_oficio": num_oficio_unid,
                                     "recibo_file": recibo_unid_file
                                 }
@@ -378,20 +381,22 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 )
 
                             if f_item.get("eh_orgao_ext"):
-                                status_tr_f = "Transferido Definitivo"
+                                status_tr_f = "Transferido Definitivo" if f_item.get("eh_definitivo") else "Em Tramitação"
                                 dest_p_f = None
                                 fiel_f = f_item["destinatario"]
+                                fase_f = f"Entregue ao {f_item['destinatario']} (Ofício: {f_item.get('num_oficio')})"
                             else:
                                 status_tr_f = "Pendente de Aceite"
                                 dest_p_f = f_item["destinatario"]
                                 fiel_f = nome_militar_atual
+                                fase_f = f_item["fase_destinacao"]
 
                             payload_update = {
                                 "destinatario_pendente": dest_p_f,
                                 "unidade_destinatario_pendente": f_item["unidade_destinatario"] if dest_p_f else None,
                                 "fiel_depositario_atual": fiel_f,
                                 "data_envio_tramite": agora_iso,
-                                "fase_destinacao": f_item["fase_destinacao"],
+                                "fase_destinacao": fase_f,
                                 "status_tramite": status_tr_f,
                                 "ultimo_gestor_movimentou": nome_militar_atual
                             }
@@ -399,7 +404,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             if atualizar_material_supabase(f_item["id_bem"], payload_update):
                                 sucessos += 1
                                 desc_item_log = f"{f_item['descricao']} (Lacre: {f_item.get('involucro_lacre', 'N/I')})"
-                                detalhe_txt = f"Material: {f_item['descricao']} | Fase: {f_item['fase_destinacao']} | Obs: {f_item['observacao']}"
+                                detalhe_txt = f"Material: {f_item['descricao']} | Fase: {fase_f} | Obs: {f_item['observacao']}"
                                 
                                 if f_item.get("num_oficio"):
                                     detalhe_txt += f" | Ofício/Protocolo: {f_item['num_oficio']}"
@@ -440,13 +445,14 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         for b in all_bens or []:
             dest_p = str(b.get("destinatario_pendente") or "").upper()
             fase_d = str(b.get("fase_destinacao") or "").upper()
+            status_t = str(b.get("status_tramite") or "").strip()
             
-            is_ext = any(term in dest_p or term in fase_d for term in TERMOS_EXTERNOS)
-            if is_ext:
+            # Exibe itens em órgãos externos que estejam em tramitação (Com retorno)
+            if status_t != "Transferido Definitivo" and any(term in dest_p or term in fase_d for term in TERMOS_EXTERNOS):
                 bens_em_orgao_externo.append(b)
 
         if not bens_em_orgao_externo:
-            st.info("ℹ️ Nenhum material atualmente localizado em trâmite de órgãos externos.")
+            st.info("ℹ️ Nenhum material atualmente localizado em trâmite temporário de órgãos externos.")
         else:
             df_ext = pd.DataFrame(bens_em_orgao_externo)
             for num_reds_e, df_grupo_e in df_ext.groupby("num_reds", sort=False):
@@ -461,7 +467,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         with col_e1:
                             st.markdown(
                                 f"• **Material:** {desc_e} (Qtd: {qtd_e_val})  \n"
-                                f"• **Órgão/Destino Atual:** `<code class='st-emotion-cache-znj1k1'>{dest_e}</code>`",
+                                f"• **Órgão/Destino Atual:** <code class='st-emotion-cache-znj1k1'>{dest_e}</code>",
                                 unsafe_allow_html=True
                             )
 
@@ -494,27 +500,30 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     st.rerun()
 
     # =========================================================================
-    # ABA 3: HISTÓRICO DE ENVIOS
+    # ABA 3: HISTÓRICO PERMANENTE DE ENVIOS & OCORRÊNCIAS
     # =========================================================================
     with tab_historico:
-        st.markdown("##### 📜 Histórico de Tramitações Enviadas por Você")
-        st.caption("Consulte os envios realizados, filtre por REDS/período e cancele tramitações para Policiais ou CREDS pendentes de aceite em até 72 horas.")
+        st.markdown("##### 📜 Histórico Permanente de Envios & Ocorrências")
+        st.caption("Consulte todas as tramitações (incluindo envios definitivos, parciais e materiais já entregues). Pesquise livremente pelo Número do REDS.")
 
         with st.container(border=True):
             col_f1, col_f2 = st.columns(2)
             with col_f1:
-                busca_reds_hist = st.text_input("🔍 Pesquisar por Nº do REDS:", placeholder="Ex: 2026-000484967", key="txt_busca_reds_hist").strip()
+                busca_reds_hist = st.text_input("🔍 Pesquisar por Nº do REDS (Busca Geral):", placeholder="Ex: 2026-000484967", key="txt_busca_reds_hist_v8").strip()
             with col_f2:
                 dt_hoje = datetime.date.today()
-                dt_30d = dt_hoje - datetime.timedelta(days=30)
-                intervalo_datas = st.date_input("🗓️️ Filtrar por Período de Envio:", value=(dt_30d, dt_hoje), format="DD/MM/YYYY", key="date_hist_envios")
+                dt_30d = dt_hoje - datetime.timedelta(days=90)
+                intervalo_datas = st.date_input("🗓️ Filtrar por Período:", value=(dt_30d, dt_hoje), format="DD/MM/YYYY", key="date_hist_envios_v8")
 
+        # CONSULTA ABRANGENTE: INCLUI BENS ENVIADOS, DEFINITIVOS E HISTÓRICOS DA UNIDADE/MILITAR
         envios_militar = []
         for b in all_bens or []:
-            remetente = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or "").upper()
+            remetente = str(b.get("fiel_depositario_atual") or b.get("unidade_posse_atual") or b.get("ultimo_gestor_movimentou") or "").upper()
             dest_pendente = b.get("destinatario_pendente")
-            
-            if (num_pm_logado in remetente or nome_militar_atual.upper() in remetente) and dest_pendente:
+            status_t = str(b.get("status_tramite", ""))
+
+            # Inclui materiais da carga do militar OU enviados definitivamente por ele/unidade
+            if (num_pm_logado in remetente or nome_militar_atual.upper() in remetente or unidade_militar_atual in remetente) or dest_pendente or status_t == "Transferido Definitivo":
                 envios_militar.append(b)
 
         if busca_reds_hist:
@@ -537,53 +546,55 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             envios_militar = filtrados_data
 
         if not envios_militar:
-            st.info("ℹ️ Nenhum envio localizado com os parâmetros pesquisados.")
+            st.info("ℹ️ Nenhum registro de histórico localizado com os parâmetros de pesquisa selecionados.")
         else:
             df_hist = pd.DataFrame(envios_militar)
             if "data_envio_tramite" in df_hist.columns:
                 df_hist.sort_values(by="data_envio_tramite", ascending=False, inplace=True)
             
-            reds_unicos_10 = list(df_hist["num_reds"].unique())[:10]
-            df_10_reds = df_hist[df_hist["num_reds"].isin(reds_unicos_10)]
+            reds_unicos = list(df_hist["num_reds"].unique())
 
             agora_now = datetime.datetime.now()
 
-            for num_reds_h, df_grupo_h in df_10_reds.groupby("num_reds", sort=False):
+            for num_reds_h in reds_unicos:
+                df_grupo_h = df_hist[df_hist["num_reds"] == num_reds_h]
                 qtd_h = len(df_grupo_h)
                 
-                with st.expander(f"➕ **REDS: {num_reds_h}** ({qtd_h} item/ns tramitado/s)", expanded=False):
+                with st.expander(f"📄 **REDS: {num_reds_h}** ({qtd_h} item/ns no histórico do procedimento)", expanded=False):
                     for idx_h, item_h in df_grupo_h.iterrows():
                         id_bem_h = str(item_h.get("id_bem") or item_h.get("id"))
                         desc_h = item_h.get("descricao", "N/I")
                         qtd_h_val = item_h.get("quantidade", 1)
-                        dest_h = item_h.get("destinatario_pendente") or "N/I"
-                        status_h = item_h.get("status_tramite", "Pendente de Aceite")
+                        dest_h = item_h.get("destinatario_pendente") or item_h.get("fase_destinacao") or "N/I"
+                        status_h = item_h.get("status_tramite", "Em Custódia")
                         dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual")
 
                         pode_cancelar = False
                         tempo_restante_str = ""
 
-                        if dest_h != "N/I" and status_h in ["Pendente de Aceite", "Em Tramitação"] and dt_env_str:
+                        if item_h.get("destinatario_pendente") and status_h in ["Pendente de Aceite", "Em Tramitação"] and dt_env_str:
                             try:
                                 dt_env_obj = pd.to_datetime(dt_env_str).to_pydatetime().replace(tzinfo=None)
                                 horas_passadas = (agora_now - dt_env_obj).total_seconds() / 3600.0
                                 if horas_passadas <= 72.0:
                                     pode_cancelar = True
                                     horas_restantes = max(0.0, 72.0 - horas_passadas)
-                                    tempo_restante_str = f"⏱️ {int(horas_restantes)}h {int((horas_restantes % 1)*60)}m restantes para cancelamento"
+                                    tempo_restante_str = f"⏱️ {int(horas_restantes)}h {int((horas_restantes % 1)*60)}m restantes para cancelamento de envio"
                                 else:
-                                    tempo_restante_str = "⏱️ Prazo de 72h expirado"
+                                    tempo_restante_str = "⏱️ Janela de cancelamento de 72h expirada"
                             except Exception:
                                 pode_cancelar = False
+                        elif status_h == "Transferido Definitivo":
+                            tempo_restante_str = "🔒 Envio Definitivo Confirmado (Procedimento Encerrado/Órgão Externo)"
                         else:
-                            tempo_restante_str = "✅ Recebido pelo Destinatário (Imutável)"
+                            tempo_restante_str = "✅ Custódia Confirmada"
 
                         col_info_h, col_act_h = st.columns([7, 3])
                         
                         with col_info_h:
                             st.markdown(
                                 f"• **Material:** {desc_h} (Qtd: {qtd_h_val})  \n"
-                                f"• **Destinatário:** `{dest_h}` | **Status:** `{status_h}`"
+                                f"• **Destino / Fase:** `{dest_h}` | **Status:** `{status_h}`"
                             )
                             if tempo_restante_str:
                                 st.caption(tempo_restante_str)
@@ -615,4 +626,4 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                         st.cache_data.clear()
                                         st.rerun()
                             else:
-                                st.caption("🔒 Registro Imutável (Somente Leitura)")
+                                st.caption("🔒 Registro Imutável em Auditoria")
