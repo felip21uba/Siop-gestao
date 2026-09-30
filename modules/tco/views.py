@@ -89,18 +89,19 @@ def injetar_css_cards_alternados():
     }
     .card-trava strong, .card-trava b { color: #f5f5f5 !important; }
 
-    /* TAG VERDE EXATAMENTE IGUAL À SEGUNDA FOTO (FONTE AUMENTADA + CAIXA ESCURA) */
+    /* TAG VERDE EXATAMENTE CONFORME ESPECIFICAÇÃO CSS SOLICITADA */
     .tag-verde-destaque {
-      color: #22c55e !important;
-      font-weight: 700 !important;
-      font-size: 1.2rem !important;
-      background-color: #111923 !important;
-      border: 1px solid #1e3a2b !important;
-      padding: 5px 14px !important;
-      border-radius: 6px !important;
+      padding: 0.2em 0.4em !important;
+      overflow-wrap: break-word !important;
+      white-space: pre-wrap !important;
+      margin: 0px !important;
+      border-radius: 0.25rem !important;
+      background: rgb(26, 28, 36) !important;
+      color: rgb(92, 228, 136) !important;
+      font-family: "Source Code Pro", monospace !important;
+      font-size: 0.75em !important;
+      font-weight: 400 !important;
       display: inline-block !important;
-      letter-spacing: 0.6px !important;
-      font-family: 'Courier New', Courier, monospace, sans-serif !important;
     }
 
     /* CARDS DE MÉTRICAS */
@@ -248,7 +249,7 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
     
     def tag_destaque(txt):
         if e_marrom:
-            return f"<strong style='color: #000000; font-size: 1.2rem;'>{txt}</strong>"
+            return f"<strong style='color: #000000;'>{txt}</strong>"
         return f"<span class='tag-verde-destaque'>{txt}</span>"
 
     if dest_pend and status_tr in ["Pendente de Aceite", "Pendente Aceite"]:
@@ -617,7 +618,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA 2: TRAMITAÇÃO INDIVIDUAL (SEM CAMPO DE FASE - APENAS REMESSA E OFÍCIO)
+# ABA 2: TRAMITAÇÃO INDIVIDUAL
 # =============================================================================
 def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -653,7 +654,7 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
     ]
 
     if not meus_bens:
-        st.info("ℹ️️ Você não possui nenhum material sob sua guarda pessoal no momento.")
+        st.info("ℹ️ Você não possui nenhum material sob sua guarda pessoal no momento.")
         return
 
     st.markdown(f"##### 📦 Materiais na sua Carga Pessoal ({len(meus_bens)} itens)")
@@ -774,7 +775,7 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
                 eh_orgao_ext_p_check = eh_secao_orgao and any(term in destinatario_p_final for term in ["JUDICIÁRIO", "PERÍCIA", "POLÍCIA CIVIL", "OUTROS"])
                 
                 if eh_orgao_ext_p_check and not num_oficio_p:
-                    st.error("⚠️ Para entrega a órgãos externos, o preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
+                    st.error("⚠️️ Para entrega a órgãos externos, o preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
                 else:
                     agora_iso = datetime.datetime.now().isoformat()
                     sucessos_p = 0
@@ -1332,7 +1333,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL
+    # RETÂNGULO 4: 🏛️️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL
     # =========================================================================
     if filtro_card in ["TODOS", "PERICIA", "PARADOS", "ARQUIVO"]:
         with st.container(border=True):
