@@ -89,7 +89,7 @@ def injetar_css_cards_alternados():
     }
     .card-trava strong, .card-trava b { color: #f5f5f5 !important; }
 
-    /* MAPEAMENTO DA CLASSE NATIVA DO STREAMLIT MOSTRADA NO DEVTOOLS */
+    /* ESTILO DA TAG VERDE EXATAMENTE IGUAL AO DEVTOOLS DISSOCIAVEL DO STREAMLIT */
     .st-emotion-cache-znj1k1, .tag-verde-destaque, code {
       padding: 0.2em 0.4em !important;
       overflow-wrap: break-word !important;
@@ -618,12 +618,12 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 # =============================================================================
-# ABA 2: TRAMITAÇÃO INDIVIDUAL (TRAVA FASE EM FIEL DEPOSITÁRIO QUANDO FOR POLICIAL MILITAR)
+# ABA 2: TRAMITAÇÃO INDIVIDUAL (SEPARAÇÃO RIGOROSA: POLICIAL vs SEÇÃO/ÓRGÃO)
 # =============================================================================
 def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
     st.markdown("### 🎒 Minha Custódia Pessoal & Tramitação Individual")
-    st.caption("Materiais sob sua guarda pessoal. Escolha o destino para remessa (Policial, CREDS ou Órgão Externo com Termo de Aceite).")
+    st.caption("Materiais sob sua guarda pessoal. Escolha o destino para remessa.")
 
     agora_now = datetime.datetime.now()
 
@@ -718,41 +718,37 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
     mats_sel_map = st.session_state["itens_sel_tramite_pessoal"]
     if mats_sel_map:
         st.markdown("---")
-        st.markdown(f"### 🚀 Tramitar {len(mats_sel_map)} item(ns) Selecionado(s)")
+        st.markdown(f"### 🚀 Definir Destino para {len(mats_sel_map)} item(ns) Selecionado(s)")
         
         destino_tipo = st.radio(
             "Tipo de Destinatário:",
             ["Policial Militar / Fiel Depositário", "Seção de Custódia (CREDS-TC / Órgão)"],
             horizontal=True,
-            key="radio_destino_pessoal_v5"
+            key="radio_destino_pessoal_v6"
         )
 
         eh_secao_orgao = ("Seção de Custódia" in destino_tipo)
 
-        with st.form("form_tramite_pessoal_v5", clear_on_submit=False):
+        with st.form("form_tramite_pessoal_v6", clear_on_submit=False):
+            # -----------------------------------------------------------------
+            # MODO 1: ENVIAR PARA POLICIAL MILITAR (Apenas escolhe o PM)
+            # -----------------------------------------------------------------
             if not eh_secao_orgao:
-                col_m1, col_m2 = st.columns(2)
-                with col_m1:
-                    lista_m = carregar_militares_supabase() or []
-                    opcoes_m = [f"{m.get('posto_grad','PM')} {m.get('nome_completo','MILITAR')} ({m.get('num_policia','')})" for m in lista_m]
-                    destinatario_p_final = st.selectbox("Selecione o Policial Destinatário:", opcoes_m, key="sb_pm_dest_pessoal_v5")
-                    unidade_p_final = unidade_militar_atual
-
-                with col_m2:
-                    # TRAVA OBRIGATÓRIA EM FIEL DEPOSITÁRIO PARA POLICIAL MILITAR
-                    st.selectbox(
-                        "Fase de Destinação (Automático / Fiel Depositário):",
-                        options=["Com Fiel Depositário / Policial"],
-                        index=0,
-                        disabled=True,
-                        key="sb_fase_pm_lock_v5"
-                    )
-
-                eh_orgao_ext_p_check = False
-                eh_definitivo_orgao = False
+                st.info("👤 **Custódia Individual:** O material será encaminhado para a guarda pessoal do Policial Militar selecionado.")
+                lista_m = carregar_militares_supabase() or []
+                opcoes_m = [f"{m.get('posto_grad','PM')} {m.get('nome_completo','MILITAR')} ({m.get('num_policia','')})" for m in lista_m]
+                destinatario_p_final = st.selectbox("Selecione o Policial Destinatário:", opcoes_m, key="sb_pm_dest_v6")
+                
+                unidade_p_final = unidade_militar_atual
+                fase_p_final = "Com Fiel Depositário / Policial"
+                status_tr_final = "Pendente de Aceite"
+                eh_orgao_ext = False
                 num_oficio_p = ""
                 foto_recibo_p = None
 
+            # -----------------------------------------------------------------
+            # MODO 2: ENVIAR PARA SEÇÃO DO CREDS OU ÓRGÃO EXTERNO
+            # -----------------------------------------------------------------
             else:
                 opcoes_secoes = [
                     "CREDS 35ª CIA PM (UBÁ)",
@@ -764,31 +760,37 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
                     "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
                     "OUTROS ÓRGÃOS / ENTIDADES"
                 ]
-                destinatario_p_final = st.selectbox("Selecione a Unidade / CREDS / Órgão Destinatário:", opcoes_secoes, key="sb_secao_orgao_v5")
+                destinatario_p_final = st.selectbox("Selecione a Unidade / CREDS / Órgão Destinatário:", opcoes_secoes, key="sb_secao_orgao_v6")
                 unidade_p_final = destinatario_p_final
 
-                eh_orgao_ext_p_check = any(term in destinatario_p_final for term in ["JUDICIÁRIO", "PERÍCIA", "POLÍCIA CIVIL", "OUTROS"])
+                eh_orgao_ext = any(term in destinatario_p_final for term in ["JUDICIÁRIO", "PERÍCIA", "POLÍCIA CIVIL", "OUTROS"])
 
-                if eh_orgao_ext_p_check:
+                if eh_orgao_ext:
+                    st.warning(f"🏛️ **Entrega em Órgão Externo ({destinatario_p_final}):** Registre o número do protocolo/ofício de entrega presencial.")
                     natureza_envio_p = st.radio(
-                        "Natureza do Envio para Órgão Externo:",
-                        ["🔄 Com Retorno (Em Tramitação)", "🔒 Definitiva (Procedimento Encerrado/Sem Retorno)"],
-                        key="radio_nat_pessoal_v5"
+                        "A transferência para este Órgão Externo é definitiva ou o material irá retornar?",
+                        ["🔄 Com Retorno (Aguardando Devolução da PCMG/Perícia/Fórum)", "🔒 Definitiva (Procedimento Encerrado/Sem Retorno)"],
+                        key="radio_nat_pessoal_v6"
                     )
                     eh_definitivo_orgao = ("Definitiva" in natureza_envio_p)
-                    num_oficio_p = st.text_input("Nº do Ofício / Protocolo de Entrega (OBRIGATÓRIO):", placeholder="Ex: Ofício 123/2026", key="txt_ofic_pessoal_v5").strip()
-                    foto_recibo_p = st.file_uploader("Foto ou PDF do Recibo / Termo de Aceite do Órgão (OPCIONAL):", type=["jpg", "jpeg", "png", "pdf"], key="upl_rec_pessoal_v5")
+                    status_tr_final = "Transferido Definitivo" if eh_definitivo_orgao else "Em Tramitação"
+                    num_oficio_p = st.text_input("Nº do Ofício / Protocolo de Entrega (OBRIGATÓRIO):", placeholder="Ex: Ofício 123/2026-35ªCIA", key="txt_ofic_pessoal_v6").strip()
+                    foto_recibo_p = st.file_uploader("Foto ou PDF do Recibo Assinado / Termo de Aceite do Órgão (OPCIONAL):", type=["jpg", "jpeg", "png", "pdf"], key="upl_rec_pessoal_v6")
+                    fase_p_final = f"Entregue ao {destinatario_p_final} (Ofício: {num_oficio_p})"
                 else:
-                    eh_definitivo_orgao = False
+                    # ENVIO PARA SEÇÃO DO CREDS
+                    st.info(f"🏢 **Remessa Institucional:** O material será enviado para a caixa do {destinatario_p_final} e aguardará aceite do operador.")
+                    fase_p_final = "Aguardando no CREDS-TC / Custódia"
+                    status_tr_final = "Pendente de Aceite"
                     num_oficio_p = ""
                     foto_recibo_p = None
 
-            obs_p = st.text_input("Observações / Motivo da Transferência:", placeholder="Ex: Passagem de serviço ou entrega presencial de materiais", key="txt_obs_pessoal_v5").strip()
+            obs_p = st.text_input("Observações / Motivo da Transferência:", placeholder="Ex: Passagem de serviço ou entrega presencial do material", key="txt_obs_pessoal_v6").strip()
             btn_enviar_p = st.form_submit_button("🚀 Confirmar Envio / Tramitação", type="primary", width="stretch")
 
             if btn_enviar_p:
-                if eh_orgao_ext_p_check and not num_oficio_p:
-                    st.error("⚠️️ Para entrega a órgãos externos, o preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
+                if eh_secao_orgao and eh_orgao_ext and not num_oficio_p:
+                    st.error("⚠️ Para entrega a órgãos externos, o preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
                 else:
                     agora_iso = datetime.datetime.now().isoformat()
                     sucessos_p = 0
@@ -803,14 +805,16 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
                                 id_bem=id_b_sel
                             )
 
-                        if eh_orgao_ext_p_check:
-                            status_tr_final = "Transferido Definitivo" if eh_definitivo_orgao else "Em Tramitação"
-                            fase_p = f"Entregue ao {destinatario_p_final} (Ofício: {num_oficio_p})"
+                        if not eh_secao_orgao:
+                            # ENVIO PARA POLICIAL MILITAR
+                            fiel_novo = d_b_sel.get("fiel_depositario_atual")
+                            dest_pend_novo = destinatario_p_final
+                        elif eh_orgao_ext:
+                            # ENVIO PARA ÓRGÃO EXTERNO
                             fiel_novo = destinatario_p_final
                             dest_pend_novo = None
                         else:
-                            status_tr_final = "Pendente de Aceite"
-                            fase_p = "Com Fiel Depositário / Policial"
+                            # ENVIO PARA SEÇÃO DO CREDS
                             fiel_novo = d_b_sel.get("fiel_depositario_atual")
                             dest_pend_novo = destinatario_p_final
 
@@ -820,14 +824,14 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
                             "fiel_depositario_atual": fiel_novo,
                             "data_envio_tramite": agora_iso,
                             "status_tramite": status_tr_final,
-                            "fase_destinacao": fase_p,
+                            "fase_destinacao": fase_p_final,
                             "ultimo_gestor_movimentou": nome_militar_atual
                         }
 
                         if atualizar_material_supabase(id_b_sel, payload_p):
                             sucessos_p += 1
                             detalhes_log_p = f"Tramitado por {nome_militar_atual} para {destinatario_p_final} | Obs: {obs_p or 'Sem obs'}"
-                            if eh_orgao_ext_p_check:
+                            if eh_orgao_ext:
                                 detalhes_log_p += f" | Ofício/Protocolo: {num_oficio_p}"
 
                             registrar_log_supabase({
@@ -850,7 +854,7 @@ def renderizar_aba_tramitacao_pessoal(all_bens_banco, nome_militar_atual, unidad
                         st.rerun()
 
 # =============================================================================
-# ABA 3: PAINEL DO CREDS (GESTÃO INSTITUCIONAL E FASES COMPLETA)
+# ABA 3: PAINEL DO CREDS (GESTÃO INSTITUCIONAL)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -1151,7 +1155,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
                     with col_f2:
                         if eh_policial_dest:
-                            # BLOQUEIA E CRAVA EM FIEL DEPOSITÁRIO QUANDO FOR POLICIAL MILITAR
                             fase_final = st.selectbox(
                                 "Atualizar Fase de Destinação (Acesso Gestor CREDS):",
                                 options=["Com Fiel Depositário / Policial"],
