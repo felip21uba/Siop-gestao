@@ -1,11 +1,15 @@
+"""
+==============================================================================
+Módulo de Gestão de Usuários e Permissões SIOP
+Gerencia acessos por perfil (CREDS e Escala) e unidades direto da tabela 'usuarios'.
+==============================================================================
+"""
+
 import streamlit as st
 import pandas as pd
 from core.database import supabase, registrar_audit_log, carregar_militares_supabase
 from core.auth import gerar_hash_senha
 
-# =========================================================================
-# 🎯 DEFINIÇÃO CENTRAL DOS PERFIS E NÍVEIS DE ACESSO SIOP
-# =========================================================================
 PERFIS_NIVEL_GERAL = [
     "PROGRAMADOR", 
     "ADMIN", 
@@ -21,13 +25,9 @@ PERFIS_NIVEL_GERAL = [
 PERFIS_CREDS = ["GESTOR_UNIDADE", "GESTOR_CIA", "OPERADOR", "TROPA"]
 PERFIS_ESCALA = ["CMT_CIA", "SARGENTIACAO", "AUXILIAR_CIA", "TROPA"]
 
-# =========================================================================
-# 🏛️ PAINEL DE LISTAGEM E EXCLUSÃO DE UNIDADES (MULTI-TENANT)
-# =========================================================================
-
 def exibir_painel_gestao_unidades():
     st.markdown("##### 📋 Unidades Cadastradas no SIOP")
-    st.caption("Visualização e administração global das unidades cadastradas no banco de dados.")
+    st.caption("Visualização e administração global das unidades no Supabase.")
 
     if not supabase:
         st.error("⚠️ Conexão com o Supabase indisponível.")
@@ -37,12 +37,8 @@ def exibir_painel_gestao_unidades():
     try:
         res = supabase.table("unidades_config").select("*").execute()
         unidades = res.data or []
-    except Exception as ex:
-        try:
-            res = supabase.table("configuracao_unidade").select("*").execute()
-            unidades = res.data or []
-        except Exception:
-            unidades = []
+    except Exception:
+        unidades = []
 
     if not unidades:
         st.info("ℹ️ Nenhuma unidade cadastrada no momento.")
@@ -50,8 +46,8 @@ def exibir_painel_gestao_unidades():
 
     for uni in unidades:
         id_uni = uni.get("id")
-        unidade_nome = uni.get("batalhao") or uni.get("unidade_nome", "Não Informada")
-        subunidade_nome = uni.get("companhia") or uni.get("subunidade_nome", "Não Informada")
+        unidade_nome = uni.get("batalhao", "Não Informada")
+        subunidade_nome = uni.get("companhia", "Não Informada")
         municipio_nome = uni.get("municipio", "N/I")
 
         with st.container():
@@ -86,12 +82,8 @@ def exibir_painel_gestao_unidades():
 
         st.divider()
 
-# =========================================================================
-# ⚙️ TELA PRINCIPAL DE GESTÃO DE ACESSOS E UNIDADES
-# =========================================================================
-
 def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, nivel_acesso=None, ativo=True, posto="SD", nome="MILITAR", nome_completo=None):
-    """Grava/atualiza permissões por módulo e perfil geral na tabela 'usuarios' do Supabase."""
+    """Atualiza as permissões diretamente na tabela 'usuarios'."""
     if supabase and matricula:
         try:
             m_clean = str(matricula).strip().upper()
@@ -106,36 +98,7 @@ def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, n
             if nome_completo:
                 payload_update["nome_completo"] = nome_completo
 
-            res = supabase.table("usuarios").select("usuario_login").or_(f"usuario_login.eq.{m_clean},usuario.eq.{m_clean}").execute()
-            
-            if res and res.data and len(res.data) > 0:
-                try:
-                    supabase.table("usuarios").update(payload_update).or_(f"usuario_login.eq.{m_clean},usuario.eq.{m_clean}").execute()
-                except Exception:
-                    payload_update.pop("nome_completo", None)
-                    supabase.table("usuarios").update(payload_update).or_(f"usuario_login.eq.{m_clean},usuario.eq.{m_clean}").execute()
-            else:
-                hash_init = gerar_hash_senha(m_clean)
-                payload_insert = {
-                    "usuario_login": m_clean,
-                    "usuario": m_clean,
-                    "nome_guerra": str(nome).upper(),
-                    "nome_completo": str(nome_completo or nome).upper(),
-                    "cargo_funcao": str(posto).upper(),
-                    "nivel_acesso": nivel_acesso or "TROPA",
-                    "perfil_creds": perfil_creds or "TROPA",
-                    "perfil_escala": perfil_escala or "TROPA",
-                    "senha": m_clean,
-                    "senha_hash": hash_init,
-                    "ativo": ativo,
-                    "primeiro_acesso": True
-                }
-                try:
-                    supabase.table("usuarios").insert(payload_insert).execute()
-                except Exception:
-                    payload_insert.pop("nome_completo", None)
-                    supabase.table("usuarios").insert(payload_insert).execute()
-
+            supabase.table("usuarios").update(payload_update).eq("usuario_login", m_clean).execute()
             st.cache_data.clear()
             return True
         except Exception as e:
@@ -160,80 +123,29 @@ def exibir_tela_gestao_usuarios():
         return
 
     aba_permissao_efetivo, aba_cadastrar_unidade, aba_lista_unidades = st.tabs([
-        "👥 Efetivo & Sincronização de Contas",
+        "👥 Permissões do Efetivo",
         "🏛️ Cadastrar Nova Unidade / Batalhão",
         "📋 Lista de Unidades Cadastradas"
     ])
 
     efetivo_banco = carregar_militares_supabase() or []
 
-    usuarios_banco = []
-    if supabase:
-        try:
-            res_usrs = supabase.table("usuarios").select("*").execute()
-            usuarios_banco = res_usrs.data or []
-        except Exception as e:
-            print(f"Aviso ao consultar usuários no Supabase: {e}")
-            usuarios_banco = []
-
-    dict_usuarios_existentes = {}
-    for u in usuarios_banco:
-        m_key = str(u.get("usuario_login") or u.get("usuario") or "").strip().upper()
-        if m_key:
-            dict_usuarios_existentes[m_key] = u
-
     # ABA 1: GERENCIAMENTO DE ACESSOS DIRETO DO EFETIVO
     with aba_permissao_efetivo:
-        c_sync1, c_sync2 = st.columns([3, 1])
-        with c_sync1:
-            st.markdown("##### ⚡ Sincronização em Bloco do Efetivo")
-            st.caption(f"Total de Militares: **{len(efetivo_banco)}** | Contas em 'Usuários': **{len(usuarios_banco)}**")
-        with c_sync2:
-            if st.button("🚀 Sincronizar Todas as Contas", type="primary", width="stretch"):
-                if not efetivo_banco:
-                    st.warning("Nenhum militar cadastrado no Efetivo.")
-                else:
-                    novas_contas_qtd = 0
-                    for m in efetivo_banco:
-                        num_pm = str(m.get("num_policia", "")).strip().upper()
-                        if num_pm and num_pm != "N/I":
-                            if num_pm not in dict_usuarios_existentes:
-                                nome_comp_m = m.get("nome_completo") or f"{m.get('posto_grad','')} {m.get('nome_guerra','')}"
-                                if salvar_permissao_militar(
-                                    matricula=num_pm,
-                                    perfil_creds="TROPA",
-                                    perfil_escala="TROPA",
-                                    nivel_acesso=m.get("nivel_acesso", "TROPA"),
-                                    ativo=True,
-                                    posto=m.get("posto_grad", "SD PM"),
-                                    nome=m.get("nome_guerra", "MILITAR"),
-                                    nome_completo=nome_comp_m
-                                ):
-                                    novas_contas_qtd += 1
-                    
-                    registrar_audit_log(usr_id_operador, None, "SINCRONIZAR_EFETIVO_EM_BLOCO", f"Sincronização em bloco executada. {novas_contas_qtd} novas contas criadas.")
-                    st.session_state["gestao_usr_version"] += 1
-                    st.success(f"✅ {novas_contas_qtd} conta(s) criada(s) com senha inicial padrão.")
-                    st.rerun()
-
-        st.divider()
-
-        # EDIÇÃO EM LOTE POR SELEÇÃO
         st.markdown("##### 🎯 Alteração de Perfis em Lote")
         dict_mils_options = {}
         for m in efetivo_banco:
             num_pm = str(m.get("num_policia", "")).strip().upper()
             if num_pm and num_pm != "N/I":
-                usr_cad = dict_usuarios_existentes.get(num_pm, {})
-                nome_comp = m.get("nome_completo") or usr_cad.get("nome_completo") or f"{m.get('posto_grad','')} {m.get('nome_guerra','')}"
-                status_txt = f"CREDS: {usr_cad.get('perfil_creds', 'TROPA')} | ESCALA: {usr_cad.get('perfil_escala', 'TROPA')} | GERAL: {usr_cad.get('nivel_acesso', 'TROPA')}" if usr_cad else "Sem Conta Criada"
+                nome_comp = m.get("nome_completo") or f"{m.get('posto_grad','')} {m.get('nome_guerra','')}"
+                status_txt = f"CREDS: {m.get('perfil_creds', 'TROPA')} | ESCALA: {m.get('perfil_escala', 'TROPA')} | GERAL: {m.get('nivel_acesso', 'TROPA')}"
                 rotulo = f"[{num_pm}] {m.get('posto_grad','')} {nome_comp} - ({status_txt})"
                 dict_mils_options[rotulo] = m
 
         if dict_mils_options:
             c_bl1, c_bl2, c_bl3, c_bl4 = st.columns([2.2, 1.2, 1.2, 1.4])
             with c_bl1:
-                selecionados = st.multiselect("Selecione os Militares (Busca por Nome Completo ou Matrícula):", list(dict_mils_options.keys()))
+                selecionados = st.multiselect("Selecione os Militares:", list(dict_mils_options.keys()))
             with c_bl2:
                 perfil_creds_lote = st.selectbox("Função CREDS:", PERFIS_CREDS)
             with c_bl3:
@@ -242,7 +154,7 @@ def exibir_tela_gestao_usuarios():
                 idx_tropa = PERFIS_NIVEL_GERAL.index("TROPA") if "TROPA" in PERFIS_NIVEL_GERAL else 0
                 nivel_geral_lote = st.selectbox("Nível Geral (Menu):", PERFIS_NIVEL_GERAL, index=idx_tropa)
 
-            if st.button("⚡ Aplicar Perfis e Nível Geral aos Selecionados", type="primary", width="stretch"):
+            if st.button("⚡ Aplicar Perfis aos Selecionados", type="primary", use_container_width=True):
                 if not selecionados:
                     st.warning("Selecione ao menos um militar.")
                 else:
@@ -270,13 +182,13 @@ def exibir_tela_gestao_usuarios():
 
         st.divider()
 
-        # QUADRO GERAL DO EFETIVO COM EDIÇÃO DIRETA
-        with st.expander("📜 Tabela Geral de Permissões Duplas e Nível Geral (Clique para expandir)", expanded=True):
+        # TABELA EDITÁVEL DE PERMISSÕES
+        with st.expander("📜 Tabela Geral de Permissões (Clique para expandir)", expanded=True):
             col_q1, col_q2 = st.columns([3, 1])
             with col_q1: 
-                st.caption("💡 **Nível Geral (Perfil do Sistema):** Define o nível de autoridade no menu principal.")
+                st.caption("💡 **Edição Direta:** Edite qualquer permissão na tabela abaixo e as alterações serão gravadas imediatamente.")
             with col_q2: 
-                if st.button("🔄 Recarregar Tabela", width="stretch"):
+                if st.button("🔄 Recarregar Tabela", use_container_width=True):
                     st.session_state["gestao_usr_version"] += 1
                     st.rerun()
 
@@ -284,18 +196,17 @@ def exibir_tela_gestao_usuarios():
                 linhas_display = []
                 for m in efetivo_banco:
                     num_pm = str(m.get("num_policia", "N/I")).strip().upper()
-                    usr_cad = dict_usuarios_existentes.get(num_pm, {})
-                    nome_comp = m.get("nome_completo") or usr_cad.get("nome_completo") or m.get("nome_guerra", "MILITAR")
+                    nome_comp = m.get("nome_completo") or m.get("nome_guerra", "MILITAR")
                     
                     linhas_display.append({
                         "MATRÍCULA": num_pm,
                         "POSTO/GRAD": m.get("posto_grad", "SD PM"),
                         "MILITAR": nome_comp,
-                        "UNIDADE / CIA": m.get("unidade", "21º BPM"),
-                        "FUNÇÃO CREDS": usr_cad.get("perfil_creds", "TROPA"),
-                        "FUNÇÃO ESCALA": usr_cad.get("perfil_escala", "TROPA"),
-                        "NÍVEL GERAL": usr_cad.get("nivel_acesso", "TROPA"),
-                        "CONTA ATIVA": bool(usr_cad.get("ativo", True if usr_cad else False))
+                        "LOTAÇÃO": m.get("lotacao", m.get("unidade", "21º BPM")),
+                        "FUNÇÃO CREDS": m.get("perfil_creds", "TROPA"),
+                        "FUNÇÃO ESCALA": m.get("perfil_escala", "TROPA"),
+                        "NÍVEL GERAL": m.get("nivel_acesso", "TROPA"),
+                        "CONTA ATIVA": bool(m.get("ativo", True))
                     })
 
                 df_display = pd.DataFrame(linhas_display)
@@ -304,7 +215,7 @@ def exibir_tela_gestao_usuarios():
                     "MATRÍCULA": st.column_config.TextColumn("MATRÍCULA", disabled=True),
                     "POSTO/GRAD": st.column_config.TextColumn("POSTO/GRAD", disabled=True),
                     "MILITAR": st.column_config.TextColumn("NOME COMPLETO", disabled=True),
-                    "UNIDADE / CIA": st.column_config.TextColumn("UNIDADE / CIA", disabled=True),
+                    "LOTAÇÃO": st.column_config.TextColumn("LOTAÇÃO / CIA", disabled=True),
                     "FUNÇÃO CREDS": st.column_config.SelectboxColumn("FUNÇÃO CREDS", options=PERFIS_CREDS, required=True),
                     "FUNÇÃO ESCALA": st.column_config.SelectboxColumn("FUNÇÃO ESCALA", options=PERFIS_ESCALA, required=True),
                     "NÍVEL GERAL": st.column_config.SelectboxColumn("NÍVEL GERAL", options=PERFIS_NIVEL_GERAL, required=True),
@@ -316,7 +227,7 @@ def exibir_tela_gestao_usuarios():
                     df_display, 
                     column_config=config_cols, 
                     hide_index=True, 
-                    width="stretch", 
+                    use_container_width=True, 
                     key=chave_editor
                 )
 
@@ -329,18 +240,11 @@ def exibir_tela_gestao_usuarios():
                     s_novo = bool(row["CONTA ATIVA"])
                     
                     m_orig = next((m for m in efetivo_banco if str(m.get("num_policia")).strip().upper() == matr), {})
-                    u_orig = dict_usuarios_existentes.get(matr, {})
                     
-                    p_creds_ant = str(u_orig.get("perfil_creds", "TROPA"))
-                    p_escala_ant = str(u_orig.get("perfil_escala", "TROPA"))
-                    p_geral_ant = str(u_orig.get("nivel_acesso", "TROPA"))
-                    s_antigo = bool(u_orig.get("ativo", True if u_orig else False))
-                    
-                    if (p_creds_novo != p_creds_ant or 
-                        p_escala_novo != p_escala_ant or 
-                        p_geral_novo != p_geral_ant or 
-                        s_novo != s_antigo or 
-                        not u_orig):
+                    if (p_creds_novo != str(m_orig.get("perfil_creds", "TROPA")) or 
+                        p_escala_novo != str(m_orig.get("perfil_escala", "TROPA")) or 
+                        p_geral_novo != str(m_orig.get("nivel_acesso", "TROPA")) or 
+                        s_novo != bool(m_orig.get("ativo", True))):
                         
                         nome_comp_m = m_orig.get("nome_completo") or row["MILITAR"]
                         if salvar_permissao_militar(
@@ -358,10 +262,10 @@ def exibir_tela_gestao_usuarios():
 
                 if houve_mudanca:
                     st.session_state["gestao_usr_version"] += 1
-                    st.success("✅ Permissões salvas com sucesso!")
+                    st.success("✅ Permissões salvas no Supabase!")
                     st.rerun()
 
-    # ABA 2: FORMULÁRIO DE CADASTRO DE UNIDADES COM MUNICÍPIO/SEDE
+    # ABA 2: CADASTRO DE UNIDADES
     with aba_cadastrar_unidade:
         st.markdown("##### 🏛️ Cadastro de Novas Unidades / Batalhões (Multi-Tenant)")
         with st.form("form_nova_unidade_multitenant", clear_on_submit=True):
@@ -375,7 +279,7 @@ def exibir_tela_gestao_usuarios():
                 nova_brasao_url = st.text_input("URL do Brasão da Unidade (Opcional):", value="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png").strip()
 
             st.markdown("<br>", unsafe_allow_html=True)
-            btn_cadastrar_unidade = st.form_submit_button("🏛️ Cadastrar Nova Unidade no SIOP", type="primary", width="stretch")
+            btn_cadastrar_unidade = st.form_submit_button("🏛️ Cadastrar Nova Unidade no SIOP", type="primary", use_container_width=True)
 
             if btn_cadastrar_unidade:
                 if not nova_unidade_nome or not nova_subunidade_nome or not novo_municipio_nome:
@@ -393,7 +297,7 @@ def exibir_tela_gestao_usuarios():
                             supabase.table("unidades_config").upsert(payload_uni, on_conflict="batalhao,companhia,pelotao,municipio").execute()
                             st.cache_data.clear()
                             registrar_audit_log(usr_id_operador, None, "CADASTRAR_UNIDADE", f"Nova unidade cadastrada: {nova_unidade_nome} / {nova_subunidade_nome} ({novo_municipio_nome})")
-                            st.success(f"✅ Unidade '{nova_unidade_nome} / {nova_subunidade_nome} ({novo_municipio_nome})' cadastrada no Supabase!")
+                            st.success(f"✅ Unidade '{nova_unidade_nome} / {nova_subunidade_nome}' cadastrada no Supabase!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar unidade: {e}")

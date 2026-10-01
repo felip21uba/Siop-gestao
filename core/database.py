@@ -1,12 +1,15 @@
 """
-Módulo de Infraestrutura de Banco de Dados Central (core/database.py) do SIOP PMMG.
-Gerencia a conexão com o Supabase, autenticação de sessão, leitura/escrita do efetivo,
-sincronização de contas de usuários, salvamento de escalas e trilha de auditoria.
+==============================================================================
+Módulo de Infraestrutura de Banco de Dados Central (core/database.py)
+Gerencia a conexão unificada com o Supabase na tabela 'usuarios', 
+extração do Batalhão Mãe (Multi-Tenant) e auditoria de sistema.
+==============================================================================
 """
 
 import datetime
 import hashlib
 import os
+import re
 import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
@@ -43,7 +46,51 @@ def init_db():
     pass
 
 # =========================================================================
-# 2. CAPTURA AUTOMÁTICA DO IP REAL DO CLIENTE
+# 2. ISOLAMENTO MULTI-TENANT & EXTRAÇÃO DE BATALHÃO MÃE (BPM)
+# =========================================================================
+def extrair_bpm_mae(texto_unidade: str) -> str:
+    """
+    Extrai o Batalhão Principal (Unidade Mãe) de qualquer string de lotação.
+    Exemplos:
+      '1 PEL/31 CIA PM/2 BPM' -> '2º BPM'
+      '1 PEL/111 CIA PM/21 BPM/4 RPM' -> '21º BPM'
+      'EM/21 BPM/4 RPM' -> '21º BPM'
+    """
+    if not texto_unidade or str(texto_unidade).upper() in ["NONE", "NAN", "N/I", "UNIDADE N/I"]:
+        return "21º BPM"
+
+    txt = str(texto_unidade).strip().upper()
+    
+    match = re.search(r'(\d+)\s*º?\s*BPM', txt)
+    if match:
+        num_bpm = match.group(1)
+        return f"{num_bpm}º BPM"
+
+    return txt
+
+def obter_unidade_operacao_atual() -> str:
+    """
+    Retorna a unidade sobre a qual o operador possui autoridade de visualização.
+    - PROGRAMADOR / ADMIN: Usa o filtro escolhido no Seletor da Barra Lateral.
+    - TROPA / GESTOR LOCAL: Usa estritamente a unidade cadastrada no perfil do usuário logado.
+    """
+    usr_dados = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_dados, str):
+        usr_dados = {}
+
+    perfil = str(usr_dados.get("nivel_acesso") or usr_dados.get("perfil") or "TROPA").upper()
+    eh_desenvolvedor = any(p in perfil for p in ["PROGRAMADOR", "DESENVOLVEDOR", "ADMIN"])
+
+    if eh_desenvolvedor:
+        bpm_sidebar = st.session_state.get("unidade_ativa_bpm")
+        if bpm_sidebar and bpm_sidebar != "🌐 TODAS AS UNIDADES":
+            return bpm_sidebar
+
+    unidade_usuario = usr_dados.get("unidade") or "21º BPM"
+    return extrair_bpm_mae(unidade_usuario)
+
+# =========================================================================
+# 3. CAPTURA AUTOMÁTICA DO IP REAL DO CLIENTE
 # =========================================================================
 def obter_ip_cliente_real() -> str:
     """Extrai o IP público/real da conexão do usuário através dos cabeçalhos HTTP do Streamlit."""
@@ -51,14 +98,12 @@ def obter_ip_cliente_real() -> str:
         from streamlit.web.server.websocket_headers import _get_websocket_headers
         headers = _get_websocket_headers()
         if headers:
-            # Tenta capturar do cabeçalho X-Forwarded-For (Proxies / Streamlit Cloud / Cloudflare)
             x_forwarded_for = headers.get("X-Forwarded-For") or headers.get("x-forwarded-for")
             if x_forwarded_for:
                 ip_cliente = x_forwarded_for.split(",")[0].strip()
                 if ip_cliente:
                     return ip_cliente
             
-            # Tenta capturar do X-Real-IP
             x_real_ip = headers.get("X-Real-IP") or headers.get("x-real-ip")
             if x_real_ip:
                 return x_real_ip.strip()
@@ -69,7 +114,6 @@ def obter_ip_cliente_real() -> str:
     except Exception:
         pass
     
-    # Fallback via st.context no Streamlit
     try:
         if hasattr(st, "context") and hasattr(st.context, "headers"):
             xf_ctx = st.context.headers.get("x-forwarded-for") or st.context.headers.get("X-Forwarded-For")
@@ -81,7 +125,7 @@ def obter_ip_cliente_real() -> str:
     return "127.0.0.1"
 
 # =========================================================================
-# 3. GESTÃO E ATUALIZAÇÃO DE USUÁRIOS
+# 4. GESTÃO E LEITURA UNIFICADA DA TABELA 'USUARIOS'
 # =========================================================================
 def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
     """Atualiza dados do usuário no Supabase por login, usuario ou e-mail e invalida o cache."""
@@ -101,151 +145,92 @@ def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
         st.error(f"Erro ao atualizar usuário no Supabase: {e}")
         return False
 
-# =========================================================================
-# 4. LEITURA E GRAVAÇÃO DO EFETIVO DE MILITARES
-# =========================================================================
 @st.cache_data(ttl=300, show_spinner=False)
 def carregar_militares_supabase() -> list[dict]:
-    """Busca a lista de militares no banco mantendo em memória RAM por 5 minutos para alta performance."""
+    """
+    Busca a lista de militares UNIFICADA diretamente da tabela 'usuarios'.
+    Elimina permanentemente a dependência da antiga tabela 'efetivo'.
+    """
     if not supabase:
-        return []
+        return st.session_state.get("lista_militares", [])
+
     try:
-        dados_brutos = []
-        try:
-            res = supabase.table("efetivo").select("*").execute()
-            if res and res.data:
-                dados_brutos = res.data
-        except Exception:
-            pass
+        res = supabase.table("usuarios").select("*").order("cargo_funcao").execute()
+        if res and res.data:
+            militares_unificados = []
+            for u in res.data:
+                num_pol = str(u.get("usuario_login") or u.get("usuario") or "").strip().upper()
+                if not num_pol or num_pol == "N/I":
+                    continue
 
-        if not dados_brutos:
-            try:
-                res_m = supabase.table("militares").select("*").execute()
-                if res_m and res_m.data:
-                    dados_brutos = res_m.data
-            except Exception:
-                pass
+                lotacao_str = str(u.get("unidade") or "21º BPM").strip().upper()
+                bpm_mae = extrair_bpm_mae(lotacao_str)
 
-        militares = []
-        for r in dados_brutos:
-            militares.append({
-                "id": str(r.get("id")),
-                "num_policia": str(r.get("num_policia", "N/I")).strip().upper(),
-                "posto_grad": r.get("posto_grad", "SD"),
-                "nome_guerra": str(r.get("nome_guerra", "MILITAR")).strip().upper(),
-                "nome_completo": str(r.get("nome_completo") or r.get("nome_guerra", "MILITAR")).strip().upper(),
-                "cidade": str(r.get("cidade", "N/I")).strip().upper(),
-                "peso": r.get("peso", 99),
-                "ordem_manual": r.get("ordem_manual", 1),
-                "unidade": str(r.get("unidade", "UNIDADE N/I")).strip().upper(),
-                "nivel_acesso": r.get("nivel_acesso", "TROPA")
-            })
-        return militares
-    except Exception as e:
-        print(f"Aviso ao carregar militares do Supabase: {e}")
-        return []
-
-@st.cache_data(ttl=300, show_spinner=False)
-def carregar_unidades_configuradas_cache() -> list[dict]:
-    """Carrega as configurações multi-tenant das unidades com armazenamento em cache."""
-    if not supabase:
-        return []
-    try:
-        res = supabase.table("configuracao_unidade").select("*").execute()
-        return res.data or []
-    except Exception as e:
-        print(f"Aviso ao carregar configuracao_unidade: {e}")
-        return []
-
-def sincronizar_contas_usuarios_do_efetivo(lista_militares: list[dict]):
-    """Garante que todo militar importado receba uma conta de usuário na tabela 'usuarios'."""
-    if not supabase or not lista_militares:
-        return
-    
-    try:
-        res_u = supabase.table("usuarios").select("usuario_login, usuario").execute()
-        existentes = set()
-        if res_u and res_u.data:
-            for u in res_u.data:
-                if u.get("usuario_login"):
-                    existentes.add(str(u.get("usuario_login")).strip().upper())
-                if u.get("usuario"):
-                    existentes.add(str(u.get("usuario")).strip().upper())
-
-        novos_usuarios = []
-        for m in lista_militares:
-            num_pol = str(m.get("num_policia", "")).strip().upper()
-            if num_pol and num_pol != "N/I" and num_pol not in existentes:
-                hash_init = hashlib.sha256(num_pol.encode('utf-8')).hexdigest().lower()
-                novos_usuarios.append({
-                    "usuario_login": num_pol,
-                    "usuario": num_pol,
-                    "nome_guerra": m.get("nome_guerra", "MILITAR"),
-                    "cargo_funcao": m.get("posto_grad", "SD"),
-                    "nivel_acesso": m.get("nivel_acesso", "TROPA"),
-                    "senha": num_pol,
-                    "senha_hash": hash_init,
-                    "ativo": True,
-                    "primeiro_acesso": True
+                militares_unificados.append({
+                    "id": str(u.get("id")),
+                    "num_policia": num_pol,
+                    "posto_grad": str(u.get("cargo_funcao") or "SD").strip().upper(),
+                    "nome_guerra": str(u.get("nome_guerra") or "MILITAR").strip().upper(),
+                    "nome_completo": str(u.get("nome_completo") or u.get("nome_guerra") or "MILITAR").strip().upper(),
+                    "cidade": str(u.get("cidade") or "UBÁ").strip().upper(),
+                    "unidade": bpm_mae,               # Batalhão Mãe (ex: "2º BPM")
+                    "lotacao": lotacao_str,            # Lotação Completa (ex: "1 PEL/31 CIA PM/2 BPM")
+                    "nivel_acesso": u.get("nivel_acesso", "TROPA"),
+                    "perfil_creds": u.get("perfil_creds", "TROPA"),
+                    "perfil_escala": u.get("perfil_escala", "TROPA"),
+                    "ativo": u.get("ativo", True)
                 })
-
-        if novos_usuarios:
-            try:
-                supabase.table("usuarios").upsert(novos_usuarios, on_conflict="usuario_login").execute()
-            except Exception:
-                for nu in novos_usuarios:
-                    try:
-                        supabase.table("usuarios").insert(nu).execute()
-                    except Exception:
-                        pass
+            
+            st.session_state["lista_militares"] = militares_unificados
+            return militares_unificados
     except Exception as e:
-        print(f"Erro ao sincronizar contas de usuários do efetivo: {e}")
+        print(f"Erro ao carregar militares da tabela usuarios: {e}")
+        return st.session_state.get("lista_militares", [])
 
 def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
-    """Grava/atualiza militares no Supabase e invalida o cache para recarregamento instantâneo."""
+    """
+    Grava/atualiza militares DIRETAMENTE na tabela 'usuarios' do Supabase.
+    """
     if not supabase or not lista_militares:
         return False
     try:
         dados_salvar = []
         for m in lista_militares:
             num_pol = str(m.get("num_policia", "N/I")).strip().upper()
+            if not num_pol or num_pol == "N/I":
+                continue
+
             nome_g = str(m.get("nome_guerra", "MILITAR")).strip().upper()
             nome_c = str(m.get("nome_completo") or nome_g).strip().upper()
+            lotacao_full = str(m.get("lotacao") or m.get("unidade") or "21º BPM").strip().upper()
 
             item = {
-                "id": str(m.get("id")),
-                "num_policia": num_pol,
-                "posto_grad": m.get("posto_grad", "SD"),
+                "usuario_login": num_pol,
+                "usuario": num_pol,
+                "cargo_funcao": m.get("posto_grad", "SD"),
                 "nome_guerra": nome_g,
                 "nome_completo": nome_c,
-                "cidade": str(m.get("cidade", "N/I")).strip().upper(),
-                "peso": m.get("peso", 99),
-                "ordem_manual": m.get("ordem_manual", 1),
-                "unidade": str(m.get("unidade", "UNIDADE N/I")).strip().upper(),
-                "nivel_acesso": m.get("nivel_acesso", "TROPA")
+                "cidade": str(m.get("cidade", "UBÁ")).strip().upper(),
+                "unidade": lotacao_full,
+                "ativo": m.get("ativo", True)
             }
             dados_salvar.append(item)
 
-        try:
-            supabase.table("efetivo").upsert(dados_salvar, on_conflict="num_policia").execute()
-        except Exception:
-            supabase.table("militares").upsert(dados_salvar, on_conflict="num_policia").execute()
-
-        sincronizar_contas_usuarios_do_efetivo(lista_militares)
+        supabase.table("usuarios").upsert(dados_salvar, on_conflict="usuario_login").execute()
 
         st.session_state["lista_militares"] = lista_militares
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar militares no Supabase: {e}")
+        st.error(f"Erro ao salvar militares na tabela usuarios: {e}")
         return False
 
 # =========================================================================
-# 5. ESCALAS MENSAIS COM CACHE E RECUPERAÇÃO INSTANTÂNEA
+# 5. ESCALAS MENSAIS E SESSÃO
 # =========================================================================
 @st.cache_data(ttl=180, show_spinner=False)
 def carregar_escala_mensal_cache(ano: int, mes: int, equipe_nome: str = None) -> list[dict]:
-    """Recupera as escalas salvas no Supabase com suporte a cache local por 3 minutos."""
+    """Recupera as escalas salvas no Supabase com suporte a cache local."""
     if not supabase:
         return []
     try:
@@ -304,29 +289,6 @@ def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalida
             st.error(f"Erro ao salvar escala no Supabase: {ex_fallback}")
             return False
 
-def salvar_permuta_supabase(solicitante_id, solicitante_nome, substituto_id, substituto_nome, data_turno, motivo, documento="N/I", tipo_troca="DIRETA") -> bool:
-    """Salva a solicitação de permuta na tabela 'permutas_servico'."""
-    if not supabase:
-        return False
-    try:
-        payload = {
-            "solicitante_id": str(solicitante_id),
-            "solicitante_nome": solicitante_nome,
-            "substituto_id": str(substituto_id) if substituto_id else None,
-            "substituto_nome": substituto_nome,
-            "data_turno": data_turno,
-            "motivo": motivo,
-            "documento": documento,
-            "tipo_troca": tipo_troca,
-            "status": "PENDENTE"
-        }
-        supabase.table("permutas_servico").insert(payload).execute()
-        st.cache_data.clear()
-        return True
-    except Exception as e:
-        st.error(f"Erro ao registrar permuta no Supabase: {e}")
-        return False
-
 def salvar_mensagem_p1_supabase(remetente_id, remetente_nome, assunto, mensagem) -> bool:
     """Envia uma solicitação para a P1 na tabela 'mensagens_p1'."""
     if not supabase:
@@ -345,7 +307,7 @@ def salvar_mensagem_p1_supabase(remetente_id, remetente_nome, assunto, mensagem)
         return False
 
 # =========================================================================
-# 6. REGISTRO AUDITÁVEL COM CAPTURA DE IP E BUSCA CONSOLIDADA DE LOGS
+# 6. AUDITORIA E LOGS
 # =========================================================================
 def registrar_audit_log(operador_pm: str, alvo_pm: str | None, tipo_acao: str, descricao: str):
     """Grava o evento de auditoria capturando automaticamente o IP público real da conexão."""
@@ -381,13 +343,11 @@ def registrar_log_banco(usuario_dados, acao, detalhe):
     )
 
 def buscar_logs_banco(limite=500) -> pd.DataFrame:
-    """Busca o histórico unificando 'historico_auditoria', 'historico_logins' e 'tco_logs'."""
+    """Busca o histórico de logs no Supabase."""
     if not supabase:
         return pd.DataFrame(columns=["data_hora", "usuario", "acao", "detalhe", "ip"])
 
     logs = []
-
-    # 1. Tabela: historico_auditoria
     try:
         res_aud = supabase.table("historico_auditoria").select("*").order("data_hora", desc=True).limit(limite).execute()
         if res_aud and res_aud.data:
@@ -401,36 +361,6 @@ def buscar_logs_banco(limite=500) -> pd.DataFrame:
                 })
     except Exception as e:
         print(f"Aviso na consulta de historico_auditoria: {e}")
-
-    # 2. Tabela: historico_logins
-    try:
-        res_logins = supabase.table("historico_logins").select("*").order("data_hora", desc=True).limit(limite).execute()
-        if res_logins and res_logins.data:
-            for r in res_logins.data:
-                logs.append({
-                    "data_hora": r.get("data_hora", "N/I"),
-                    "usuario": r.get("usuario_login", "SISTEMA"),
-                    "acao": "LOGIN_SESSAO",
-                    "detalhe": f"Acesso efetuado no sistema. Dispositivo: {r.get('user_agent', 'N/I')}",
-                    "ip": r.get("ip_origem", "127.0.0.1")
-                })
-    except Exception as e:
-        print(f"Aviso na consulta de historico_logins: {e}")
-
-    # 3. Tabela: tco_logs
-    try:
-        res_tco = supabase.table("tco_logs").select("*").order("data_hora", desc=True).limit(limite).execute()
-        if res_tco and res_tco.data:
-            for r in res_tco.data:
-                logs.append({
-                    "data_hora": r.get("data_hora", "N/I"),
-                    "usuario": r.get("origem", "SISTEMA TCO"),
-                    "acao": r.get("acao", "CUSTÓDIA TCO"),
-                    "detalhe": f"REDS: {r.get('num_reds', 'N/I')} | {r.get('detalhe', '')}",
-                    "ip": "Módulo TCO"
-                })
-    except Exception as e:
-        print(f"Aviso na consulta de tco_logs: {e}")
 
     if logs:
         df = pd.DataFrame(logs)
