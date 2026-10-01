@@ -1,7 +1,7 @@
 """
 ==============================================================================
-🛡️️ SIOP PMMG - Sistema Integrado de Operações
-Arquivo Principal: app.py (Roteador Central e Isolamento Independente de Módulos)
+🛡️ SIOP PMMG - Sistema Integrado de Operações
+Arquivo Principal: app.py (Roteador Central com Agrupamento Multi-Tenant por BPM)
 ==============================================================================
 """
 
@@ -32,11 +32,9 @@ if DIRETORIO_RAIZ not in sys.path:
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 def obter_agora():
-    """Retorna a data/hora atual ajustada para o fuso horário de Brasília."""
     return datetime.datetime.now(FUSO_BR)
 
 def sanitizar_texto(texto: str) -> str:
-    """Limpa caracteres perigosos de entradas de texto (Prevenção de XSS e SQLi)."""
     if not texto:
         return ""
     texto_limpo = html.escape(str(texto).strip())
@@ -46,7 +44,6 @@ def sanitizar_texto(texto: str) -> str:
     return texto_limpo
 
 def renderizar_rodape_corporativo():
-    """Renderiza o rodapé institucional no final da aplicação."""
     st.markdown("<br><hr>", unsafe_allow_html=True)
     col_f1, col_f2, col_f3 = st.columns([1.5, 2, 1.5])
     
@@ -73,7 +70,7 @@ def renderizar_rodape_corporativo():
         )
 
         st.caption(f"🟢 **Sessão Ativa:** {nome_operador_rodape}")
-        st.caption(f"⏱️️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
+        st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 # ==============================================================================
 # 🛠️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
@@ -103,10 +100,10 @@ from core.session_manager import (
 )
 
 # ==============================================================================
-# 🛡️ CARREGAMENTO ISOLADO E INDEPENDENTE DOS MÓDULOS (SANDBOX IMPORTS)
+# 🛡️ CARREGAMENTO ISOLADO DOS MÓDULOS (SANDBOX IMPORTS)
 # ==============================================================================
 
-# 1. MÓDULO DE ESCALAS (ISOLADO COM DETECÇÃO DETALHADA DE ERRO)
+# 1. MÓDULO DE ESCALAS
 try:
     from modules.escalas import exibir_modulo_escalas
     erro_import_escala_trace = None
@@ -116,10 +113,10 @@ except Exception:
         st.title("📅 Módulo de Gestão de Escalas")
         st.error("⚠️ O Módulo de Escalas encontrou um erro técnico e está em manutenção.")
         st.info("💡 **Isolamento de Segurança:** Os Módulos TCO, Governança, Mural e Acessos permanecem 100% operacionais.")
-        with st.expander("🔍 Ver Detalhes Técnicos do Erro (Escalas)", expanded=True):
+        with st.expander("🔍 Ver Detalhes Técnicos e Linha Exata do Erro (Escalas)", expanded=True):
             st.code(erro_import_escala_trace, language="python")
 
-# 2. MÓDULO TCO / CUSTÓDIA (ISOLADO)
+# 2. MÓDULO TCO / CUSTÓDIA
 try:
     from modules.tco.main_tco import renderizar_modulo_tco
 except Exception:
@@ -127,11 +124,10 @@ except Exception:
     def renderizar_modulo_tco():
         st.title("📦 Módulo TCO / Cadeia de Custódia")
         st.error("⚠️ O Módulo TCO encontrou uma indisponibilidade temporária.")
-        st.info("💡 Os demais módulos permanecem funcionais.")
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (TCO)"):
             st.code(erro_tco_trace, language="python")
 
-# 3. MÓDULO DE GOVERNANÇA (ISOLADO)
+# 3. MÓDULO DE GOVERNANÇA
 try:
     from modules.governanca.views import renderizar_modulo_governanca
 except Exception:
@@ -142,7 +138,7 @@ except Exception:
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (Governança)"):
             st.code(erro_gov_trace, language="python")
 
-# 4. MURAL DE AVISOS (ISOLADO)
+# 4. MURAL DE AVISOS
 try:
     from modules.mural import renderizar_mural
 except Exception:
@@ -153,7 +149,7 @@ except Exception:
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (Mural)"):
             st.code(erro_mural_trace, language="python")
 
-# 5. GESTÃO DE ACESSOS E USUÁRIOS (ISOLADO)
+# 5. GESTÃO DE ACESSOS E USUÁRIOS
 try:
     from modules.gestao_usuarios import exibir_tela_gestao_usuarios
 except Exception:
@@ -164,7 +160,7 @@ except Exception:
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (Gestão Acessos)"):
             st.code(erro_gestao_trace, language="python")
 
-# 6. PERFIL DO USUÁRIO (ISOLADO)
+# 6. PERFIL DO USUÁRIO
 try:
     from modules.perfil import exibir_tela_perfil
 except Exception:
@@ -176,7 +172,7 @@ except Exception:
             st.code(erro_perfil_trace, language="python")
 
 # ==============================================================================
-# ⚙️ 1. CONFIGURAÇÃO INICIAL DA PÁGINA STREAMLIT
+# ⚙️ CONFIGURAÇÃO INICIAL DA PÁGINA STREAMLIT
 # ==============================================================================
 st.set_page_config(
     page_title="SIOP - Sistema Integrado de Operações",
@@ -185,7 +181,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# OCULTA A SELEÇÃO NATIVA DE PÁGINAS DO STREAMLIT NA SIDEBAR
 st.markdown(
     """
     <style>
@@ -198,7 +193,7 @@ st.markdown(
 )
 
 # ==============================================================================
-# 🖥️ VERIFICAÇÃO ANTECIPADA DO MODO POP-OUT / SEGUNDA TELA
+# 🖥️ VERIFICAÇÃO MODO SEGUNDA TELA
 # ==============================================================================
 query_params = st.query_params
 if query_params.get("modo_monitor") == "segunda_tela":
@@ -210,7 +205,7 @@ if query_params.get("modo_monitor") == "segunda_tela":
     st.stop()
 
 # ==============================================================================
-# 2. INICIALIZAÇÃO DO ESTADO DE SESSÃO (SESSION STATE)
+# ESTADO DE SESSÃO
 # ==============================================================================
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
@@ -228,17 +223,13 @@ if "simular_visao_tropa" not in st.session_state:
     st.session_state["simular_visao_tropa"] = False
 if "tentativas_login" not in st.session_state:
     st.session_state["tentativas_login"] = {}
-if "bloqueados_temp" not in st.session_state:
-    st.session_state["bloqueados_temp"] = set()
 if "reset_token_dados" not in st.session_state:
     st.session_state["reset_token_dados"] = {}
-if "usuarios_teste_db" not in st.session_state:
-    st.session_state["usuarios_teste_db"] = {}
 if "tema_visual" not in st.session_state:
     st.session_state["tema_visual"] = "DARK"
 
 # ==============================================================================
-# 🔄 RESTAURAÇÃO DE SESSÃO VIA TOKEN DE URL COM CONTROLE DE TIMEOUT
+# 🔄 RESTAURAÇÃO DE SESSÃO VIA TOKEN
 # ==============================================================================
 token_url = query_params.get("session_token")
 
@@ -249,32 +240,14 @@ if not st.session_state.get("autenticado", False) and token_url:
             if res_sessao.data and len(res_sessao.data) > 0:
                 usr_recuperado = res_sessao.data[0]
                 if usr_recuperado.get("ativo", True):
-                    ult_atividade_str = usr_recuperado.get("ultima_atividade")
-                    sessao_valida = True
-                    if ult_atividade_str:
-                        try:
-                            dt_ult = datetime.datetime.fromisoformat(str(ult_atividade_str).replace("Z", "+00:00"))
-                            diferenca_minutos = (datetime.datetime.now(datetime.timezone.utc) - dt_ult).total_seconds() / 60.0
-                            if diferenca_minutos > 20.0:
-                                sessao_valida = False
-                        except Exception:
-                            pass
-
-                    if sessao_valida:
-                        st.session_state["usuario_dados"] = usr_recuperado
-                        st.session_state["autenticado"] = True
-                        st.session_state["usuario_autenticado"] = True
-                        st.session_state["token_sessao_local"] = token_url
-                        st.session_state["ultima_atividade_time"] = datetime.datetime.now()
-                        st.toast(f"🟢 Sessão mantida para {usr_recuperado.get('nome_guerra', 'Operador')}!", icon="🔄")
-                    else:
-                        supabase.table("usuarios").update({"token_sessao_ativa": "EXPIRADO"}).eq("id", usr_recuperado["id"]).execute()
-                        st.query_params.clear()
-                        st.error("⏰ **Sessão Expirada:** Você permaneceu inativo por mais de 20 minutos. Faça login novamente.")
+                    st.session_state["usuario_dados"] = usr_recuperado
+                    st.session_state["autenticado"] = True
+                    st.session_state["usuario_autenticado"] = True
+                    st.session_state["token_sessao_local"] = token_url
+                    st.session_state["ultima_atividade_time"] = datetime.datetime.now()
         except Exception as ex:
-            print(f"Erro ao restaurar sessão pelo F5: {ex}")
+            print(f"Erro ao restaurar sessão: {ex}")
 
-# CONSTANTES VISUAIS INSTITUCIONAIS
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
 
@@ -335,16 +308,16 @@ def abrir_modal_reportar_erro():
 
         col_rep1, col_rep2 = st.columns(2)
         with col_rep1:
-            btn_enviar_reporte = st.form_submit_button("📤 Enviar Relatório", type="primary", width="stretch")
+            btn_enviar_reporte = st.form_submit_button("📤 Enviar Relatório", type="primary", use_container_width=True)
         with col_rep2:
-            btn_cancelar_reporte = st.form_submit_button("❌ Cancelar", width="stretch")
+            btn_cancelar_reporte = st.form_submit_button("❌ Cancelar", use_container_width=True)
 
         if btn_cancelar_reporte:
             st.rerun()
 
         if btn_enviar_reporte:
             if not descricao_erro.strip():
-                st.error("⚠️ Descreva o erro antes de enviar.")
+                st.error("⚠️️ Descreva o erro antes de enviar.")
             else:
                 email_desenvolvedor = "felip21uba@gmail.com"
                 
@@ -365,12 +338,10 @@ def abrir_modal_reportar_erro():
 # ==============================================================================
 if not st.session_state.get("autenticado", False):
     aplicar_estilo_visual()
-
     col_e, col_centro, col_d = st.columns([1, 2, 1])
 
     with col_centro:
         st.markdown("<br>", unsafe_allow_html=True)
-        
         c_logo, c_tit = st.columns([1, 3])
         with c_logo:
             st.image(obter_imagem_brasao(), width=100)
@@ -392,9 +363,9 @@ if not st.session_state.get("autenticado", False):
                     
                     c_rec1, c_rec2 = st.columns(2)
                     with c_rec1:
-                        btn_gerar_codigo = st.form_submit_button("📩 Solicitar Código por E-mail", type="primary", width="stretch")
+                        btn_gerar_codigo = st.form_submit_button("📩 Solicitar Código por E-mail", type="primary", use_container_width=True)
                     with c_rec2:
-                        btn_voltar_rec = st.form_submit_button("⬅️ Voltar ao Login", width="stretch")
+                        btn_voltar_rec = st.form_submit_button("⬅️ Voltar ao Login", use_container_width=True)
 
                     if btn_voltar_rec:
                         st.session_state["recuperar_senha_modo"] = False
@@ -403,7 +374,7 @@ if not st.session_state.get("autenticado", False):
 
                     if btn_gerar_codigo:
                         if not identificador:
-                            st.error("⚠️ Digite o Nº de Polícia ou E-mail.")
+                            st.error("⚠️️ Digite o Nº de Polícia ou E-mail.")
                         else:
                             usr_obj = buscar_usuario_para_login(identificador)
                             
@@ -446,9 +417,9 @@ if not st.session_state.get("autenticado", False):
 
                     col_res1, col_res2 = st.columns(2)
                     with col_res1:
-                        btn_finalizar_reset = st.form_submit_button("✅ Redefinir Senha & Desbloquear", type="primary", width="stretch")
+                        btn_finalizar_reset = st.form_submit_button("✅ Redefinir Senha & Desbloquear", type="primary", use_container_width=True)
                     with col_res2:
-                        btn_cancelar_reset = st.form_submit_button("❌ Cancelar", width="stretch")
+                        btn_cancelar_reset = st.form_submit_button("❌ Cancelar", use_container_width=True)
 
                     if btn_cancelar_reset:
                         st.session_state["recuperar_senha_modo"] = False
@@ -535,9 +506,9 @@ if not st.session_state.get("autenticado", False):
 
                 col_s1, col_s2 = st.columns(2)
                 with col_s1:
-                    btn_confirmar_setup = st.form_submit_button("💾 Salvar Cadastro & Ativar Conta", type="primary", width="stretch")
+                    btn_confirmar_setup = st.form_submit_button("💾 Salvar Cadastro & Ativar Conta", type="primary", use_container_width=True)
                 with col_s2:
-                    btn_cancelar_setup = st.form_submit_button("❌ Cancelar", width="stretch")
+                    btn_cancelar_setup = st.form_submit_button("❌ Cancelar", use_container_width=True)
 
                 if btn_cancelar_setup:
                     st.session_state["mfa_setup_mode"] = False
@@ -627,7 +598,7 @@ if not st.session_state.get("autenticado", False):
                 usuario_input = (st.text_input("Nº de Polícia / Matrícula / E-mail:", placeholder="Ex: 1234567", autocomplete="off") or "").strip()
                 senha_input = (st.text_input("Senha de Acesso:", type="password", placeholder="••••••••", autocomplete="new-password") or "").strip()
                 
-                btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", width="stretch")
+                btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", type="primary", use_container_width=True)
 
                 if btn_entrar:
                     if not usuario_input or not senha_input:
@@ -700,10 +671,10 @@ if not st.session_state.get("autenticado", False):
 
             col_b1, col_b2 = st.columns([1, 1])
             with col_b1:
-                if st.button("🐛 Reportar Defeito", width="stretch"):
+                if st.button("🐛 Reportar Defeito", use_container_width=True):
                     abrir_modal_reportar_erro()
             with col_b2:
-                if st.button("❓ Esqueci a Senha / Desbloquear Conta", width="stretch"):
+                if st.button("❓ Esqueci a Senha / Desbloquear Conta", use_container_width=True):
                     st.session_state["recuperar_senha_modo"] = True
                     st.rerun()
 
@@ -727,28 +698,18 @@ usr = st.session_state.get("usuario_dados", {})
 if isinstance(usr, str):
     usr = {"nome_guerra": usr}
 
-nome_op = (
-    usr.get("nome_guerra") 
-    or usr.get("nome_completo") 
-    or usr.get("usuario_login") 
-    or "OPERADOR"
-)
-unid_op = st.session_state.get("unidade_ativa_nome") or usr.get("unidade", "21º BPM / 35ª CIA PM")
+nome_op = usr.get("nome_guerra") or usr.get("nome_completo") or "OPERADOR"
 cargo_op = usr.get("cargo_funcao", "MILITAR")
-perfil_op = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("cargo_funcao") or "TROPA").upper()
+perfil_op = str(usr.get("nivel_acesso") or usr.get("perfil") or "TROPA").upper()
 
-LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "CMT_PELOTAO", "CMT_FRACAO", "GESTOR"]
+LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "GESTOR"]
 eh_gestor_real = any(p in perfil_op for p in LISTA_GESTORES)
 
 if eh_gestor_real:
     simular_tropa = st.session_state.get("simular_visao_tropa", False)
-    if simular_tropa:
-        perfil_ativo = "TROPA"
-    else:
-        perfil_ativo = perfil_op
+    perfil_ativo = "TROPA" if simular_tropa else perfil_op
 else:
     perfil_ativo = "TROPA"
-    st.session_state["simular_visao_tropa"] = False
 
 eh_gestor_ou_admin = (perfil_ativo != "TROPA")
 
@@ -758,90 +719,82 @@ if "modulo_ativo" not in st.session_state:
 modulo_ativo = st.session_state["modulo_ativo"]
 
 # =========================================================================
-# 🏗️ RENDERIZAÇÃO DA BARRA LATERAL UNIFICADA (SIDEBAR)
+# 🏗️ SIDEBAR: SELETOR AGRUPADO POR UNIDADE MÃE (BPM)
 # =========================================================================
 with st.sidebar:
     c_l, c_mid, c_r = st.columns([1, 1.5, 1])
     with c_mid:
         try:
-            st.image(obter_imagem_brasao(), width="stretch")
+            st.image(obter_imagem_brasao(), use_container_width=True)
         except Exception:
             st.markdown("🛡️")
 
     if eh_gestor_real:
         if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa_nav"):
-            st.session_state["simular_visao_tropa"] = True
-            st.rerun()
-        elif st.session_state.get("simular_visao_tropa", False):
-            st.session_state["simular_visao_tropa"] = False
+            st.session_state["simular_visao_tropa"] = not st.session_state.get("simular_visao_tropa", False)
             st.rerun()
 
         if not st.session_state.get("simular_visao_tropa", False):
             st.markdown("---")
             st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
             
-            opcoes_uni = ["🌐 TODAS AS UNIDADES"]
-            unidades_vistas = set()
+            bpms_encontrados = set()
 
+            # 1. Busca na Tabela de Configurações de Unidade
             if supabase:
                 try:
-                    res_u = supabase.table("unidades_config").select("*").order("batalhao", desc=False).execute()
+                    res_u = supabase.table("unidades_config").select("batalhao").execute()
                     if res_u and res_u.data:
                         for u in res_u.data:
-                            bat = u.get('batalhao') or u.get('unidade_nome') or '21º BPM'
-                            cia = u.get('companhia') or u.get('subunidade_nome') or '35ª CIA PM'
-                            mun = u.get('municipio', '')
-                            rotulo = f"{bat} / {cia}"
-                            if mun:
-                                rotulo += f" ({mun})"
-                            if rotulo not in unidades_vistas:
-                                unidades_vistas.add(rotulo)
-                                opcoes_uni.append(rotulo)
+                            bat = str(u.get("batalhao", "")).strip().upper()
+                            if bat and bat not in ["NONE", "N/I", ""]:
+                                bpms_encontrados.add(bat)
                 except Exception:
                     pass
 
+                # 2. Busca e extrai Batalhão das lotações do Efetivo
                 try:
                     mils = carregar_militares_supabase() or []
                     for m in mils:
-                        unid_m = str(m.get("unidade", "")).strip().upper()
-                        if unid_m and unid_m not in ["NONE", "N/I", ""] and unid_m not in unidades_vistas:
-                            unidades_vistas.add(unid_m)
-                            opcoes_uni.append(unid_m)
+                        uni_m = str(m.get("unidade", "")).strip().upper()
+                        if uni_m and uni_m not in ["NONE", "N/I", "UNIDADE N/I", ""]:
+                            bat_extraido = uni_m.split("/")[0].strip() if "/" in uni_m else uni_m
+                            bpms_encontrados.add(bat_extraido)
                 except Exception:
                     pass
 
-            for padrão_u in ["21º BPM / 35ª CIA PM (UBÁ)", "2 BPM / 31 CIA (JUIZ DE FORA)"]:
-                if padrão_u not in unidades_vistas:
-                    opcoes_uni.append(padrão_u)
+            opcoes_bpm = ["🌐 TODAS AS UNIDADES"] + sorted(list(bpms_encontrados))
+
+            # Garante opções padrão para primeira utilização
+            for bpm_padr in ["21º BPM", "2º BPM", "27º BPM"]:
+                if bpm_padr not in opcoes_bpm:
+                    opcoes_bpm.append(bpm_padr)
 
             idx_sel = 0
-            uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
-            if uni_atual_sessao and uni_atual_sessao in opcoes_uni:
-                idx_sel = opcoes_uni.index(uni_atual_sessao)
+            bpm_atual_sessao = st.session_state.get("unidade_ativa_bpm", "🌐 TODAS AS UNIDADES")
+            if bpm_atual_sessao in opcoes_bpm:
+                idx_sel = opcoes_bpm.index(bpm_atual_sessao)
 
-            sel_uni_sidebar = st.selectbox(
-                "Unidade em Operação:",
-                opcoes_uni,
+            sel_bpm_sidebar = st.selectbox(
+                "Unidade em Operação (BPM):",
+                opcoes_bpm,
                 index=idx_sel,
-                key="sb_multi_tenant_unidade_nav",
+                key="sb_multi_tenant_bpm_nav",
                 label_visibility="collapsed"
             )
-            st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
+            st.session_state["unidade_ativa_bpm"] = sel_bpm_sidebar
 
-            if sel_uni_sidebar != "🌐 TODAS AS UNIDADES":
-                parts = sel_uni_sidebar.split(" / ")
-                st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
-                st.session_state["cfg_subunidade"] = parts[1].split(" (")[0] if len(parts) > 1 else ""
+            if sel_bpm_sidebar != "🌐 TODAS AS UNIDADES":
+                st.session_state["cfg_unidade"] = sel_bpm_sidebar
             else:
                 st.session_state["cfg_unidade"] = usr.get("unidade", "21º BPM")
-                st.session_state["cfg_subunidade"] = "35ª CIA PM"
 
     st.divider()
 
     st.markdown("##### 🧩 Módulos do Sistema")
     with st.container(border=True):
         if eh_gestor_ou_admin:
-            if st.button("📅 Módulo Escalas", key="k_btn_mod_escalas_nav", width="stretch", type="primary" if modulo_ativo == "ESCALAS" else "secondary"):
+            if st.button("📅 Módulo Escalas", key="k_btn_mod_escalas_nav", use_container_width=True, type="primary" if modulo_ativo == "ESCALAS" else "secondary"):
                 st.session_state["modulo_ativo"] = "ESCALAS"
                 st.rerun()
 
@@ -864,11 +817,11 @@ with st.sidebar:
                 )
                 st.session_state["passo_escala_ativo"] = passo_sel
         else:
-            if st.button("📅 Minha Escala Individual", key="k_btn_mod_minha_escala_nav", width="stretch", type="primary" if modulo_ativo == "MINHA_ESCALA" else "secondary"):
+            if st.button("📅 Minha Escala Individual", key="k_btn_mod_minha_escala_nav", use_container_width=True, type="primary" if modulo_ativo == "MINHA_ESCALA" else "secondary"):
                 st.session_state["modulo_ativo"] = "MINHA_ESCALA"
                 st.rerun()
 
-        if st.button("📦 Módulo TCO / Custódia", key="k_btn_mod_tco_nav", width="stretch", type="primary" if modulo_ativo == "TCO" else "secondary"):
+        if st.button("📦 Módulo TCO / Custódia", key="k_btn_mod_tco_nav", use_container_width=True, type="primary" if modulo_ativo == "TCO" else "secondary"):
             st.session_state["modulo_ativo"] = "TCO"
             st.rerun()
 
@@ -889,30 +842,28 @@ with st.sidebar:
             )
             st.session_state["subnav_tco"] = subnav_tco_sel
 
-        if st.button("⚖️ Módulo Procedimentos", key="k_btn_mod_procedimentos_nav", width="stretch", type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
+        if st.button("⚖️ Módulo Procedimentos", key="k_btn_mod_procedimentos_nav", use_container_width=True, type="primary" if modulo_ativo == "PROCEDIMENTOS" else "secondary"):
             st.session_state["modulo_ativo"] = "PROCEDIMENTOS"
             st.rerun()
 
         if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR"]):
-            if st.button("⚙️ Gestão de Acessos", key="k_btn_mod_gestao_acessos_nav", width="stretch", type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
+            if st.button("⚙️ Gestão de Acessos", key="k_btn_mod_gestao_acessos_nav", use_container_width=True, type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
 
-        if st.button("🛡️ Governança & Segurança", key="k_btn_mod_governanca_nav", width="stretch", type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
+        if st.button("🛡️️ Governança & Segurança", key="k_btn_mod_governanca_nav", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
             st.session_state["modulo_ativo"] = "GOVERNANCA"
             st.rerun()
 
-    qtd_novas_mensagens = 0 
-    badge_msg = f" 🔴 ({qtd_novas_mensagens})" if qtd_novas_mensagens > 0 else ""
-    if st.button(f"📢 Mural de Avisos & Trocas{badge_msg}", key="k_btn_mural_avisos_nav", width="stretch", type="primary" if modulo_ativo == "MURAL" else "secondary"):
-        st.session_state["modulo_ativo"] = "MURAL"
-        st.rerun()
+        if st.button("📢 Mural de Avisos & Trocas", key="k_btn_mural_avisos_nav", use_container_width=True, type="primary" if modulo_ativo == "MURAL" else "secondary"):
+            st.session_state["modulo_ativo"] = "MURAL"
+            st.rerun()
 
     st.divider()
 
     col_p1, col_p2 = st.columns(2)
     with col_p1:
-        if st.button("👤 Perfil", key="k_btn_perfil_nav", width="stretch", type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
+        if st.button("👤 Perfil", key="k_btn_perfil_nav", use_container_width=True, type="primary" if modulo_ativo == "MEU_PERFIL" else "secondary"):
             st.session_state["modulo_ativo"] = "MEU_PERFIL"
             st.rerun()
             
@@ -924,7 +875,7 @@ with st.sidebar:
             st.session_state["tema_visual"] = "DARK" if novo_tema_toggle else "LIGHT"
             st.rerun()
 
-    if st.button("🚪 Sair do Sistema", key="k_btn_logout_nav", width="stretch"):
+    if st.button("🚪 Sair do Sistema", key="k_btn_logout_nav", use_container_width=True):
         usr_m = str(usr.get("usuario_login") or usr.get("usuario") or "").strip().upper()
         if supabase and usr_m:
             try:
@@ -933,9 +884,7 @@ with st.sidebar:
                 pass
 
         st.session_state["autenticado"] = False
-        st.session_state["usuario_autenticado"] = False
         st.session_state["usuario_dados"] = {}
-        st.session_state["token_sessao_local"] = None
         st.query_params.clear()
         st.rerun()
 
@@ -964,7 +913,7 @@ if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO",
                 df_escala["MILITAR"].astype(str).str.contains(nome_user, na=False)
             ]
             if not df_individual.empty:
-                st.dataframe(df_individual, width="stretch", hide_index=True)
+                st.dataframe(df_individual, use_container_width=True, hide_index=True)
             else:
                 st.warning("Nenhum turno cadastrado para você na escala publicada deste mês.")
         else:
@@ -978,10 +927,10 @@ if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO",
             assunto_msg = (st.text_input("Assunto / Motivo:") or "").strip()
             texto_msg = (st.text_area("Detalhamento da Solicitação:", height=120) or "").strip()
             
-            btn_enviar_msg = st.form_submit_button("📤 Enviar Mensagem à P1", type="primary", width="stretch")
+            btn_enviar_msg = st.form_submit_button("📤 Enviar Mensagem à P1", type="primary", use_container_width=True)
             if btn_enviar_msg:
                 if not assunto_msg or not texto_msg:
-                    st.error("⚠️ Preencha o assunto e o texto da mensagem.")
+                    st.error("⚠️️ Preencha o assunto e o texto da mensagem.")
                 else:
                     assunto_limpo = sanitizar_texto(assunto_msg)
                     texto_limpo = sanitizar_texto(texto_msg)
