@@ -90,6 +90,7 @@ def remover_duplicados_militares(lista):
     return lista_unica
 
 def excluir_militar_banco_e_memoria(m_id, num_policia):
+    """Exclui o militar definitivamente da tabela 'usuarios' no Supabase e da memória."""
     num_pol_str = str(num_policia).strip().upper()
     is_num_valido = num_pol_str and num_pol_str not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]
 
@@ -98,27 +99,37 @@ def excluir_militar_banco_e_memoria(m_id, num_policia):
         if str(m.get("id", "")).strip() != str(m_id).strip() and (not is_num_valido or str(m.get("num_policia", "")).strip().upper() != num_pol_str)
     ]
     st.session_state["lista_militares"] = nova_lista
+    st.session_state["militares_selecionados_ids"] = [
+        i for i in st.session_state.get("militares_selecionados_ids", []) 
+        if str(i).strip() != str(m_id).strip()
+    ]
 
     if supabase and is_num_valido:
         try:
             supabase.table("usuarios").delete().eq("usuario_login", num_pol_str).execute()
-        except Exception:
-            pass
+        except Exception as ex:
+            print(f"Erro ao excluir do Supabase: {ex}")
         st.cache_data.clear()
 
 def excluir_lote_banco_e_memoria(mils_para_excluir):
+    """Exclui em lote os militares da tabela 'usuarios' no Supabase."""
     nums_excluir = [str(m.get("num_policia")).strip().upper() for m in mils_para_excluir if m.get("num_policia")]
-    
+    ids_excluir = set(str(m.get("id")).strip() for m in mils_para_excluir if m.get("id"))
+
     st.session_state["lista_militares"] = [
         m for m in st.session_state.get("lista_militares", [])
-        if str(m.get("num_policia")).strip().upper() not in nums_excluir
+        if str(m.get("id")).strip() not in ids_excluir and str(m.get("num_policia")).strip().upper() not in nums_excluir
+    ]
+    st.session_state["militares_selecionados_ids"] = [
+        m_id for m_id in st.session_state.get("militares_selecionados_ids", []) 
+        if str(m_id).strip() not in ids_excluir
     ]
 
     if supabase and nums_excluir:
         try:
             supabase.table("usuarios").delete().in_("usuario_login", nums_excluir).execute()
-        except Exception:
-            pass
+        except Exception as ex:
+            print(f"Erro ao excluir lote do Supabase: {ex}")
         st.cache_data.clear()
 
 def tratar_num_policia_unificado(row):
@@ -137,7 +148,7 @@ def tratar_num_policia_unificado(row):
     return num_clean
 
 def obter_efetivo_filtrado_por_unidade_isolada():
-    """Filtra o efetivo geral para retornar estritamente os militares do Batalhão selecionado."""
+    """Filtra flexivelmente por BPM (ex: '2º BPM' localiza '2 BPM', '2ºBPM', '31 CIA/2 BPM')."""
     todos_militares = st.session_state.get("lista_militares", [])
     unidade_ativa = obter_unidade_operacao_atual()
 
@@ -145,14 +156,15 @@ def obter_efetivo_filtrado_por_unidade_isolada():
         return todos_militares
 
     num_bpm_alvo = re.search(r'\d+', unidade_ativa)
-    termo_busca = f"{num_bpm_alvo.group(0)} BPM" if num_bpm_alvo else unidade_ativa
+    if not num_bpm_alvo:
+        return todos_militares
+
+    digits_bpm = num_bpm_alvo.group(0)
 
     filtrados = []
     for m in todos_militares:
         lotacao_m = str(m.get("lotacao") or m.get("unidade") or "").upper()
-        bpm_militar = extrair_bpm_mae(lotacao_m)
-
-        if termo_busca in bpm_militar or unidade_ativa in bpm_militar:
+        if re.search(r'\b' + digits_bpm + r'\s*º?\s*BPM\b', lotacao_m) or f"{digits_bpm} BPM" in lotacao_m or f"{digits_bpm}º BPM" in lotacao_m:
             filtrados.append(m)
 
     return filtrados
@@ -174,7 +186,7 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
             
             label_card = f"{posto_abrev} {nome_str}\n\nNº {num_pol}"
             tipo_btn = "primary" if (modo_exclusao and prefixo_key == "col_sel") or is_sel else "secondary"
-            tooltip_texto = f"🎖️ {nome_comp_str}\n📌 Posto/Grad: {posto_abrev}\n🔢 Matrícula: {num_pol}\n🏢 Lotação: {unidade_str}\n🏙️ Cidade: {cidade_str}"
+            tooltip_texto = f"🎖️️ {nome_comp_str}\n📌 Posto/Grad: {posto_abrev}\n🔢 Matrícula: {num_pol}\n🏢 Lotação: {unidade_str}\n🏙️ Cidade: {cidade_str}"
 
             with cols[idx_col]:
                 if st.button(label_card, key=f"btn_m_{prefixo_key}_{m_id}", type=tipo_btn, use_container_width=True, help=tooltip_texto):
@@ -192,7 +204,6 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
 def renderizar_fragmento_passo3():
     if "militares_selecionados_ids" not in st.session_state: st.session_state["militares_selecionados_ids"] = []
 
-    # Aplica o isolamento por Batalhão na lista de exibição
     militares_isolados = obter_efetivo_filtrado_por_unidade_isolada()
 
     if not militares_isolados:
@@ -206,14 +217,14 @@ def renderizar_fragmento_passo3():
     c_b1, c_f1, c_f2, c_f3, c_b2 = st.columns([1.2, 3.2, 2.2, 2.2, 1.2])
     with c_b1:
         st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        if st.button("✔ Visíveis", use_container_width=True, key="btn_marcar_todos_frag"):
+        if st.button("✔ Marcar Militares Disponíveis", use_container_width=True, key="btn_marcar_todos_frag"):
             mils_visiveis = [m["id"] for m in st.session_state.get("militares_ativos_render", [])]
             st.session_state["militares_selecionados_ids"] = list(set(st.session_state.get("militares_selecionados_ids", []) + mils_visiveis))
             st.rerun()
     with c_f1:
         termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag", placeholder="Digite nome, matrícula...").strip()
     with c_f2:
-        graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
+        graduacoes_sel = st.multiselect("🎖️️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
     with c_f3:
         cidades_sel = st.multiselect("🏙️ Cidade/Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
     with c_b2:

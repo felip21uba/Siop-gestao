@@ -257,7 +257,7 @@ def obter_imagem_brasao():
     return URL_BRASAO_PADRAO
 
 # ==============================================================================
-# ⏱️ GERENCIAMENTO DE TIMEOUT E SESSÃO ÚNICA CONCORRENTE
+# ⏱️️ GERENCIAMENTO DE TIMEOUT E SESSÃO ÚNICA CONCORRENTE
 # ==============================================================================
 if st.session_state.get("autenticado", False):
     usr_dados = st.session_state.get("usuario_dados", {})
@@ -317,7 +317,7 @@ def abrir_modal_reportar_erro():
 
         if btn_enviar_reporte:
             if not descricao_erro.strip():
-                st.error("⚠️️ Descreva o erro antes de enviar.")
+                st.error("⚠ Descreva o erro antes de enviar.")
             else:
                 email_desenvolvedor = "felip21uba@gmail.com"
                 
@@ -374,7 +374,7 @@ if not st.session_state.get("autenticado", False):
 
                     if btn_gerar_codigo:
                         if not identificador:
-                            st.error("⚠️️ Digite o Nº de Polícia ou E-mail.")
+                            st.error("⚠ Digite o Nº de Polícia ou E-mail.")
                         else:
                             usr_obj = buscar_usuario_para_login(identificador)
                             
@@ -851,7 +851,7 @@ with st.sidebar:
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
 
-        if st.button("🛡️️ Governança & Segurança", key="k_btn_mod_governanca_nav", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
+        if st.button("🛡 Governança & Segurança", key="k_btn_mod_governanca_nav", use_container_width=True, type="primary" if modulo_ativo == "GOVERNANCA" else "secondary"):
             st.session_state["modulo_ativo"] = "GOVERNANCA"
             st.rerun()
 
@@ -930,7 +930,7 @@ if modulo == "MINHA_ESCALA" or (not eh_gestor_ou_admin and modulo not in ["TCO",
             btn_enviar_msg = st.form_submit_button("📤 Enviar Mensagem à P1", type="primary", use_container_width=True)
             if btn_enviar_msg:
                 if not assunto_msg or not texto_msg:
-                    st.error("⚠️️ Preencha o assunto e o texto da mensagem.")
+                    st.error("⚠ Preencha o assunto e o texto da mensagem.")
                 else:
                     assunto_limpo = sanitizar_texto(assunto_msg)
                     texto_limpo = sanitizar_texto(texto_msg)
@@ -956,9 +956,10 @@ elif modulo == "GESTOES_USUARIOS":
 
 elif modulo == "GOVERNANCA":
     try:
+        unid_op_suporte = usr.get("unidade") or st.session_state.get("cfg_unidade") or "21º BPM"
         renderizar_modulo_governanca(
             nome_operador=nome_op,
-            unidade_operador=unid_op,
+            unidade_operador=unid_op_suporte,
             cargo_operador=cargo_op,
             perfil_operador=perfil_op
         )

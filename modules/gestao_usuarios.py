@@ -7,7 +7,7 @@ Gerencia acessos por perfil (CREDS e Escala) e unidades direto da tabela 'usuari
 
 import streamlit as st
 import pandas as pd
-from core.database import supabase, registrar_audit_log, carregar_militares_supabase
+from core.database import supabase, registrar_audit_log, carregar_militares_supabase, extrair_bpm_mae
 from core.auth import gerar_hash_senha
 
 PERFIS_NIVEL_GERAL = [
@@ -33,51 +33,73 @@ def exibir_painel_gestao_unidades():
         st.error("⚠️ Conexão com o Supabase indisponível.")
         return
 
-    unidades = []
+    bpms_mapa = {}
+
+    # 1. Consulta unidades cadastradas na tabela de configurações
     try:
         res = supabase.table("unidades_config").select("*").execute()
-        unidades = res.data or []
+        if res and res.data:
+            for uni in res.data:
+                bat = str(uni.get("batalhao", "")).strip().upper()
+                if bat and bat not in ["NONE", "N/I", ""]:
+                    bpms_mapa[bat] = {
+                        "id": uni.get("id"),
+                        "companhia": uni.get("companhia", "GERAL"),
+                        "municipio": uni.get("municipio", "N/I")
+                    }
     except Exception:
-        unidades = []
+        pass
 
-    if not unidades:
+    # 2. Varre as unidades existentes na tabela 'usuarios'
+    mils = carregar_militares_supabase() or []
+    for m in mils:
+        lot_m = str(m.get("lotacao") or m.get("unidade") or "").strip().upper()
+        if lot_m and lot_m not in ["NONE", "N/I", "UNIDADE N/I", ""]:
+            bat_m = extrair_bpm_mae(lot_m)
+            if bat_m not in bpms_mapa:
+                bpms_mapa[bat_m] = {
+                    "id": f"synced_{hash(bat_m)}",
+                    "companhia": lot_m,
+                    "municipio": str(m.get("cidade", "UBÁ")).strip().upper()
+                }
+
+    if not bpms_mapa:
         st.info("ℹ️ Nenhuma unidade cadastrada no momento.")
         return
 
-    for uni in unidades:
-        id_uni = uni.get("id")
-        unidade_nome = uni.get("batalhao", "Não Informada")
-        subunidade_nome = uni.get("companhia", "Não Informada")
-        municipio_nome = uni.get("municipio", "N/I")
+    for bat_nome, dados in sorted(bpms_mapa.items()):
+        id_uni = dados["id"]
+        cia_txt = dados["companhia"]
+        mun_txt = dados["municipio"]
 
         with st.container():
             col_info, col_acao = st.columns([4, 1])
             
             with col_info:
-                st.markdown(f"**🏛️ Unidade:** {unidade_nome}")
-                st.caption(f"📍 **Subunidade / Cia:** {subunidade_nome} | **Município/Sede:** {municipio_nome}")
+                st.markdown(f"**🏛️ Unidade / Batalhão:** {bat_nome}")
+                st.caption(f"📍 **Frações/Lotação:** {cia_txt} | **Município Sede:** {mun_txt}")
             
             with col_acao:
-                if st.button("🗑️ Excluir", key=f"btn_del_uni_{id_uni}", type="secondary"):
-                    st.session_state[f"confirm_del_{id_uni}"] = True
+                if st.button("🗑️ Excluir", key=f"btn_del_uni_{bat_nome}", type="secondary"):
+                    st.session_state[f"confirm_del_{bat_nome}"] = True
 
-            if st.session_state.get(f"confirm_del_{id_uni}"):
-                st.warning(f"⚠️ Confirmar exclusão da unidade **{unidade_nome}**?")
+            if st.session_state.get(f"confirm_del_{bat_nome}"):
+                st.warning(f"⚠️ Confirmar exclusão da unidade **{bat_nome}**?")
                 c_sim, c_nao = st.columns(2)
                 
                 with c_sim:
-                    if st.button("✅ Confirmar Exclusão", key=f"btn_conf_yes_{id_uni}", type="primary"):
+                    if st.button("✅ Confirmar Exclusão", key=f"btn_conf_yes_{bat_nome}", type="primary"):
                         try:
-                            supabase.table("unidades_config").delete().eq("id", id_uni).execute()
-                            st.success(f"Unidade '{unidade_nome}' excluída!")
-                            st.session_state[f"confirm_del_{id_uni}"] = False
+                            supabase.table("unidades_config").delete().eq("batalhao", bat_nome).execute()
+                            st.success(f"Unidade '{bat_nome}' excluída!")
+                            st.session_state[f"confirm_del_{bat_nome}"] = False
                             st.rerun()
                         except Exception as ex:
                             st.error(f"Erro ao excluir unidade: {ex}")
                             
                 with c_nao:
-                    if st.button("❌ Cancelar", key=f"btn_conf_no_{id_uni}"):
-                        st.session_state[f"confirm_del_{id_uni}"] = False
+                    if st.button("❌ Cancelar", key=f"btn_conf_no_{bat_nome}"):
+                        st.session_state[f"confirm_del_{bat_nome}"] = False
                         st.rerun()
 
         st.divider()
