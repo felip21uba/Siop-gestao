@@ -1,6 +1,6 @@
 """
 ==============================================================================
-🛡️ SIOP PMMG - Sistema Integrado de Operações
+🛡️️ SIOP PMMG - Sistema Integrado de Operações
 Arquivo Principal: app.py (Roteador Central e Isolamento Independente de Módulos)
 ==============================================================================
 """
@@ -16,6 +16,7 @@ import uuid
 import html
 import re
 import pyotp
+import traceback
 import streamlit as st
 
 # ==============================================================================
@@ -31,9 +32,11 @@ if DIRETORIO_RAIZ not in sys.path:
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 def obter_agora():
+    """Retorna a data/hora atual ajustada para o fuso horário de Brasília."""
     return datetime.datetime.now(FUSO_BR)
 
 def sanitizar_texto(texto: str) -> str:
+    """Limpa caracteres perigosos de entradas de texto (Prevenção de XSS e SQLi)."""
     if not texto:
         return ""
     texto_limpo = html.escape(str(texto).strip())
@@ -43,6 +46,7 @@ def sanitizar_texto(texto: str) -> str:
     return texto_limpo
 
 def renderizar_rodape_corporativo():
+    """Renderiza o rodapé institucional no final da aplicação."""
     st.markdown("<br><hr>", unsafe_allow_html=True)
     col_f1, col_f2, col_f3 = st.columns([1.5, 2, 1.5])
     
@@ -69,7 +73,7 @@ def renderizar_rodape_corporativo():
         )
 
         st.caption(f"🟢 **Sessão Ativa:** {nome_operador_rodape}")
-        st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
+        st.caption(f"⏱️️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 # ==============================================================================
 # 🛠️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
@@ -102,74 +106,74 @@ from core.session_manager import (
 # 🛡️ CARREGAMENTO ISOLADO E INDEPENDENTE DOS MÓDULOS (SANDBOX IMPORTS)
 # ==============================================================================
 
-# 1. MÓDULO DE ESCALAS (ISOLADO)
+# 1. MÓDULO DE ESCALAS (ISOLADO COM DETECÇÃO DETALHADA DE ERRO)
 try:
     from modules.escalas import exibir_modulo_escalas
-except Exception as err_import_escalas:
-    erro_msg_escala = str(err_import_escalas)
+    erro_import_escala_trace = None
+except Exception:
+    erro_import_escala_trace = traceback.format_exc()
     def exibir_modulo_escalas():
         st.title("📅 Módulo de Gestão de Escalas")
         st.error("⚠️ O Módulo de Escalas encontrou um erro técnico e está em manutenção.")
         st.info("💡 **Isolamento de Segurança:** Os Módulos TCO, Governança, Mural e Acessos permanecem 100% operacionais.")
-        with st.expander("🔍 Ver Detalhes Técnicos do Erro (Escalas)"):
-            st.code(erro_msg_escala, language="text")
+        with st.expander("🔍 Ver Detalhes Técnicos do Erro (Escalas)", expanded=True):
+            st.code(erro_import_escala_trace, language="python")
 
 # 2. MÓDULO TCO / CUSTÓDIA (ISOLADO)
 try:
     from modules.tco.main_tco import renderizar_modulo_tco
-except Exception as err_import_tco:
-    erro_msg_tco = str(err_import_tco)
+except Exception:
+    erro_tco_trace = traceback.format_exc()
     def renderizar_modulo_tco():
         st.title("📦 Módulo TCO / Cadeia de Custódia")
         st.error("⚠️ O Módulo TCO encontrou uma indisponibilidade temporária.")
         st.info("💡 Os demais módulos permanecem funcionais.")
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (TCO)"):
-            st.code(erro_msg_tco, language="text")
+            st.code(erro_tco_trace, language="python")
 
 # 3. MÓDULO DE GOVERNANÇA (ISOLADO)
 try:
     from modules.governanca.views import renderizar_modulo_governanca
-except Exception as err_import_gov:
-    erro_msg_gov = str(err_import_gov)
+except Exception:
+    erro_gov_trace = traceback.format_exc()
     def renderizar_modulo_governanca(*args, **kwargs):
         st.title("🛡️ Governança & Segurança")
         st.error("⚠️ O Módulo de Governança está indisponível no momento.")
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (Governança)"):
-            st.code(erro_msg_gov, language="text")
+            st.code(erro_gov_trace, language="python")
 
 # 4. MURAL DE AVISOS (ISOLADO)
 try:
     from modules.mural import renderizar_mural
-except Exception as err_import_mural:
-    erro_msg_mural = str(err_import_mural)
+except Exception:
+    erro_mural_trace = traceback.format_exc()
     def renderizar_mural():
         st.title("📢 Mural de Avisos")
         st.error("⚠️ O Mural de Avisos está temporariamente indisponível.")
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (Mural)"):
-            st.code(erro_msg_mural, language="text")
+            st.code(erro_mural_trace, language="python")
 
 # 5. GESTÃO DE ACESSOS E USUÁRIOS (ISOLADO)
 try:
     from modules.gestao_usuarios import exibir_tela_gestao_usuarios
-except Exception as err_import_gestao:
-    erro_msg_gestao = str(err_import_gestao)
+except Exception:
+    erro_gestao_trace = traceback.format_exc()
     def exibir_tela_gestao_usuarios():
         st.title("⚙️ Gestão de Acessos")
         st.error("⚠️ O Módulo de Gestão de Acessos está temporariamente indisponível.")
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (Gestão Acessos)"):
-            st.code(erro_msg_gestao, language="text")
+            st.code(erro_gestao_trace, language="python")
 
 # 6. PERFIL DO USUÁRIO (ISOLADO)
 try:
     from modules.perfil import exibir_tela_perfil
-except Exception as err_import_perfil:
-    erro_msg_perfil = str(err_import_perfil)
+except Exception:
+    erro_perfil_trace = traceback.format_exc()
     def exibir_tela_perfil():
         st.title("👤 Meu Perfil")
         st.error("⚠️ A tela de Perfil está temporariamente indisponível.")
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (Perfil)"):
-            st.code(erro_msg_perfil, language="text")
-
+            st.code(erro_perfil_trace, language="python")
 
 # ==============================================================================
 # ⚙️ 1. CONFIGURAÇÃO INICIAL DA PÁGINA STREAMLIT
@@ -181,6 +185,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# OCULTA A SELEÇÃO NATIVA DE PÁGINAS DO STREAMLIT NA SIDEBAR
 st.markdown(
     """
     <style>
@@ -269,6 +274,7 @@ if not st.session_state.get("autenticado", False) and token_url:
         except Exception as ex:
             print(f"Erro ao restaurar sessão pelo F5: {ex}")
 
+# CONSTANTES VISUAIS INSTITUCIONAIS
 URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
 
@@ -338,7 +344,7 @@ def abrir_modal_reportar_erro():
 
         if btn_enviar_reporte:
             if not descricao_erro.strip():
-                st.error("⚠️️ Descreva o erro antes de enviar.")
+                st.error("⚠️ Descreva o erro antes de enviar.")
             else:
                 email_desenvolvedor = "felip21uba@gmail.com"
                 
@@ -629,13 +635,12 @@ if not st.session_state.get("autenticado", False):
                     else:
                         u_clean = str(usuario_input).strip().upper()
                         u_sem_zero = u_clean.lstrip("0")
-                        
                         usuario_encontrado = buscar_usuario_para_login(u_clean) or buscar_usuario_para_login(u_sem_zero)
 
                         if not usuario_encontrado:
                             st.error(f"❌ Usuário '{usuario_input}' não localizado no sistema.")
                         elif not usuario_encontrado.get("ativo", True):
-                            st.error("🔒 Conta Bloqueada. Utilize a redefinição de senha abaixo.")
+                            st.error("🔒 Conta Bloqueada. Contate o administrador.")
                         else:
                             senha_db_texto = usuario_encontrado.get("senha")
                             senha_db_hash = usuario_encontrado.get("senha_hash")
@@ -775,54 +780,61 @@ with st.sidebar:
             st.markdown("---")
             st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
             
-            lista_unis = []
+            opcoes_uni = ["🌐 TODAS AS UNIDADES"]
+            unidades_vistas = set()
+
             if supabase:
                 try:
-                    res_u = supabase.table("unidades_config").select("id, batalhao, companhia, municipio").execute()
-                    lista_unis = res_u.data or []
+                    res_u = supabase.table("unidades_config").select("*").order("batalhao", desc=False).execute()
+                    if res_u and res_u.data:
+                        for u in res_u.data:
+                            bat = u.get('batalhao') or u.get('unidade_nome') or '21º BPM'
+                            cia = u.get('companhia') or u.get('subunidade_nome') or '35ª CIA PM'
+                            mun = u.get('municipio', '')
+                            rotulo = f"{bat} / {cia}"
+                            if mun:
+                                rotulo += f" ({mun})"
+                            if rotulo not in unidades_vistas:
+                                unidades_vistas.add(rotulo)
+                                opcoes_uni.append(rotulo)
                 except Exception:
-                    try:
-                        res_u = supabase.table("unidades").select("*").execute()
-                        lista_unis = res_u.data or []
-                    except Exception:
-                        lista_unis = []
+                    pass
 
-            if lista_unis:
-                opcoes_uni = []
-                for u in lista_unis:
-                    if isinstance(u, dict):
-                        bat = u.get('batalhao') or u.get('unidade_nome') or '21º BPM'
-                        cia = u.get('companhia') or u.get('subunidade_nome') or '35ª CIA PM'
-                        mun = u.get('municipio', '')
-                        rotulo = f"{bat} / {cia}"
-                        if mun:
-                            rotulo += f" ({mun})"
-                        if rotulo not in opcoes_uni:
-                            opcoes_uni.append(rotulo)
+                try:
+                    mils = carregar_militares_supabase() or []
+                    for m in mils:
+                        unid_m = str(m.get("unidade", "")).strip().upper()
+                        if unid_m and unid_m not in ["NONE", "N/I", ""] and unid_m not in unidades_vistas:
+                            unidades_vistas.add(unid_m)
+                            opcoes_uni.append(unid_m)
+                except Exception:
+                    pass
 
-                if opcoes_uni:
-                    idx_sel = 0
-                    uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
-                    if uni_atual_sessao and uni_atual_sessao in opcoes_uni:
-                        idx_sel = opcoes_uni.index(uni_atual_sessao)
+            for padrão_u in ["21º BPM / 35ª CIA PM (UBÁ)", "2 BPM / 31 CIA (JUIZ DE FORA)"]:
+                if padrão_u not in unidades_vistas:
+                    opcoes_uni.append(padrão_u)
 
-                    sel_uni_sidebar = st.selectbox(
-                        "Unidade em Operação:",
-                        opcoes_uni,
-                        index=idx_sel,
-                        key="sb_multi_tenant_unidade_nav",
-                        label_visibility="collapsed"
-                    )
-                    st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
-                    parts = sel_uni_sidebar.split(" / ")
-                    st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
-                    st.session_state["cfg_subunidade"] = parts[1].split(" (")[0] if len(parts) > 1 else ""
-                else:
-                    st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
+            idx_sel = 0
+            uni_atual_sessao = st.session_state.get("unidade_ativa_nome")
+            if uni_atual_sessao and uni_atual_sessao in opcoes_uni:
+                idx_sel = opcoes_uni.index(uni_atual_sessao)
+
+            sel_uni_sidebar = st.selectbox(
+                "Unidade em Operação:",
+                opcoes_uni,
+                index=idx_sel,
+                key="sb_multi_tenant_unidade_nav",
+                label_visibility="collapsed"
+            )
+            st.session_state["unidade_ativa_nome"] = sel_uni_sidebar
+
+            if sel_uni_sidebar != "🌐 TODAS AS UNIDADES":
+                parts = sel_uni_sidebar.split(" / ")
+                st.session_state["cfg_unidade"] = parts[0] if len(parts) > 0 else "21º BPM"
+                st.session_state["cfg_subunidade"] = parts[1].split(" (")[0] if len(parts) > 1 else ""
             else:
-                st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
-    else:
-        st.session_state["unidade_ativa_nome"] = usr.get("unidade", "21º BPM / 35ª CIA PM")
+                st.session_state["cfg_unidade"] = usr.get("unidade", "21º BPM")
+                st.session_state["cfg_subunidade"] = "35ª CIA PM"
 
     st.divider()
 
