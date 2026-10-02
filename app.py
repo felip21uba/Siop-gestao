@@ -1,36 +1,3 @@
-if modulo_ativo == "TCO":
-    subnav_tco_sel = st.radio(
-        "Submenu TCO:",
-        [
-            "📥 Importar REDS",
-            "🎒 Meus Materiais",
-            "🔄 Tramitação",
-            "📄 Ofícios",
-            "🏛️ Painel CREDS",
-            "📜 Auditoria",
-            "👥 Gestores"
-        ],
-        key="subnav_tco_sidebar_unique",
-        label_visibility="collapsed"
-    )
-    st.session_state["subnav_tco"] = subnav_tco_sel
-```[cite: 54]
-
-E quando o roteador escolhe a ecrã principal[cite: 54]:
-```python
-elif modulo == "TCO":
-    renderizar_modulo_tco()
-```[cite: 54]
-
-Como a função `renderizar_modulo_tco()` do ficheiro `modules/tco/main_tco.py`[cite: 53] precisa de aceder ao valor do `st.session_state["subnav_tco"]`[cite: 52, 54] ou recebê-lo como parâmetro para abrir a aba certa[cite: 51, 53], precisamos de garantir que a chamada esteja sincronizada[cite: 52, 53].
-
----
-
-### 🛠️ Código Completo e Atualizado: `app.py`
-
-Abaixo está o ficheiro **`app.py` 100% completo e atualizado**, com a passagem explícita do submenu ativo e tratamento de exceções ajustado.
-
-```python
 """
 ==============================================================================
 🛡️ SIOP PMMG - Sistema Integrado de Operações
@@ -106,7 +73,7 @@ def renderizar_rodape_corporativo():
         st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 # ==============================================================================
-# 🛠️️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
+# 🛠️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
 # ==============================================================================
 from core.database import init_db, obter_ip_cliente_real
 init_db()
@@ -281,7 +248,7 @@ if not st.session_state.get("autenticado", False) and token_url:
         except Exception as ex:
             print(f"Erro ao restaurar sessão: {ex}")
 
-URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
+URL_BRASAO_PADRAO = "[https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png](https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png)"
 CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
 
 def obter_imagem_brasao():
@@ -515,7 +482,7 @@ if not st.session_state.get("autenticado", False):
                 name=str(usr_temp.get('usuario_login', usr_temp.get('usuario', 'Militar'))), 
                 issuer_name="SIOP PMMG"
             )
-            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={urllib.parse.quote(uri)}"
+            qr_url = f"[https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=](https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=){urllib.parse.quote(uri)}"
 
             c_qr1, c_qr2 = st.columns([1, 1.5])
             with c_qr1:
