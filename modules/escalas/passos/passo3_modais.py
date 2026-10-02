@@ -16,10 +16,10 @@ from utils.file_validator import validar_planilha_upload, desarmar_csv_injection
 def salvar_importacao_na_tabela_usuarios(lista_importada):
     """
     Grava os militares importados diretamente na tabela 'usuarios'.
-    Elimina permanentemente a antiga tabela 'efetivo'.
+    Atualiza imediatamente a memória da sessão e o Supabase.
     """
     if not supabase or not lista_importada:
-        return False
+        return 0
 
     sucessos = 0
     for m in lista_importada:
@@ -31,6 +31,8 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
         nome_g = str(m.get("nome_guerra", "MILITAR")).strip().upper()
         nome_c = str(m.get("nome_completo", nome_g)).strip().upper()
         cidade = str(m.get("cidade", "UBÁ")).strip().upper()
+        
+        # Captura a lotação da planilha (Ex: "GAB CMT/2 BPM/4 RPM" ou "1 PEL/31 CIA PM/2 BPM")
         lotacao_completa = str(m.get("lotacao") or m.get("unidade") or "21º BPM").strip().upper()
         bpm_mae = extrair_bpm_mae(lotacao_completa)
 
@@ -40,7 +42,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
             "cargo_funcao": posto,
             "nome_guerra": nome_g,
             "nome_completo": nome_c,
-            "unidade": lotacao_completa,
+            "unidade": lotacao_completa,  # Força a gravação da lotação real lida no arquivo
             "cidade": cidade,
             "nivel_acesso": "TROPA",
             "perfil_creds": "TROPA",
@@ -58,19 +60,33 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
                 payload_usuario["primeiro_acesso"] = True
                 supabase.table("usuarios").insert(payload_usuario).execute()
 
-            # Registra a unidade na tabela unidades_config para atualizar a Sidebar
-            supabase.table("unidades_config").upsert({
-                "batalhao": bpm_mae,
-                "companhia": lotacao_completa,
-                "municipio": cidade
-            }, on_conflict="batalhao,companhia,municipio").execute()
+            # Registra a unidade na tabela unidades_config para atualização da Sidebar
+            try:
+                supabase.table("unidades_config").upsert({
+                    "batalhao": bpm_mae,
+                    "companhia": lotacao_completa,
+                    "municipio": cidade
+                }, on_conflict="batalhao,companhia,municipio").execute()
+            except Exception:
+                pass
 
             sucessos += 1
         except Exception as ex:
-            print(f"Erro ao salvar militar {num_pol} na tabela usuarios: {ex}")
+            # Fallback sem coluna cidade caso a migration ainda não tenha rodado
+            try:
+                payload_usuario.pop("cidade", None)
+                supabase.table("usuarios").upsert(payload_usuario, on_conflict="usuario_login").execute()
+                sucessos += 1
+            except Exception as ex_f:
+                print(f"Erro ao salvar militar {num_pol} na tabela usuarios: {ex_f}")
 
     st.cache_data.clear()
-    carregar_militares_supabase()
+    
+    # RECARREGA IMEDIATAMENTE A LISTA DE MILITARES NA MEMÓRIA DA SESSÃO
+    militares_recarregados = carregar_militares_supabase()
+    st.session_state["lista_militares"] = militares_recarregados
+    st.session_state["militares_carregados"] = True
+
     return sucessos
 
 def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
@@ -143,7 +159,7 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
                     novos_mils.append(obj_m)
 
                 salvar_importacao_na_tabela_usuarios(novos_mils)
-                st.session_state["lista_militares"] = novos_mils
+                st.session_state["lista_militares"] = carregar_militares_supabase()
                 st.session_state["militares_carregados"] = True
                 st.success("✅ Tabela de usuários atualizada com sucesso no Supabase!")
                 st.rerun()
@@ -162,7 +178,7 @@ def abrir_modal_excluir_lote(excluir_lote_func):
         mils_para_excluir = [m for m in mils_todos if str(m["id"]) in sel_ids]
         
         if not mils_para_excluir:
-            st.warning("⚠️ Nenhum militar está presente no Quadro da Direita para ser excluído.")
+            st.warning("⚠️️ Nenhum militar está presente no Quadro da Direita para ser excluído.")
             if st.button("Entendido", use_container_width=True):
                 st.rerun()
             return
