@@ -1,3 +1,10 @@
+"""
+==============================================================================
+🛡️ SIOP PMMG - Módulo TCO / Cadeia de Custódia
+Arquivo: modules/tco/main_tco.py (Roteador Integrado com o Menu Lateral)
+==============================================================================
+"""
+
 import streamlit as st
 from modules.tco.database import carregar_materiais_supabase, carregar_logs_supabase
 from modules.tco.views import (
@@ -19,6 +26,9 @@ def renderizar_modulo_tco():
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_logado, str):
+        usr_logado = {"nome_guerra": usr_logado}
+
     usr_login = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
     usr_id = str(usr_logado.get("id") or usr_login or "").strip()
     
@@ -35,7 +45,6 @@ def renderizar_modulo_tco():
         if verificar_aceite_compliance_supabase(usr_login):
             st.session_state["termo_compliance_aceito"] = True
         else:
-            # Exibe o Termo de Compliance e interrompe o carregamento
             exibir_modal_termo_compliance(usr_login, nome_militar_atual, cargo_str, unidade_militar_atual)
             return
 
@@ -68,30 +77,69 @@ def renderizar_modulo_tco():
     all_bens_banco = carregar_materiais_supabase() or []
     all_logs_banco = carregar_logs_supabase() or []
 
-    # ABAS DO MÓDULO TCO
-    tab_import, tab_custodia, tab_oficios, tab_creds, tab_auditoria, tab_gestores = st.tabs([
+    # =========================================================================
+    # 🔄 CAPTURA DA NAVEGAÇÃO DO MENU LATERAL (SIDEBAR)
+    # =========================================================================
+    subnav_selecionado = st.session_state.get("subnav_tco", "📥 Importar REDS")
+
+    # Mapeamento do texto do menu lateral para o índice da aba correspondente
+    mapa_indices = {
+        "📥 Importar REDS": 0,
+        "🎒 Meus Materiais": 1,
+        "🔄 Tramitação": 1,
+        "📄 Ofícios": 2,
+        "🏛️ Painel CREDS": 3,
+        "📜 Auditoria": 4,
+        "👥 Gestores": 5
+    }
+    
+    idx_aba_ativa = 0
+    for chave, idx in mapa_indices.items():
+        if chave in subnav_selecionado:
+            idx_aba_ativa = idx
+            break
+
+    lista_titulos_abas = [
         "📥 Importar REDS",
         "🎒 Custódia & Tramitação",
         "📄 Ofícios",
         "🏛️ Painel CREDS",
         "📜 Auditoria",
         "👥 Gestores"
-    ])
+    ]
 
-    with tab_import:
+    # Renderização das Abas Principais do Módulo TCO
+    abas = st.tabs(lista_titulos_abas)
+
+    with abas[0]:
         renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
 
-    with tab_custodia:
+    with abas[1]:
         renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    with tab_oficios:
+    with abas[2]:
         renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    with tab_creds:
+    with abas[3]:
         renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual)
 
-    with tab_auditoria:
+    with abas[4]:
         renderizar_aba_logs(all_logs_banco)
 
-    with tab_gestores:
+    with abas[5]:
         renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)
+
+    # Injeção de script para mudar o foco automaticamente para a sub-aba escolhida no menu lateral
+    st.components.v1.html(
+        f"""
+        <script>
+        setTimeout(function() {{
+            const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"]');
+            if (tabs && tabs.length > {idx_aba_ativa}) {{
+                tabs[{idx_aba_ativa}].click();
+            }}
+        }}, 100);
+        </script>
+        """,
+        height=0
+    )
