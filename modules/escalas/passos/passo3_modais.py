@@ -13,10 +13,12 @@ from core.database import supabase, extrair_bpm_mae, carregar_militares_supabase
 from core.auth import gerar_hash_senha
 from utils.file_validator import validar_planilha_upload, desarmar_csv_injection
 
+OPCOES_PERFIL = ["TROPA", "ESCALANTE", "CMT_CIA", "ADMIN"]
+
 def salvar_importacao_na_tabela_usuarios(lista_importada):
     """
     Grava os militares importados diretamente na tabela 'usuarios'.
-    Atualiza imediatamente a memória da sessão e o Supabase.
+    Garante que a unidade gravada é a lotação real da planilha (ex: 'GAB CMT/2 BPM/4 RPM' ou '1 PEL/31 CIA PM/2 BPM').
     """
     if not supabase or not lista_importada:
         return 0
@@ -32,7 +34,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
         nome_c = str(m.get("nome_completo", nome_g)).strip().upper()
         cidade = str(m.get("cidade", "UBÁ")).strip().upper()
         
-        # Captura a lotação da planilha (Ex: "GAB CMT/2 BPM/4 RPM" ou "1 PEL/31 CIA PM/2 BPM")
+        # Captura a lotação exata lida na planilha
         lotacao_completa = str(m.get("lotacao") or m.get("unidade") or "21º BPM").strip().upper()
         bpm_mae = extrair_bpm_mae(lotacao_completa)
 
@@ -42,7 +44,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
             "cargo_funcao": posto,
             "nome_guerra": nome_g,
             "nome_completo": nome_c,
-            "unidade": lotacao_completa,  # Força a gravação da lotação real lida no arquivo
+            "unidade": lotacao_completa,  # Salva a lotação real da planilha no campo unidade
             "cidade": cidade,
             "nivel_acesso": "TROPA",
             "perfil_creds": "TROPA",
@@ -72,7 +74,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
 
             sucessos += 1
         except Exception as ex:
-            # Fallback sem coluna cidade caso a migration ainda não tenha rodado
+            # Fallback sem a coluna cidade caso haja oscilação no PostgREST
             try:
                 payload_usuario.pop("cidade", None)
                 supabase.table("usuarios").upsert(payload_usuario, on_conflict="usuario_login").execute()
@@ -82,7 +84,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
 
     st.cache_data.clear()
     
-    # RECARREGA IMEDIATAMENTE A LISTA DE MILITARES NA MEMÓRIA DA SESSÃO
+    # RECARREGA A MEMÓRIA DA SESSÃO IMEDIATAMENTE COM O BANCO ATUALIZADO
     militares_recarregados = carregar_militares_supabase()
     st.session_state["lista_militares"] = militares_recarregados
     st.session_state["militares_carregados"] = True
@@ -178,7 +180,7 @@ def abrir_modal_excluir_lote(excluir_lote_func):
         mils_para_excluir = [m for m in mils_todos if str(m["id"]) in sel_ids]
         
         if not mils_para_excluir:
-            st.warning("⚠️️ Nenhum militar está presente no Quadro da Direita para ser excluído.")
+            st.warning("⚠️ Nenhum militar está presente no Quadro da Direita para ser excluído.")
             if st.button("Entendido", use_container_width=True):
                 st.rerun()
             return
@@ -297,6 +299,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
             col_m1, col_m2 = st.columns(2)
             with col_m1:
                 if st.button("✅ Confirmar e Salvar no Supabase", type="primary", use_container_width=True):
+                    # CHAMA A FUNÇÃO CORRETA DA TABELA USUARIOS COM A LOTAÇÃO REAL
                     salvos = salvar_importacao_na_tabela_usuarios(lista_temp)
                     st.session_state["temp_importacao_lista"] = []
                     st.session_state["militares_carregados"] = True
