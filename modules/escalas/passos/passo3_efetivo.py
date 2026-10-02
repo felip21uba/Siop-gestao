@@ -186,7 +186,7 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
             
             label_card = f"{posto_abrev} {nome_str}\n\nNº {num_pol}"
             tipo_btn = "primary" if (modo_exclusao and prefixo_key == "col_sel") or is_sel else "secondary"
-            tooltip_texto = f"🎖️️ {nome_comp_str}\n📌 Posto/Grad: {posto_abrev}\n🔢 Matrícula: {num_pol}\n🏢 Lotação: {unidade_str}\n🏙️ Cidade: {cidade_str}"
+            tooltip_texto = f"🎖️ {nome_comp_str}\n📌 Posto/Grad: {posto_abrev}\n🔢 Matrícula: {num_pol}\n🏢 Lotação: {unidade_str}\n🏙️ Cidade: {cidade_str}"
 
             with cols[idx_col]:
                 if st.button(label_card, key=f"btn_m_{prefixo_key}_{m_id}", type=tipo_btn, use_container_width=True, help=tooltip_texto):
@@ -224,7 +224,7 @@ def renderizar_fragmento_passo3():
     with c_f1:
         termo_busca = st.text_input("🔍 Busca Global:", key="txt_busca_militar_p3_frag", placeholder="Digite nome, matrícula...").strip()
     with c_f2:
-        graduacoes_sel = st.multiselect("🎖️️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
+        graduacoes_sel = st.multiselect("🎖️ Graduação:", options=graduacoes_unicas, key="msel_grad_filtro_p3_frag")
     with c_f3:
         cidades_sel = st.multiselect("🏙️ Cidade/Fração:", options=cidades_unicas, key="msel_cidade_filtro_p3_frag")
     with c_b2:
