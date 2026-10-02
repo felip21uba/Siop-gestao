@@ -1,3 +1,36 @@
+if modulo_ativo == "TCO":
+    subnav_tco_sel = st.radio(
+        "Submenu TCO:",
+        [
+            "📥 Importar REDS",
+            "🎒 Meus Materiais",
+            "🔄 Tramitação",
+            "📄 Ofícios",
+            "🏛️ Painel CREDS",
+            "📜 Auditoria",
+            "👥 Gestores"
+        ],
+        key="subnav_tco_sidebar_unique",
+        label_visibility="collapsed"
+    )
+    st.session_state["subnav_tco"] = subnav_tco_sel
+```[cite: 54]
+
+E quando o roteador escolhe a ecrã principal[cite: 54]:
+```python
+elif modulo == "TCO":
+    renderizar_modulo_tco()
+```[cite: 54]
+
+Como a função `renderizar_modulo_tco()` do ficheiro `modules/tco/main_tco.py`[cite: 53] precisa de aceder ao valor do `st.session_state["subnav_tco"]`[cite: 52, 54] ou recebê-lo como parâmetro para abrir a aba certa[cite: 51, 53], precisamos de garantir que a chamada esteja sincronizada[cite: 52, 53].
+
+---
+
+### 🛠️ Código Completo e Atualizado: `app.py`
+
+Abaixo está o ficheiro **`app.py` 100% completo e atualizado**, com a passagem explícita do submenu ativo e tratamento de exceções ajustado.
+
+```python
 """
 ==============================================================================
 🛡️ SIOP PMMG - Sistema Integrado de Operações
@@ -73,7 +106,7 @@ def renderizar_rodape_corporativo():
         st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 # ==============================================================================
-# 🛠️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
+# 🛠️️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
 # ==============================================================================
 from core.database import init_db, obter_ip_cliente_real
 init_db()
@@ -121,7 +154,7 @@ try:
     from modules.tco.main_tco import renderizar_modulo_tco
 except Exception:
     erro_tco_trace = traceback.format_exc()
-    def renderizar_modulo_tco():
+    def renderizar_modulo_tco(*args, **kwargs):
         st.title("📦 Módulo TCO / Cadeia de Custódia")
         st.error("⚠️ O Módulo TCO encontrou uma indisponibilidade temporária.")
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (TCO)"):
@@ -257,7 +290,7 @@ def obter_imagem_brasao():
     return URL_BRASAO_PADRAO
 
 # ==============================================================================
-# ⏱️️ GERENCIAMENTO DE TIMEOUT E SESSÃO ÚNICA CONCORRENTE
+# ⏱ GERENCIAMENTO DE TIMEOUT E SESSÃO ÚNICA CONCORRENTE
 # ==============================================================================
 if st.session_state.get("autenticado", False):
     usr_dados = st.session_state.get("usuario_dados", {})
@@ -945,7 +978,8 @@ elif modulo == "ESCALAS":
     exibir_modulo_escalas()
 
 elif modulo == "TCO":
-    renderizar_modulo_tco()
+    subnav_tco_atual = st.session_state.get("subnav_tco", "📥 Importar REDS")
+    renderizar_modulo_tco(subnav_ativo=subnav_tco_atual)
 
 elif modulo == "PROCEDIMENTOS":
     st.title("📑 Módulo de Procedimentos Administrativos")
