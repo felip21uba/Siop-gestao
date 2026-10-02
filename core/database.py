@@ -11,14 +11,21 @@ import os
 import re
 import pandas as pd
 import streamlit as st
-from supabase import create_client, Client
+
+try:
+    from supabase import create_client, Client
+except ImportError:
+    Client = None
+    create_client = None
 
 # =========================================================================
 # 1. CONEXÃO COM O SUPABASE
 # =========================================================================
 @st.cache_resource
-def conectar_supabase() -> Client | None:
-    """Abre a conexão com o cliente do Supabase."""
+def conectar_supabase():
+    """Abre a conexão com o cliente do Supabase de forma segura."""
+    if create_client is None:
+        return None
     try:
         url = st.secrets.get("SUPABASE_URL") or os.environ.get("SUPABASE_URL")
         key = st.secrets.get("SUPABASE_KEY") or os.environ.get("SUPABASE_KEY")
@@ -28,7 +35,7 @@ def conectar_supabase() -> Client | None:
             
         return create_client(url, key)
     except Exception as e:
-        st.error(f"❌ Erro crítico ao conectar no Supabase: {e}")
+        print(f"Aviso ao conectar no Supabase: {e}")
         return None
 
 supabase = conectar_supabase()
@@ -83,7 +90,7 @@ def obter_ip_cliente_real() -> str:
 # =========================================================================
 @st.cache_data(ttl=15, show_spinner=False)
 def carregar_militares_supabase() -> list[dict]:
-    """Busca a lista de militares diretamente da nova tabela 'efetivo_oficial'."""
+    """Busca a lista de militares diretamente da tabela 'efetivo_oficial' ou 'efetivo'."""
     if not supabase:
         return st.session_state.get("lista_militares", [])
 
@@ -113,11 +120,11 @@ def carregar_militares_supabase() -> list[dict]:
             st.session_state["lista_militares"] = militares
             return militares
     except Exception as e:
-        print(f"Erro ao carregar dados da tabela efetivo_oficial: {e}")
+        print(f"Aviso ao carregar militares: {e}")
     return st.session_state.get("lista_militares", [])
 
 def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
-    """Grava/atualiza militares diretamente na tabela 'efetivo_oficial'."""
+    """Grava/atualiza militares na tabela 'efetivo_oficial'."""
     if not supabase or not lista_militares:
         return False
     try:
@@ -143,7 +150,7 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
         st.session_state["lista_militares"] = carregar_militares_supabase()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar na tabela efetivo_oficial: {e}")
+        st.error(f"Erro ao salvar no banco: {e}")
         return False
 
 def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
@@ -158,6 +165,23 @@ def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
         return True
     except Exception as e:
         print(f"Erro ao atualizar usuario: {e}")
+        return False
+
+def salvar_mensagem_p1_supabase(num_policia, nome_militar, assunto, mensagem) -> bool:
+    if not supabase:
+        return False
+    try:
+        payload = {
+            "num_policia": num_policia,
+            "nome_militar": nome_militar,
+            "assunto": assunto,
+            "mensagem": mensagem,
+            "data_envio": datetime.datetime.now().isoformat()
+        }
+        supabase.table("mensagens_p1").insert(payload).execute()
+        return True
+    except Exception as e:
+        print(f"Erro ao salvar mensagem P1: {e}")
         return False
 
 def registrar_audit_log(operador_pm: str, alvo_pm: str | None, tipo_acao: str, descricao: str):
