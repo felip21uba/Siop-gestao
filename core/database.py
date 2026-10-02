@@ -2,7 +2,7 @@
 ==============================================================================
 Módulo de Infraestrutura de Banco de Dados Central (core/database.py)
 Gerencia a conexão com o Supabase utilizando a tabela 'efetivo_oficial' 
-para o Passo 3 e 'usuarios' para login/autenticação.
+para o Passo 3, 'usuarios' para login e 'escalas_mensais' para o Quadro 5.
 ==============================================================================
 """
 
@@ -153,6 +153,73 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
         st.error(f"Erro ao salvar no banco: {e}")
         return False
 
+# =========================================================================
+# 4. GESTÃO DE ESCALAS MENSAIS E PERSISTÊNCIA DO QUADRO 5
+# =========================================================================
+@st.cache_data(ttl=180, show_spinner=False)
+def carregar_escala_mensal_cache(ano: int, mes: int, equipe_nome: str = None) -> list[dict]:
+    """Recupera as escalas salvas no Supabase com suporte a cache local."""
+    if not supabase:
+        return []
+    try:
+        q = supabase.table("escalas_mensais").select("*").eq("ano", int(ano)).eq("mes", int(mes))
+        if equipe_nome:
+            q = q.eq("equipe_nome", str(equipe_nome))
+        res = q.execute()
+        return res.data or []
+    except Exception as e:
+        print(f"Aviso ao carregar escala do cache: {e}")
+        return []
+
+def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalidade: str, matriz_dados: dict, elaborado_por: str, homologado_por: str, status: str = "HOMOLOGADA") -> bool:
+    """Insere ou atualiza a matriz de escala mensal na tabela 'escalas_mensais'."""
+    if not supabase:
+        return False
+    try:
+        payload = {
+            "ano": int(ano),
+            "mes": int(mes),
+            "equipe_nome": str(equipe_nome),
+            "modalidade": str(modalidade),
+            "modalidade_turno": str(modalidade),
+            "status": status,
+            "matriz_dados": matriz_dados,
+            "elaborado_por": elaborado_por,
+            "homologado_por": homologado_por
+        }
+
+        res = supabase.table("escalas_mensais")\
+            .select("id")\
+            .eq("ano", int(ano))\
+            .eq("mes", int(mes))\
+            .eq("equipe_nome", str(equipe_nome))\
+            .execute()
+
+        if res and res.data and len(res.data) > 0:
+            rec_id = res.data[0]["id"]
+            supabase.table("escalas_mensais").update(payload).eq("id", rec_id).execute()
+        else:
+            supabase.table("escalas_mensais").insert(payload).execute()
+
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        try:
+            payload.pop("modalidade_turno", None)
+            res = supabase.table("escalas_mensais").select("id").eq("ano", int(ano)).eq("mes", int(mes)).eq("equipe_nome", str(equipe_nome)).execute()
+            if res and res.data and len(res.data) > 0:
+                supabase.table("escalas_mensais").update(payload).eq("id", res.data[0]["id"]).execute()
+            else:
+                supabase.table("escalas_mensais").insert(payload).execute()
+            st.cache_data.clear()
+            return True
+        except Exception as ex_fallback:
+            st.error(f"Erro ao salvar escala no Supabase: {ex_fallback}")
+            return False
+
+# =========================================================================
+# 5. MENSAGENS E SOLICITAÇÕES P1 E USUÁRIOS
+# =========================================================================
 def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
     if not supabase or not identificador:
         return False
@@ -184,6 +251,9 @@ def salvar_mensagem_p1_supabase(num_policia, nome_militar, assunto, mensagem) ->
         print(f"Erro ao salvar mensagem P1: {e}")
         return False
 
+# =========================================================================
+# 6. AUDITORIA E HISTÓRICO
+# =========================================================================
 def registrar_audit_log(operador_pm: str, alvo_pm: str | None, tipo_acao: str, descricao: str):
     if supabase:
         try:
