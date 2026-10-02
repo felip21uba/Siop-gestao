@@ -1,7 +1,7 @@
 """
 ==============================================================================
 Módulo de Gestão de Usuários e Permissões SIOP
-Gerencia acessos por perfil (CREDS e Escala) e unidades direto da tabela 'usuarios'.
+Gerencia acessos por perfil (CREDS e Escala), unidades e limpeza seletiva.
 ==============================================================================
 """
 
@@ -138,22 +138,29 @@ def exibir_tela_gestao_usuarios():
 
     usr = st.session_state.get("usuario_dados") or {}
     usr_atual_nivel = usr.get("nivel_acesso", "TROPA")
-    usr_id_operador = usr.get("usuario_login") or usr.get("usuario") or usr.get("nome_guerra", "OPERADOR")
+    usr_id_operador = str(usr.get("usuario_login") or usr.get("usuario") or "").strip()
 
     if usr_atual_nivel not in ["PROGRAMADOR", "ADMIN", "GESTOR", "COMANDANTE_CIA", "P1", "SARGENTEANTE"]:
         st.error("⛔ **Acesso Negado:** Você não possui permissão para gerenciar níveis de acesso.")
         return
 
-    aba_permissao_efetivo, aba_cadastrar_unidade, aba_lista_unidades = st.tabs([
+    # Lista de Abas principais
+    abas_titulos = [
         "👥 Permissões do Efetivo",
         "🏛️ Cadastrar Nova Unidade / Batalhão",
         "📋 Lista de Unidades Cadastradas"
-    ])
+    ]
 
+    # Aba exclusiva de Segurança do Programador
+    eh_programador_real = (usr_id_operador == "1337468" or "PROGRAMADOR" in usr_atual_nivel)
+    if eh_programador_real:
+        abas_titulos.append("🚨 Limpeza Seletiva (Programador)")
+
+    abas = st.tabs(abas_titulos)
     efetivo_banco = carregar_militares_supabase() or []
 
     # ABA 1: GERENCIAMENTO DE ACESSOS DIRETO DO EFETIVO
-    with aba_permissao_efetivo:
+    with abas[0]:
         st.markdown("##### 🎯 Alteração de Perfis em Lote")
         dict_mils_options = {}
         for m in efetivo_banco:
@@ -288,7 +295,7 @@ def exibir_tela_gestao_usuarios():
                     st.rerun()
 
     # ABA 2: CADASTRO DE UNIDADES
-    with aba_cadastrar_unidade:
+    with abas[1]:
         st.markdown("##### 🏛️ Cadastro de Novas Unidades / Batalhões (Multi-Tenant)")
         with st.form("form_nova_unidade_multitenant", clear_on_submit=True):
             c_un_a, c_un_b = st.columns(2)
@@ -325,5 +332,87 @@ def exibir_tela_gestao_usuarios():
                             st.error(f"Erro ao salvar unidade: {e}")
 
     # ABA 3: LISTAGEM E EXCLUSÃO DE UNIDADES
-    with aba_lista_unidades:
+    with abas[2]:
         exibir_painel_gestao_unidades()
+
+    # ABA 4: LIMPEZA SELETIVA DE DADOS (VISÍVEL APENAS PARA O PROGRAMADOR)
+    if eh_programador_real and len(abas) > 3:
+        with abas[3]:
+            st.markdown("### 🚨 Limpeza Seletiva do Banco de Dados (Acesso Restrito ao Programador)")
+            st.warning("⚠️ **ATENÇÃO:** Esta ferramenta exclui usuários da tabela **`usuarios`** do Supabase. O login do Programador (`1337468`) **NUNCA** será apagado.")
+
+            # Coleta todas as unidades existentes no banco para seleção
+            unidades_disponiveis = set()
+            for m in efetivo_banco:
+                u_m = str(m.get("lotacao") or m.get("unidade") or "").strip().upper()
+                if u_m and u_m not in ["NONE", "N/I", ""]:
+                    unidades_disponiveis.add(u_m)
+                    bpm_m = extrair_bpm_mae(u_m)
+                    if bpm_m:
+                        unidades_disponiveis.add(f"TODOS DO {bpm_m}")
+
+            opcoes_limpeza = sorted(list(unidades_disponiveis)) + ["🔥 ZERAR TUDO (EXCETO PROGRAMADOR 1337468)"]
+
+            col_limp1, col_limp2 = st.columns([3, 2])
+            with col_limp1:
+                unidades_alvo = st.multiselect(
+                    "🎯 Selecione a(s) Unidade(s) ou Ação para Excluir:",
+                    options=opcoes_limpeza,
+                    placeholder="Selecione uma ou mais unidades..."
+                )
+
+            with col_limp2:
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                chk_trava_seguranca = st.checkbox("🔒 Desbloquear Botão de Exclusão Definitiva")
+
+            if chk_trava_seguranca:
+                if st.button("🚨 EXECUTAR EXCLUSÃO NO SUPABASE", type="primary", use_container_width=True):
+                    if not unidades_alvo:
+                        st.error("⚠️ Selecione ao menos uma unidade para apagar.")
+                    else:
+                        if not supabase:
+                            st.error("Conexão com o Supabase indisponível.")
+                        else:
+                            try:
+                                apagar_tudo = any("ZERAR TUDO" in u for u in unidades_alvo)
+
+                                if apagar_tudo:
+                                    # Executa deleção excluindo apenas o programador 1337468
+                                    supabase.table("usuarios").delete().neq("usuario_login", "1337468").neq("usuario", "1337468").execute()
+                                    msg_sucesso = "✅ Todos os usuários foram excluídos do Supabase (mantido apenas o Programador 1337468)!"
+                                else:
+                                    # Filtra as matrículas que pertencem às unidades selecionadas
+                                    mils_remover = []
+                                    for u_alvo in unidades_alvo:
+                                        if u_alvo.startswith("TODOS DO "):
+                                            bpm_alvo = u_alvo.replace("TODOS DO ", "").strip()
+                                            mils_remover.extend([
+                                                m for m in efetivo_banco 
+                                                if extrair_bpm_mae(str(m.get("lotacao") or m.get("unidade") or "")) == bpm_alvo
+                                            ])
+                                        else:
+                                            mils_remover.extend([
+                                                m for m in efetivo_banco 
+                                                if str(m.get("lotacao") or m.get("unidade") or "").strip().upper() == u_alvo
+                                            ])
+
+                                    logins_remover = [
+                                        str(m.get("num_policia")).strip().upper() 
+                                        for m in mils_remover 
+                                        if str(m.get("num_policia")).strip() != "1337468"
+                                    ]
+
+                                    if logins_remover:
+                                        supabase.table("usuarios").delete().in_("usuario_login", logins_remover).execute()
+                                        msg_sucesso = f"✅ {len(logins_remover)} usuário(s) da(s) unidade(s) selecionada(s) foram apagados com sucesso!"
+                                    else:
+                                        msg_sucesso = "ℹ️ Nenhum usuário encontrado para as unidades selecionadas."
+
+                                st.cache_data.clear()
+                                carregar_militares_supabase()
+                                registrar_audit_log(usr_id_operador, None, "LIMPEZA_SELETIVA_USUARIOS", f"Limpeza executada pelo programador: {unidades_alvo}")
+                                st.success(msg_sucesso)
+                                st.rerun()
+
+                            except Exception as ex_limp:
+                                st.error(f"Erro ao executar limpeza seletiva: {ex_limp}")
