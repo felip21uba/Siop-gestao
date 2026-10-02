@@ -19,6 +19,62 @@ from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergen
 from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registrar_aceite_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
+# ==============================================================================
+# 🔍 FUNÇÕES AUXILIARES DE BANCO DE DADOS DO TCO
+# ==============================================================================
+
+def verificar_existencia_reds_banco(num_reds: str):
+    """
+    Verifica se um número de REDS já está registrado na base de dados (tabela tco_registros / tco_materiais).
+    Retorna a tupla: (existe: bool, data_cadastro: str, operador_cadastro: str)
+    """
+    if not supabase or not num_reds:
+        return False, None, None
+
+    num_clean = str(num_reds).strip().upper()
+    try:
+        res = supabase.table("tco_registros").select("created_at, operador_cadastro").eq("num_reds", num_clean).execute()
+        if res and res.data and len(res.data) > 0:
+            reg = res.data[0]
+            dt_cad = reg.get("created_at", "Data N/I")
+            op_cad = reg.get("operador_cadastro", "Operador N/I")
+            return True, dt_cad, op_cad
+            
+        res_m = supabase.table("tco_materiais").select("created_at, fiel_depositario_atual").eq("num_reds", num_clean).limit(1).execute()
+        if res_m and res_m.data and len(res_m.data) > 0:
+            reg_m = res_m.data[0]
+            dt_cad = reg_m.get("created_at", "Data N/I")
+            op_cad = reg_m.get("fiel_depositario_atual", "Operador N/I")
+            return True, dt_cad, op_cad
+    except Exception as e:
+        print(f"Aviso ao verificar existência do REDS {num_clean}: {e}")
+
+    return False, None, None
+
+
+def modal_alerta_reds_duplicado(num_reds, dt_cad, op_cad):
+    """Modal de aviso para REDS já existente no sistema."""
+    @st.dialog("⚠️ Atenção: REDS Já Registrado")
+    def _dialog():
+        st.warning(f"O REDS **{num_reds}** já foi importado anteriormente.")
+        st.write(f"📅 **Data de Registro:** {dt_cad}")
+        st.write(f"👮‍♂️ **Operador:** {op_cad}")
+        st.info("Caso prossiga, as informações serão atualizadas na base de dados.")
+
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            if st.button("🔄 Sobrescrever / Atualizar", type="primary", use_container_width=True):
+                st.session_state["confirmou_duplicidade_reds"] = True
+                st.rerun()
+        with col_c2:
+            if st.button("❌ Cancelar", use_container_width=True):
+                st.session_state.pop("temp_reds_extraido", None)
+                st.session_state["confirmou_duplicidade_reds"] = False
+                st.rerun()
+
+    _dialog()
+
+
 def injetar_css_cards_alternados():
     st.markdown("""
     <style>
@@ -820,7 +876,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                     🏷️ Lacre: <b>{bem.get('involucro_lacre', 'N/I')}</b> | Autor: <b>{bem.get('autores', 'N/I')}</b><br/>
                                     📍 Custodiante: <b>{bem.get('fiel_depositario_atual', 'N/I')}</b> ({bem.get('unidade_posse_atual', 'N/I')})<br/>
                                     👤 Último Gestor: <b>{bem.get('ultimo_gestor_movimentou', 'N/I')}</b><br/>
-                                    ⏱️ <b>Data/Hora do Trâmite:</b> <code class="st-emotion-cache-znj1k1">{dt_mov_exata}</code>
+                                    ⏱️️ <b>Data/Hora do Trâmite:</b> <code class="st-emotion-cache-znj1k1">{dt_mov_exata}</code>
                                 </div>
                                 """
                                 st.markdown(html_item, unsafe_allow_html=True)
