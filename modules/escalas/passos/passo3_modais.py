@@ -1,7 +1,7 @@
 """
 ==============================================================================
 Módulo de Modais do Passo 3 - Importação e Edição em Tabela
-Grava os militares importados diretamente na tabela 'efetivo_oficial'.
+Grava os militares importados diretamente na tabela 'usuarios' unificada.
 ==============================================================================
 """
 
@@ -14,9 +14,6 @@ from core.database import supabase, extrair_bpm_mae, carregar_militares_supabase
 from utils.file_validator import validar_planilha_upload, desarmar_csv_injection
 
 def carregar_planilha_robustas(arquivo_bytes):
-    """
-    Leitor nativo capaz de extrair planilhas XLSX padrão, CSVs e arquivos Strict OpenXML do SIRH/PMMG.
-    """
     try:
         df = pd.read_excel(arquivo_bytes, engine="openpyxl")
         if df is not None and not df.empty:
@@ -85,8 +82,8 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
                 "Graduação": padronizar_grad_func(m.get("posto_grad", "SD")),
                 "Nome Funcional": str(m.get("nome_guerra", "")),
                 "Nome Completo": str(m.get("nome_completo", "")),
-                "Unidade / Lotação": str(m.get("lotacao", m.get("unidade", "UNIDADE N/I"))),
-                "Cidade / Fração": str(m.get("cidade", "N/I"))
+                "Unidade / Lotação": str(m.get("lotacao", m.get("unidade", "21º BPM"))),
+                "Cidade / Fração": str(m.get("cidade", "UBÁ"))
             })
 
         df_mils = pd.DataFrame(dados_tabela)
@@ -111,7 +108,7 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
 
         col_s1, col_s2 = st.columns(2)
         with col_s1:
-            if st.button("💾 Salvar Alterações na Tabela Efetivo Oficial", type="primary", use_container_width=True):
+            if st.button("💾 Salvar Alterações na Tabela Usuários", type="primary", use_container_width=True):
                 novos_mils = []
                 mapa_existente = {str(m.get("id")): m for m in mils}
 
@@ -129,16 +126,16 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
                     obj_m["posto_grad"] = pg_f
                     obj_m["nome_guerra"] = nome_g
                     obj_m["nome_completo"] = nome_c if nome_c else f"{pg_f} {nome_g}"
-                    obj_m["lotacao"] = uni_val if uni_val else "UNIDADE N/I"
+                    obj_m["lotacao"] = uni_val if uni_val else "21º BPM"
                     obj_m["unidade"] = extrair_bpm_mae(uni_val)
-                    obj_m["cidade"] = cid_val if cid_val else "N/I"
+                    obj_m["cidade"] = cid_val if cid_val else "UBÁ"
 
                     novos_mils.append(obj_m)
 
                 salvar_militares_supabase(novos_mils)
                 st.session_state["lista_militares"] = carregar_militares_supabase()
                 st.session_state["militares_carregados"] = True
-                st.success("✅ Tabela 'efetivo_oficial' atualizada com sucesso no Supabase!")
+                st.success("✅ Tabela 'usuarios' atualizada com sucesso no Supabase!")
                 st.rerun()
 
         with col_s2:
@@ -160,14 +157,14 @@ def abrir_modal_excluir_lote(excluir_lote_func):
                 st.rerun()
             return
 
-        st.error(f"⚠️ Você está prestes a excluir **{len(mils_para_excluir)} militar(es)** da tabela 'efetivo_oficial'.")
+        st.error(f"⚠️ Você está prestes a excluir **{len(mils_para_excluir)} militar(es)** da tabela 'usuarios'.")
         
         df_exc = pd.DataFrame([
             {
                 "Grad/Nome": f"{m.get('posto_grad')} {m.get('nome_guerra')}", 
                 "Nº Polícia": m.get('num_policia'), 
-                "Lotação": m.get('lotacao', m.get('unidade', 'UNIDADE N/I')),
-                "Cidade": m.get('cidade', 'N/I')
+                "Lotação": m.get('lotacao', m.get('unidade', '21º BPM')),
+                "Cidade": m.get('cidade', 'UBÁ')
             } 
             for m in mils_para_excluir
         ])
@@ -209,25 +206,30 @@ def abrir_modal_upload_planilha(funcs_extracao):
                         df_imp = desarmar_csv_injection(df_imp)
                         df_imp.columns = [str(c).strip().upper() for c in df_imp.columns]
 
+                        col_posto = next((c for c in df_imp.columns if any(k in c for k in ["POSTO", "GRADUACAO", "GRADUAÇÃO", "GRAD"])), None)
+                        col_nome = next((c for c in df_imp.columns if any(k in c for k in ["NOME SERVIDOR", "NOME COMPLETO", "NOME"])), None)
+                        col_guerra = next((c for c in df_imp.columns if "GUERRA" in c), None)
+                        col_unidade = next((c for c in df_imp.columns if any(k in c for k in ["UNIDADE", "LOTAÇÃO", "LOTACAO", "FRACTO"])), None)
+                        col_cidade = next((c for c in df_imp.columns if any(k in c for k in ["CIDADE", "MUNICÍPIO", "MUNICIPIO"])), None)
+
                         lista_temp = []
                         for idx_row, row in df_imp.iterrows():
                             mat_unificada = tratar_num(row)
                             if not mat_unificada or str(mat_unificada).upper() == "NAN":
                                 continue
 
-                            posto_raw = str(row.get("POSTO/GRADUACAO", row.get("POSTO/GRAD", row.get("GRADUAÇÃO", "SD")))).strip().upper()
+                            posto_raw = str(row.get(col_posto, "SD")).strip().upper() if col_posto else "SD"
                             pg_sigla = padronizar_grad(posto_raw)
                             
-                            nome_serv = str(row.get("NOME SERVIDOR", row.get("NOME COMPLETO", row.get("NOME", "MILITAR")))).strip().upper()
+                            nome_serv = str(row.get(col_nome, "MILITAR")).strip().upper() if col_nome else "MILITAR"
                             
-                            # Extrai o Nome de Guerra (último sobrenome se não houver coluna específica)
-                            nome_guerra = str(row.get("NOME GUERRA", "")).strip().upper()
+                            nome_guerra = str(row.get(col_guerra, "")).strip().upper() if col_guerra else ""
                             if not nome_guerra or nome_guerra == "MILITAR":
                                 parts_nome = nome_serv.split()
                                 nome_guerra = parts_nome[-1] if len(parts_nome) > 1 else nome_serv
 
-                            unidade_raw = str(row.get("NOME UNIDADE", row.get("LOTAÇÃO", row.get("UNIDADE", "21º BPM")))).strip().upper()
-                            cidade_raw = str(row.get("NOME MUNICIPIO", row.get("MUNICÍPIO", row.get("CIDADE", "UBÁ")))).strip().upper()
+                            unidade_raw = str(row.get(col_unidade, "21º BPM")).strip().upper() if col_unidade else "21º BPM"
+                            cidade_raw = str(row.get(col_cidade, "UBÁ")).strip().upper() if col_cidade else "UBÁ"
 
                             lista_temp.append({
                                 "num_policia": mat_unificada,
@@ -273,11 +275,11 @@ def abrir_modal_upload_planilha(funcs_extracao):
             
             col_m1, col_m2 = st.columns(2)
             with col_m1:
-                if st.button("✅ Confirmar e Salvar no Supabase (Tabela Efetivo Oficial)", type="primary", use_container_width=True):
+                if st.button("✅ Confirmar e Salvar no Supabase (Tabela Usuários)", type="primary", use_container_width=True):
                     salvar_militares_supabase(lista_temp)
                     st.session_state["temp_importacao_lista"] = []
                     st.session_state["militares_carregados"] = True
-                    st.success(f"✅ {len(lista_temp)} militar(es) salvos na tabela 'efetivo_oficial'!")
+                    st.success(f"✅ {len(lista_temp)} militar(es) salvos na tabela 'usuarios'!")
                     st.rerun()
 
             with col_m2:
@@ -326,7 +328,7 @@ def abrir_modal_novo_militar(padronizar_graduacao_func, remover_dup_func, pesos_
                     
                     salvar_militares_supabase([novo_m])
                     st.session_state["militares_carregados"] = True
-                    st.success(f"✅ Militar {nome_f_upper} cadastrado e salvo na tabela 'efetivo_oficial'!")
+                    st.success(f"✅ Militar {nome_f_upper} cadastrado e salvo na tabela 'usuarios'!")
                     st.rerun()
 
     _dialog()

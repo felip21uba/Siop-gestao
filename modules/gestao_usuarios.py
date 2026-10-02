@@ -7,8 +7,8 @@ Gerencia acessos por perfil (CREDS e Escala), unidades e limpeza seletiva.
 
 import streamlit as st
 import pandas as pd
+import re
 from core.database import supabase, registrar_audit_log, carregar_militares_supabase, extrair_bpm_mae
-from core.auth import gerar_hash_senha
 
 PERFIS_NIVEL_GERAL = [
     "PROGRAMADOR", 
@@ -25,6 +25,39 @@ PERFIS_NIVEL_GERAL = [
 PERFIS_CREDS = ["GESTOR_UNIDADE", "GESTOR_CIA", "OPERADOR", "TROPA"]
 PERFIS_ESCALA = ["CMT_CIA", "SARGENTIACAO", "AUXILIAR_CIA", "TROPA"]
 
+def extrair_digitos_matricula(val):
+    """Extrai apenas os números da matrícula para busca uniforme no Supabase."""
+    if not val:
+        return ""
+    return re.sub(r'\D', '', str(val))
+
+def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, nivel_acesso=None, ativo=True, posto="SD", nome="MILITAR", nome_completo=None):
+    """Atualiza as permissões flexibilizando a busca para encontrar a matrícula limpa ou formatada."""
+    if supabase and matricula:
+        try:
+            m_raw = str(matricula).strip().upper()
+            m_digitos = extrair_digitos_matricula(m_raw)
+            
+            payload_update = {"ativo": ativo}
+            if perfil_creds is not None:
+                payload_update["perfil_creds"] = perfil_creds
+            if perfil_escala is not None:
+                payload_update["perfil_escala"] = perfil_escala
+            if nivel_acesso is not None:
+                payload_update["nivel_acesso"] = nivel_acesso
+            if nome_completo:
+                payload_update["nome_completo"] = nome_completo
+
+            condicao_busca = f"usuario_login.eq.{m_raw},usuario_login.eq.{m_digitos},usuario.eq.{m_raw},usuario.eq.{m_digitos}"
+            res = supabase.table("usuarios").update(payload_update).or_(condicao_busca).execute()
+            
+            st.cache_data.clear()
+            return True
+        except Exception as e:
+            print(f"Erro ao salvar permissão do militar {matricula}: {e}")
+            return False
+    return False
+
 def exibir_painel_gestao_unidades():
     st.markdown("##### 📋 Unidades Cadastradas no SIOP")
     st.caption("Visualização e administração global das unidades no Supabase.")
@@ -34,8 +67,6 @@ def exibir_painel_gestao_unidades():
         return
 
     bpms_mapa = {}
-
-    # 1. Consulta unidades cadastradas na tabela de configurações
     try:
         res = supabase.table("unidades_config").select("*").execute()
         if res and res.data:
@@ -50,7 +81,6 @@ def exibir_painel_gestao_unidades():
     except Exception:
         pass
 
-    # 2. Varre as unidades existentes na tabela 'usuarios'
     mils = carregar_militares_supabase() or []
     for m in mils:
         lot_m = str(m.get("lotacao") or m.get("unidade") or "").strip().upper()
@@ -68,13 +98,11 @@ def exibir_painel_gestao_unidades():
         return
 
     for bat_nome, dados in sorted(bpms_mapa.items()):
-        id_uni = dados["id"]
         cia_txt = dados["companhia"]
         mun_txt = dados["municipio"]
 
         with st.container():
             col_info, col_acao = st.columns([4, 1])
-            
             with col_info:
                 st.markdown(f"**🏛️ Unidade / Batalhão:** {bat_nome}")
                 st.caption(f"📍 **Frações/Lotação:** {cia_txt} | **Município Sede:** {mun_txt}")
@@ -104,32 +132,8 @@ def exibir_painel_gestao_unidades():
 
         st.divider()
 
-def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, nivel_acesso=None, ativo=True, posto="SD", nome="MILITAR", nome_completo=None):
-    """Atualiza as permissões diretamente na tabela 'usuarios'."""
-    if supabase and matricula:
-        try:
-            m_clean = str(matricula).strip().upper()
-            
-            payload_update = {"ativo": ativo}
-            if perfil_creds is not None:
-                payload_update["perfil_creds"] = perfil_creds
-            if perfil_escala is not None:
-                payload_update["perfil_escala"] = perfil_escala
-            if nivel_acesso is not None:
-                payload_update["nivel_acesso"] = nivel_acesso
-            if nome_completo:
-                payload_update["nome_completo"] = nome_completo
-
-            supabase.table("usuarios").update(payload_update).eq("usuario_login", m_clean).execute()
-            st.cache_data.clear()
-            return True
-        except Exception as e:
-            print(f"Erro ao salvar permissão do militar {matricula}: {e}")
-            return False
-    return False
-
 def exibir_tela_gestao_usuarios():
-    st.title("⚙️ Painel de Gestão de Níveis de Acesso e Permissões SIOP")
+    st.title("⚙️️ Painel de Gestão de Níveis de Acesso e Permissões SIOP")
     st.caption("Atribua perfis independentes por módulo (CREDS e Escalas) e administre os níveis gerais do sistema.")
     st.divider()
 
@@ -144,14 +148,12 @@ def exibir_tela_gestao_usuarios():
         st.error("⛔ **Acesso Negado:** Você não possui permissão para gerenciar níveis de acesso.")
         return
 
-    # Lista de Abas principais
     abas_titulos = [
         "👥 Permissões do Efetivo",
-        "🏛️ Cadastrar Nova Unidade / Batalhão",
+        "🏛 Cadastrar Nova Unidade / Batalhão",
         "📋 Lista de Unidades Cadastradas"
     ]
 
-    # Aba exclusiva de Segurança do Programador
     eh_programador_real = (usr_id_operador == "1337468" or "PROGRAMADOR" in usr_atual_nivel)
     if eh_programador_real:
         abas_titulos.append("🚨 Limpeza Seletiva (Programador)")
@@ -211,11 +213,11 @@ def exibir_tela_gestao_usuarios():
 
         st.divider()
 
-        # TABELA EDITÁVEL DE PERMISSÕES
+        # TABELA EDITÁVEL DE PERMISSÕES (EDIÇÃO DIRETA)
         with st.expander("📜 Tabela Geral de Permissões (Clique para expandir)", expanded=True):
             col_q1, col_q2 = st.columns([3, 1])
             with col_q1: 
-                st.caption("💡 **Edição Direta:** Edite qualquer permissão na tabela abaixo e as alterações serão gravadas imediatamente.")
+                st.caption("💡 **Edição Direta:** Edite qualquer permissão na tabela abaixo e as alterações serão gravadas imediatamente na tabela `usuarios`.")
             with col_q2: 
                 if st.button("🔄 Recarregar Tabela", use_container_width=True):
                     st.session_state["gestao_usr_version"] += 1
@@ -260,15 +262,23 @@ def exibir_tela_gestao_usuarios():
                     key=chave_editor
                 )
 
+                mapa_efetivo_digitos = {
+                    extrair_digitos_matricula(m.get("num_policia")): m 
+                    for m in efetivo_banco 
+                    if m.get("num_policia")
+                }
+
                 houve_mudanca = False
                 for idx, row in df_editado.iterrows():
-                    matr = str(row["MATRÍCULA"])
+                    matr_raw = str(row["MATRÍCULA"])
+                    matr_digitos = extrair_digitos_matricula(matr_raw)
+                    
                     p_creds_novo = str(row["FUNÇÃO CREDS"])
                     p_escala_novo = str(row["FUNÇÃO ESCALA"])
                     p_geral_novo = str(row["NÍVEL GERAL"])
                     s_novo = bool(row["CONTA ATIVA"])
                     
-                    m_orig = next((m for m in efetivo_banco if str(m.get("num_policia")).strip().upper() == matr), {})
+                    m_orig = mapa_efetivo_digitos.get(matr_digitos, {})
                     
                     if (p_creds_novo != str(m_orig.get("perfil_creds", "TROPA")) or 
                         p_escala_novo != str(m_orig.get("perfil_escala", "TROPA")) or 
@@ -277,7 +287,7 @@ def exibir_tela_gestao_usuarios():
                         
                         nome_comp_m = m_orig.get("nome_completo") or row["MILITAR"]
                         if salvar_permissao_militar(
-                            matricula=matr, 
+                            matricula=matr_raw, 
                             perfil_creds=p_creds_novo,
                             perfil_escala=p_escala_novo,
                             nivel_acesso=p_geral_novo, 
@@ -286,17 +296,17 @@ def exibir_tela_gestao_usuarios():
                             nome=m_orig.get("nome_guerra", "MILITAR"),
                             nome_completo=nome_comp_m
                         ):
-                            registrar_audit_log(usr_id_operador, matr, "ALTERAR_ACESSO_TABELA", f"CREDS: [{p_creds_novo}] | ESCALA: [{p_escala_novo}] | GERAL: [{p_geral_novo}]")
+                            registrar_audit_log(usr_id_operador, matr_raw, "ALTERAR_ACESSO_TABELA", f"CREDS: [{p_creds_novo}] | ESCALA: [{p_escala_novo}] | GERAL: [{p_geral_novo}]")
                             houve_mudanca = True
 
                 if houve_mudanca:
                     st.session_state["gestao_usr_version"] += 1
-                    st.success("✅ Permissões salvas no Supabase!")
+                    st.toast("✅ Permissões salvas com sucesso no Supabase!", icon="🟢")
                     st.rerun()
 
     # ABA 2: CADASTRO DE UNIDADES
     with abas[1]:
-        st.markdown("##### 🏛️ Cadastro de Novas Unidades / Batalhões (Multi-Tenant)")
+        st.markdown("##### 🏛 Cadastrar Nova Unidade / Batalhão (Multi-Tenant)")
         with st.form("form_nova_unidade_multitenant", clear_on_submit=True):
             c_un_a, c_un_b = st.columns(2)
             with c_un_a:
@@ -335,13 +345,12 @@ def exibir_tela_gestao_usuarios():
     with abas[2]:
         exibir_painel_gestao_unidades()
 
-    # ABA 4: LIMPEZA SELETIVA DE DADOS (VISÍVEL APENAS PARA O PROGRAMADOR)
+    # ABA 4: LIMPEZA SELETIVA DE DADOS (PROGRAMADOR)
     if eh_programador_real and len(abas) > 3:
         with abas[3]:
             st.markdown("### 🚨 Limpeza Seletiva do Banco de Dados (Acesso Restrito ao Programador)")
             st.warning("⚠️ **ATENÇÃO:** Esta ferramenta exclui usuários da tabela **`usuarios`** do Supabase. O login do Programador (`1337468`) **NUNCA** será apagado.")
 
-            # Coleta todas as unidades existentes no banco para seleção
             unidades_disponiveis = set()
             for m in efetivo_banco:
                 u_m = str(m.get("lotacao") or m.get("unidade") or "").strip().upper()
@@ -377,11 +386,9 @@ def exibir_tela_gestao_usuarios():
                                 apagar_tudo = any("ZERAR TUDO" in u for u in unidades_alvo)
 
                                 if apagar_tudo:
-                                    # Executa deleção excluindo apenas o programador 1337468
                                     supabase.table("usuarios").delete().neq("usuario_login", "1337468").neq("usuario", "1337468").execute()
                                     msg_sucesso = "✅ Todos os usuários foram excluídos do Supabase (mantido apenas o Programador 1337468)!"
                                 else:
-                                    # Filtra as matrículas que pertencem às unidades selecionadas
                                     mils_remover = []
                                     for u_alvo in unidades_alvo:
                                         if u_alvo.startswith("TODOS DO "):

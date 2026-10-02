@@ -1,8 +1,8 @@
 """
 ==============================================================================
 Módulo de Infraestrutura de Banco de Dados Central (core/database.py)
-Gerencia a conexão com o Supabase utilizando a tabela 'efetivo_oficial' 
-para o Passo 3, 'usuarios' para login e 'escalas_mensais' para o Quadro 5.
+Gerencia a conexão com o Supabase utilizando exclusivamente a tabela 'usuarios'
+para Efetivo, Login e Permissões, e 'escalas_mensais' para o Quadro 5.
 ==============================================================================
 """
 
@@ -86,71 +86,79 @@ def obter_ip_cliente_real() -> str:
     return "127.0.0.1"
 
 # =========================================================================
-# 3. LEITURA E GRAVAÇÃO NA TABELA 'EFETIVO_OFICIAL'
+# 3. LEITURA E GRAVAÇÃO UNIFICADA NA TABELA 'USUARIOS'
 # =========================================================================
-@st.cache_data(ttl=15, show_spinner=False)
+@st.cache_data(ttl=10, show_spinner=False)
 def carregar_militares_supabase() -> list[dict]:
-    """Busca a lista de militares diretamente da tabela 'efetivo_oficial' ou 'efetivo'."""
+    """Busca a lista de militares e permissões diretamente da tabela unificada 'usuarios'."""
     if not supabase:
         return st.session_state.get("lista_militares", [])
 
     try:
-        res = supabase.table("efetivo_oficial").select("*").order("posto_grad").execute()
+        res = supabase.table("usuarios").select("*").order("cargo_funcao").execute()
         if res and res.data:
             militares = []
             for u in res.data:
-                num_pol = str(u.get("num_policia", "")).strip().upper()
+                num_pol = str(u.get("usuario_login") or u.get("usuario") or u.get("num_policia", "")).strip().upper()
                 if not num_pol or num_pol == "N/I":
                     continue
 
-                lotacao_str = str(u.get("lotacao") or "21º BPM").strip().upper()
+                lotacao_str = str(u.get("unidade") or u.get("lotacao") or "21º BPM").strip().upper()
                 bpm_mae = extrair_bpm_mae(lotacao_str)
 
                 militares.append({
                     "id": str(u.get("id")),
                     "num_policia": num_pol,
-                    "posto_grad": str(u.get("posto_grad") or "SD").strip().upper(),
+                    "posto_grad": str(u.get("cargo_funcao") or u.get("posto_grad") or "SD").strip().upper(),
                     "nome_guerra": str(u.get("nome_guerra") or "MILITAR").strip().upper(),
                     "nome_completo": str(u.get("nome_completo") or u.get("nome_guerra") or "MILITAR").strip().upper(),
                     "cidade": str(u.get("cidade") or "UBÁ").strip().upper(),
                     "unidade": bpm_mae,
                     "lotacao": lotacao_str,
-                    "ativo": True
+                    "nivel_acesso": str(u.get("nivel_acesso") or "TROPA").strip().upper(),
+                    "perfil_creds": str(u.get("perfil_creds") or "TROPA").strip().upper(),
+                    "perfil_escala": str(u.get("perfil_escala") or "TROPA").strip().upper(),
+                    "ativo": bool(u.get("ativo", True))
                 })
             st.session_state["lista_militares"] = militares
             return militares
     except Exception as e:
-        print(f"Aviso ao carregar militares: {e}")
+        print(f"Aviso ao carregar militares da tabela usuarios: {e}")
     return st.session_state.get("lista_militares", [])
 
 def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
-    """Grava/atualiza militares na tabela 'efetivo_oficial'."""
+    """Grava/atualiza militares diretamente na tabela unificada 'usuarios'."""
     if not supabase or not lista_militares:
         return False
     try:
         dados_salvar = []
         for m in lista_militares:
-            num_pol = str(m.get("num_policia", "N/I")).strip().upper()
-            if not num_pol or num_pol == "N/I":
+            num_pol_raw = str(m.get("num_policia", "N/I")).strip().upper()
+            if not num_pol_raw or num_pol_raw == "N/I":
                 continue
 
+            num_pol_limpo = re.sub(r'\D', '', num_pol_raw)
             lotacao_full = str(m.get("lotacao") or m.get("unidade") or "21º BPM").strip().upper()
 
             dados_salvar.append({
-                "num_policia": num_pol,
-                "posto_grad": m.get("posto_grad", "SD"),
+                "usuario_login": num_pol_limpo,
+                "usuario": num_pol_limpo,
+                "cargo_funcao": m.get("posto_grad", "SD"),
                 "nome_guerra": str(m.get("nome_guerra", "MILITAR")).strip().upper(),
                 "nome_completo": str(m.get("nome_completo") or m.get("nome_guerra")).strip().upper(),
                 "cidade": str(m.get("cidade", "UBÁ")).strip().upper(),
-                "lotacao": lotacao_full
+                "unidade": lotacao_full,
+                "ativo": True
             })
 
-        supabase.table("efetivo_oficial").upsert(dados_salvar, on_conflict="num_policia").execute()
+        for payload in dados_salvar:
+            supabase.table("usuarios").upsert(payload, on_conflict="usuario_login").execute()
+
         st.cache_data.clear()
         st.session_state["lista_militares"] = carregar_militares_supabase()
         return True
     except Exception as e:
-        st.error(f"Erro ao salvar no banco: {e}")
+        st.error(f"Erro ao salvar na tabela usuarios: {e}")
         return False
 
 # =========================================================================
@@ -218,16 +226,17 @@ def salvar_escala_mensal_supabase(ano: int, mes: int, equipe_nome: str, modalida
             return False
 
 # =========================================================================
-# 5. MENSAGENS E SOLICITAÇÕES P1 E USUÁRIOS
+# 5. MENSAGENS, SOLICITAÇÕES E ATUALIZAÇÃO DE USUÁRIOS
 # =========================================================================
 def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
     if not supabase or not identificador:
         return False
     try:
-        u_clean = str(identificador).strip()
-        supabase.table("usuarios").update(dados).or_(
-            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean}"
-        ).execute()
+        u_raw = str(identificador).strip().upper()
+        u_limpo = re.sub(r'\D', '', u_raw)
+        
+        condicao_busca = f"usuario_login.eq.{u_raw},usuario_login.eq.{u_limpo},usuario.eq.{u_raw},usuario.eq.{u_limpo}"
+        supabase.table("usuarios").update(dados).or_(condicao_busca).execute()
         st.cache_data.clear()
         return True
     except Exception as e:
