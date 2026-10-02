@@ -8,12 +8,73 @@ Grava militares DIRETAMENTE na tabela 'usuarios' e sincroniza 'unidades_config'.
 import streamlit as st
 import uuid
 import pandas as pd
-from utils.excel_importer import carregar_planilha_universal
+import zipfile
+import xml.etree.ElementTree as ET
+import io
+import re
 from core.database import supabase, extrair_bpm_mae, carregar_militares_supabase
 from core.auth import gerar_hash_senha
 from utils.file_validator import validar_planilha_upload, desarmar_csv_injection
 
 OPCOES_PERFIL = ["TROPA", "ESCALANTE", "CMT_CIA", "ADMIN"]
+
+def carregar_planilha_robustas(arquivo_bytes):
+    """
+    Leitor universal capaz de abrir arquivos XLSX comuns, CSVs e
+    planilhas exportadas do SIRH/PMMG no formato Strict OpenXML (Strict XML).
+    """
+    try:
+        # 1. Tenta carregar com Pandas/openpyxl padrão
+        df = pd.read_excel(arquivo_bytes, engine="openpyxl")
+        if df is not None and not df.empty:
+            return df
+    except Exception:
+        pass
+
+    try:
+        # 2. Tenta carregar como CSV
+        if hasattr(arquivo_bytes, "seek"):
+            arquivo_bytes.seek(0)
+        df = pd.read_csv(arquivo_bytes, encoding="utf-8", sep=None, engine="python")
+        if df is not None and not df.empty:
+            return df
+    except Exception:
+        pass
+
+    try:
+        # 3. Leitor nativo OpenXML/Strict XML para planilhas SIRH PMMG
+        if hasattr(arquivo_bytes, "seek"):
+            arquivo_bytes.seek(0)
+        
+        with zipfile.ZipFile(arquivo_bytes, 'r') as z:
+            shared_strings_xml = z.read('xl/sharedStrings.xml')
+            sheet_xml = z.read('xl/worksheets/sheet1.xml')
+
+        root_ss = ET.fromstring(shared_strings_xml)
+        sst = [elem.text for elem in root_ss.iter() if elem.tag.endswith('t') and elem.text]
+
+        root_sheet = ET.fromstring(sheet_xml)
+        rows = []
+        for row_elem in root_sheet.iter('{http://purl.oclc.org/ooxml/spreadsheetml/main}row'):
+            row_data = []
+            for c_elem in row_elem.iter('{http://purl.oclc.org/ooxml/spreadsheetml/main}c'):
+                t_attr = c_elem.attrib.get('t', '')
+                v_elem = c_elem.find('{http://purl.oclc.org/ooxml/spreadsheetml/main}v')
+                val = v_elem.text if v_elem is not None else ""
+                if t_attr == 's' and val != "" and val.isdigit():
+                    idx = int(val)
+                    val = sst[idx] if idx < len(sst) else val
+                row_data.append(val)
+            if any(row_data):
+                rows.append(row_data)
+
+        if len(rows) > 1:
+            headers = [str(h).strip().upper() for h in rows[0]]
+            return pd.DataFrame(rows[1:], columns=headers)
+    except Exception as ex:
+        print(f"Erro no leitor OpenXML customizado: {ex}")
+
+    return None
 
 def salvar_importacao_na_tabela_usuarios(lista_importada):
     """
@@ -34,7 +95,6 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
         nome_c = str(m.get("nome_completo", nome_g)).strip().upper()
         cidade = str(m.get("cidade", "UBÁ")).strip().upper()
         
-        # Lotação real lida do arquivo Excel
         lotacao_completa = str(m.get("lotacao") or m.get("unidade") or "21º BPM").strip().upper()
         bpm_mae = extrair_bpm_mae(lotacao_completa)
 
@@ -44,7 +104,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
             "cargo_funcao": posto,
             "nome_guerra": nome_g,
             "nome_completo": nome_c,
-            "unidade": lotacao_completa,  # Grava a lotação real lida da planilha
+            "unidade": lotacao_completa,  # Grava a lotação exata da planilha
             "cidade": cidade,
             "nivel_acesso": "TROPA",
             "perfil_creds": "TROPA",
@@ -62,7 +122,6 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
                 payload_usuario["primeiro_acesso"] = True
                 supabase.table("usuarios").insert(payload_usuario).execute()
 
-            # Registra a unidade na tabela unidades_config para atualizar a barra lateral
             try:
                 supabase.table("unidades_config").upsert({
                     "batalhao": bpm_mae,
@@ -74,7 +133,6 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
 
             sucessos += 1
         except Exception as ex:
-            # Fallback sem a coluna cidade caso haja oscilação no PostgREST
             try:
                 payload_usuario.pop("cidade", None)
                 supabase.table("usuarios").upsert(payload_usuario, on_conflict="usuario_login").execute()
@@ -82,10 +140,9 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
             except Exception as ex_f:
                 print(f"Erro ao salvar militar {num_pol} na tabela usuarios: {ex_f}")
 
-    # Limpa todos os caches de dados do Streamlit
     st.cache_data.clear()
     
-    # RECARREGA A MEMÓRIA DA SESSÃO IMEDIATAMENTE COM O BANCO ATUALIZADO
+    # Recarrega a memória da sessão
     militares_recarregados = carregar_militares_supabase()
     st.session_state["lista_militares"] = militares_recarregados
     st.session_state["militares_carregados"] = True
@@ -228,7 +285,8 @@ def abrir_modal_upload_planilha(funcs_extracao):
             else:
                 if st.button("📥 Processar e Conferir Dados", type="primary", use_container_width=True):
                     try:
-                        df_imp = carregar_planilha_universal(arquivo_planilha)
+                        # Leitor universal imune a Strict OpenXML
+                        df_imp = carregar_planilha_robustas(arquivo_planilha)
                         if df_imp is None or df_imp.empty:
                             st.error("🚨 Não foi possível extrair dados da planilha enviada.")
                             return
@@ -239,7 +297,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
                         lista_temp = []
                         for idx_row, row in df_imp.iterrows():
                             mat_unificada = tratar_num(row)
-                            if not mat_unificada or mat_unificada.upper() == "NAN":
+                            if not mat_unificada or str(mat_unificada).upper() == "NAN":
                                 continue
 
                             posto_raw = str(row.get("POSTO/GRADUACAO", row.get("POSTO/GRAD", row.get("GRADUAÇÃO", "SD")))).strip().upper()
@@ -300,7 +358,6 @@ def abrir_modal_upload_planilha(funcs_extracao):
             col_m1, col_m2 = st.columns(2)
             with col_m1:
                 if st.button("✅ Confirmar e Salvar no Supabase", type="primary", use_container_width=True):
-                    # CHAMA A SALVAGUARDA DIRETA NA TABELA USUARIOS E ATUALIZA A SESSÃO
                     salvos = salvar_importacao_na_tabela_usuarios(lista_temp)
                     st.session_state["temp_importacao_lista"] = []
                     st.session_state["militares_carregados"] = True
