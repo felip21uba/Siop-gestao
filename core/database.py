@@ -190,6 +190,7 @@ def carregar_militares_supabase() -> list[dict]:
 def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
     """
     Grava/atualiza militares DIRETAMENTE na tabela 'usuarios' do Supabase.
+    Possui tratamento de fallback para schemas sem a coluna 'cidade'.
     """
     if not supabase or not lista_militares:
         return False
@@ -216,7 +217,15 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
             }
             dados_salvar.append(item)
 
-        supabase.table("usuarios").upsert(dados_salvar, on_conflict="usuario_login").execute()
+        try:
+            # Tenta salvar incluindo o campo 'cidade'
+            supabase.table("usuarios").upsert(dados_salvar, on_conflict="usuario_login").execute()
+        except Exception as ex_cidade:
+            # Fallback automático: remove o campo 'cidade' caso a coluna não exista no schema do PostgREST
+            print(f"Aviso ao salvar com coluna cidade ({ex_cidade}). Aplicando fallback sem cidade...")
+            for item in dados_salvar:
+                item.pop("cidade", None)
+            supabase.table("usuarios").upsert(dados_salvar, on_conflict="usuario_login").execute()
 
         st.session_state["lista_militares"] = lista_militares
         st.cache_data.clear()
