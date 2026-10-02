@@ -53,8 +53,8 @@ def extrair_bpm_mae(texto_unidade: str) -> str:
     Extrai o Batalhão Principal (Unidade Mãe) de qualquer string de lotação.
     Exemplos:
       '1 PEL/31 CIA PM/2 BPM' -> '2º BPM'
+      '2º BPM / 31ª CIA PM' -> '2º BPM'
       '1 PEL/111 CIA PM/21 BPM/4 RPM' -> '21º BPM'
-      'EM/21 BPM/4 RPM' -> '21º BPM'
     """
     if not texto_unidade or str(texto_unidade).upper() in ["NONE", "NAN", "N/I", "UNIDADE N/I"]:
         return "21º BPM"
@@ -95,7 +95,7 @@ def obter_unidade_operacao_atual() -> str:
 def obter_ip_cliente_real() -> str:
     """Extrai o IP público/real da conexão do usuário através dos cabeçalhos HTTP do Streamlit."""
     try:
-        from streamlit.web.server.websocket_headers import _get_websocket_headers
+        from streamlit.web.server.websocket_headers import _get_websocket_headers  # type: ignore
         headers = _get_websocket_headers()
         if headers:
             x_forwarded_for = headers.get("X-Forwarded-For") or headers.get("x-forwarded-for")
@@ -218,10 +218,8 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
             dados_salvar.append(item)
 
         try:
-            # Tenta salvar incluindo o campo 'cidade'
             supabase.table("usuarios").upsert(dados_salvar, on_conflict="usuario_login").execute()
         except Exception as ex_cidade:
-            # Fallback automático: remove o campo 'cidade' caso a coluna não exista no schema do PostgREST
             print(f"Aviso ao salvar com coluna cidade ({ex_cidade}). Aplicando fallback sem cidade...")
             for item in dados_salvar:
                 item.pop("cidade", None)
