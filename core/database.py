@@ -52,8 +52,8 @@ def extrair_bpm_mae(texto_unidade: str) -> str:
     """
     Extrai o Batalhão Principal (Unidade Mãe) de qualquer string de lotação.
     Exemplos:
+      'GAB CMT/2 BPM/4 RPM' -> '2º BPM'
       '1 PEL/31 CIA PM/2 BPM' -> '2º BPM'
-      '2º BPM / 31ª CIA PM' -> '2º BPM'
       '1 PEL/111 CIA PM/21 BPM/4 RPM' -> '21º BPM'
     """
     if not texto_unidade or str(texto_unidade).upper() in ["NONE", "NAN", "N/I", "UNIDADE N/I"]:
@@ -145,7 +145,7 @@ def atualizar_usuario_supabase(identificador: str, dados: dict) -> bool:
         st.error(f"Erro ao atualizar usuário no Supabase: {e}")
         return False
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def carregar_militares_supabase() -> list[dict]:
     """
     Busca a lista de militares UNIFICADA diretamente da tabela 'usuarios'.
@@ -174,7 +174,7 @@ def carregar_militares_supabase() -> list[dict]:
                     "nome_completo": str(u.get("nome_completo") or u.get("nome_guerra") or "MILITAR").strip().upper(),
                     "cidade": str(u.get("cidade") or "UBÁ").strip().upper(),
                     "unidade": bpm_mae,               # Batalhão Mãe (ex: "2º BPM")
-                    "lotacao": lotacao_str,            # Lotação Completa (ex: "1 PEL/31 CIA PM/2 BPM")
+                    "lotacao": lotacao_str,            # Lotação Completa (ex: "GAB CMT/2 BPM/4 RPM")
                     "nivel_acesso": u.get("nivel_acesso", "TROPA"),
                     "perfil_creds": u.get("perfil_creds", "TROPA"),
                     "perfil_escala": u.get("perfil_escala", "TROPA"),
@@ -190,7 +190,6 @@ def carregar_militares_supabase() -> list[dict]:
 def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
     """
     Grava/atualiza militares DIRETAMENTE na tabela 'usuarios' do Supabase.
-    Possui tratamento de fallback para schemas sem a coluna 'cidade'.
     """
     if not supabase or not lista_militares:
         return False
@@ -225,8 +224,8 @@ def salvar_militares_supabase(lista_militares: list[dict]) -> bool:
                 item.pop("cidade", None)
             supabase.table("usuarios").upsert(dados_salvar, on_conflict="usuario_login").execute()
 
-        st.session_state["lista_militares"] = lista_militares
         st.cache_data.clear()
+        st.session_state["lista_militares"] = carregar_militares_supabase()
         return True
     except Exception as e:
         st.error(f"Erro ao salvar militares na tabela usuarios: {e}")

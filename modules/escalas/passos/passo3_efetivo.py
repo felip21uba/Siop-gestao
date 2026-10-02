@@ -148,7 +148,7 @@ def tratar_num_policia_unificado(row):
     return num_clean
 
 def obter_efetivo_filtrado_por_unidade_isolada():
-    """Filtra flexivelmente por BPM (ex: '2º BPM' localiza '2 BPM', '2ºBPM', '31 CIA/2 BPM')."""
+    """Filtra flexivelmente por BPM (ex: '2º BPM' localiza '2 BPM', '2ºBPM', 'GAB CMT/2 BPM/4 RPM')."""
     todos_militares = st.session_state.get("lista_militares", [])
     unidade_ativa = obter_unidade_operacao_atual()
 
@@ -186,7 +186,7 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
             
             label_card = f"{posto_abrev} {nome_str}\n\nNº {num_pol}"
             tipo_btn = "primary" if (modo_exclusao and prefixo_key == "col_sel") or is_sel else "secondary"
-            tooltip_texto = f"🎖️ {nome_comp_str}\n📌 Posto/Grad: {posto_abrev}\n🔢 Matrícula: {num_pol}\n🏢 Lotação: {unidade_str}\n🏙️ Cidade: {cidade_str}"
+            tooltip_texto = f"🎖️ {nome_comp_str}\n📌 Posto/Grad: {posto_abrev}\n🔢 Matrícula: {num_pol}\n🏢 Lotação: {unidade_str}\n🏙️️ Cidade: {cidade_str}"
 
             with cols[idx_col]:
                 if st.button(label_card, key=f"btn_m_{prefixo_key}_{m_id}", type=tipo_btn, use_container_width=True, help=tooltip_texto):
@@ -292,14 +292,14 @@ def renderizar_fragmento_passo3():
 def renderizar_passo3():
     if "militares_selecionados_ids" not in st.session_state: st.session_state["militares_selecionados_ids"] = []
 
-    if not st.session_state.get("militares_carregados", False):
-        m_banco = carregar_militares_supabase()
-        if m_banco:
-            m_banco_unico = remover_duplicados_militares(m_banco)
-            st.session_state["lista_militares"] = m_banco_unico
-        else:
-            if "lista_militares" not in st.session_state: st.session_state["lista_militares"] = []
-        st.session_state["militares_carregados"] = True
+    # Recarrega do Supabase garantindo sincronia da tabela usuarios
+    m_banco = carregar_militares_supabase()
+    if m_banco:
+        st.session_state["lista_militares"] = remover_duplicados_militares(m_banco)
+    elif "lista_militares" not in st.session_state:
+        st.session_state["lista_militares"] = []
+
+    st.session_state["militares_carregados"] = True
 
     exp3 = st.expander("📌 PASSO 3: Gestão do Efetivo, Inserção e Seleção de Militares", expanded=True)
     with exp3:

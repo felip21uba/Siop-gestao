@@ -17,7 +17,7 @@ OPCOES_PERFIL = ["TROPA", "ESCALANTE", "CMT_CIA", "ADMIN"]
 
 def salvar_importacao_na_tabela_usuarios(lista_importada):
     """
-    Grava os militares importados diretamente na tabela 'usuarios'.
+    Grava os militares importados diretamente na tabela 'usuarios' do Supabase.
     Garante que a unidade gravada é a lotação real da planilha (ex: 'GAB CMT/2 BPM/4 RPM' ou '1 PEL/31 CIA PM/2 BPM').
     """
     if not supabase or not lista_importada:
@@ -34,7 +34,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
         nome_c = str(m.get("nome_completo", nome_g)).strip().upper()
         cidade = str(m.get("cidade", "UBÁ")).strip().upper()
         
-        # Captura a lotação exata lida na planilha
+        # Lotação real lida do arquivo Excel
         lotacao_completa = str(m.get("lotacao") or m.get("unidade") or "21º BPM").strip().upper()
         bpm_mae = extrair_bpm_mae(lotacao_completa)
 
@@ -44,7 +44,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
             "cargo_funcao": posto,
             "nome_guerra": nome_g,
             "nome_completo": nome_c,
-            "unidade": lotacao_completa,  # Salva a lotação real da planilha no campo unidade
+            "unidade": lotacao_completa,  # Grava a lotação real lida da planilha
             "cidade": cidade,
             "nivel_acesso": "TROPA",
             "perfil_creds": "TROPA",
@@ -62,7 +62,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
                 payload_usuario["primeiro_acesso"] = True
                 supabase.table("usuarios").insert(payload_usuario).execute()
 
-            # Registra a unidade na tabela unidades_config para atualização da Sidebar
+            # Registra a unidade na tabela unidades_config para atualizar a barra lateral
             try:
                 supabase.table("unidades_config").upsert({
                     "batalhao": bpm_mae,
@@ -82,6 +82,7 @@ def salvar_importacao_na_tabela_usuarios(lista_importada):
             except Exception as ex_f:
                 print(f"Erro ao salvar militar {num_pol} na tabela usuarios: {ex_f}")
 
+    # Limpa todos os caches de dados do Streamlit
     st.cache_data.clear()
     
     # RECARREGA A MEMÓRIA DA SESSÃO IMEDIATAMENTE COM O BANCO ATUALIZADO
@@ -299,7 +300,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
             col_m1, col_m2 = st.columns(2)
             with col_m1:
                 if st.button("✅ Confirmar e Salvar no Supabase", type="primary", use_container_width=True):
-                    # CHAMA A FUNÇÃO CORRETA DA TABELA USUARIOS COM A LOTAÇÃO REAL
+                    # CHAMA A SALVAGUARDA DIRETA NA TABELA USUARIOS E ATUALIZA A SESSÃO
                     salvos = salvar_importacao_na_tabela_usuarios(lista_temp)
                     st.session_state["temp_importacao_lista"] = []
                     st.session_state["militares_carregados"] = True
