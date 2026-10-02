@@ -1,7 +1,7 @@
 """
 ==============================================================================
 Módulo de Modais do Passo 3 - Importação e Edição em Tabela
-Grava militares DIRETAMENTE na tabela 'usuarios' e sincroniza 'unidades_config'.
+Grava os militares importados diretamente na tabela 'efetivo_oficial'.
 ==============================================================================
 """
 
@@ -10,21 +10,14 @@ import uuid
 import pandas as pd
 import zipfile
 import xml.etree.ElementTree as ET
-import io
-import re
-from core.database import supabase, extrair_bpm_mae, carregar_militares_supabase
-from core.auth import gerar_hash_senha
+from core.database import supabase, extrair_bpm_mae, carregar_militares_supabase, salvar_militares_supabase
 from utils.file_validator import validar_planilha_upload, desarmar_csv_injection
-
-OPCOES_PERFIL = ["TROPA", "ESCALANTE", "CMT_CIA", "ADMIN"]
 
 def carregar_planilha_robustas(arquivo_bytes):
     """
-    Leitor universal capaz de abrir arquivos XLSX comuns, CSVs e
-    planilhas exportadas do SIRH/PMMG no formato Strict OpenXML (Strict XML).
+    Leitor nativo capaz de extrair planilhas XLSX padrão, CSVs e arquivos Strict OpenXML do SIRH/PMMG.
     """
     try:
-        # 1. Tenta carregar com Pandas/openpyxl padrão
         df = pd.read_excel(arquivo_bytes, engine="openpyxl")
         if df is not None and not df.empty:
             return df
@@ -32,7 +25,6 @@ def carregar_planilha_robustas(arquivo_bytes):
         pass
 
     try:
-        # 2. Tenta carregar como CSV
         if hasattr(arquivo_bytes, "seek"):
             arquivo_bytes.seek(0)
         df = pd.read_csv(arquivo_bytes, encoding="utf-8", sep=None, engine="python")
@@ -42,7 +34,6 @@ def carregar_planilha_robustas(arquivo_bytes):
         pass
 
     try:
-        # 3. Leitor nativo OpenXML/Strict XML para planilhas SIRH PMMG
         if hasattr(arquivo_bytes, "seek"):
             arquivo_bytes.seek(0)
         
@@ -72,88 +63,14 @@ def carregar_planilha_robustas(arquivo_bytes):
             headers = [str(h).strip().upper() for h in rows[0]]
             return pd.DataFrame(rows[1:], columns=headers)
     except Exception as ex:
-        print(f"Erro no leitor OpenXML customizado: {ex}")
+        print(f"Erro no leitor OpenXML: {ex}")
 
     return None
-
-def salvar_importacao_na_tabela_usuarios(lista_importada):
-    """
-    Grava os militares importados diretamente na tabela 'usuarios' do Supabase.
-    Garante que a unidade gravada é a lotação real da planilha (ex: 'GAB CMT/2 BPM/4 RPM' ou '1 PEL/31 CIA PM/2 BPM').
-    """
-    if not supabase or not lista_importada:
-        return 0
-
-    sucessos = 0
-    for m in lista_importada:
-        num_pol = str(m.get("num_policia")).strip().upper()
-        if not num_pol or num_pol == "N/I":
-            continue
-
-        posto = str(m.get("posto_grad", "SD")).strip().upper()
-        nome_g = str(m.get("nome_guerra", "MILITAR")).strip().upper()
-        nome_c = str(m.get("nome_completo", nome_g)).strip().upper()
-        cidade = str(m.get("cidade", "UBÁ")).strip().upper()
-        
-        lotacao_completa = str(m.get("lotacao") or m.get("unidade") or "21º BPM").strip().upper()
-        bpm_mae = extrair_bpm_mae(lotacao_completa)
-
-        payload_usuario = {
-            "usuario_login": num_pol,
-            "usuario": num_pol,
-            "cargo_funcao": posto,
-            "nome_guerra": nome_g,
-            "nome_completo": nome_c,
-            "unidade": lotacao_completa,  # Grava a lotação exata da planilha
-            "cidade": cidade,
-            "nivel_acesso": "TROPA",
-            "perfil_creds": "TROPA",
-            "perfil_escala": "TROPA",
-            "ativo": True
-        }
-
-        try:
-            res = supabase.table("usuarios").select("usuario_login").eq("usuario_login", num_pol).execute()
-            if res and res.data and len(res.data) > 0:
-                supabase.table("usuarios").update(payload_usuario).eq("usuario_login", num_pol).execute()
-            else:
-                payload_usuario["senha"] = num_pol
-                payload_usuario["senha_hash"] = gerar_hash_senha(num_pol)
-                payload_usuario["primeiro_acesso"] = True
-                supabase.table("usuarios").insert(payload_usuario).execute()
-
-            try:
-                supabase.table("unidades_config").upsert({
-                    "batalhao": bpm_mae,
-                    "companhia": lotacao_completa,
-                    "municipio": cidade
-                }, on_conflict="batalhao,companhia,municipio").execute()
-            except Exception:
-                pass
-
-            sucessos += 1
-        except Exception as ex:
-            try:
-                payload_usuario.pop("cidade", None)
-                supabase.table("usuarios").upsert(payload_usuario, on_conflict="usuario_login").execute()
-                sucessos += 1
-            except Exception as ex_f:
-                print(f"Erro ao salvar militar {num_pol} na tabela usuarios: {ex_f}")
-
-    st.cache_data.clear()
-    
-    # Recarrega a memória da sessão
-    militares_recarregados = carregar_militares_supabase()
-    st.session_state["lista_militares"] = militares_recarregados
-    st.session_state["militares_carregados"] = True
-
-    return sucessos
 
 def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
     @st.dialog("✏️ Editar Efetivo em Tabela", width="large")
     def _dialog():
         st.markdown("##### 📝 Edite graduações, nomes, matrículas e unidades:")
-        st.caption("Altere os valores na tabela abaixo e clique em 'Salvar' para atualizar diretamente na tabela 'usuarios' do Supabase.")
 
         mils = st.session_state.get("lista_militares", [])
         if not mils:
@@ -194,7 +111,7 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
 
         col_s1, col_s2 = st.columns(2)
         with col_s1:
-            if st.button("💾 Salvar Alterações no Supabase", type="primary", use_container_width=True):
+            if st.button("💾 Salvar Alterações na Tabela Efetivo Oficial", type="primary", use_container_width=True):
                 novos_mils = []
                 mapa_existente = {str(m.get("id")): m for m in mils}
 
@@ -218,10 +135,10 @@ def abrir_modal_editar_efetivo_tabela(padronizar_grad_func, pesos_dict):
 
                     novos_mils.append(obj_m)
 
-                salvar_importacao_na_tabela_usuarios(novos_mils)
+                salvar_militares_supabase(novos_mils)
                 st.session_state["lista_militares"] = carregar_militares_supabase()
                 st.session_state["militares_carregados"] = True
-                st.success("✅ Tabela de usuários atualizada com sucesso no Supabase!")
+                st.success("✅ Tabela 'efetivo_oficial' atualizada com sucesso no Supabase!")
                 st.rerun()
 
         with col_s2:
@@ -243,7 +160,7 @@ def abrir_modal_excluir_lote(excluir_lote_func):
                 st.rerun()
             return
 
-        st.error(f"⚠️ Você está prestes a excluir definitivamente **{len(mils_para_excluir)} militar(es)** da tabela de usuários.")
+        st.error(f"⚠️ Você está prestes a excluir **{len(mils_para_excluir)} militar(es)** da tabela 'efetivo_oficial'.")
         
         df_exc = pd.DataFrame([
             {
@@ -259,9 +176,8 @@ def abrir_modal_excluir_lote(excluir_lote_func):
         col_d1, col_d2 = st.columns(2)
         with col_d1:
             if st.button("🚨 Confirmar Exclusão Definitiva", type="primary", use_container_width=True):
-                with st.spinner("Excluindo do banco de dados..."):
-                    excluir_lote_func(mils_para_excluir)
-                st.success(f"✅ {len(mils_para_excluir)} militar(es) excluído(s) com sucesso!")
+                excluir_lote_func(mils_para_excluir)
+                st.success(f"✅ {len(mils_para_excluir)} militar(es) excluído(s)!")
                 st.rerun()
         with col_d2:
             if st.button("❌ Cancelar", use_container_width=True):
@@ -285,7 +201,6 @@ def abrir_modal_upload_planilha(funcs_extracao):
             else:
                 if st.button("📥 Processar e Conferir Dados", type="primary", use_container_width=True):
                     try:
-                        # Leitor universal imune a Strict OpenXML
                         df_imp = carregar_planilha_robustas(arquivo_planilha)
                         if df_imp is None or df_imp.empty:
                             st.error("🚨 Não foi possível extrair dados da planilha enviada.")
@@ -305,6 +220,7 @@ def abrir_modal_upload_planilha(funcs_extracao):
                             
                             nome_serv = str(row.get("NOME SERVIDOR", row.get("NOME COMPLETO", row.get("NOME", "MILITAR")))).strip().upper()
                             
+                            # Extrai o Nome de Guerra (último sobrenome se não houver coluna específica)
                             nome_guerra = str(row.get("NOME GUERRA", "")).strip().upper()
                             if not nome_guerra or nome_guerra == "MILITAR":
                                 parts_nome = nome_serv.split()
@@ -357,11 +273,11 @@ def abrir_modal_upload_planilha(funcs_extracao):
             
             col_m1, col_m2 = st.columns(2)
             with col_m1:
-                if st.button("✅ Confirmar e Salvar no Supabase", type="primary", use_container_width=True):
-                    salvos = salvar_importacao_na_tabela_usuarios(lista_temp)
+                if st.button("✅ Confirmar e Salvar no Supabase (Tabela Efetivo Oficial)", type="primary", use_container_width=True):
+                    salvar_militares_supabase(lista_temp)
                     st.session_state["temp_importacao_lista"] = []
                     st.session_state["militares_carregados"] = True
-                    st.success(f"✅ {salvos} militar(es) salvos com sucesso na tabela de usuários!")
+                    st.success(f"✅ {len(lista_temp)} militar(es) salvos na tabela 'efetivo_oficial'!")
                     st.rerun()
 
             with col_m2:
@@ -408,9 +324,9 @@ def abrir_modal_novo_militar(padronizar_graduacao_func, remover_dup_func, pesos_
                         "unidade": extrair_bpm_mae(unidade_final)
                     }
                     
-                    salvar_importacao_na_tabela_usuarios([novo_m])
+                    salvar_militares_supabase([novo_m])
                     st.session_state["militares_carregados"] = True
-                    st.success(f"✅ Militar {nome_f_upper} cadastrado e salvo no Supabase!")
+                    st.success(f"✅ Militar {nome_f_upper} cadastrado e salvo na tabela 'efetivo_oficial'!")
                     st.rerun()
 
     _dialog()

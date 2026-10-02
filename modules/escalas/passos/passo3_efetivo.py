@@ -90,7 +90,7 @@ def remover_duplicados_militares(lista):
     return lista_unica
 
 def excluir_militar_banco_e_memoria(m_id, num_policia):
-    """Exclui o militar definitivamente da tabela 'usuarios' no Supabase e da memória."""
+    """Exclui o militar definitivamente da tabela 'efetivo_oficial' no Supabase e da memória."""
     num_pol_str = str(num_policia).strip().upper()
     is_num_valido = num_pol_str and num_pol_str not in ["NONE", "NAN", "NULL", "<NA>", "N/I", ""]
 
@@ -106,13 +106,13 @@ def excluir_militar_banco_e_memoria(m_id, num_policia):
 
     if supabase and is_num_valido:
         try:
-            supabase.table("usuarios").delete().eq("usuario_login", num_pol_str).execute()
+            supabase.table("efetivo_oficial").delete().eq("num_policia", num_pol_str).execute()
         except Exception as ex:
-            print(f"Erro ao excluir do Supabase: {ex}")
+            print(f"Erro ao excluir da tabela efetivo_oficial no Supabase: {ex}")
         st.cache_data.clear()
 
 def excluir_lote_banco_e_memoria(mils_para_excluir):
-    """Exclui em lote os militares da tabela 'usuarios' no Supabase."""
+    """Exclui em lote os militares da tabela 'efetivo_oficial' no Supabase."""
     nums_excluir = [str(m.get("num_policia")).strip().upper() for m in mils_para_excluir if m.get("num_policia")]
     ids_excluir = set(str(m.get("id")).strip() for m in mils_para_excluir if m.get("id"))
 
@@ -127,9 +127,9 @@ def excluir_lote_banco_e_memoria(mils_para_excluir):
 
     if supabase and nums_excluir:
         try:
-            supabase.table("usuarios").delete().in_("usuario_login", nums_excluir).execute()
+            supabase.table("efetivo_oficial").delete().in_("num_policia", nums_excluir).execute()
         except Exception as ex:
-            print(f"Erro ao excluir lote do Supabase: {ex}")
+            print(f"Erro ao excluir lote da tabela efetivo_oficial: {ex}")
         st.cache_data.clear()
 
 def tratar_num_policia_unificado(row):
@@ -186,7 +186,7 @@ def renderizar_grade_cards_4_colunas(lista_mils, sel_ids_set, modo_exclusao, pre
             
             label_card = f"{posto_abrev} {nome_str}\n\nNº {num_pol}"
             tipo_btn = "primary" if (modo_exclusao and prefixo_key == "col_sel") or is_sel else "secondary"
-            tooltip_texto = f"🎖️ {nome_comp_str}\n📌 Posto/Grad: {posto_abrev}\n🔢 Matrícula: {num_pol}\n🏢 Lotação: {unidade_str}\n🏙️️ Cidade: {cidade_str}"
+            tooltip_texto = f"🎖️ {nome_comp_str}\n📌 Posto/Grad: {posto_abrev}\n🔢 Matrícula: {num_pol}\n🏢 Lotação: {unidade_str}\n🏙 Cidade: {cidade_str}"
 
             with cols[idx_col]:
                 if st.button(label_card, key=f"btn_m_{prefixo_key}_{m_id}", type=tipo_btn, use_container_width=True, help=tooltip_texto):
@@ -292,7 +292,6 @@ def renderizar_fragmento_passo3():
 def renderizar_passo3():
     if "militares_selecionados_ids" not in st.session_state: st.session_state["militares_selecionados_ids"] = []
 
-    # Recarrega do Supabase garantindo sincronia da tabela usuarios
     m_banco = carregar_militares_supabase()
     if m_banco:
         st.session_state["lista_militares"] = remover_duplicados_militares(m_banco)
@@ -325,7 +324,7 @@ def renderizar_passo3():
                     mils_atuais = st.session_state.get("lista_militares", [])
                     if mils_atuais:
                         salvar_militares_supabase(mils_atuais)
-                        st.success(f"✅ {len(mils_atuais)} militar(es) salvos na tabela de usuários do Supabase!")
+                        st.success(f"✅ {len(mils_atuais)} militar(es) salvos na tabela 'efetivo_oficial'!")
                     else: st.warning("Nenhum militar na lista para salvar.")
             with c_b4:
                 if st.button("🔄 Recarregar Banco", use_container_width=True):
@@ -334,7 +333,7 @@ def renderizar_passo3():
                         m_banco_unico = remover_duplicados_militares(m_banco)
                         st.session_state["lista_militares"] = m_banco_unico
                         st.session_state["militares_carregados"] = True
-                        st.success(f"✅ {len(m_banco_unico)} militar(es) recarregado(s) do Supabase!")
+                        st.success(f"✅ {len(m_banco_unico)} militar(es) recarregado(s) da tabela 'efetivo_oficial'!")
                         st.rerun()
             with c_b5:
                 if st.button("➕ Militar", use_container_width=True):
