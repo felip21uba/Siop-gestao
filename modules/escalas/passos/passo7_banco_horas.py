@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 import calendar
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
-from core.database import registrar_log_banco, buscar_logs_banco
+from core.database import registrar_audit_log
 
 MESES_MAP = {
     "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, 
@@ -20,9 +20,14 @@ SIGLAS_DIAS_NEUTROS = [
 
 def registrar_log_auditoria_local(acao, detalhe):
     usr_logado = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_logado, str):
+        usr_logado = {"nome_guerra": usr_logado}
+        
     nome_usuario = usr_logado.get("nome_guerra", usr_logado.get("nome", "OPERADOR"))
     cargo_usuario = usr_logado.get("cargo_funcao", usr_logado.get("perfil", "GESTOR"))
+    num_login = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
     
+    # 1. Registro em sessão local
     timezone_br = datetime.timezone(datetime.timedelta(hours=-3))
     dt_agora = datetime.datetime.now(timezone_br).strftime("%d/%m/%Y %H:%M:%S")
 
@@ -38,17 +43,31 @@ def registrar_log_auditoria_local(acao, detalhe):
 
     st.session_state["logs_auditoria_lista"].insert(0, log_entry)
 
+    # 2. Registro no Supabase via trilha oficial de audit log
+    try:
+        registrar_audit_log(
+            operador_pm=num_login if num_login else nome_usuario,
+            alvo_pm=None,
+            tipo_acao=f"BANCO_HORAS_{acao.upper().replace(' ', '_')}",
+            descricao=detalhe
+        )
+    except Exception as ex:
+        print(f"Aviso ao registrar log do Banco de Horas no Supabase: {ex}")
+
 def executar_auto_save_banco_local():
     st.session_state["exibir_toast_autosave"] = True
 
 def renderizar_passo7():
     if st.session_state.get("exibir_toast_autosave", False):
-        st.toast("☁️ Banco de Horas salvo na nuvem!", icon="✅")
+        st.toast("☁️️ Banco de Horas salvo na nuvem!", icon="✅")
         st.session_state["exibir_toast_autosave"] = False
 
     usr_logado = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_logado, str):
+        usr_logado = {"nome_guerra": usr_logado}
+        
     cargo_str = str(usr_logado.get("cargo_funcao", "")).upper()
-    perfil_str = str(usr_logado.get("perfil", "")).upper()
+    perfil_str = str(usr_logado.get("perfil", usr_logado.get("nivel_acesso", ""))).upper()
     eh_admin = "PROGRAMADOR" in cargo_str or "TESTADOR" in cargo_str or "ADMIN" in perfil_str or "CMT_CIA" in perfil_str or "DESENVOLVEDOR" in cargo_str
 
     m_mes_atual = st.session_state.get("mes_escala", datetime.date.today().month)
