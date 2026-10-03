@@ -1,7 +1,7 @@
 """
 ==============================================================================
 🛡️ SIOP PMMG - Módulo TCO / Cadeia de Custódia
-Arquivo: modules/tco/main_tco.py (Roteador Integrado com o Menu Lateral)
+Arquivo: modules/tco/main_tco.py (Roteamento Condicional Idêntico ao Escalas)
 ==============================================================================
 """
 
@@ -21,8 +21,8 @@ from modules.tco.compliance import (
     aplicar_estilo_tco
 )
 
-def renderizar_modulo_tco(subnav_ativo="📥 Importar REDS", *args, **kwargs):
-    """Ponto de entrada isolado do Módulo TCO / Custódia no SIOP com suporte a subnav."""
+def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
+    """Ponto de entrada do Módulo TCO com Roteamento Dinâmico da Sidebar."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -30,6 +30,7 @@ def renderizar_modulo_tco(subnav_ativo="📥 Importar REDS", *args, **kwargs):
         usr_logado = {"nome_guerra": usr_logado}
 
     usr_login = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
+    usr_id = str(usr_logado.get("id") or usr_login or "").strip()
     
     nome_militar_atual = f"{usr_logado.get('cargo_funcao', 'CB PM')} {usr_logado.get('nome_guerra', 'OPERADOR')}".strip()
     unidade_militar_atual = str(usr_logado.get("unidade", "35ª CIA PM")).strip().upper()
@@ -76,64 +77,29 @@ def renderizar_modulo_tco(subnav_ativo="📥 Importar REDS", *args, **kwargs):
     all_bens_banco = carregar_materiais_supabase() or []
     all_logs_banco = carregar_logs_supabase() or []
 
-    # Captura a sub-aba escolhida
-    subnav_selecionado = subnav_ativo or st.session_state.get("subnav_tco", "📥 Importar REDS")
+    # =========================================================================
+    # 🚀 ROTEAMENTO CONDICIONAL NATIVO (EXTREMAMENTE RÁPIDO E CONFIÁVEL)
+    # =========================================================================
+    # Captura a seleção exata vinda do radio button da barra lateral
+    opcao_menu = subnav_ativo or st.session_state.get("subnav_tco", "📥 Importar REDS")
 
-    mapa_indices = {
-        "📥 Importar REDS": 0,
-        "🎒 Meus Materiais": 1,
-        "🔄 Tramitação": 1,
-        "📄 Ofícios": 2,
-        "🏛️ Painel CREDS": 3,
-        "📜 Auditoria": 4,
-        "👥 Gestores": 5
-    }
-    
-    idx_aba_ativa = 0
-    for chave, idx in mapa_indices.items():
-        if chave in subnav_selecionado:
-            idx_aba_ativa = idx
-            break
-
-    lista_titulos_abas = [
-        "📥 Importar REDS",
-        "🎒 Custódia & Tramitação",
-        "📄 Ofícios",
-        "🏛️ Painel CREDS",
-        "📜 Auditoria",
-        "👥 Gestores"
-    ]
-
-    abas = st.tabs(lista_titulos_abas)
-
-    with abas[0]:
+    if "Importar" in opcao_menu:
         renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
 
-    with abas[1]:
+    elif "Materiais" in opcao_menu or "Tramitação" in opcao_menu:
         renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    with abas[2]:
+    elif "Ofícios" in opcao_menu:
         renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
-    with abas[3]:
+    elif "CREDS" in opcao_menu:
         renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual)
 
-    with abas[4]:
+    elif "Auditoria" in opcao_menu:
         renderizar_aba_logs(all_logs_banco)
 
-    with abas[5]:
+    elif "Gestores" in opcao_menu:
         renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)
 
-    st.components.v1.html(
-        f"""
-        <script>
-        setTimeout(function() {{
-            const tabs = window.parent.document.querySelectorAll('button[data-baseweb="tab"]');
-            if (tabs && tabs.length > {idx_aba_ativa}) {{
-                tabs[{idx_aba_ativa}].click();
-            }}
-        }}, 100);
-        </script>
-        """,
-        height=0
-    )
+    else:
+        renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)

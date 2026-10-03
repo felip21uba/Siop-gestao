@@ -73,7 +73,7 @@ def renderizar_rodape_corporativo():
         st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 # ==============================================================================
-# 🛠️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
+# 🛠️️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
 # ==============================================================================
 from core.database import init_db, obter_ip_cliente_real
 init_db()
@@ -115,6 +115,7 @@ except Exception:
         st.info("💡 **Isolamento de Segurança:** Os Módulos TCO, Governança, Mural e Acessos permanecem 100% operacionais.")
         with st.expander("🔍 Ver Detalhes Técnicos e Linha Exata do Erro (Escalas)", expanded=True):
             st.code(erro_import_escala_trace, language="python")
+
 # 2. MÓDULO TCO / CUSTÓDIA
 try:
     from modules.tco.main_tco import renderizar_modulo_tco
@@ -247,7 +248,7 @@ if not st.session_state.get("autenticado", False) and token_url:
         except Exception as ex:
             print(f"Erro ao restaurar sessão: {ex}")
 
-URL_BRASAO_PADRAO = "[https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png](https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png)"
+URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
 
 def obter_imagem_brasao():
@@ -481,7 +482,7 @@ if not st.session_state.get("autenticado", False):
                 name=str(usr_temp.get('usuario_login', usr_temp.get('usuario', 'Militar'))), 
                 issuer_name="SIOP PMMG"
             )
-            qr_url = f"[https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=](https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=){urllib.parse.quote(uri)}"
+            qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={urllib.parse.quote(uri)}"
 
             c_qr1, c_qr2 = st.columns([1, 1.5])
             with c_qr1:
