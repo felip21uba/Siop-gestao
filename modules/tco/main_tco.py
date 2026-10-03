@@ -1,7 +1,7 @@
 """
 ==============================================================================
 🛡️ SIOP PMMG - Módulo TCO / Cadeia de Custódia
-Arquivo: modules/tco/main_tco.py (Roteamento Rápido em Sintonia com o Escalas)
+Arquivo: modules/tco/main_tco.py (Roteamento Direcionado por Sub-Aba)
 ==============================================================================
 """
 
@@ -22,7 +22,7 @@ from modules.tco.compliance import (
 )
 
 def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
-    """Ponto de entrada do Módulo TCO com renderização idêntica ao Módulo Escalas."""
+    """Ponto de entrada do Módulo TCO com direcionamento específico de sub-abas."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -77,14 +77,19 @@ def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
     all_logs_banco = carregar_logs_supabase() or []
 
     # =========================================================================
-    # 🚀 ROTEAMENTO CONDICIONAL DIRETO (SEM ABAS SUPERIORES CONFLITANTES)
+    # 🚀 ROTEAMENTO CONDICIONAL
     # =========================================================================
     opcao_menu = subnav_ativo or st.session_state.get("subnav_tco", "📥 Importar REDS")
 
     if "Importar" in opcao_menu:
         renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
 
-    elif "Materiais" in opcao_menu or "Tramitação" in opcao_menu:
+    elif "Materiais" in opcao_menu:
+        # Foco nos Materiais em Custódia e Histórico Permanente (Abas 1 e 3)
+        renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual)
+
+    elif "Tramitação" in opcao_menu:
+        # Foco na confirmação e retorno de Órgão Externo (2ª Aba)
         renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual)
 
     elif "Ofícios" in opcao_menu:
