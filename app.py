@@ -115,7 +115,6 @@ except Exception:
         st.info("💡 **Isolamento de Segurança:** Os Módulos TCO, Governança, Mural e Acessos permanecem 100% operacionais.")
         with st.expander("🔍 Ver Detalhes Técnicos e Linha Exata do Erro (Escalas)", expanded=True):
             st.code(erro_import_escala_trace, language="python")
-
 # 2. MÓDULO TCO / CUSTÓDIA
 try:
     from modules.tco.main_tco import renderizar_modulo_tco

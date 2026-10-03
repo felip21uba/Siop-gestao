@@ -21,8 +21,8 @@ from modules.tco.compliance import (
     aplicar_estilo_tco
 )
 
-def renderizar_modulo_tco():
-    """Ponto de entrada isolado do Módulo TCO / Custódia no SIOP."""
+def renderizar_modulo_tco(subnav_ativo="📥 Importar REDS", *args, **kwargs):
+    """Ponto de entrada isolado do Módulo TCO / Custódia no SIOP com suporte a subnav."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -30,7 +30,6 @@ def renderizar_modulo_tco():
         usr_logado = {"nome_guerra": usr_logado}
 
     usr_login = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
-    usr_id = str(usr_logado.get("id") or usr_login or "").strip()
     
     nome_militar_atual = f"{usr_logado.get('cargo_funcao', 'CB PM')} {usr_logado.get('nome_guerra', 'OPERADOR')}".strip()
     unidade_militar_atual = str(usr_logado.get("unidade", "35ª CIA PM")).strip().upper()
@@ -77,12 +76,9 @@ def renderizar_modulo_tco():
     all_bens_banco = carregar_materiais_supabase() or []
     all_logs_banco = carregar_logs_supabase() or []
 
-    # =========================================================================
-    # 🔄 CAPTURA DA NAVEGAÇÃO DO MENU LATERAL (SIDEBAR)
-    # =========================================================================
-    subnav_selecionado = st.session_state.get("subnav_tco", "📥 Importar REDS")
+    # Captura a sub-aba escolhida
+    subnav_selecionado = subnav_ativo or st.session_state.get("subnav_tco", "📥 Importar REDS")
 
-    # Mapeamento do texto do menu lateral para o índice da aba correspondente
     mapa_indices = {
         "📥 Importar REDS": 0,
         "🎒 Meus Materiais": 1,
@@ -108,7 +104,6 @@ def renderizar_modulo_tco():
         "👥 Gestores"
     ]
 
-    # Renderização das Abas Principais do Módulo TCO
     abas = st.tabs(lista_titulos_abas)
 
     with abas[0]:
@@ -129,7 +124,6 @@ def renderizar_modulo_tco():
     with abas[5]:
         renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)
 
-    # Injeção de script para mudar o foco automaticamente para a sub-aba escolhida no menu lateral
     st.components.v1.html(
         f"""
         <script>
