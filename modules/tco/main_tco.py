@@ -1,7 +1,7 @@
 """
 ==============================================================================
 🛡️ SIOP PMMG - Módulo TCO / Cadeia de Custódia
-Arquivo: modules/tco/main_tco.py (Roteamento Condicional Idêntico ao Escalas)
+Arquivo: modules/tco/main_tco.py (Roteamento Rápido em Sintonia com o Escalas)
 ==============================================================================
 """
 
@@ -22,7 +22,7 @@ from modules.tco.compliance import (
 )
 
 def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
-    """Ponto de entrada do Módulo TCO com Roteamento Dinâmico da Sidebar."""
+    """Ponto de entrada do Módulo TCO com renderização idêntica ao Módulo Escalas."""
     aplicar_estilo_tco()
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -30,7 +30,6 @@ def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
         usr_logado = {"nome_guerra": usr_logado}
 
     usr_login = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
-    usr_id = str(usr_logado.get("id") or usr_login or "").strip()
     
     nome_militar_atual = f"{usr_logado.get('cargo_funcao', 'CB PM')} {usr_logado.get('nome_guerra', 'OPERADOR')}".strip()
     unidade_militar_atual = str(usr_logado.get("unidade", "35ª CIA PM")).strip().upper()
@@ -78,9 +77,8 @@ def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
     all_logs_banco = carregar_logs_supabase() or []
 
     # =========================================================================
-    # 🚀 ROTEAMENTO CONDICIONAL NATIVO (EXTREMAMENTE RÁPIDO E CONFIÁVEL)
+    # 🚀 ROTEAMENTO CONDICIONAL DIRETO (SEM ABAS SUPERIORES CONFLITANTES)
     # =========================================================================
-    # Captura a seleção exata vinda do radio button da barra lateral
     opcao_menu = subnav_ativo or st.session_state.get("subnav_tco", "📥 Importar REDS")
 
     if "Importar" in opcao_menu:
