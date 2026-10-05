@@ -1,3 +1,9 @@
+"""
+==============================================================================
+Módulo do Passo 3 - Lançamento de Afastamentos (Com Suporte a RH / Folga)
+==============================================================================
+"""
+
 import streamlit as st
 import uuid
 import datetime
@@ -8,7 +14,7 @@ def renderizar_painel_afastamentos(militares, padronizar_graduacao_func, pesos_d
     if "afastamentos_militares" not in st.session_state:
         st.session_state["afastamentos_militares"] = []
 
-    with st.expander("🏖️ Lançamento de Afastamentos & Dias Neutros (Férias, LM, Atestados)", expanded=False):
+    with st.expander("🏖️ Lançamento de Afastamentos & Dias Neutros (Férias, LM, RH, Atestados)", expanded=False):
         st.caption("Cadastre afastamentos regulamentares para abater a meta mensal proporcional no Quadro (Passo 5) e Banco de Horas (Passo 7).")
         
         mils_ordenados_afast = sorted(militares, key=lambda x: (
@@ -34,6 +40,7 @@ def renderizar_painel_afastamentos(militares, padronizar_graduacao_func, pesos_d
                 tipo_afastamento = st.selectbox(
                     "Tipo de Afastamento:",
                     [
+                        "RH (Folga / Recesso Humanizado)",
                         "FE (Férias Regulamentares)", 
                         "LM (Licença Médica)", 
                         "ATE (Atestado Médico)", 
@@ -78,7 +85,6 @@ def renderizar_painel_afastamentos(militares, padronizar_graduacao_func, pesos_d
                         
                         st.session_state["afastamentos_militares"].append(novo_afast)
                         
-                        # Injeta a sigla nas células correspondentes do Quadro Geral (Passo 5)
                         dt_atual = dt_inicio
                         while dt_atual <= dt_fim:
                             ano_c, mes_c, dia_c = dt_atual.year, dt_atual.month, dt_atual.day
