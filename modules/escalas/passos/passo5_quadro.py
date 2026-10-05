@@ -1,6 +1,6 @@
 """
 ==============================================================================
-Módulo do Passo 5 - Quadro Mensal de Escalas, Homologação e Reposição de Horas
+Módulo do Passo 5 - Quadro Mensal de Escalas, Homologação Dinâmica e Perfis
 ==============================================================================
 """
 
@@ -174,8 +174,8 @@ def executar_auto_save_banco(status_escala="RASCUNHO"):
             "dias_selecionados_passo4": copy.deepcopy(st.session_state.get("dias_selecionados_passo4", [])),
         }
 
-        elaborador_nome = st.session_state.get("p5_elaborador_input", "GESTOR P3")
-        homologador_nome = st.session_state.get("p5_homologador_input", "TEN CEL LOPES")
+        elaborador_nome = st.session_state.get("p5_elaborador_sel", "GESTOR P3")
+        homologador_nome = st.session_state.get("p5_homologador_sel", "COMANDANTE")
 
         salvar_escala_mensal_supabase(
             ano=m_ano,
@@ -224,8 +224,8 @@ def carregar_escala_salva_banco():
             st.session_state["toggle_trava_quadro"] = (status_banco == "HOMOLOGADA")
             st.session_state["escala_fechada_auditoria"] = (status_banco == "HOMOLOGADA")
             
-            st.session_state["p5_elaborador_input"] = row_escala.get("elaborado_por", "GESTOR P3")
-            st.session_state["p5_homologador_input"] = row_escala.get("homologado_por", "TEN CEL LOPES")
+            st.session_state["p5_elaborador_sel"] = row_escala.get("elaborado_por")
+            st.session_state["p5_homologador_sel"] = row_escala.get("homologado_por")
             
             st.session_state["chave_escala_carregada"] = f"{m_ano}_{m_mes:02d}"
             return True
@@ -536,6 +536,31 @@ def renderizar_passo5():
     quadro_travado = st.session_state.get("toggle_trava_quadro", False)
     status_escala = st.session_state.get("status_escala_ativo", "RASCUNHO")
 
+    usr_logado = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_logado, str):
+        usr_logado = {}
+
+    perfil_usr = str(usr_logado.get("nivel_acesso") or usr_logado.get("perfil_escala") or "TROPA").upper()
+    cargo_usr = str(usr_logado.get("cargo_funcao") or "").upper()
+    
+    # Valida se o usuário tem autoridade para homologar/destravar
+    pode_homologar = any(p in perfil_usr or p in cargo_usr for p in ["ADMIN", "CMT_CIA", "COMANDANTE", "CAP", "TEN", "MAJ", "TEN CEL", "CEL", "PROGRAMADOR"])
+
+    # 🌐 LISTA COMPLETA E LIVRE DE TODOS OS MILITARES DO BANCO PARA SELEÇÃO
+    opcoes_militares_todas = sorted(
+        [
+            f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra', 'MILITAR').upper()} ({m.get('num_policia', '')})"
+            for m in militares
+        ],
+        key=lambda x: (
+            PESOS_HIERARQUIA.get(padronizar_graduacao(x.split()[0]), 99),
+            x
+        )
+    )
+
+    if not opcoes_militares_todas:
+        opcoes_militares_todas = ["GESTOR DA ESCALA", "COMANDANTE DA CIA"]
+
     with st.expander("📌 PASSO 5: Quadro Mensal de Escalas e Carga Horária", expanded=True):
         st.markdown(
             """
@@ -549,36 +574,49 @@ def renderizar_passo5():
         )
 
         # =========================================================================
-        # 🔐 PAINEL DE HOMOLOGAÇÃO E TRAVAMENTO DE SEGURANÇA
+        # 🔐 PAINEL DE HOMOLOGAÇÃO COM SELEÇÃO TOTALMENTE LIVRE
         # =========================================================================
         with st.container(border=True):
-            col_h1, col_h2, col_h3, col_h4 = st.columns([2, 2, 1.5, 1.5], vertical_alignment="bottom")
+            col_h1, col_h2, col_h3, col_h4 = st.columns([2.5, 2.5, 1.2, 1.3], vertical_alignment="bottom")
             
             with col_h1:
-                st.session_state["p5_elaborador_input"] = st.text_input(
-                    "📝 Elaborado por (P3/Sargenteante):",
-                    value=st.session_state.get("p5_elaborador_input", "GESTOR P3"),
+                idx_elab = 0
+                val_elab_salvo = st.session_state.get("p5_elaborador_sel")
+                if val_elab_salvo in opcoes_militares_todas:
+                    idx_elab = opcoes_militares_todas.index(val_elab_salvo)
+
+                st.session_state["p5_elaborador_sel"] = st.selectbox(
+                    "📝 Responsável / Elaborado por:",
+                    options=opcoes_militares_todas,
+                    index=idx_elab,
                     disabled=quadro_travado,
-                    key="txt_p5_elaborador"
-                ).strip().upper()
+                    key="sb_p5_elaborador_livre"
+                )
 
             with col_h2:
-                st.session_state["p5_homologador_input"] = st.text_input(
-                    "🔏 Homologado por (Comandante Cia/Bpm):",
-                    value=st.session_state.get("p5_homologador_input", "TEN CEL LOPES"),
+                idx_homol = 0
+                val_homol_salvo = st.session_state.get("p5_homologador_sel")
+                if val_homol_salvo in opcoes_militares_todas:
+                    idx_homol = opcoes_militares_todas.index(val_homol_salvo)
+
+                st.session_state["p5_homologador_sel"] = st.selectbox(
+                    "🔏 Homologado por (Comandante/Oficial):",
+                    options=opcoes_militares_todas,
+                    index=idx_homol,
                     disabled=quadro_travado,
-                    key="txt_p5_homologador"
-                ).strip().upper()
+                    key="sb_p5_homologador_livre"
+                )
 
             with col_h3:
                 if status_escala == "HOMOLOGADA":
-                    st.success("🔒 **ESCALA HOMOLOGADA**")
+                    st.success("🔒 **HOMOLOGADA**")
                 else:
-                    st.info("📝 **MODO RASCUNHO**")
+                    st.info("📝 **RASCUNHO**")
 
             with col_h4:
                 if status_escala != "HOMOLOGADA":
-                    if st.button("🔒 Homologar Escala", type="primary", use_container_width=True, help="Aprova a escala e trava a edição do Quadro."):
+                    btn_homol_disabled = not pode_homologar
+                    if st.button("🔒 Homologar", type="primary", use_container_width=True, disabled=btn_homol_disabled, help="Aprova a escala e trava a edição do Quadro. Requer perfil de Comandante/Oficial."):
                         st.session_state["status_escala_ativo"] = "HOMOLOGADA"
                         st.session_state["toggle_trava_quadro"] = True
                         st.session_state["escala_fechada_auditoria"] = True
@@ -586,7 +624,8 @@ def renderizar_passo5():
                         st.success("🎉 Escala homologada e travada com sucesso!")
                         st.rerun()
                 else:
-                    if st.button("🔓 Reabrir Rascunho", type="secondary", use_container_width=True, help="Destrava o Quadro para edições e ajustes."):
+                    btn_reabrir_disabled = not pode_homologar
+                    if st.button("🔓 Reabrir", type="secondary", use_container_width=True, disabled=btn_reabrir_disabled, help="Destrava o Quadro para edições. Requer perfil de Comandante/Oficial."):
                         st.session_state["status_escala_ativo"] = "RASCUNHO"
                         st.session_state["toggle_trava_quadro"] = False
                         st.session_state["escala_fechada_auditoria"] = False
@@ -677,7 +716,7 @@ def renderizar_passo5():
 
                 c_f1, c_f2, c_f3 = st.columns([3, 2.5, 2.5])
                 mils_sel_lote = c_f1.multiselect("Militar(es) ou Equipe(s):", opcoes_selecao_mils, key="p5_lote_mils")
-                dt_hoje = datetime.date(m_ano, m_mes, 1)
+                dt_hoje = datetime.date.today()
 
                 opcoes_eventos = [
                     "Horário Normal", 
@@ -705,7 +744,7 @@ def renderizar_passo5():
                 else:
                     datas_sel = c_f2.date_input(
                         "Selecione a(s) Data(s) no Calendário:",
-                        value=(dt_hoje, dt_hoje),
+                        value=(datetime.date(m_ano, m_mes, 1), datetime.date(m_ano, m_mes, 1)),
                         min_value=datetime.date(m_ano, m_mes, 1),
                         max_value=datetime.date(m_ano, m_mes, num_dias),
                         format="DD/MM/YYYY",
@@ -738,46 +777,55 @@ def renderizar_passo5():
                         elif isinstance(datas_sel, datetime.date):
                             dias_alvo = [datas_sel.day]
 
-                        salvar_estado_undo()
-                        grade_tmp = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
-                        chaves_tmp = list(st.session_state.get("militares_no_quadro_chaves", []))
+                        # TRAVA DE DIAS PASSADOS: Bloqueia alterações retroativas se homologada
+                        dias_passados_tentados = [
+                            d_a for d_a in dias_alvo 
+                            if datetime.date(m_ano, m_mes, d_a) < dt_hoje
+                        ]
                         
-                        mils_efetivos_alvo = []
-                        for sel_item in mils_sel_lote:
-                            if sel_item.startswith("--- TODA A EQUIPE:"):
-                                eq_nome_alvo = sel_item.replace("--- TODA A EQUIPE:", "").replace("---", "").strip()
-                                mils_efetivos_alvo.extend([m for m in mils_ord if m["equipe"] == eq_nome_alvo])
-                            elif sel_item in dict_mils:
-                                mils_efetivos_alvo.append(dict_mils[sel_item])
-
-                        cnt = 0
-                        mids_lote = [str(it["id"]).strip() for it in mils_efetivos_alvo]
-
-                        if "[REMOVER" in tipo_ev:
-                            for it in mils_efetivos_alvo:
-                                pair_rem = (str(it["id"]), str(it["equipe"]))
-                                chaves_tmp = [p for p in chaves_tmp if not (isinstance(p, (tuple, list)) and str(p[0]) == pair_rem[0] and str(p[1]) == pair_rem[1])]
-                                for d_a in range(1, num_dias + 1):
-                                    grade_tmp.pop(f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}", None)
-                                cnt += 1
-                            st.session_state["militares_no_quadro_chaves"] = chaves_tmp
-                            msg_sucesso = f"✅ {cnt} linha(s) de equipe removida(s) com sucesso do Quadro!"
-
-                        elif "[LIMPAR" in tipo_ev:
-                            for it in mils_efetivos_alvo:
-                                for d_a in range(1, num_dias + 1):
-                                    ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
-                                    grade_tmp.pop(ck, None)
-                                    cnt += 1
-                            msg_sucesso = f"✅ Linha(s) completamente limpa(s) para todos os dias do mês!"
-
+                        if status_escala == "HOMOLOGADA" and dias_passados_tentados and not pode_homologar:
+                            st.error(f"🔒 **TRAVA DE AUDITORIA:** A alteração para os dias {dias_passados_tentados} foi bloqueada pois são datas do passado em uma escala homologada.")
                         else:
-                            for it in mils_efetivos_alvo:
-                                for d_a in dias_alvo:
-                                    ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
-                                    grade_tmp[ck] = val_final_lote
+                            salvar_estado_undo()
+                            grade_tmp = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
+                            chaves_tmp = list(st.session_state.get("militares_no_quadro_chaves", []))
+                            
+                            mils_efetivos_alvo = []
+                            for sel_item in mils_sel_lote:
+                                if sel_item.startswith("--- TODA A EQUIPE:"):
+                                    eq_nome_alvo = sel_item.replace("--- TODA A EQUIPE:", "").replace("---", "").strip()
+                                    mils_efetivos_alvo.extend([m for m in mils_ord if m["equipe"] == eq_nome_alvo])
+                                elif sel_item in dict_mils:
+                                    mils_efetivos_alvo.append(dict_mils[sel_item])
+
+                            cnt = 0
+                            mids_lote = [str(it["id"]).strip() for it in mils_efetivos_alvo]
+
+                            if "[REMOVER" in tipo_ev:
+                                for it in mils_efetivos_alvo:
+                                    pair_rem = (str(it["id"]), str(it["equipe"]))
+                                    chaves_tmp = [p for p in chaves_tmp if not (isinstance(p, (tuple, list)) and str(p[0]) == pair_rem[0] and str(p[1]) == pair_rem[1])]
+                                    for d_a in range(1, num_dias + 1):
+                                        grade_tmp.pop(f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}", None)
                                     cnt += 1
-                            msg_sucesso = f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!"
+                                st.session_state["militares_no_quadro_chaves"] = chaves_tmp
+                                msg_sucesso = f"✅ {cnt} linha(s) de equipe removida(s) com sucesso do Quadro!"
+
+                            elif "[LIMPAR" in tipo_ev:
+                                for it in mils_efetivos_alvo:
+                                    for d_a in range(1, num_dias + 1):
+                                        ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
+                                        grade_tmp.pop(ck, None)
+                                        cnt += 1
+                                msg_sucesso = f"✅ Linha(s) completamente limpa(s) para todos os dias do mês!"
+
+                            else:
+                                for it in mils_efetivos_alvo:
+                                    for d_a in dias_alvo:
+                                        ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
+                                        grade_tmp[ck] = val_final_lote
+                                        cnt += 1
+                                msg_sucesso = f"✅ Alteração applied a {cnt} célula(s) com sucesso!"
 
                         if cnt:
                             grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
