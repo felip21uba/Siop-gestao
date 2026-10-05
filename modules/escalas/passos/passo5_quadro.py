@@ -1,7 +1,6 @@
 """
 ==============================================================================
-Módulo do Passo 5 - Quadro Mensal de Escalas e Carga Horária
-Ajustado para rotação precisa de ciclos e acúmulo de militares por equipe.
+Módulo do Passo 5 - Quadro Mensal de Escalas, Homologação e Reposição de Horas
 ==============================================================================
 """
 
@@ -27,11 +26,13 @@ from modules.escalas.passos.passo3_efetivo import (
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 from modules.escalas.passos.passo8_ferias import carregar_ferias_supabase
 
+# Siglas que representam dias neutros ou licenças
 SIGLAS_DIAS_NEUTROS = {
     "F", "D", "X", "FER", "DOM", "FERIADO",
     "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT", "RH"
 }
 
+# Siglas que abatem a meta mensal do militar
 SIGLAS_ABATEM_META = {
     "F", "D", "X", "FER", "DOM", "FERIADO",
     "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT", "RH"
@@ -57,8 +58,10 @@ def padronizar_entrada_quadro(valor):
     if valor is None or pd.isna(valor):
         return "F"
     v = str(valor).strip().upper()
-    if not v or v in ["F", "FOLGA", "RH"]:
-        return "F" if v not in ["RH"] else "RH"
+    if not v or v in ["F", "FOLGA"]:
+        return "F"
+    if v in ["RH", "REPOSICAO", "REPOSIÇÃO", "REPOSICAO DE HORAS"]:
+        return "RH"
     if v in ["D", "DOM", "DOMINGO", "DESCANSO", "OFF"]:
         return "D"
     if v in ["X", "FER", "FERIADO"]:
@@ -151,7 +154,7 @@ def executar_desfazer_undo():
         st.toast("⚠️ Nenhum histórico disponível para desfazer.", icon="ℹ️")
         return False
 
-def executar_auto_save_banco():
+def executar_auto_save_banco(status_escala="RASCUNHO"):
     try:
         m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
         m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
@@ -171,15 +174,18 @@ def executar_auto_save_banco():
             "dias_selecionados_passo4": copy.deepcopy(st.session_state.get("dias_selecionados_passo4", [])),
         }
 
+        elaborador_nome = st.session_state.get("p5_elaborador_input", "GESTOR P3")
+        homologador_nome = st.session_state.get("p5_homologador_input", "TEN CEL LOPES")
+
         salvar_escala_mensal_supabase(
             ano=m_ano,
             mes=m_mes,
             equipe_nome="GERAL",
             modalidade=st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso"),
             matriz_dados=matriz_dados,
-            elaborado_por="GESTOR",
-            homologado_por="GESTOR",
-            status="RASCUNHO"
+            elaborado_por=elaborador_nome,
+            homologado_por=homologador_nome,
+            status=status_escala
         )
         st.session_state["ultima_gravacao"] = datetime.datetime.now()
         emitir_sinal_atualizacao_espelho()
@@ -196,9 +202,11 @@ def carregar_escala_salva_banco():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
 
     try:
-        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", int(m_ano)).eq("mes", int(m_mes)).execute()
+        res = supabase.table("escalas_mensais").select("*").eq("ano", int(m_ano)).eq("mes", int(m_mes)).execute()
         if res and res.data and len(res.data) > 0:
-            md = res.data[0].get("matriz_dados", {})
+            row_escala = res.data[0]
+            md = row_escala.get("matriz_dados", {})
+            
             st.session_state["grade_escala_lancamentos"] = md.get("grade_escala_lancamentos", {})
             chaves_raw = md.get("militares_no_quadro_chaves", [])
             st.session_state["militares_no_quadro_chaves"] = [
@@ -210,6 +218,15 @@ def carregar_escala_salva_banco():
             st.session_state["bh_configs"] = md.get("bh_configs", {})
             st.session_state["ajuste_saldo_map"] = md.get("ajuste_saldo_map", {})
             st.session_state["dias_selecionados_passo4"] = md.get("dias_selecionados_passo4", [])
+            
+            status_banco = str(row_escala.get("status", "RASCUNHO")).upper()
+            st.session_state["status_escala_ativo"] = status_banco
+            st.session_state["toggle_trava_quadro"] = (status_banco == "HOMOLOGADA")
+            st.session_state["escala_fechada_auditoria"] = (status_banco == "HOMOLOGADA")
+            
+            st.session_state["p5_elaborador_input"] = row_escala.get("elaborado_por", "GESTOR P3")
+            st.session_state["p5_homologador_input"] = row_escala.get("homologado_por", "TEN CEL LOPES")
+            
             st.session_state["chave_escala_carregada"] = f"{m_ano}_{m_mes:02d}"
             return True
         return False
@@ -218,7 +235,7 @@ def carregar_escala_salva_banco():
         return False
 
 # ============================================================
-# AUDITORIA E TRAVAS DE SOBREPOSIÇÃO ESTREITAMENTE POR MILITAR
+# AUDITORIA E TRAVAS DE SOBREPOSIÇÃO
 # ============================================================
 
 def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_submetida=None):
@@ -377,7 +394,6 @@ def recalcular_escala_matriz():
     h_adm_norm = st.session_state.get("adm_h_norm", "08:00 às 12:00\n13:30 às 17:00")
     h_adm_qua = st.session_state.get("adm_h_qua", "08:30 às 13:00")
 
-    # Mapeamentos e Offsets do Ciclo 12x36
     vetor_base_36 = [st.session_state.get("c36_h_dia", "07:00 às 19:00"), "D", st.session_state.get("c36_h_noite", "19:00 às 07:00"), "D", "F"]
     offset_36 = {
         "Dia (Trabalho)": 0,
@@ -387,7 +403,6 @@ def recalcular_escala_matriz():
         "Folga": 4
     }.get(st.session_state.get("c36_fase_ini", "Dia (Trabalho)"), 0)
 
-    # Mapeamentos e Offsets do Ciclo 12x72
     vetor_base_72 = [st.session_state.get("c72_h_dia", "06:00 às 18:00"), st.session_state.get("c72_h_noite", "18:00 às 06:00"), "D", "D", "F"]
     offset_72 = {
         "Fase 1 (Dia)": 0,
@@ -492,7 +507,6 @@ def renderizar_passo5():
         
         grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
 
-        # ACÚMULO INTELIGENTE: Preserva os militares que já estavam na equipe e acrescenta os novos
         novas_chaves_equipe = list(existentes)
         for mid in sel_ids:
             pair = (mid, eq_ativa)
@@ -508,7 +522,7 @@ def renderizar_passo5():
             st.session_state["grade_escala_lancamentos"] = grade_backup
             st.error("⛔ **Lançamento Cancelado:** Foram detetados choques/sobreposições de horário para o militar! Verifique os avisos no painel abaixo.")
         else:
-            executar_auto_save_banco()
+            executar_auto_save_banco(status_escala=st.session_state.get("status_escala_ativo", "RASCUNHO"))
             
         st.session_state["atualizar_quadro_passo5"] = False
 
@@ -518,7 +532,9 @@ def renderizar_passo5():
     avisos_descanso = st.session_state.get("lista_avisos_descanso", [])
     militares = st.session_state.get("lista_militares") or carregar_militares_supabase() or []
     st.session_state["lista_militares"] = militares
+    
     quadro_travado = st.session_state.get("toggle_trava_quadro", False)
+    status_escala = st.session_state.get("status_escala_ativo", "RASCUNHO")
 
     with st.expander("📌 PASSO 5: Quadro Mensal de Escalas e Carga Horária", expanded=True):
         st.markdown(
@@ -532,14 +548,62 @@ def renderizar_passo5():
             unsafe_allow_html=True
         )
 
+        # =========================================================================
+        # 🔐 PAINEL DE HOMOLOGAÇÃO E TRAVAMENTO DE SEGURANÇA
+        # =========================================================================
+        with st.container(border=True):
+            col_h1, col_h2, col_h3, col_h4 = st.columns([2, 2, 1.5, 1.5], vertical_alignment="bottom")
+            
+            with col_h1:
+                st.session_state["p5_elaborador_input"] = st.text_input(
+                    "📝 Elaborado por (P3/Sargenteante):",
+                    value=st.session_state.get("p5_elaborador_input", "GESTOR P3"),
+                    disabled=quadro_travado,
+                    key="txt_p5_elaborador"
+                ).strip().upper()
+
+            with col_h2:
+                st.session_state["p5_homologador_input"] = st.text_input(
+                    "🔏 Homologado por (Comandante Cia/Bpm):",
+                    value=st.session_state.get("p5_homologador_input", "TEN CEL LOPES"),
+                    disabled=quadro_travado,
+                    key="txt_p5_homologador"
+                ).strip().upper()
+
+            with col_h3:
+                if status_escala == "HOMOLOGADA":
+                    st.success("🔒 **ESCALA HOMOLOGADA**")
+                else:
+                    st.info("📝 **MODO RASCUNHO**")
+
+            with col_h4:
+                if status_escala != "HOMOLOGADA":
+                    if st.button("🔒 Homologar Escala", type="primary", use_container_width=True, help="Aprova a escala e trava a edição do Quadro."):
+                        st.session_state["status_escala_ativo"] = "HOMOLOGADA"
+                        st.session_state["toggle_trava_quadro"] = True
+                        st.session_state["escala_fechada_auditoria"] = True
+                        executar_auto_save_banco(status_escala="HOMOLOGADA")
+                        st.success("🎉 Escala homologada e travada com sucesso!")
+                        st.rerun()
+                else:
+                    if st.button("🔓 Reabrir Rascunho", type="secondary", use_container_width=True, help="Destrava o Quadro para edições e ajustes."):
+                        st.session_state["status_escala_ativo"] = "RASCUNHO"
+                        st.session_state["toggle_trava_quadro"] = False
+                        st.session_state["escala_fechada_auditoria"] = False
+                        executar_auto_save_banco(status_escala="RASCUNHO")
+                        st.warning("🔓 Escala reaberta para edições.")
+                        st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
         col_esq, col_btn1, col_btn2, col_btn3 = st.columns([1.5, 1.0, 0.8, 0.7], vertical_alignment="center")
 
         with col_esq:
             cnt_linhas = len(st.session_state.get("militares_no_quadro_chaves", []))
-            st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legendas `FE` / `RH` = Dias Neutros.*")
+            st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legendas `FE` / `RH` (Reposição de Horas) = Dias Neutros.*")
 
         with col_btn1:
-            if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True):
+            if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True, disabled=quadro_travado):
                 if not st.session_state.get("militares_selecionados_ids"):
                     st.warning("⚠️ Selecione ao menos um militar no Passo 3 para aplicar os lançamentos na equipe ativa.")
                 else:
@@ -548,7 +612,7 @@ def renderizar_passo5():
                     st.rerun()
 
         with col_btn2:
-            if st.button("↩️️ Desfazer", type="secondary", use_container_width=True, help="Reverte a última alteração efetuada no Quadro."):
+            if st.button("↩ Desfazer", type="secondary", use_container_width=True, disabled=quadro_travado, help="Reverte a última alteração efetuada no Quadro."):
                 executar_desfazer_undo()
                 st.rerun()
 
@@ -617,7 +681,7 @@ def renderizar_passo5():
 
                 opcoes_eventos = [
                     "Horário Normal", 
-                    "RH (Recesso/Folga)",
+                    "RH (Reposição de Horas)",
                     "FE (Férias)", 
                     "LM (Licença)", 
                     "ATE (Atestado)", 
@@ -636,7 +700,7 @@ def renderizar_passo5():
                 eh_limpeza_linha = "[LIMPAR" in tipo_ev
 
                 if eh_limpeza_linha:
-                    c_f2.caption("📅 *Ação applied automaticamente a todos os dias do mês.*")
+                    c_f2.caption("📅 *Ação aplicada automaticamente a todos os dias do mês.*")
                     datas_sel = (datetime.date(m_ano, m_mes, 1), datetime.date(m_ano, m_mes, num_dias))
                 else:
                     datas_sel = c_f2.date_input(
@@ -726,7 +790,7 @@ def renderizar_passo5():
                                 st.error("⛔ **Lançamento Cancelado:** Foi detetado choque de horário para o militar! O aviso detalhado foi gerado no painel abaixo.")
                             else:
                                 st.session_state["grade_escala_lancamentos"] = grade_tmp
-                                executar_auto_save_banco()
+                                executar_auto_save_banco(status_escala=status_escala)
                                 st.success(msg_sucesso)
                                 st.rerun()
 
@@ -780,45 +844,47 @@ def renderizar_passo5():
                 use_container_width=True,
                 hide_index=True,
                 height=450,
+                disabled=quadro_travado,
                 key="editor_escala_principal"
             )
 
-            alterou_quadro = False
-            grade_backup_ed = copy.deepcopy(grade)
+            if not quadro_travado:
+                alterou_quadro = False
+                grade_backup_ed = copy.deepcopy(grade)
 
-            for idx_r, row in df_ed.iterrows():
-                if idx_r >= len(mils_ord):
-                    continue
+                for idx_r, row in df_ed.iterrows():
+                    if idx_r >= len(mils_ord):
+                        continue
 
-                it = mils_ord[idx_r]
-                nova_ordem = int(row.get("ORDEM", idx_r + 1))
+                    it = mils_ord[idx_r]
+                    nova_ordem = int(row.get("ORDEM", idx_r + 1))
 
-                if st.session_state["ordem_customizada_map"].get(it["chave_linha"]) != nova_ordem:
-                    salvar_estado_undo()
-                    st.session_state["ordem_customizada_map"][it["chave_linha"]] = nova_ordem
-                    alterou_quadro = True
-
-                for d, col_name in colunas_dias:
-                    val_editado = str(row.get(col_name, "")).strip()
-                    ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d:02d}"
-                    if grade.get(ck, "") != val_editado:
+                    if st.session_state["ordem_customizada_map"].get(it["chave_linha"]) != nova_ordem:
                         salvar_estado_undo()
-                        if val_editado == "":
-                            grade.pop(ck, None)
-                        else:
-                            grade[ck] = padronizar_entrada_quadro(val_editado)
+                        st.session_state["ordem_customizada_map"][it["chave_linha"]] = nova_ordem
                         alterou_quadro = True
 
-            if alterou_quadro:
-                st.session_state["limpar_avisos_manual"] = False
-                tem_bloqueio_ed = verificar_trava_sobreposicao(grade_submetida=grade)
-                
-                if tem_bloqueio_ed:
-                    st.session_state["grade_escala_lancamentos"] = grade_backup_ed
-                    st.error("⛔ **Lançamento Direto Cancelado:** A edição manual gerou choque de horários! Consulte os avisos abaixo.")
-                else:
-                    st.session_state["grade_escala_lancamentos"] = grade
-                    executar_auto_save_banco()
+                    for d, col_name in colunas_dias:
+                        val_editado = str(row.get(col_name, "")).strip()
+                        ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d:02d}"
+                        if grade.get(ck, "") != val_editado:
+                            salvar_estado_undo()
+                            if val_editado == "":
+                                grade.pop(ck, None)
+                            else:
+                                grade[ck] = padronizar_entrada_quadro(val_editado)
+                            alterou_quadro = True
+
+                if alterou_quadro:
+                    st.session_state["limpar_avisos_manual"] = False
+                    tem_bloqueio_ed = verificar_trava_sobreposicao(grade_submetida=grade)
+                    
+                    if tem_bloqueio_ed:
+                        st.session_state["grade_escala_lancamentos"] = grade_backup_ed
+                        st.error("⛔ **Lançamento Direto Cancelado:** A edição manual gerou choque de horários! Consulte os avisos abaixo.")
+                    else:
+                        st.session_state["grade_escala_lancamentos"] = grade
+                        executar_auto_save_banco(status_escala=status_escala)
         else:
             st.info("💡 Clique em '⚡ Aplicar Lançamentos' para montar a escala com os militares selecionados.")
 
@@ -833,11 +899,11 @@ def renderizar_passo5():
                 st.session_state["lista_bloqueios_auditoria"] = []
                 st.session_state["lista_avisos_descanso"] = []
                 st.session_state["limpar_avisos_manual"] = False
-                executar_auto_save_banco()
+                executar_auto_save_banco(status_escala=status_escala)
                 st.success("🧹 Quadro limpo com sucesso!")
                 st.rerun()
 
         with c_act2:
-            if st.button("💾 Salvar Rascunho no Banco", type="primary", use_container_width=True):
-                if executar_auto_save_banco():
+            if st.button("💾 Salvar Rascunho no Banco", type="primary", use_container_width=True, disabled=quadro_travado):
+                if executar_auto_save_banco(status_escala=status_escala):
                     st.success("✅ Rascunho da escala salvo no Supabase com sucesso!")
