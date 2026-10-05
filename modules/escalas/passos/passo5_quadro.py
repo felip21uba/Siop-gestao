@@ -1,3 +1,10 @@
+"""
+==============================================================================
+Módulo do Passo 5 - Quadro Mensal de Escalas e Carga Horária
+Ajustado para rotação precisa de ciclos e acúmulo de militares por equipe.
+==============================================================================
+"""
+
 import streamlit as st
 import datetime
 import calendar
@@ -22,12 +29,12 @@ from modules.escalas.passos.passo8_ferias import carregar_ferias_supabase
 
 SIGLAS_DIAS_NEUTROS = {
     "F", "D", "X", "FER", "DOM", "FERIADO",
-    "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT"
+    "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT", "RH"
 }
 
 SIGLAS_ABATEM_META = {
     "F", "D", "X", "FER", "DOM", "FERIADO",
-    "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT"
+    "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT", "RH"
 }
 
 # ============================================================
@@ -50,8 +57,8 @@ def padronizar_entrada_quadro(valor):
     if valor is None or pd.isna(valor):
         return "F"
     v = str(valor).strip().upper()
-    if not v or v in ["F", "FOLGA"]:
-        return "F"
+    if not v or v in ["F", "FOLGA", "RH"]:
+        return "F" if v not in ["RH"] else "RH"
     if v in ["D", "DOM", "DOMINGO", "DESCANSO", "OFF"]:
         return "D"
     if v in ["X", "FER", "FERIADO"]:
@@ -65,7 +72,6 @@ def extrair_intervalos_horarios(texto_celula, data_ref):
     if texto in SIGLAS_DIAS_NEUTROS:
         return []
 
-    # Suporta formatos flexíveis: 14:00 às 00:00, 14:00/00:00, 14-00, 14/00, etc.
     padrao = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', texto)
     intervalos = []
 
@@ -90,8 +96,7 @@ def calcular_horas_efetivas_turno(texto_celula, data_ref, eh_supervisao=False):
     intervalos = extrair_intervalos_horarios(texto_celula, data_ref)
     if not intervalos:
         v = str(texto_celula).upper().strip()
-        if v in ["1", "2", "RH", "TPB", "T1", "T2"]:
-            # Valor padrão sem detalhamento explícito
+        if v in ["1", "2", "TPB", "T1", "T2"]:
             return 12.0
         return 0.0
 
@@ -104,7 +109,6 @@ def calcular_horas_efetivas_turno(texto_celula, data_ref, eh_supervisao=False):
             minutos_presenciais_reais += 1.0
             hora_atual = dt_curr.hour
 
-            # Bonificação noturna de +10 minutos por hora entre 23:00 e 05:00 (Fator 70/60)
             is_noturno = (hora_atual >= 23 or hora_atual < 5)
             fator_minuto = (70.0 / 60.0) if is_noturno else 1.0
             horas_presenciais_efetivas += (1.0 / 60.0) * fator_minuto
@@ -261,7 +265,7 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_
                 val = grade.get(f"{m_id_alvo}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F")
                 val_clean = str(val).strip().upper()
 
-                if val_clean in SIGLAS_DIAS_NEUTROS or val_clean in ["", "NONE", "NAN", "F", "D", "X"]:
+                if val_clean in SIGLAS_DIAS_NEUTROS or val_clean in ["", "NONE", "NAN", "F", "D", "X", "RH"]:
                     continue
 
                 intervalos = extrair_intervalos_horarios(val_clean, dt_ref)
@@ -327,7 +331,7 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_
     return len(bloqueios) > 0
 
 def recalcular_escala_matriz():
-    """Calcula a matriz do mês e SOBRESCREVE com FE as férias do Passo 8."""
+    """Calcula a matriz do mês mantendo os lançamentos existentes e aplicando a rotação do ciclo escolhido."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -373,13 +377,28 @@ def recalcular_escala_matriz():
     h_adm_norm = st.session_state.get("adm_h_norm", "08:00 às 12:00\n13:30 às 17:00")
     h_adm_qua = st.session_state.get("adm_h_qua", "08:30 às 13:00")
 
-    seq_36 = {"Dia (Trabalho)": [st.session_state.get("c36_h_dia", "07:00 às 19:00"), "D", st.session_state.get("c36_h_noite", "19:00 às 07:00"), "D", "F"]}.get(
-        st.session_state.get("c36_fase_ini", "Dia (Trabalho)"), ["07:00 às 19:00", "D", "19:00 às 07:00", "D", "F"]
-    )
-    seq_72 = {"Fase 1 (Dia)": [st.session_state.get("c72_h_dia", "06:00 às 18:00"), st.session_state.get("c72_h_noite", "18:00 às 06:00"), "D", "D", "F"]}.get(
-        st.session_state.get("c72_fase_ini", "Fase 1 (Dia)"), ["06:00 às 18:00", "18:00 às 06:00", "D", "D", "F"]
-    )
+    # Mapeamentos e Offsets do Ciclo 12x36
+    vetor_base_36 = [st.session_state.get("c36_h_dia", "07:00 às 19:00"), "D", st.session_state.get("c36_h_noite", "19:00 às 07:00"), "D", "F"]
+    offset_36 = {
+        "Dia (Trabalho)": 0,
+        "Descanso Pós-Dia": 1,
+        "Noite (Trabalho)": 2,
+        "Descanso Pós-Noite": 3,
+        "Folga": 4
+    }.get(st.session_state.get("c36_fase_ini", "Dia (Trabalho)"), 0)
+
+    # Mapeamentos e Offsets do Ciclo 12x72
+    vetor_base_72 = [st.session_state.get("c72_h_dia", "06:00 às 18:00"), st.session_state.get("c72_h_noite", "18:00 às 06:00"), "D", "D", "F"]
+    offset_72 = {
+        "Fase 1 (Dia)": 0,
+        "Fase 2 (Noite)": 1,
+        "Descanso 1": 2,
+        "Descanso 2": 3,
+        "Folga": 4
+    }.get(st.session_state.get("c72_fase_ini", "Fase 1 (Dia)"), 0)
+
     sem_iso_d1 = datetime.date(m_ano, m_mes, 1).isocalendar()[1]
+    militares_selecionados_agora = set(str(mid) for mid in st.session_state.get("militares_selecionados_ids", []))
 
     for pair in st.session_state.get("militares_no_quadro_chaves", []):
         if not (isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[1]) == eq_ativa):
@@ -387,12 +406,16 @@ def recalcular_escala_matriz():
 
         m_id = str(pair[0])
         dias_ferias_mil = dias_ferias_por_militar.get(m_id, set())
+        is_militar_novo_lancamento = m_id in militares_selecionados_agora
 
         for d in range(1, num_dias + 1):
             k = f"{m_id}_{eq_ativa}_{m_ano}_{m_mes:02d}_{d:02d}"
 
             if d in dias_ferias_mil:
                 grade[k] = "FE"
+                continue
+
+            if k in grade and not is_militar_novo_lancamento:
                 continue
 
             if any(sig in str(grade.get(k, "")).upper() for sig in SIGLAS_DIAS_NEUTROS if sig not in ["F", "D", "X"]):
@@ -411,11 +434,11 @@ def recalcular_escala_matriz():
                     valor_dia = "F"
 
             elif mod_nome == "Ciclo 12x36":
-                val_c = seq_36[(d - 1) % 5]
+                val_c = vetor_base_36[(d - 1 + offset_36) % 5]
                 valor_dia = val_c if (d in dias_ativos or val_c in ["D", "F"]) else "F"
 
             elif mod_nome == "Ciclo 12x72 (5D)":
-                val_c = seq_72[(d - 1) % 5]
+                val_c = vetor_base_72[(d - 1 + offset_72) % 5]
                 valor_dia = val_c if (d in dias_ativos or val_c in ["D", "F"]) else "F"
 
             elif mod_nome == "Dobradinha (14D)":
@@ -466,11 +489,17 @@ def renderizar_passo5():
         sel_ids = set(str(mid) for mid in st.session_state.get("militares_selecionados_ids", []))
         eq_ativa = str(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
         existentes = [(str(p[0]), str(p[1])) for p in st.session_state.get("militares_no_quadro_chaves", []) if isinstance(p, (tuple, list)) and len(p) == 2]
-        existentes_set = set(existentes)
-
+        
         grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
 
-        st.session_state["militares_no_quadro_chaves"] = [p for p in existentes if (p[1] != eq_ativa or p[0] in sel_ids)] + [(mid, eq_ativa) for mid in sel_ids if (mid, eq_ativa) not in existentes_set]
+        # ACÚMULO INTELIGENTE: Preserva os militares que já estavam na equipe e acrescenta os novos
+        novas_chaves_equipe = list(existentes)
+        for mid in sel_ids:
+            pair = (mid, eq_ativa)
+            if pair not in novas_chaves_equipe:
+                novas_chaves_equipe.append(pair)
+
+        st.session_state["militares_no_quadro_chaves"] = novas_chaves_equipe
         st.session_state["limpar_avisos_manual"] = False
         recalcular_escala_matriz()
         
@@ -507,7 +536,7 @@ def renderizar_passo5():
 
         with col_esq:
             cnt_linhas = len(st.session_state.get("militares_no_quadro_chaves", []))
-            st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legenda `FE` = Férias Injetadas do Passo 8.*")
+            st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legendas `FE` / `RH` = Dias Neutros.*")
 
         with col_btn1:
             if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True):
@@ -588,6 +617,7 @@ def renderizar_passo5():
 
                 opcoes_eventos = [
                     "Horário Normal", 
+                    "RH (Recesso/Folga)",
                     "FE (Férias)", 
                     "LM (Licença)", 
                     "ATE (Atestado)", 
@@ -726,7 +756,7 @@ def renderizar_passo5():
                 if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
                     neutros += 1
 
-                if v_str not in ["", "F", "D", "X"] and (not any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]) or "DNT" in tokens_dia):
+                if v_str not in ["", "F", "D", "X", "RH"] and (not any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]) or "DNT" in tokens_dia):
                     dt_ref_dia = datetime.date(m_ano, m_mes, d)
                     eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in v_str)
                     tot_h += calcular_horas_efetivas_turno(v_str, dt_ref_dia, eh_supervisao=eh_sup)
