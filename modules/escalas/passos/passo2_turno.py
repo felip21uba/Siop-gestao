@@ -1,3 +1,9 @@
+"""
+==============================================================================
+Módulo do Passo 2 - Período de Apuração e Seleção de Modalidades/Ciclos
+==============================================================================
+"""
+
 import streamlit as st
 import datetime
 import calendar
@@ -8,7 +14,10 @@ lista_meses = [
 ]
 
 def calcular_dias_trabalho_ciclo(mod_nome, m_a, m_m, num_dias):
-    """Calcula estritamente os dias em que há turno de trabalho efetivo."""
+    """
+    Calcula com precisão matemática os dias em que há turno de trabalho efetivo,
+    respeitando a fase exata escolhida para o DIA 01 do mês.
+    """
     if mod_nome == "ADM (Seg-Sex)":
         return [d for d in range(1, num_dias + 1) if calendar.weekday(m_a, m_m, d) < 5]
 
@@ -16,15 +25,33 @@ def calcular_dias_trabalho_ciclo(mod_nome, m_a, m_m, num_dias):
         h_d = st.session_state.get("c36_h_dia", "07:00 às 19:00")
         h_n = st.session_state.get("c36_h_noite", "19:00 às 07:00")
         f_ini = st.session_state.get("c36_fase_ini", "Dia (Trabalho)")
-        seq_map = {
-            "Dia (Trabalho)": [h_d, "D", h_n, "D", "F"],
-            "Descanso Pós-Dia": ["D", h_n, "D", "F", h_d],
-            "Noite (Trabalho)": [h_n, "D", "F", h_d, "D"],
-            "Descanso Pós-Noite": ["D", "F", h_d, "D", h_n],
-            "Folga": ["F", h_d, "D", h_n, "D"]
+
+        vetor_base_36 = [h_d, "D", h_n, "D", "F"]
+        mapa_offset_36 = {
+            "Dia (Trabalho)": 0,
+            "Descanso Pós-Dia": 1,
+            "Noite (Trabalho)": 2,
+            "Descanso Pós-Noite": 3,
+            "Folga": 4
         }
-        padr = seq_map.get(f_ini, [h_d, "D", h_n, "D", "F"])
-        return [d for d in range(1, num_dias + 1) if padr[(d - 1) % 5] not in ["D", "F"]]
+        offset = mapa_offset_36.get(f_ini, 0)
+        return [d for d in range(1, num_dias + 1) if vetor_base_36[(d - 1 + offset) % 5] not in ["D", "F"]]
+
+    elif mod_nome == "Ciclo 12x72 (5D)":
+        h_d = st.session_state.get("c72_h_dia", "06:00 às 18:00")
+        h_n = st.session_state.get("c72_h_noite", "18:00 às 06:00")
+        f_ini = st.session_state.get("c72_fase_ini", "Fase 1 (Dia)")
+
+        vetor_base_72 = [h_d, h_n, "D", "D", "F"]
+        mapa_offset_72 = {
+            "Fase 1 (Dia)": 0,
+            "Fase 2 (Noite)": 1,
+            "Descanso 1": 2,
+            "Descanso 2": 3,
+            "Folga": 4
+        }
+        offset = mapa_offset_72.get(f_ini, 0)
+        return [d for d in range(1, num_dias + 1) if vetor_base_72[(d - 1 + offset) % 5] not in ["D", "F"]]
 
     elif mod_nome == "Dobradinha (14D)":
         sem_ini = st.session_state.get("dob_sem_ini", "SEMANA A")
@@ -40,20 +67,6 @@ def calcular_dias_trabalho_ciclo(mod_nome, m_a, m_m, num_dias):
             if trabalha:
                 dias.append(d)
         return dias
-
-    elif mod_nome == "Ciclo 12x72 (5D)":
-        h_d = st.session_state.get("c72_h_dia", "06:00 às 18:00")
-        h_n = st.session_state.get("c72_h_noite", "18:00 às 06:00")
-        f_ini = st.session_state.get("c72_fase_ini", "Fase 1 (Dia)")
-        seq_map = {
-            "Fase 1 (Dia)": [h_d, h_n, "D", "D", "F"],
-            "Fase 2 (Noite)": [h_n, "D", "D", "F", h_d],
-            "Descanso 1": ["D", "D", "F", h_d, h_n],
-            "Descanso 2": ["D", "F", h_d, h_n, "D"],
-            "Folga": ["F", h_d, h_n, "D", "D"]
-        }
-        padr = seq_map.get(f_ini, [h_d, h_n, "D", "D", "F"])
-        return [d for d in range(1, num_dias + 1) if padr[(d - 1) % 5] not in ["D", "F"]]
 
     elif mod_nome == "Supervisão":
         return list(range(1, num_dias + 1))
@@ -145,7 +158,7 @@ def renderizar_passo2():
             st.session_state["horario_sup_sex_sab"] = f"{sup_ss_ini.strftime('%H:%M')} às {sup_ss_fim.strftime('%H:%M')}"
 
         elif mod_atual == "Ciclo 12x36":
-            st.markdown("#### Sequência do Ciclo: `Dia` ➔ `Descanso (D)` ➔ `Noite` ➔ `Descanso (D)` ➔ `Folga (F)`")
+            st.markdown("#### Sequência do Ciclo: `Dia (12h)` ➔ `Descanso (D)` ➔ `Noite (13h)` ➔ `Descanso (D)` ➔ `Folga (F)`")
             c_c1, c_c2, c_c3, c_c4, c_c5 = st.columns(5)
             with c_c1:
                 c36_d_ini = st.time_input("Dia Início:", datetime.time(7, 0), key="c36_d_ini")
@@ -157,7 +170,7 @@ def renderizar_passo2():
                 c36_n_fim = st.time_input("Noite Fim:", datetime.time(7, 0), key="c36_n_fim")
             with c_c5:
                 fase_ini_36 = st.selectbox(
-                    "Sequência no DIA 01:",
+                    "Fase no DIA 01 do Mês:",
                     ["Dia (Trabalho)", "Descanso Pós-Dia", "Noite (Trabalho)", "Descanso Pós-Noite", "Folga"],
                     key="sb_fase_ini_36_clock"
                 )
@@ -205,7 +218,7 @@ def renderizar_passo2():
                 st.rerun()
 
         elif mod_atual == "Ciclo 12x72 (5D)":
-            st.markdown("#### Sequência do Ciclo: `Dia` ➔ `Noite` ➔ `Descanso (D)` ➔ `Descanso (D)` ➔ `Folga (F)`")
+            st.markdown("#### Sequência do Ciclo: `Fase 1: Dia (12h)` ➔ `Fase 2: Noite (13h)` ➔ `Descanso 1 (D)` ➔ `Descanso 2 (D)` ➔ `Folga (F)`")
             c_72_1, c_72_2, c_72_3, c_72_4, c_72_5 = st.columns(5)
             with c_72_1:
                 c72_d_ini = st.time_input("Dia Início:", datetime.time(6, 0), key="c72_d_ini")
@@ -217,7 +230,7 @@ def renderizar_passo2():
                 c72_n_fim = st.time_input("Noite Fim:", datetime.time(6, 0), key="c72_n_fim")
             with c_72_5:
                 fase_ini_72 = st.selectbox(
-                    "Fase no DIA 01:",
+                    "Fase no DIA 01 do Mês:",
                     ["Fase 1 (Dia)", "Fase 2 (Noite)", "Descanso 1", "Descanso 2", "Folga"],
                     key="sb_fase_ini_72_clock"
                 )
