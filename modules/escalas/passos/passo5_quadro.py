@@ -543,7 +543,6 @@ def renderizar_passo5():
     perfil_usr = str(usr_logado.get("nivel_acesso") or usr_logado.get("perfil_escala") or "TROPA").upper()
     cargo_usr = str(usr_logado.get("cargo_funcao") or "").upper()
     
-    # Valida se o usuário tem autoridade para homologar/destravar
     pode_homologar = any(p in perfil_usr or p in cargo_usr for p in ["ADMIN", "CMT_CIA", "COMANDANTE", "CAP", "TEN", "MAJ", "TEN CEL", "CEL", "PROGRAMADOR"])
 
     # 🌐 LISTA COMPLETA E LIVRE DE TODOS OS MILITARES DO BANCO PARA SELEÇÃO
@@ -656,7 +655,7 @@ def renderizar_passo5():
                 st.rerun()
 
         with col_btn3:
-            if st.button("🖥️ 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
+            if st.button("🖥️️ 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
                 abrir_segunda_janela_popup(m_mes, m_ano)
 
         if (bloqueios or avisos_descanso) and not st.session_state.get("limpar_avisos_manual", False):
@@ -706,7 +705,7 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
-        # PAINEL DE AJUSTE RÁPIDO
+        # PAINEL DE AJUSTE RÁPIDO COM CALENDÁRIO NATIVO E SELEÇÃO AVULSA
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote / Remoção)", expanded=False):
             if mils_ord and not quadro_travado:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
@@ -714,7 +713,7 @@ def renderizar_passo5():
                 equipes_no_quadro = sorted(list(set(m['equipe'] for m in mils_ord)))
                 opcoes_selecao_mils = [f"--- TODA A EQUIPE: {eq} ---" for eq in equipes_no_quadro] + list(dict_mils.keys())
 
-                c_f1, c_f2, c_f3 = st.columns([3, 2.5, 2.5])
+                c_f1, c_f2, c_f3 = st.columns([2.5, 3.5, 2.0])
                 mils_sel_lote = c_f1.multiselect("Militar(es) ou Equipe(s):", opcoes_selecao_mils, key="p5_lote_mils")
                 dt_hoje = datetime.date.today()
 
@@ -740,16 +739,47 @@ def renderizar_passo5():
 
                 if eh_limpeza_linha:
                     c_f2.caption("📅 *Ação aplicada automaticamente a todos os dias do mês.*")
-                    datas_sel = (datetime.date(m_ano, m_mes, 1), datetime.date(m_ano, m_mes, num_dias))
+                    dias_finais_alvo = list(range(1, num_dias + 1))
                 else:
-                    datas_sel = c_f2.date_input(
-                        "Selecione a(s) Data(s) no Calendário:",
-                        value=(datetime.date(m_ano, m_mes, 1), datetime.date(m_ano, m_mes, 1)),
-                        min_value=datetime.date(m_ano, m_mes, 1),
-                        max_value=datetime.date(m_ano, m_mes, num_dias),
-                        format="DD/MM/YYYY",
-                        key="p5_cal_picker"
-                    )
+                    # RENDERIZAÇÃO DO CALENDÁRIO POP-UP NATIVO (FIGURA DA FOTO)
+                    col_cal, col_avulsos = c_f2.columns([1.8, 2.2])
+                    
+                    with col_cal:
+                        dt_ref_mes = datetime.date(m_ano, m_mes, min(6, num_dias))
+                        datas_picker = st.date_input(
+                            "📅 Calendário (Dia ou Período):",
+                            value=(dt_ref_mes, dt_ref_mes),
+                            min_value=datetime.date(m_ano, m_mes, 1),
+                            max_value=datetime.date(m_ano, m_mes, num_dias),
+                            format="DD/MM/YYYY",
+                            key="p5_picker_popup_foto"
+                        )
+
+                    # Permite acrescentar dias avulsos adicionais diretamente na lista
+                    dias_do_mes_nums = list(range(1, num_dias + 1))
+                    
+                    with col_avulsos:
+                        dias_avulsos_extra = st.multiselect(
+                            "➕ Adicionar Dias Avulsos:",
+                            options=dias_do_mes_nums,
+                            placeholder="Ex: 2, 8, 15, 22...",
+                            key="p5_ms_dias_avulsos"
+                        )
+
+                    # CONSOLIDAÇÃO MATEMÁTICA DAS DATAS ESCOLHIDAS
+                    dias_finais_alvo = set(dias_avulsos_extra)
+                    
+                    if isinstance(datas_picker, (tuple, list)):
+                        d_start = datas_picker[0].day
+                        d_end = datas_picker[1].day if len(datas_picker) > 1 else d_start
+                        if d_end < d_start:
+                            d_start, d_end = d_end, d_start
+                        for d_i in range(d_start, d_end + 1):
+                            dias_finais_alvo.add(d_i)
+                    elif isinstance(datas_picker, datetime.date):
+                        dias_finais_alvo.add(datas_picker.day)
+
+                    dias_finais_alvo = sorted(list(dias_finais_alvo))
 
                 if "Horário Normal" in tipo_ev or "DNT" in tipo_ev:
                     c_h1, c_h2, c_btn = st.columns([1.5, 1.5, 3])
@@ -768,14 +798,10 @@ def renderizar_passo5():
                 if btn_aplicar_lote:
                     if not mils_sel_lote:
                         st.warning("⚠️ Selecione ao menos um militar ou equipe no campo 'Militar(es) ou Equipe(s)' para continuar.")
+                    elif not dias_finais_alvo and not eh_limpeza_linha:
+                        st.warning("⚠️ Selecione ao menos um dia no calendário ou na lista de dias avulsos.")
                     else:
-                        dias_alvo = []
-                        if isinstance(datas_sel, (tuple, list)):
-                            d_start = datas_sel[0].day
-                            d_end = datas_sel[1].day if len(datas_sel) > 1 else d_start
-                            dias_alvo = list(range(d_start, d_end + 1))
-                        elif isinstance(datas_sel, datetime.date):
-                            dias_alvo = [datas_sel.day]
+                        dias_alvo = dias_finais_alvo
 
                         # TRAVA DE DIAS PASSADOS: Bloqueia alterações retroativas se homologada
                         dias_passados_tentados = [
@@ -825,7 +851,7 @@ def renderizar_passo5():
                                         ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
                                         grade_tmp[ck] = val_final_lote
                                         cnt += 1
-                                msg_sucesso = f"✅ Alteração applied a {cnt} célula(s) com sucesso!"
+                                msg_sucesso = f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!"
 
                         if cnt:
                             grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
