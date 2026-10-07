@@ -1,7 +1,7 @@
 """
 ==============================================================================
 🛡️ SIOP PMMG - Identidade Visual & Cabeçalho Operacional TCO
-Arquivo: modules/tco/estilo_tco.py
+Arquivo: modules/tco/estilo_tco.py (Cores Originais da Aplicação)
 ==============================================================================
 """
 
@@ -18,72 +18,71 @@ def obter_hora_atual_formatada():
 
 
 def aplicar_estilo_tco_completo():
-    """Aplica o design militar escuro (marrom/castanho/bege) ao módulo TCO."""
+    """Aplica o design original fiel à paleta fornecida."""
     st.markdown(
         """
     <style>
-    /* Cartão Principal do Cabeçalho Tático */
+    /* Cartão Principal do Cabeçalho - Gradiente Original #2c1d18 -> #3e2723 */
     .siop-header-container {
-        background: linear-gradient(135deg, #2b1f1c 0%, #1c1412 100%);
-        border: 1px solid #4a342e;
-        border-radius: 12px;
-        padding: 14px 22px;
+        background: linear-gradient(135deg, #2c1d18 0%, #3e2723 100%);
+        border: 1px solid #5d4037;
+        border-radius: 10px;
+        padding: 14px 20px;
         margin-bottom: 20px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     }
 
     .siop-header-left {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 14px;
     }
 
-    /* Ícone Escudo / Brasão */
+    /* Emblema / Brasão com o tom #8d6e63 e borda #a1887f */
     .siop-shield-badge {
-        background: linear-gradient(135deg, #3d2b25 0%, #201715 100%);
-        border: 1.5px solid #d4a373;
-        border-radius: 10px;
-        width: 52px;
-        height: 52px;
+        background-color: #2c1d18;
+        border: 1.5px solid #8d6e63;
+        border-radius: 8px;
+        width: 48px;
+        height: 48px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 26px;
-        box-shadow: inset 0 0 8px rgba(212, 163, 115, 0.2);
+        font-size: 24px;
         flex-shrink: 0;
     }
 
+    /* Títulos e Tipografia em Bege Suave (#ffe0b2) */
     .siop-title-text h1 {
-        font-size: 1.35rem !important;
-        font-weight: 800 !important;
-        color: #f7e6d0 !important;
+        font-size: 1.30rem !important;
+        font-weight: 700 !important;
+        color: #ffe0b2 !important;
         margin: 0 !important;
         padding: 0 !important;
-        letter-spacing: 0.3px;
         display: flex;
         align-items: center;
         gap: 8px;
     }
 
+    /* Subtítulo em Bege Acinzentado (#bcaaa4) */
     .siop-subtitle-text {
-        font-size: 0.84rem;
-        color: #bfa59a;
-        margin-top: 4px;
+        font-size: 0.85rem;
+        color: #bcaaa4;
+        margin-top: 3px;
         display: flex;
         align-items: center;
         gap: 6px;
     }
 
     .siop-location-tag {
-        color: #d4a373;
+        color: #ffe0b2;
         font-weight: 600;
     }
 
-    /* Seção Direita: Relógio e Badge de Usuário */
     .siop-header-right {
         display: flex;
         align-items: center;
@@ -92,35 +91,34 @@ def aplicar_estilo_tco_completo():
 
     /* Relógio Digital Operacional */
     .siop-clock-badge {
-        background: #140d0c;
-        border: 1px solid #4a342e;
-        border-radius: 8px;
-        padding: 8px 14px;
-        color: #f0c987;
+        background-color: #1a120f;
+        border: 1px solid #4e342e;
+        border-radius: 6px;
+        padding: 8px 12px;
+        color: #ffe0b2;
         font-family: 'Consolas', 'Courier New', monospace;
-        font-size: 0.88rem;
+        font-size: 0.86rem;
         font-weight: 700;
         display: flex;
         align-items: center;
         gap: 8px;
-        box-shadow: inset 0 1px 4px rgba(0,0,0,0.6);
         white-space: nowrap;
     }
 
     .siop-pulse-dot {
-        width: 9px;
-        height: 9px;
-        background-color: #22c55e;
+        width: 8px;
+        height: 8px;
+        background-color: #4ade80;
         border-radius: 50%;
         display: inline-block;
-        box-shadow: 0 0 6px #22c55e;
+        box-shadow: 0 0 6px #4ade80;
     }
 
-    /* Card com Dados do Militar */
+    /* Badge do Usuário (#1a120f com borda #4e342e) */
     .siop-user-badge {
-        background: #160e0d;
-        border: 1px solid #4a342e;
-        border-radius: 8px;
+        background-color: #1a120f;
+        border: 1px solid #4e342e;
+        border-radius: 6px;
         padding: 7px 14px;
         text-align: left;
         line-height: 1.35;
@@ -128,24 +126,21 @@ def aplicar_estilo_tco_completo():
     }
 
     .siop-user-name {
-        color: #f7e6d0;
-        font-size: 0.85rem;
-        font-weight: 800;
+        color: #ffe0b2;
+        font-size: 0.86rem;
+        font-weight: 700;
     }
 
     .siop-user-mat {
-        color: #a38c82;
+        color: #bcaaa4;
         font-weight: normal;
         font-size: 0.80rem;
     }
 
     .siop-user-unit {
-        color: #c9b1a7;
+        color: #d7ccc8;
         font-size: 0.76rem;
         font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 5px;
     }
 
     @media (max-width: 900px) {
@@ -166,25 +161,22 @@ def aplicar_estilo_tco_completo():
 
 def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     """
-    Renderiza o cabeçalho idêntico à Foto 2, extraindo dados dinâmicos da sessão.
+    Renderiza o cabeçalho tático com os dados reais da sessão do militar.
     """
     aplicar_estilo_tco_completo()
 
-    # Extrai o nome de guerra ou nome completo
     posto_grad = str(
         usr_dados.get("cargo_funcao") or usr_dados.get("posto_grad") or "MILITAR"
     ).strip().upper()
     nome_guerra = str(
         usr_dados.get("nome_guerra") or usr_dados.get("nome_completo") or "OPERADOR"
     ).strip().upper()
-    
-    # Monta a identificação (Ex: CB PM OPERADOR ou CAP PEREIRA)
+
     if posto_grad and not nome_guerra.startswith(posto_grad):
         militar_identificacao = f"{posto_grad} {nome_guerra}"
     else:
         militar_identificacao = nome_guerra
 
-    # Matrícula / Nº de Polícia
     matricula = str(
         usr_dados.get("num_policia")
         or usr_dados.get("usuario_login")
@@ -192,15 +184,12 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
         or "N/I"
     ).strip()
 
-    # Unidade / Lotação ativa da sessão
     unidade_sessao = (
         st.session_state.get("cfg_unidade")
         or usr_dados.get("unidade")
         or "35ª CIA PM / 21º BPM"
     )
-    
-    # Subunidade e Cidade de referência
-    local_detalhe = "CREDS TCO / 35ª Cia PM - 21º BPM (Ubá-MG)"
+
     if "21" in str(unidade_sessao):
         local_detalhe = f"CREDS TCO / {unidade_sessao} (Ubá-MG)"
     else:
