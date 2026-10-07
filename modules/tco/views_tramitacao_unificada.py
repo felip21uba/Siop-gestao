@@ -54,9 +54,6 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
 
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
-    st.subheader("🎒 Custódia Física & Tramitação Unificada")
-    st.caption("Gerencie os bens sob sua posse, realize remessas para policiais/órgãos e consulte o histórico imutável das movimentações.")
-
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm_logado = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
 
@@ -65,11 +62,72 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         for p in ["GESTOR", "ADMIN", "PROGRAMADOR"]
     )
 
-    tab_pendentes, tab_externos, tab_historico = st.tabs([
-        "📤 Tramitar Materiais / REDS",
-        "🏛️ Receber / Confirmar Retorno de Órgão Externo",
-        "📜 Histórico Permanente de Envios & Ocorrências"
-    ])
+    if "subaba_tramitacao_ativa" not in st.session_state:
+        st.session_state["subaba_tramitacao_ativa"] = "TRAMITAR"
+
+    aba_atual = st.session_state["subaba_tramitacao_ativa"]
+
+    st.markdown("""
+    <style>
+    .painel-tramitacao-container {
+        background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
+        border: 2px solid #c5a059;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 18px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
+    }
+    .painel-tramitacao-titulo {
+        font-size: 1.25rem !important;
+        font-weight: 800 !important;
+        color: #ffffff !important;
+        margin: 0 0 4px 0 !important;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    }
+    .painel-tramitacao-subtitulo {
+        font-size: 0.84rem;
+        color: #f5ebe0;
+        margin-bottom: 14px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    with st.container():
+        st.markdown("""
+        <div class="painel-tramitacao-container">
+            <div class="painel-tramitacao-titulo">
+                🎒 Custódia Física & Tramitação Unificada
+            </div>
+            <div class="painel-tramitacao-subtitulo">
+                Gerencie os bens sob sua posse, realize remessas para policiais/órgãos e consulte o histórico imutável das movimentações.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_btn1, col_btn2, col_btn3 = st.columns(3)
+
+        with col_btn1:
+            btn_tipo1 = "primary" if aba_atual == "TRAMITAR" else "secondary"
+            if st.button("📤 Tramitar Materiais / REDS", key="nav_btn_tramitar_v9", type=btn_tipo1, use_container_width=True):
+                st.session_state["subaba_tramitacao_ativa"] = "TRAMITAR"
+                st.rerun()
+
+        with col_btn2:
+            btn_tipo2 = "primary" if aba_atual == "EXTERNO" else "secondary"
+            if st.button("🏛️ Receber / Confirmar Retorno de Órgão Externo", key="nav_btn_externo_v9", type=btn_tipo2, use_container_width=True):
+                st.session_state["subaba_tramitacao_ativa"] = "EXTERNO"
+                st.rerun()
+
+        with col_btn3:
+            btn_tipo3 = "primary" if aba_atual == "HISTORICO" else "secondary"
+            if st.button("📜 Histórico Permanente de Envios & Ocorrência", key="nav_btn_hist_v9", type=btn_tipo3, use_container_width=True):
+                st.session_state["subaba_tramitacao_ativa"] = "HISTORICO"
+                st.rerun()
+
+    st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
 
     if "fila_tramitacao_mapeada" not in st.session_state:
         st.session_state["fila_tramitacao_mapeada"] = []
@@ -80,7 +138,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     # =========================================================================
     # ABA 1: TRAMITAR MATERIAIS OU REDS SEM MATERIAIS
     # =========================================================================
-    with tab_pendentes:
+    if aba_atual == "TRAMITAR":
         bens_posse = []
         reds_sem_materiais = set()
 
@@ -424,7 +482,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     # =========================================================================
     # ABA 2: CONFIRMAR RETORNO / DEVOLUÇÃO DE ÓRGÃO EXTERNO
     # =========================================================================
-    with tab_externos:
+    elif aba_atual == "EXTERNO":
         st.markdown("##### 🏛️ Materiais em Tramitação Externa (PCMG, JECRIM, Perícia, MP)")
         st.caption("Como usuários de órgãos externos não possuem acesso ao SIOP, o Operador/Militar do TCO dá o aceite de retorno quando o material for devolvido à unidade.")
 
@@ -493,14 +551,12 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     # =========================================================================
     # ABA 3: HISTÓRICO PERMANENTE DE ENVIOS & OCORRÊNCIAS (PADRÃO TÁTICO)
     # =========================================================================
-    with tab_historico:
-        # Importação das funções dos modais do estilo
+    elif aba_atual == "HISTORICO":
         from modules.tco.estilo_tco import modal_cadeia_custodia_timeline, modal_guia_termo_oficial
 
         st.markdown("<h5 style='color: #ffe0b2;'>📜 Histórico Permanente de Envios & Ocorrências</h5>", unsafe_allow_html=True)
         st.caption("Consulte todas as tramitações, visualize a cadeia de custódia imutável ou emita a guia oficial de depósito.")
 
-        # CSS dos Badges Animados e Caixas Táticas
         st.markdown("""
         <style>
         @keyframes pulseAlert {
@@ -553,7 +609,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         </style>
         """, unsafe_allow_html=True)
 
-        # RETÂNGULO 1: FILTROS TÁTICOS
         with st.container():
             st.markdown('<div class="caixa-filtro-tatico">', unsafe_allow_html=True)
             col_f1, col_f2 = st.columns(2)
@@ -620,7 +675,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         status_h = item_h.get("status_tramite", "Em Custódia")
                         dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual") or item_h.get("data_ingestao")
 
-                        # Cálculo exato do tempo e dias sem trâmite
                         dias_parado = 0
                         dt_fmt_exata = "Data N/I"
                         if dt_env_str:
@@ -631,7 +685,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             except Exception:
                                 dt_fmt_exata = str(dt_env_str)[:16]
 
-                        # Definição do Ícone da Fase
                         fase_u = str(dest_h).upper()
                         if "INCINERAÇÃO" in fase_u or "DESTRUIÇÃO" in fase_u:
                             fase_tag_txt = "🔥 INCINERAÇÃO"
@@ -644,7 +697,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         else:
                             fase_tag_txt = f"📦 {dest_h[:18]}"
 
-                        # CARD DO MATERIAL COM AS 3 INFORMAÇÕES EM RETÂNGULOS (FOTO 1 + FOTO 4)
                         col_card_info, col_card_lateral = st.columns([7.2, 2.8])
                         
                         with col_card_info:
@@ -663,7 +715,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             st.markdown(html_card_mat, unsafe_allow_html=True)
 
                         with col_card_lateral:
-                            # BADGES DA LATERAL (FOTO 4)
                             html_badges = f"""
                             <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end; margin-bottom: 8px;">
                                 <div class="badge-fase-status">{fase_tag_txt}</div>
@@ -672,7 +723,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             """
                             st.markdown(html_badges, unsafe_allow_html=True)
 
-                            # BOTÕES REAIS: CADEIA DE CUSTÓDIA (FOTO 2) E GUIA/TERMO (FOTO 3)
                             col_b1, col_b2 = st.columns(2)
                             with col_b1:
                                 if st.button("🔗 Cadeia", key=f"btn_cad_{id_bem_h}_{idx_h}", help="Ver histórico imutável (Art. 158-B CPP)", use_container_width=True):
