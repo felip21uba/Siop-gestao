@@ -277,12 +277,43 @@ def calcular_tempo_decorrido_detalhado(str_data_hora):
         return "N/A", False, 0
 
 
+def obter_status_gargalo_e_tempo(bem):
+    status_tr = bem.get("status_tramite", "Em Custódia")
+    fase_dest = bem.get("fase_destinacao", "Com Fiel Depositário / Policial")
+    dt_ref = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao")
+    dest_pend = bem.get("destinatario_pendente")
+    ultimo_op = bem.get("ultimo_gestor_movimentou") or bem.get("fiel_depositario_atual") or "N/I"
+    
+    texto_tempo, e_alerta_4dias, dias_num = calcular_tempo_decorrido_detalhado(dt_ref)
+    
+    if dest_pend and status_tr in ["Pendente de Aceite", "Pendente Aceite"]:
+        ponto_cadeia = f"⏳ <b>Aguardando Aceite por:</b> <b>{dest_pend}</b>"
+    elif status_tr == "Transferido Definitivo":
+        ponto_cadeia = f"🔒 <b>Transferência Definitiva:</b> Encaminhado para <b>{fase_dest}</b>"
+    elif "Perícia" in fase_dest:
+        ponto_cadeia = f"🔬 <b>Em Perícia Técnica</b>"
+    elif "PCMG" in fase_dest or "Delegacia" in fase_dest:
+        ponto_cadeia = f"🏛️ <b>Encaminhado à Polícia Civil</b>"
+    elif "JECRIM" in fase_dest or "Fórum" in fase_dest:
+        ponto_cadeia = f"⚖️ <b>Entregue no JECRIM / Fórum</b>"
+    elif "Destruição" in fase_dest or "Descarte" in fase_dest:
+        ponto_cadeia = f"🔥 <b>Aguardando Destruição no Depósito</b>"
+    elif "DESTRUÍDO" in fase_dest or "ENCERRADO" in status_tr.upper():
+        ponto_cadeia = f"🔒 <b>Material Destruído / Encerrado</b>"
+    elif "Aguardando no CREDS-TC" in fase_dest:
+        ponto_cadeia = f"🏛️ <b>Aguardando no CREDS-TC / Custódia</b>"
+    else:
+        ponto_cadeia = f"🎒 <b>Em Custódia de:</b> <b>{bem.get('fiel_depositario_atual', 'N/I')}</b>"
+        
+    return ponto_cadeia, texto_tempo, e_alerta_4dias, dias_num
+
+
 def gerar_excel_panoramico_tco(lista_bens_filtrados):
     buffer = io.BytesIO()
     dados_excel = []
     
     for b in lista_bens_filtrados:
-        _, _, _, dias_num = calcular_tempo_decorrido_detalhado(
+        _, _, dias_num = calcular_tempo_decorrido_detalhado(
             b.get("data_envio_tramite") or b.get("data_posse_atual") or b.get("data_ingestao")
         )
         dt_ing = b.get("data_ingestao") or b.get("data_posse_atual") or ""
@@ -677,7 +708,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     item.get("data_envio_tramite") or item.get("data_posse_atual") or item.get("data_ingestao")
                 )
 
-                responsavel = str(item.get("ultimo_gestor_movimentou") or f"{nome_militar_atual} - MAT. {formatar_matricula_pm(mat_op)}")
+                responsavel = str(item.get("ultimo_gestor_movimentou") or f"{nome_militar_atual} - MAT. {mat_op}")
                 dias_sem_tramite = item.get("_dias_num", 0)
 
                 # Definição do Badge de Local/Status
@@ -814,7 +845,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             "unidade_origem": unidade_militar_atual,
                             "destino": destino_final,
                             "unidade_destino": destino_final,
-                            "detalhe": f"Destino atualizado para '{destino_final}'. Recebedor: {recebedor_nome_mat} | Gestor: {nome_militar_atual}"
+                            "detalhe": f"Destino atualizado para '{destino_final}'. Recebido por: {recebedor_nome_mat} | Gestor: {nome_militar_atual}"
                         })
                         st.session_state["material_selecionado_mov"] = None
                         st.success("✅ Movimentação confirmada e registrada com sucesso!")
