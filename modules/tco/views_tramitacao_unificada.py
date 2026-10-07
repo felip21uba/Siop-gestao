@@ -491,13 +491,71 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     st.rerun()
 
     # =========================================================================
-    # ABA 3: HISTÓRICO PERMANENTE DE ENVIOS & OCORRÊNCIAS (COM DATA E HORA EXATAS)
+    # ABA 3: HISTÓRICO PERMANENTE DE ENVIOS & OCORRÊNCIAS (PADRÃO TÁTICO)
     # =========================================================================
     with tab_historico:
-        st.markdown("##### 📜 Histórico Permanente de Envios & Ocorrências")
-        st.caption("Consulte todas as tramitações (incluindo envios definitivos, parciais e materiais já entregues). Pesquise livremente pelo Número do REDS.")
+        # Importação das funções dos modais do estilo
+        from modules.tco.estilo_tco import modal_cadeia_custodia_timeline, modal_guia_termo_oficial
 
-        with st.container(border=True):
+        st.markdown("<h5 style='color: #ffe0b2;'>📜 Histórico Permanente de Envios & Ocorrências</h5>", unsafe_allow_html=True)
+        st.caption("Consulte todas as tramitações, visualize a cadeia de custódia imutável ou emita a guia oficial de depósito.")
+
+        # CSS dos Badges Animados e Caixas Táticas
+        st.markdown("""
+        <style>
+        @keyframes pulseAlert {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .badge-animado-alerta {
+            background-color: #7f1d1d !important;
+            color: #fecaca !important;
+            border: 1px solid #ef4444 !important;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 0.76rem;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            animation: pulseAlert 2s infinite;
+        }
+        .badge-fase-status {
+            background-color: #8c7343 !important;
+            color: #ffffff !important;
+            border: 1px solid #c5a059 !important;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 0.76rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .caixa-filtro-tatico {
+            background: linear-gradient(135deg, #2b231d 0%, #1e1814 100%);
+            border: 1.5px solid #6b5735;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+        .tag-info-retangulo {
+            background-color: #140f0d;
+            border: 1px solid #54432a;
+            border-radius: 6px;
+            padding: 3px 8px;
+            color: #ffe0b2;
+            font-family: monospace;
+            font-size: 0.82rem;
+            font-weight: 700;
+            display: inline-block;
+            margin-right: 4px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # RETÂNGULO 1: FILTROS TÁTICOS
+        with st.container():
+            st.markdown('<div class="caixa-filtro-tatico">', unsafe_allow_html=True)
             col_f1, col_f2 = st.columns(2)
             with col_f1:
                 busca_reds_hist = st.text_input("🔍 Pesquisar por Nº do REDS (Busca Geral):", placeholder="Ex: 2026-000484967", key="txt_busca_reds_hist_v8").strip()
@@ -505,6 +563,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                 dt_hoje = datetime.date.today()
                 dt_30d = dt_hoje - datetime.timedelta(days=90)
                 intervalo_datas = st.date_input("🗓️ Filtrar por Período:", value=(dt_30d, dt_hoje), format="DD/MM/YYYY", key="date_hist_envios_v8")
+            st.markdown('</div>', unsafe_allow_html=True)
 
         envios_militar = []
         for b in all_bens or []:
@@ -542,7 +601,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                 df_hist.sort_values(by="data_envio_tramite", ascending=False, inplace=True)
             
             reds_unicos = list(df_hist["num_reds"].unique())
-
             agora_now = datetime.datetime.now()
 
             for num_reds_h in reds_unicos:
@@ -554,75 +612,71 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         id_bem_h = str(item_h.get("id_bem") or item_h.get("id"))
                         desc_h = item_h.get("descricao", "N/I")
                         qtd_h_val = item_h.get("quantidade", 1)
+                        unid_med = item_h.get("unidade_medida", "UN")
+                        lacre_h = item_h.get("involucro_lacre", "SEM LACRE")
+                        autor_h = item_h.get("autores", "N/I")
+                        custod_h = item_h.get("fiel_depositario_atual", "N/I")
                         dest_h = item_h.get("destinatario_pendente") or item_h.get("fase_destinacao") or "N/I"
                         status_h = item_h.get("status_tramite", "Em Custódia")
                         dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual") or item_h.get("data_ingestao")
 
-                        # EXIBIÇÃO DA DATA E HORA EXATAS
+                        # Cálculo exato do tempo e dias sem trâmite
+                        dias_parado = 0
                         dt_fmt_exata = "Data N/I"
                         if dt_env_str:
                             try:
-                                dt_fmt_exata = pd.to_datetime(dt_env_str).strftime("%d/%m/%Y às %H:%M")
+                                dt_obj_item = pd.to_datetime(dt_env_str)
+                                dt_fmt_exata = dt_obj_item.strftime("%d/%m/%Y às %H:%M")
+                                dias_parado = (agora_now - dt_obj_item.to_pydatetime().replace(tzinfo=None)).days
                             except Exception:
                                 dt_fmt_exata = str(dt_env_str)[:16]
 
-                        pode_cancelar = False
-                        tempo_restante_str = ""
-
-                        if item_h.get("destinatario_pendente") and status_h in ["Pendente de Aceite", "Em Tramitação"] and dt_env_str:
-                            try:
-                                dt_env_obj = pd.to_datetime(dt_env_str).to_pydatetime().replace(tzinfo=None)
-                                horas_passadas = (agora_now - dt_env_obj).total_seconds() / 3600.0
-                                if horas_passadas <= 72.0:
-                                    pode_cancelar = True
-                                    horas_restantes = max(0.0, 72.0 - horas_passadas)
-                                    tempo_restante_str = f"⏱️ {int(horas_restantes)}h {int((horas_restantes % 1)*60)}m restantes para cancelamento"
-                                else:
-                                    tempo_restante_str = "⏱️ Janela de cancelamento de 72h expirada"
-                            except Exception:
-                                pode_cancelar = False
-                        elif status_h == "Transferido Definitivo":
-                            tempo_restante_str = "🔒 Envio Definitivo Confirmado (Procedimento Encerrado/Órgão Externo)"
+                        # Definição do Ícone da Fase
+                        fase_u = str(dest_h).upper()
+                        if "INCINERAÇÃO" in fase_u or "DESTRUIÇÃO" in fase_u:
+                            fase_tag_txt = "🔥 INCINERAÇÃO"
+                        elif "PERÍCIA" in fase_u:
+                            fase_tag_txt = "🔬 PERÍCIA"
+                        elif "PCMG" in fase_u or "DELEGACIA" in fase_u:
+                            fase_tag_txt = "🏛️ POLÍCIA CIVIL"
+                        elif "JECRIM" in fase_u or "JUDICIÁRIO" in fase_u:
+                            fase_tag_txt = "⚖️ JECRIM"
                         else:
-                            tempo_restante_str = "✅ Custódia Confirmada"
+                            fase_tag_txt = f"📦 {dest_h[:18]}"
 
-                        col_info_h, col_act_h = st.columns([7, 3])
+                        # CARD DO MATERIAL COM AS 3 INFORMAÇÕES EM RETÂNGULOS (FOTO 1 + FOTO 4)
+                        col_card_info, col_card_lateral = st.columns([7.2, 2.8])
                         
-                        with col_info_h:
-                            st.markdown(
-                                f"• **Material:** {desc_h} (Qtd: {qtd_h_val})  \n"
-                                f"• **Destino / Fase:** <code class='st-emotion-cache-znj1k1'>{dest_h}</code> | **Status:** `{status_h}`  \n"
-                                f"• **Data/Hora da Transferência:** `{dt_fmt_exata}`",
-                                unsafe_allow_html=True
-                            )
-                            if tempo_restante_str:
-                                st.caption(tempo_restante_str)
+                        with col_card_info:
+                            html_card_mat = f"""
+                            <div style="background: linear-gradient(135deg, #2b231d 0%, #1e1814 100%); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
+                                📄 REDS: <strong style="color: #ffffff;">{num_reds_h}</strong> | Material: <strong style="color: #ffe0b2;">{desc_h}</strong> (Qtd: {qtd_h_val} {unid_med})<br/>
+                                🏷️ Lacre: <strong style="color: #ffffff;">{lacre_h}</strong> | Autor: <strong style="color: #ffe0b2;">{autor_h}</strong><br/>
+                                📍 Custodiante: <strong style="color: #c5a059;">{custod_h}</strong><br/>
+                                <div style="margin-top: 8px;">
+                                    🎯 Destino: <span class="tag-info-retangulo">{dest_h}</span>
+                                    📊 Status: <span class="tag-info-retangulo">{status_h}</span>
+                                    ⏱️ Data/Hora: <span class="tag-info-retangulo">{dt_fmt_exata}</span>
+                                </div>
+                            </div>
+                            """
+                            st.markdown(html_card_mat, unsafe_allow_html=True)
 
-                        with col_act_h:
-                            if pode_cancelar:
-                                if st.button("❌ Cancelar Envio", key=f"btn_canc_{id_bem_h}_{idx_h}", type="primary", width="stretch"):
-                                    payload_canc = {
-                                        "destinatario_pendente": None,
-                                        "unidade_destinatario_pendente": None,
-                                        "status_tramite": "Em Custódia",
-                                        "fiel_depositario_atual": nome_militar_atual,
-                                        "unidade_posse_atual": unidade_militar_atual
-                                    }
-                                    if atualizar_material_supabase(id_bem_h, payload_canc):
-                                        registrar_log_supabase({
-                                            "data_hora": agora_now.isoformat(),
-                                            "num_reds": num_reds_h,
-                                            "bem_id": f"{desc_h} (ID: {id_bem_h})",
-                                            "web_origem": "SIOP_TCO",
-                                            "acao": "CANCELAMENTO_TRAMITACAO_REMETER",
-                                            "origem": nome_militar_atual,
-                                            "unidade_origem": unidade_militar_atual,
-                                            "destino": nome_militar_atual,
-                                            "unidade_destino": unidade_militar_atual,
-                                            "detalhe": f"Envio para {dest_h} cancelado pelo remetente dentro das 72h."
-                                        })
-                                        st.success("✅ Tramitação cancelada! O material retornou para sua custódia física.")
-                                        st.cache_data.clear()
-                                        st.rerun()
-                            else:
-                                st.caption("🔒 Registro Imutável em Auditoria")
+                        with col_card_lateral:
+                            # BADGES DA LATERAL (FOTO 4)
+                            html_badges = f"""
+                            <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end; margin-bottom: 8px;">
+                                <div class="badge-fase-status">{fase_tag_txt}</div>
+                                {'<div class="badge-animado-alerta">⚠️ ' + str(dias_parado) + ' DIAS SEM TRÂMITE</div>' if dias_parado >= 4 else ''}
+                            </div>
+                            """
+                            st.markdown(html_badges, unsafe_allow_html=True)
+
+                            # BOTÕES REAIS: CADEIA DE CUSTÓDIA (FOTO 2) E GUIA/TERMO (FOTO 3)
+                            col_b1, col_b2 = st.columns(2)
+                            with col_b1:
+                                if st.button("🔗 Cadeia", key=f"btn_cad_{id_bem_h}_{idx_h}", help="Ver histórico imutável (Art. 158-B CPP)", use_container_width=True):
+                                    modal_cadeia_custodia_timeline(item_h.to_dict())
+                            with col_b2:
+                                if st.button("📄 Guia", key=f"btn_guia_{id_bem_h}_{idx_h}", help="Gerar Termo de Depósito e Apreensão", use_container_width=True):
+                                    modal_guia_termo_oficial(item_h.to_dict(), nome_militar_atual, num_pm_logado, unidade_militar_atual)
