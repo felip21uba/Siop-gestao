@@ -15,172 +15,17 @@ from core.permissions import usuario_eh_gestor_creds
 from modules.tco.parser_reds import extrair_dados_reds_pdf
 from modules.tco.storage import upload_midia_supabase
 from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase, carregar_logs_supabase
-from modules.tco.estilo_tco import modal_cadeia_custodia_timeline, modal_guia_termo_oficial
+from modules.tco.estilo_tco import (
+    injetar_estilo_passo3_tco,
+    formatar_matricula_pm,
+    modal_cadeia_custodia_timeline,
+    modal_guia_termo_oficial
+)
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
 # ==============================================================================
-# 🎨 IDENTIDADE VISUAL OFICIAL (FOTO 2: BOTÕES DOURADOS SÓLIDOS & CARDS MATTE)
+# 🔍 FUNÇÕES AUXILIARES DE BANCO DE DADOS DO TCO
 # ==============================================================================
-
-def injetar_css_cards_alternados():
-    """Injeta as cores oficiais da Foto 2 (sem cinzas apagados) e cards matte sem brilho."""
-    st.markdown("""
-    <style>
-    /* 1. Sidebar e Botões Principais no Padrão da Foto 2 (Dourado Quente Oficial) */
-    .stApp { 
-        background-color: #0f172a !important; 
-        color: #f8fafc !important; 
-    }
-    
-    section[data-testid="stSidebar"] { 
-        background-color: #172033 !important; 
-        border-right: 1.5px solid #2e3e54 !important; 
-    }
-
-    /* Botões da Sidebar / Primários em Dourado Quente (Foto 2) */
-    div.stButton > button[kind="primary"],
-    div[data-testid="stSidebar"] button[kind="primary"],
-    .btn-dourado-foto2 {
-        background-color: #a38048 !important;
-        color: #140d07 !important;
-        border: 1px solid #c49d5a !important;
-        font-weight: 800 !important;
-        border-radius: 8px !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.3) !important;
-    }
-    div.stButton > button[kind="primary"]:hover,
-    div[data-testid="stSidebar"] button[kind="primary"]:hover {
-        background-color: #b89355 !important;
-        color: #000000 !important;
-        border-color: #dfb66d !important;
-    }
-
-    div.stButton > button[kind="secondary"],
-    div[data-testid="stSidebar"] button[kind="secondary"] {
-        background-color: #242f44 !important;
-        color: #e2e8f0 !important;
-        border: 1px solid #3d4f6d !important;
-        font-weight: 700 !important;
-        border-radius: 8px !important;
-    }
-    div.stButton > button[kind="secondary"]:hover {
-        background-color: #33415c !important;
-        border-color: #a38048 !important;
-        color: #ffffff !important;
-    }
-
-    /* 2. Métricas / KPIs Sóbrios */
-    [data-testid="stMetric"], .stMetric {
-        background-color: #1e293b !important;
-        border: 1px solid #334155 !important;
-        padding: 12px 14px !important;
-        border-radius: 8px !important;
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 1.65rem !important;
-        font-weight: 800 !important;
-        color: #fef08a !important;
-    }
-    [data-testid="stMetricLabel"] {
-        font-size: 0.85rem !important;
-        font-weight: 600 !important;
-        color: #cbd5e1 !important;
-    }
-
-    /* 3. Cards de Materiais: Foscos (Matte), Sem Brilho e Sem Tons Avermelhados */
-    .card-material-item {
-        border-radius: 8px !important;
-        padding: 14px 18px !important;
-        margin-bottom: 12px !important;
-        line-height: 1.6 !important;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25) !important;
-    }
-
-    /* Card Par: Fundo Dark Neutro Confortável */
-    .card-material-item.card-par {
-        background-color: #1e1b18 !important;
-        border: 1px solid #38322c !important;
-        color: #e2dfd9 !important;
-    }
-    .card-material-item.card-par b, .card-material-item.card-par strong {
-        color: #ffffff !important;
-    }
-
-    /* Card Ímpar: Fundo Caqui Escuro Matte (Sem Rosa / Sem Brilho Forte) */
-    .card-material-item.card-impar {
-        background-color: #27221b !important;
-        border: 1px solid #453c30 !important;
-        color: #ece7de !important;
-    }
-    .card-material-item.card-impar b, .card-material-item.card-impar strong {
-        color: #ffffff !important;
-    }
-
-    /* Caixas de Data/Hora e Tags sem Brilho */
-    .tag-data-discreta {
-        background-color: #14110e !important;
-        border: 1px solid #38322c !important;
-        color: #fef08a !important;
-        padding: 2px 8px !important;
-        border-radius: 4px !important;
-        font-family: monospace !important;
-        font-size: 0.84rem !important;
-        font-weight: 600 !important;
-    }
-
-    .badge-creds-status {
-        border: 1px solid #574a38 !important;
-        background-color: #1b1712 !important;
-        color: #e4d7b5 !important;
-        border-radius: 5px !important;
-        padding: 3px 9px !important;
-        font-size: 0.78rem !important;
-        font-weight: 700 !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        text-transform: uppercase !important;
-        white-space: nowrap !important;
-    }
-
-    .linha-auditoria-div {
-        border-top: 1px dashed #38322c !important;
-        margin-top: 10px !important;
-        padding-top: 8px !important;
-        font-size: 0.82rem !important;
-        color: #a8a29e !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 18px !important;
-    }
-    .linha-auditoria-div strong {
-        color: #ffffff !important;
-    }
-
-    /* Badges de Trâmite e Alerta */
-    .badge-alerta-dias {
-        background-color: #3b1717 !important;
-        border: 1px solid #7f2323 !important;
-        color: #fca5a5 !important;
-        border-radius: 4px !important;
-        padding: 2px 7px !important;
-        font-size: 0.72rem !important;
-        font-weight: 700 !important;
-        display: inline-flex !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-
-# ==============================================================================
-# 🔍 FUNÇÕES AUXILIARES DE SUPABASE & FORMATADORES
-# ==============================================================================
-
-def formatar_matricula_pm(mat: str) -> str:
-    mat_limpa = "".join(filter(str.isalnum, str(mat)))
-    if len(mat_limpa) == 7:
-        return f"{mat_limpa[:3]}.{mat_limpa[3:6]}-{mat_limpa[6]}"
-    return str(mat)
-
 
 def verificar_existencia_reds_banco(num_reds: str):
     if not supabase or not num_reds:
@@ -310,7 +155,7 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
     texto_tempo, e_alerta_4dias, dias_num = calcular_tempo_decorrido_detalhado(dt_ref)
     
     def tag_destaque(txt):
-        return f"<b style='color: #fef08a;'>{txt}</b>"
+        return f"<b style='color: #ffe0b2;'>{txt}</b>"
 
     if dest_pend and status_tr in ["Pendente de Aceite", "Pendente Aceite"]:
         ponto_cadeia = f"⏳ <b>Aguardando Aceite por:</b> {tag_destaque(dest_pend)} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
@@ -398,7 +243,7 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", peri
 # ABA 1: IMPORTAÇÃO E UPLOAD
 # =============================================================================
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
-    injetar_css_cards_alternados()
+    injetar_estilo_passo3_tco()
     st.markdown("### 📄 Importação e Registro Individual de Ocorrência")
     st.markdown(f"👤 **Fiel Depositário Inicial:** `{nome_militar_atual}` ({unidade_militar_atual})")
 
@@ -544,17 +389,17 @@ renderizar_aba_ingestao = renderizar_aba_importacao
 
 
 # =============================================================================
-# ABA 3: PAINEL DO CREDS (BUSCA POR REDS/AUTOR, PERÍODO, CARDS LEVES E MODAIS)
+# ABA 3: PAINEL DO CREDS (CARDS IDÊNTICOS ÀS FOTOS COM TODAS AS FUNÇÕES)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
-    injetar_css_cards_alternados()
+    injetar_estilo_passo3_tco()
     st.markdown("#### 🏛️ Painel do Gestor CREDS-TCO & Rastreamento de Custódia")
     
     if not eh_gestor_creds:
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO têm acesso às funções deste painel.")
         return
 
-    st.caption(f"⚙ **Gestão Institucional Ativa:** Operando como **CREDS TCO - {unidade_militar_atual}** | Gestor: **{nome_militar_atual}**")
+    st.caption(f"⚙ **Gestão Institucional Ativa:** Operando como **CREDS TCO - {unidade_militar_atual}** | Assinatura digital do Gestor: **{nome_militar_atual}**")
 
     if "itens_selecionados_creds_painel" not in st.session_state:
         st.session_state["itens_selecionados_creds_painel"] = {}
@@ -562,8 +407,11 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     if "filtro_card_ativo" not in st.session_state:
         st.session_state["filtro_card_ativo"] = "TODOS"
 
+    if "material_selecionado_mov" not in st.session_state:
+        st.session_state["material_selecionado_mov"] = None
+
     # =========================================================================
-    # BARRA DE FILTROS SUPERIORES: BUSCA POR REDS / AUTOR + PERÍODO DE ENTRADA
+    # BARRA SUPERIOR: FILTRO DE UNIDADE, PERÍODO E BUSCA POR REDS / AUTOR
     # =========================================================================
     with st.container(border=True):
         st.markdown("##### 🔍 Filtros & Pesquisa Geral do Acervo")
@@ -597,10 +445,10 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     use_container_width=True
                 )
 
-        # Campo solicitado: Pesquisa dinâmica por Número do REDS ou Nome do Autor
+        # Campo solicitado: Pesquisa dinâmica por Número do REDS, Nome do Autor ou Lacre
         busca_reds_ou_autor = st.text_input(
-            "🔎 Pesquisar por Nº do REDS ou Nome do Autor:",
-            placeholder="Ex: 2026-000484967 ou MARCIO DE ALMEIDA...",
+            "🔎 Pesquisar por Nº do REDS, Nome do Autor ou Lacre:",
+            placeholder="Ex: 2026-000484968-001, CARLOS EDUARDO SILVA ou B981234112...",
             key="txt_busca_creds_reds_autor"
         ).strip().lower()
 
@@ -630,7 +478,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 bens_periodo.append(b)
         bens_filtrados_painel = bens_periodo
 
-    # Filtragem por texto: REDS ou Autor
+    # Filtragem pelo campo de busca
     if busca_reds_ou_autor:
         bens_filtrados_painel = [
             b for b in bens_filtrados_painel
@@ -686,7 +534,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             if "PERÍCIA" in fase_d or "PERÍCIA" in dest_p:
                 reds_pericia.add(num_r)
             bens_orgao_externo_tramite.append(b_copy)
-        elif dest_p and ("CREDS" in dest_p or "CUSTÓDIA" in dest_p or unidade_militar_atual in dest_p) and status_t in ["Pendente de Aceite", "Pendente Aceite"]:
+        elif dest_p and ("CREDS" in dest_p or unidade_militar_atual in dest_p) and status_t in ["Pendente de Aceite", "Pendente Aceite"]:
             bens_pendentes_aceite_creds.append(b_copy)
         elif "CREDS" in fiel_atual or "CUSTÓDIA" in fiel_atual or unidade_militar_atual in fiel_atual or "AGUARDANDO NO CREDS" in fase_d:
             reds_custodia_creds.add(num_r)
@@ -747,13 +595,12 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
     filtro_card = st.session_state.get("filtro_card_ativo", "TODOS")
 
-    # Carrega logs reais do Supabase para auditoria
     todos_logs_banco = carregar_logs_supabase() or []
     usr_dados = st.session_state.get("usuario_dados", {})
     mat_op = str(usr_dados.get("num_policia") or usr_dados.get("usuario_login") or "1764921")
 
     # =========================================================================
-    # RETÂNGULO 1: 🎒 ACERVO ATIVO NO CREDS (CARDS LEVES E BOTÕES DE CADEIA/GUIA)
+    # RETÂNGULO 1: 🎒 ACERVO ATIVO (CARDS COM DADOS EXATOS DAS FOTOS)
     # =========================================================================
     if filtro_card in ["TODOS", "CREDS", "PARADOS"]:
         with st.container(border=True):
@@ -765,7 +612,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             qtd_reds_disponiveis = df_disp_reds["num_reds"].nunique() if not df_disp_reds.empty else 0
 
             st.markdown(f"##### 🎒 1. Acervo Ativo no Depósito do CREDS ({qtd_reds_disponiveis} REDS)")
-            st.caption("Materiais sob guarda com consulta à Cadeia de Custódia e impressão de Termos Oficiais.")
+            st.caption("Materiais sob custódia oficial. Acesse a Cadeia de Custódia ou gere a Guia Oficial de Depósito.")
 
             if bens_r1:
                 grupos_creds_reds = df_disp_reds.groupby("num_reds", sort=False)
@@ -783,10 +630,8 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             lacre_b = bem.get("involucro_lacre", "SEM LACRE")
                             autor_b = bem.get("autores", "N/I")
                             custod_b = bem.get("fiel_depositario_atual", "CREDS TCO")
-                            unid_posse_b = bem.get("unidade_posse_atual", unidade_militar_atual)
                             resp_b = bem.get("ultimo_gestor_movimentou") or f"{nome_militar_atual} - MAT. {formatar_matricula_pm(mat_op)}"
 
-                            # Contagem real de etapas na cadeia
                             logs_item = [
                                 l for l in todos_logs_banco
                                 if str(l.get("num_reds", "")).strip() == num_reds_c
@@ -794,7 +639,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             ]
                             qtd_etapas = len(logs_item) if logs_item else 1
 
-                            # Alternância suave sem brilho: par = card-par | ímpar = card-impar
                             classe_card = "card-par" if (idx_global_card % 2 == 0) else "card-impar"
 
                             col_chk_b, col_card_b = st.columns([0.5, 9.5])
@@ -802,19 +646,13 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 is_sel_creds = st.checkbox("Selecionar", key=f"chk_creds_card_{id_bem}_{idx_global_card}", label_visibility="collapsed")
 
                             with col_card_b:
+                                # RENDERIZAÇÃO IDÊNTICA ÀS FOTOS 1 E 2
                                 html_item = f"""
                                 <div class="card-material-item {classe_card}">
-                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-                                        <div>
-                                            📄 REDS: <b>{num_reds_c}</b> | Material: <b>{desc_b}</b> (Qtd: {qtd_b} {unid_b})<br/>
-                                            🏷️ Lacre: <b style="font-family: monospace;">{lacre_b}</b> | Autor: <b>{autor_b}</b><br/>
-                                            📍 Custodiante / Local: <b>{custod_b}</b> ({unid_posse_b})<br/>
-                                            ⏱️ Data/Hora do Trâmite: <span class="tag-data-discreta">{dt_mov_exata}</span>
-                                        </div>
-                                        <div>
-                                            <div class="badge-creds-status">📇 CREDS ATIVO</div>
-                                        </div>
-                                    </div>
+                                    📄 REDS: <b>{num_reds_c}</b> | Material: <b>{desc_b}</b> (Qtd: {qtd_b} {unid_b})<br/>
+                                    🏷️ Lacre: <b style="font-family: monospace;">{lacre_b}</b> | Autor: <b>{autor_b}</b><br/>
+                                    📍 Custodiante: <b>{custod_b}</b><br/>
+                                    ⏱️ Data/Hora do Trâmite: <span class="caixa-data-destaque">{dt_mov_exata}</span>
                                     <div class="linha-auditoria-div">
                                         <div>🛡️ <b>Responsável:</b> {resp_b}</div>
                                         <div>🗺️ <b>Etapas na Cadeia:</b> {qtd_etapas} evento(s)</div>
@@ -823,14 +661,18 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 """
                                 st.markdown(html_item, unsafe_allow_html=True)
 
-                                # Barra com os botões de ação e impressão
-                                c_sp, c_btn_cad, c_btn_guia = st.columns([6, 2, 2])
+                                # Barra com os 3 botões alinhados
+                                c_sp, c_btn_cad, c_btn_guia, c_btn_mov = st.columns([4.6, 1.8, 1.8, 1.8])
                                 with c_btn_cad:
                                     if st.button("🔗 Cadeia de Custódia", key=f"btn_cad_r1_{id_bem}_{idx_global_card}", use_container_width=True):
                                         modal_cadeia_custodia_timeline(bem.to_dict())
                                 with c_btn_guia:
                                     if st.button("🖨️ Guia / Termo", key=f"btn_guia_r1_{id_bem}_{idx_global_card}", use_container_width=True):
                                         modal_guia_termo_oficial(bem.to_dict(), nome_militar_atual, mat_op, unidade_militar_atual)
+                                with c_btn_mov:
+                                    if st.button("🛒 Movimentar", key=f"btn_mov_r1_{id_bem}_{idx_global_card}", type="primary", use_container_width=True):
+                                        st.session_state["material_selecionado_mov"] = bem.to_dict()
+                                        st.toast(f"Material '{desc_b}' selecionado para trâmite!", icon="📦")
 
                             if is_sel_creds:
                                 st.session_state["itens_selecionados_creds_painel"][id_bem] = bem.to_dict()
@@ -844,7 +686,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
             if qtd_creds_sel > 0:
                 st.markdown("---")
-                st.markdown(f"### 🎯 Atualizar Status / Destinação de {qtd_creds_sel} item(ns) pelo CREDS")
+                st.markdown(f"### 🎯 Atualizar Status / Destinação em Lote ({qtd_creds_sel} itens)")
                 
                 tipo_dest_creds = st.radio(
                     "Selecione a Operação do Gestor:",
@@ -960,6 +802,88 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
+    # FORMULÁRIO RÁPIDO AO CLICAR EM "🛒 MOVIMENTAR" NO CARD INDIVIDUAL
+    # =========================================================================
+    mat_mov_indiv = st.session_state.get("material_selecionado_mov")
+    if mat_mov_indiv:
+        st.markdown("---")
+        st.markdown(f"### 🎯 Movimentar Material: `{mat_mov_indiv.get('descricao')}`")
+        st.caption(f"REDS: `{mat_mov_indiv.get('num_reds')}` | Lacre: `{mat_mov_indiv.get('involucro_lacre')}`")
+
+        with st.form("form_tramitar_indiv_painel_creds", clear_on_submit=False):
+            col_t1, col_t2 = st.columns(2)
+            
+            with col_t1:
+                destino_final_indiv = st.selectbox(
+                    "Informar onde o material está / para onde vai:",
+                    [
+                        "Aguardando no CREDS-TC / Custódia",
+                        "PERÍCIA TÉCNICA / PERÍCIA OFICIAL",
+                        "DELEGACIA DE POLÍCIA CIVIL (PCMG)",
+                        "PODER JUDICIÁRIO / TRIBUNAL DE JUSTIÇA (JECRIM)",
+                        "DEPÓSITO DE CUSTÓDIA / AGUARDANDO DESTRUIÇÃO",
+                        "Com Fiel Depositário / Policial Militar",
+                        "Devolvido ao Proprietário"
+                    ]
+                )
+
+            with col_t2:
+                recebedor_indiv_txt = st.text_input(
+                    "Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):",
+                    placeholder="Ex: INVESTIGADOR PCMG MAT. 123456"
+                ).strip()
+
+            c_sub1, c_sub2 = st.columns(2)
+            with c_sub1:
+                btn_conf_indiv = st.form_submit_button("🚀 Confirmar Movimentação do CREDS", type="primary", use_container_width=True)
+            with c_sub2:
+                btn_canc_indiv = st.form_submit_button("❌ Cancelar", use_container_width=True)
+
+            if btn_canc_indiv:
+                st.session_state["material_selecionado_mov"] = None
+                st.rerun()
+
+            if btn_conf_indiv:
+                if not recebedor_indiv_txt:
+                    st.error("Informe o Nome Completo e Matrícula de quem recebeu.")
+                else:
+                    agora_iso = datetime.datetime.now().isoformat()
+                    eh_definitivo_indiv = any(t in destino_final_indiv for t in ["PERÍCIA", "PCMG", "JECRIM", "DESTRUIÇÃO", "Devolvido"])
+                    
+                    status_novo_indiv = "Transferido Definitivo" if eh_definitivo_indiv else "Em Custódia"
+                    dest_pend_indiv = destino_final_indiv if eh_definitivo_indiv else None
+
+                    payload_upd_indiv = {
+                        "destinatario_pendente": dest_pend_indiv,
+                        "unidade_destinatario_pendente": destino_final_indiv,
+                        "fase_destinacao": destino_final_indiv,
+                        "fiel_depositario_atual": destino_final_indiv if eh_definitivo_indiv else f"CREDS TCO - {unidade_militar_atual}",
+                        "status_tramite": status_novo_indiv,
+                        "ultimo_gestor_movimentou": nome_militar_atual,
+                        "data_posse_atual": agora_iso,
+                        "data_envio_tramite": agora_iso
+                    }
+
+                    id_bem_indiv = str(mat_mov_indiv.get("id_bem") or mat_mov_indiv.get("id"))
+                    
+                    if atualizar_material_supabase(id_bem_indiv, payload_upd_indiv):
+                        registrar_log_supabase({
+                            "data_hora": agora_iso,
+                            "num_reds": mat_mov_indiv.get("num_reds", "N/I"),
+                            "bem_id": f"{mat_mov_indiv.get('descricao')} (Lacre: {mat_mov_indiv.get('involucro_lacre')})",
+                            "acao": "MOVIMENTACAO_GESTOR_CREDS",
+                            "origem": f"CREDS TCO - {unidade_militar_atual}",
+                            "unidade_origem": unidade_militar_atual,
+                            "destino": destino_final_indiv,
+                            "unidade_destino": destino_final_indiv,
+                            "detalhe": f"Destino atualizado para '{destino_final_indiv}'. Recebido por: {recebedor_indiv_txt} | Gestor: {nome_militar_atual}"
+                        })
+                        st.session_state["material_selecionado_mov"] = None
+                        st.success("✅ Movimentação confirmada e registrada com sucesso!")
+                        st.cache_data.clear()
+                        st.rerun()
+
+    # =========================================================================
     # RETÂNGULO 2: 🔥 MATERIAIS AGUARDANDO DESTRUÍÇÃO / INCINERAÇÃO
     # =========================================================================
     if filtro_card in ["TODOS", "DESTRUICAO"]:
@@ -987,7 +911,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 <div class="card-material-item card-par">
                                     🔥 <b>Material Autorizado para Incineração:</b> {desc_d} (Qtd: {qtd_d_val})<br/>
                                     🏷️ <b>Lacre:</b> {lacre_d} | 👤 <b>Autorizado por:</b> {gestor_sep}<br/>
-                                    ⏱️ <b>Data/Hora:</b> <span class="tag-data-discreta">{dt_d_exata}</span>
+                                    ⏱️ <b>Data/Hora:</b> <span class="caixa-data-destaque">{dt_d_exata}</span>
                                 </div>
                                 """
                                 st.markdown(html_fire, unsafe_allow_html=True)
@@ -1166,12 +1090,11 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                     📍 <b>Destino / Fase:</b> {dest_e}<br/>
                                     📊 Situação: {tag_situacao}<br/>
                                     👤 <b>Movimentado por:</b> {remetente_orig}<br/>
-                                    ⏱️ <b>Data/Hora da Transferência:</b> <span class="tag-data-discreta">{dt_ext_exata}</span>
+                                    ⏱️ <b>Data/Hora da Transferência:</b> <span class="caixa-data-destaque">{dt_ext_exata}</span>
                                 </div>
                                 """
                                 st.markdown(html_ext, unsafe_allow_html=True)
 
-                                # Botões de consulta de cadeia e guia oficial integrados
                                 c_sp_e, c_cad_e, c_guia_e = st.columns([6, 2, 2])
                                 with c_cad_e:
                                     if st.button("🔗 Cadeia", key=f"btn_cad_ext_{id_bem_e}_{idx_e}", use_container_width=True):
@@ -1505,6 +1428,7 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                                             st.rerun()
             else:
                 st.info("Nenhum gestor ou operador elevado cadastrado nesta lotação.")
+
 
 # =============================================================================
 # ALIASES DE RETROCOMPATIBILIDADE

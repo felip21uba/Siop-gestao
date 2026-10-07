@@ -1,6 +1,6 @@
 """
 ==============================================================================
-🛡️ SIOP PMMG - Identidade Visual, Cabeçalho Tático & Modais de Custódia
+🛡️ SIOP PMMG - Identidade Visual do Passo 3, Cabeçalho Tático, FAV e Guias
 Arquivo: modules/tco/estilo_tco.py
 ==============================================================================
 """
@@ -16,88 +16,171 @@ FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 
 def formatar_matricula_pm(mat: str) -> str:
-    """Formata matrícula funcional de 7 dígitos para o padrão militar (Ex: 1337468 -> 133.746-8)."""
+    """Formata matrícula funcional de 7 dígitos para o padrão militar (Ex: 1764921 -> 176.492-1)."""
     mat_limpa = "".join(filter(str.isalnum, str(mat)))
     if len(mat_limpa) == 7:
         return f"{mat_limpa[:3]}.{mat_limpa[3:6]}-{mat_limpa[6]}"
     return str(mat)
 
 
-def injetar_estilo_cards_selecao_invertida():
-    """
-    Aplica as cores exatas do Passo 3:
-    - Padrão (Sem Seleção): Caqui militar suave (#9e854e) com borda #bfa76f e texto escuro.
-    - Selecionado: Marrom oliva escuro (#4a3e20) com borda dourada (#d4af37) e texto bege claro.
-    """
+def injetar_estilo_passo3_tco():
+    """Injeta as cores oficiais do Passo 3 das Escalas (Caqui #9e854e e Marrom Oliva #4a3e20)."""
     st.markdown("""
     <style>
-    /* 1. CARD PADRÃO: Caqui Militar (Igual ao militar disponível no Passo 3) */
-    .card-material-item {
-        background-color: #9e854e !important;
-        border: 1.5px solid #bfa76f !important;
-        border-radius: 8px !important;
-        padding: 14px 18px !important;
-        margin-bottom: 10px !important;
-        color: #1b1b1b !important;
-        line-height: 1.55 !important;
-        transition: all 0.2s ease-in-out !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.25) !important;
+    /* 1. Estrutura Geral e Sidebar no Padrão Escalas */
+    .stApp { 
+        background-color: #1a1412 !important; 
+        color: #f5ebe0 !important; 
     }
-    .card-material-item strong, .card-material-item b {
-        color: #000000 !important;
+    
+    section[data-testid="stSidebar"] { 
+        background-color: #241c18 !important; 
+        border-right: 1.5px solid #4a3e20 !important; 
     }
-    .card-material-item .tag-codigo, .card-material-item code {
-        background-color: #7d6539 !important;
-        color: #ffe0b2 !important;
-        border: 1px solid #54432a !important;
-        padding: 2px 7px !important;
-        border-radius: 4px !important;
-        font-family: monospace !important;
-        font-weight: 700 !important;
+    section[data-testid="stSidebar"] p, 
+    section[data-testid="stSidebar"] span, 
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] div { 
+        color: #f5ebe0 !important; 
     }
 
-    /* 2. CARD MARCADO: Marrom Oliva Militar (Igual ao militar selecionado no Passo 3) */
-    .card-material-item.selecionado {
-        background-color: #4a3e20 !important;
-        border: 1.5px solid #d4af37 !important;
-        border-radius: 8px !important;
-        color: #f7e6d0 !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.55) !important;
-    }
-    .card-material-item.selecionado strong, .card-material-item.selecionado b {
-        color: #ffe0b2 !important;
-    }
-    .card-material-item.selecionado .tag-codigo, .card-material-item.selecionado code {
-        background-color: #2b2313 !important;
-        color: #ffe0b2 !important;
-        border: 1px solid #c5a059 !important;
-    }
-
-    /* 3. BOTÕES NO MESMO PADRÃO DO PASSO 3 */
+    /* 2. Botões nos Tons do Passo 3 */
     div.stButton > button[kind="secondary"] {
         background-color: #9e854e !important;
         color: #1b1b1b !important;
         border: 1.5px solid #bfa76f !important;
         font-weight: 700 !important;
+        border-radius: 6px !important;
     }
+    div.stButton > button[kind="secondary"]:hover {
+        background-color: #4a3e20 !important;
+        color: #ffe0b2 !important;
+        border-color: #d4af37 !important;
+    }
+
     div.stButton > button[kind="primary"] {
         background-color: #4a3e20 !important;
         color: #ffe0b2 !important;
         border: 1.5px solid #d4af37 !important;
         font-weight: 800 !important;
+        border-radius: 6px !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #9e854e !important;
+        color: #1b1b1b !important;
+        border-color: #bfa76f !important;
+    }
+
+    /* 3. Caixas de Métricas */
+    [data-testid="stMetric"], .stMetric {
+        background-color: #2b231d !important;
+        border: 1.5px solid #4a3e20 !important;
+        padding: 12px 14px !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.65rem !important;
+        font-weight: 800 !important;
+        color: #ffe0b2 !important;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
+        color: #d7ccc8 !important;
+    }
+
+    /* 4. Cards Alternados com o Visual Exato das Fotos */
+    .card-material-item {
+        border-radius: 8px !important;
+        padding: 16px 20px 14px 20px !important;
+        margin-bottom: 12px !important;
+        line-height: 1.65 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35) !important;
+    }
+
+    .card-material-item.card-par {
+        background-color: #231714 !important;
+        border: 1.5px solid #3e2a24 !important;
+        color: #f5ebe0 !important;
+    }
+    .card-material-item.card-par b, .card-material-item.card-par strong { 
+        color: #ffffff !important; 
+    }
+
+    .card-material-item.card-impar {
+        background-color: #2b1d18 !important;
+        border: 1.5px solid #4a332a !important;
+        color: #f5ebe0 !important;
+    }
+    .card-material-item.card-impar b, .card-material-item.card-impar strong { 
+        color: #ffffff !important; 
+    }
+
+    /* Caixa Arredondada de Destaque da Data/Hora */
+    .caixa-data-destaque {
+        background-color: #38241d !important;
+        border: 1px solid #4d3329 !important;
+        color: #ffe0b2 !important;
+        border-radius: 6px !important;
+        padding: 2px 10px !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+        font-size: 0.88rem !important;
+        font-weight: 700 !important;
+        display: inline-block !important;
+        margin-top: 2px !important;
+    }
+
+    /* Linha Pontilhada de Auditoria e Responsável */
+    .linha-auditoria-div {
+        border-top: 1px dashed #4d3329 !important;
+        margin-top: 12px !important;
+        padding-top: 10px !important;
+        font-size: 0.84rem !important;
+        color: #d7ccc8 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 20px !important;
+    }
+    .linha-auditoria-div strong, .linha-auditoria-div b { 
+        color: #ffe0b2 !important; 
+    }
+
+    /* Badge Superior Direito */
+    .badge-creds-status {
+        border: 1.5px solid #d4af37 !important;
+        background-color: transparent !important;
+        color: #ffe0b2 !important;
+        border-radius: 8px !important;
+        padding: 4px 12px !important;
+        font-size: 0.80rem !important;
+        font-weight: 800 !important;
+        letter-spacing: 0.5px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        text-transform: uppercase !important;
+        white-space: nowrap !important;
+    }
+
+    .badge-alerta-dias {
+        background-color: #491212 !important;
+        border: 1px solid #d32f2f !important;
+        color: #ffcdd2 !important;
+        border-radius: 4px !important;
+        padding: 2px 8px !important;
+        font-size: 0.74rem !important;
+        font-weight: 800 !important;
+        display: inline-flex !important;
+        margin-top: 4px !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
 
 def renderizar_cabecalho_tatico_tco(usr_dados: dict):
-    """
-    Renderiza o cabeçalho tático com o card grande na tonalidade caqui bronze do símbolo
-    e dados dinâmicos da sessão do militar.
-    """
-    injetar_estilo_cards_selecao_invertida()
+    """Renderiza o cabeçalho tático operacional com as cores do Passo 3."""
+    injetar_estilo_passo3_tco()
 
-    # 1. Posto e Nome de Guerra
     posto_grad = str(usr_dados.get("cargo_funcao") or usr_dados.get("posto_grad") or "").strip().upper()
     nome_guerra = str(usr_dados.get("nome_guerra") or usr_dados.get("nome_completo") or "OPERADOR").strip().upper()
 
@@ -106,7 +189,6 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     else:
         militar_completo = nome_guerra
 
-    # 2. Matrícula Funcional formatada
     mat_raw = str(
         usr_dados.get("num_policia")
         or usr_dados.get("usuario_login")
@@ -115,7 +197,6 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     ).strip()
     matricula_fmt = formatar_matricula_pm(mat_raw)
 
-    # 3. Unidade Ativa da Sessão
     unidade_atual = str(
         st.session_state.get("cfg_unidade")
         or usr_dados.get("unidade")
@@ -127,10 +208,8 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     else:
         tag_local = f"CREDS TCO / {unidade_atual}"
 
-    # 4. Horário de Brasília em tempo real
     hora_atual = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
 
-    # 5. Card Grande na tonalidade caqui bronze (#7d6539 / #63502c) com contorno dourado (#c5a059)
     st.markdown(f"""
     <div style="
         background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
@@ -208,42 +287,45 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
 
 
 # ==============================================================================
-# MODAL 1: CADEIA DE CUSTÓDIA COM LOCAL DA TRAMITAÇÃO E IMPRESSÃO
+# MODAL 1: 🔗 FAV - FICHA DE ACOMPANHAMENTO DE VESTÍGIO (CADEIA DE CUSTÓDIA)
 # ==============================================================================
 
-@st.dialog("🔗 Cadeia de Custódia — Histórico Imutável", width="large")
+@st.dialog("🔗 FAV — Ficha de Acompanhamento de Vestígio (Art. 158-B CPP)", width="large")
 def modal_cadeia_custodia_timeline(bem: dict):
-    """Exibe modal com rastreabilidade vertical do Art. 158-B do CPP, local e impressão."""
-    num_reds = bem.get("num_reds", "N/I")
-    id_bem = str(bem.get("id_bem") or bem.get("id", ""))
-    desc = bem.get("descricao", "N/I")
-    lacre = bem.get("involucro_lacre", "SEM LACRE")
-    autor = bem.get("autores", "N/I")
-    custodiante = bem.get("fiel_depositario_atual", "N/I")
-    unidade = bem.get("unidade_posse_atual", "N/I")
-    fase_atual = bem.get("fase_destinacao") or bem.get("status_tramite") or "Em Custódia"
+    """Exibe e imprime a Ficha de Acompanhamento de Vestígio com rastreabilidade vertical exata."""
+    num_reds = str(bem.get("num_reds") or "N/I").strip()
+    id_bem = str(bem.get("id_bem") or bem.get("id") or "").strip()
+    desc = str(bem.get("descricao") or "N/I").strip()
+    lacre = str(bem.get("involucro_lacre") or "SEM LACRE").strip()
+    autor = str(bem.get("autores") or "N/I").strip()
+    custodiante = str(bem.get("fiel_depositario_atual") or "N/I").strip()
+    unidade = str(bem.get("unidade_posse_atual") or "N/I").strip()
+    fase_atual = str(bem.get("fase_destinacao") or bem.get("status_tramite") or "Em Custódia").strip()
 
-    # Busca logs reais gravados no Supabase
     logs_todos = carregar_logs_supabase() or []
     logs_especificos = [
         l for l in logs_todos
-        if str(l.get("num_reds", "")).strip() == str(num_reds).strip()
-        or id_bem in str(l.get("bem_id", ""))
+        if str(l.get("num_reds", "")).strip() == num_reds
+        or (id_bem and id_bem in str(l.get("bem_id", "")))
     ]
 
-    if not logs_especificos:
-        dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or "Data N/I"
+    if logs_especificos:
+        try:
+            logs_especificos.sort(key=lambda x: str(x.get("data_hora", "")), reverse=True)
+        except Exception:
+            pass
+    else:
+        dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or "Data N/I"
         logs_especificos = [{
             "data_hora": dt_criacao,
-            "acao": "Entrada e Acondicionamento Inicial",
+            "acao": "IMPORTAÇÃO / CUSTÓDIA INICIAL",
             "origem": custodiante,
             "unidade_origem": unidade,
             "unidade_destino": unidade,
             "destino": custodiante,
-            "detalhe": f"Material registrado no sistema sob custódia de {custodiante}."
+            "detalhe": f"Entrada e acondicionamento inicial sob custódia de {custodiante}."
         }]
 
-    # Construção dos eventos com o Local onde tramitou
     itens_timeline_html = ""
     for log in logs_especificos:
         dt_raw = log.get("data_hora", "")
@@ -252,37 +334,52 @@ def modal_cadeia_custodia_timeline(bem: dict):
         except Exception:
             dt_fmt = str(dt_raw)[:16]
 
-        # Extração dinâmica do local exato da movimentação
-        local_tramitacao = (
-            log.get("unidade_destino")
-            or log.get("destino")
-            or log.get("unidade_origem")
-            or unidade
-            or "CREDS TCO"
-        )
-        if "CREDS" not in str(local_tramitacao).upper() and ("CIA" in str(local_tramitacao).upper() or "BPM" in str(local_tramitacao).upper()):
-            local_exibicao = f"CREDS {local_tramitacao}"
+        acao_str = str(log.get("acao", "Movimentação")).strip()
+        agente_orig = str(log.get("origem") or "Operador").strip()
+        detalhe_str = str(log.get("detalhe") or "").strip()
+
+        if "confirmada por" in detalhe_str.lower():
+            partes = detalhe_str.split("confirmada por")
+            agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
+        elif "confirmado pelo operador" in detalhe_str.lower():
+            partes = detalhe_str.split("confirmado pelo operador")
+            agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
+        elif agente_orig.startswith("Entregue ao "):
+            agente_responsavel = agente_orig.replace("Entregue ao ", "")
         else:
-            local_exibicao = str(local_tramitacao)
+            agente_responsavel = agente_orig
+
+        local_raw = str(log.get("unidade_destino") or log.get("destino") or log.get("unidade_origem") or unidade).strip()
+        if "Entregue ao " in local_raw:
+            local_raw = local_raw.replace("Entregue ao ", "").split("(Ofício:")[0].strip()
+
+        if any(term in local_raw.upper() for term in ["PERÍCIA", "PCMG", "DELEGACIA", "JECRIM", "FÓRUM", "MINISTÉRIO PÚBLICO", "TRIBUNAL"]):
+            local_exibicao = f"CREDS {local_raw}" if not local_raw.startswith("CREDS") else local_raw
+        elif local_raw.upper().startswith("CREDS"):
+            local_exibicao = local_raw
+        elif any(c in local_raw.upper() for c in ["BPM", "CIA", "PEL"]):
+            local_exibicao = f"CREDS {local_raw}"
+        else:
+            local_exibicao = local_raw
 
         itens_timeline_html += f"""
         <div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 14px; position: relative;">
             <div style="position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #c5a059;"></div>
             <div style="background: rgba(30, 24, 20, 0.95); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">
                 <span style="color: #c5a059; font-size: 0.80rem; font-weight: 700;">⏱️ {dt_fmt}</span><br/>
-                <span style="color: #ffffff; font-size: 0.90rem; font-weight: 700;">{log.get('acao', 'Movimentação')}</span><br/>
-                <span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{log.get('origem', 'Operador')}</b></span><br/>
+                <span style="color: #ffffff; font-size: 0.90rem; font-weight: 700;">{acao_str}</span><br/>
+                <span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{agente_responsavel}</b></span><br/>
                 <span style="color: #e5c78b; font-size: 0.82rem; font-weight: 600;">📍 Local: {local_exibicao}</span><br/>
-                <span style="color: #a89389; font-size: 0.80rem;">{log.get('detalhe', '')}</span>
+                <span style="color: #a89389; font-size: 0.80rem;">{detalhe_str}</span>
             </div>
         </div>
         """
 
     html_completo_timeline = f"""
-    <div id="print-area-cadeia" style="font-family: 'Segoe UI', Arial, sans-serif;">
+    <div id="print-area-fav" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
         <div style="background: rgba(20, 15, 13, 0.85); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
             <span style="color: #bfa59a; font-size: 0.85rem;">REDS: <b style="color: #ffffff;">{num_reds}</b> | Lacre Oficial: <code style="background: #3e2723; color: #ffe0b2; padding: 2px 6px; border-radius: 4px;">{lacre}</code></span><br/>
-            <span style="color: #ffffff; font-size: 0.95rem; font-weight: 700;">Material: {desc} (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})</span><br/>
+            <span style="color: #ffffff; font-weight: 700;">Material: {desc} (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})</span><br/>
             <span style="color: #d7ccc8; font-size: 0.82rem;">Autor da Ocorrência: <b>{autor}</b> | Custodiante Atual: <b style="color: #c5a059;">{custodiante} ({unidade})</b></span><br/>
             <span style="color: #e5c78b; font-size: 0.80rem;">Fase Atual: <b>{fase_atual}</b></span>
         </div>
@@ -301,7 +398,7 @@ def modal_cadeia_custodia_timeline(bem: dict):
             <script>
                 var printContents = `{html_completo_timeline}`;
                 var win = window.open('', '', 'height=700,width=900');
-                win.document.write('<html><head><title>Cadeia de Custódia - {num_reds}</title>');
+                win.document.write('<html><head><title>FAV - Cadeia de Custodia - {num_reds}</title>');
                 win.document.write('<style>body{{font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;}} div{{color:#111 !important;}} span{{color:#111 !important;}} code{{border:1px solid #999;padding:2px 4px;}}</style>');
                 win.document.write('</head><body>');
                 win.document.write(printContents);
@@ -316,38 +413,53 @@ def modal_cadeia_custodia_timeline(bem: dict):
 
 
 # ==============================================================================
-# MODAL 2: GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO COM DADOS REAIS E IMPRESSÃO
+# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO COM DADOS REAIS DA PMMG
 # ==============================================================================
 
-@st.dialog("📄 Termo de Custódia & Depósito PMMG", width="large")
+@st.dialog("📄 Auto de Apreensão e Guia de Cadeia de Custódia PMMG", width="large")
 def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
-    """Exibe e imprime o Auto de Apreensão e Depósito conforme as normas da PMMG com dados dinâmicos."""
-    num_reds = bem.get("num_reds", "N/I")
-    lacre = bem.get("involucro_lacre", "SEM LACRE")
-    desc = bem.get("descricao", "N/I")
-    autor = bem.get("autores", "N/I")
+    """Exibe e imprime o Auto de Apreensão e Guia Oficial com dados reais da PMMG."""
+    num_reds = str(bem.get("num_reds") or "N/I").strip()
+    lacre_real = str(bem.get("involucro_lacre") or "SEM LACRE").strip()
+    desc_real = str(bem.get("descricao") or "N/I").strip()
+    autor_real = str(bem.get("autores") or "AUTOR NÃO INFORMADO").strip()
     qtd_val = bem.get("quantidade", 1)
-    unid_val = bem.get("unidade_medida", "UN")
-    custodiante_real = bem.get("fiel_depositario_atual", "CREDS TCO")
-    unidade_posse = bem.get("unidade_posse_atual", operador_unid)
+    unid_med = bem.get("unidade_medida", "UN")
 
-    # Identificação dinâmica do policial/recebedor da última movimentação
-    recebedor_real = bem.get("ultimo_gestor_movimentou") or bem.get("destinatario_pendente") or "Policial Condutor / Recebedor"
+    custodiante_real = str(bem.get("fiel_depositario_atual") or "CREDS TCO - 35ª CIA PM").strip()
 
-    dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or "Data N/I"
+    dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or "Data N/I"
     try:
         dt_fmt = pd.to_datetime(dt_criacao).strftime("%d/%m/%Y às %H:%M")
     except Exception:
-        dt_fmt = str(dt_criacao)
+        dt_fmt = str(dt_criacao)[:16]
+
+    logs_todos = carregar_logs_supabase() or []
+    logs_especificos = [l for l in logs_todos if str(l.get("num_reds", "")).strip() == num_reds]
+    condutor_real = ""
+    for l in logs_especificos:
+        orig = str(l.get("origem", ""))
+        if "Relator:" in orig:
+            condutor_real = orig.split("Relator:")[1].replace(")", "").strip()
+            break
+        elif l.get("acao") == "IMPORTAÇÃO / CUSTÓDIA INICIAL":
+            condutor_real = str(l.get("origem", "")).strip()
+
+    if not condutor_real:
+        condutor_real = str(bem.get("ultimo_gestor_movimentou") or f"{operador_nome} - MAT. {formatar_matricula_pm(operador_mat)}").strip()
 
     mat_operador_fmt = formatar_matricula_pm(operador_mat)
+
+    id_clean = "".join(filter(str.isdigit, str(bem.get("id_bem") or "2")))
+    num_guia = f"{id_clean[-3:] if len(id_clean) >= 3 else '2'}/2026"
 
     html_termo = f"""
     <div id="print-area-guia" style="background: #ffffff; color: #111827; padding: 25px; border-radius: 8px; border: 1px solid #d1d5db; font-family: 'Segoe UI', Arial, sans-serif;">
         <div style="text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 15px;">
             <h4 style="margin: 0; font-size: 0.95rem; color: #111827; text-transform: uppercase;">POLÍCIA MILITAR DE MINAS GERAIS</h4>
-            <p style="margin: 3px 0; font-size: 0.80rem; color: #374151;">{operador_unid} • CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>
-            <h3 style="margin: 8px 0 0 0; font-size: 1.1rem; color: #111827; text-transform: uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA</h3>
+            <p style="margin: 3px 0; font-size: 0.80rem; color: #374151;">4ª RPM • 21º BATALHÃO DE POLÍCIA MILITAR • 35ª COMPANHIA PM (UBÁ/MG)</p>
+            <p style="margin: 1px 0; font-size: 0.78rem; font-weight: 700; color: #1f2937;">CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>
+            <h3 style="margin: 8px 0 0 0; font-size: 1.05rem; color: #111827; text-transform: uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA Nº {num_guia}</h3>
         </div>
         <p style="font-size: 0.85rem; line-height: 1.6; text-align: justify; color: #1f2937;">
             Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG,
@@ -355,22 +467,22 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
         </p>
         <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin: 15px 0; font-size: 0.84rem; line-height: 1.8;">
             • <b>REDS:</b> {num_reds}<br/>
-            • <b>NÚMERO DO LACRE INVIOLÁVEL:</b> <span style="font-family: monospace; font-weight: 700;">{lacre}</span><br/>
-            • <b>AUTOR/CONDUZIDO:</b> {autor}<br/>
-            • <b>DESCRIÇÃO DO OBJETO:</b> {desc}<br/>
-            • <b>QUANTIDADE/PESO:</b> {qtd_val} {unid_val}<br/>
-            • <b>CUSTODIANTE ATUAL:</b> {custodiante_real} ({unidade_posse})
+            • <b>NÚMERO DO LACRE INVIOLÁVEL:</b> <span style="font-family: monospace; font-weight: 700; background: #e5e7eb; padding: 1px 6px; border-radius: 4px;">{lacre_real}</span><br/>
+            • <b>AUTOR/CONDUZIDO:</b> {autor_real}<br/>
+            • <b>DESCRIÇÃO DO OBJETO:</b> {desc_real}<br/>
+            • <b>QUANTIDADE/PESO:</b> {qtd_val} {unid_med}<br/>
+            • <b>CUSTODIANTE ATUAL:</b> {custodiante_real}
         </div>
         <p style="font-size: 0.82rem; color: #4b5563; text-align: justify;">
             O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.
         </p>
-        <div style="margin-top: 40px; display: flex; justify-content: space-around; text-align: center;">
-            <div style="border-top: 1px solid #111827; width: 45%; padding-top: 5px; font-size: 0.80rem;">
+        <div style="margin-top: 45px; display: flex; justify-content: space-around; text-align: center;">
+            <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
                 <b>{operador_nome} - MAT. {mat_operador_fmt}</b><br/>
-                Responsável pelo CREDS TCO / {operador_unid}
+                Responsável pelo CREDS TCO / 35ª Cia PM
             </div>
-            <div style="border-top: 1px solid #111827; width: 45%; padding-top: 5px; font-size: 0.80rem;">
-                <b>{recebedor_real}</b><br/>
+            <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
+                <b>{condutor_real}</b><br/>
                 Policial Condutor / Recebedor
             </div>
         </div>
@@ -387,8 +499,8 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
             <script>
                 var printContents = `{html_termo}`;
                 var win = window.open('', '', 'height=750,width=900');
-                win.document.write('<html><head><title>Guia de Custódia - {num_reds}</title>');
-                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;}}</style>');
+                win.document.write('<html><head><title>Guia de Custodia - {num_reds}</title>');
+                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:25px;color:#111;background:#fff;}}</style>');
                 win.document.write('</head><body>');
                 win.document.write(printContents);
                 win.document.write('</body></html>');
