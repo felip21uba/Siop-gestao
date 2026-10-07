@@ -19,7 +19,7 @@ from modules.tco.modais import abrir_modal_edicao_material, abrir_modal_divergen
 from modules.tco.compliance import gerar_pdf_termo_compliance, obter_ou_registrar_aceite_compliance
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 def injetar_css_cards_alternados()
-    # ==============================================================================
+# ==============================================================================
 # 🔍 FUNÇÕES AUXILIARES DE BANCO DE DADOS DO TCO
 # ==============================================================================
 
@@ -76,99 +76,98 @@ def modal_alerta_reds_duplicado(num_reds, dt_cad, op_cad):
 
 
 def injetar_css_cards_alternados():
-    """Injeta estritamente a camada de estilo Dark Castanho Operacional no TCO."""
     st.markdown("""
     <style>
-    /* Estilização Geral em Tons Castanhos */
     html, body, [class*="css"] {
         font-size: 1.05rem;
     }
 
-    /* Tabs em tom Castanho Escuro */
     .stTabs [data-baseweb="tab"] {
-        font-size: 1.08rem !important;
+        font-size: 1.15rem !important;
         font-weight: bold !important;
-        padding: 10px 18px !important;
-        border-radius: 8px 8px 0 0 !important;
-        color: #bcaaa4 !important;
-        background-color: #251714 !important;
-        border: 1px solid #3e2723 !important;
-        border-bottom: none !important;
+        padding: 10px 16px !important;
     }
 
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background-color: #3e2723 !important;
-        color: #ffe0b2 !important;
-        border-color: #5d4037 !important;
-    }
+    .card-content { color: #e2e8f0; font-size: 1.05rem; }
+    .card-content strong, .card-content b { color: #ffffff; }
 
-    /* Caixas de Métricas */
-    [data-testid="stMetric"], .stMetric {
-        background-color: #2c1d18 !important;
-        border: 1px solid #4e342e !important;
-        padding: 12px 16px !important;
-        border-radius: 8px !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3) !important;
-    }
-
-    [data-testid="stMetricValue"] {
-        font-size: 1.75rem !important;
-        font-weight: bold !important;
-        color: #ffe0b2 !important;
-    }
-
-    [data-testid="stMetricLabel"] {
-        font-size: 0.9rem !important;
-        font-weight: 600 !important;
-        color: #bcaaa4 !important;
-    }
-
-    /* Cartões Alternados de Materiais */
     .card-blue {
-        background-color: #2c1d18 !important;
-        border: 1px solid #5d4037 !important;
-        border-radius: 8px !important;
-        padding: 16px 20px !important;
-        margin-bottom: 12px !important;
-        color: #d7ccc8 !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important;
+      background-color: #0c1938;
+      border: 2px solid #1e6091;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 14px;
+      color: #e2e8f0 !important;
+      font-size: 1.05rem !important;
+      line-height: 1.6 !important;
     }
     .card-blue b, .card-blue strong { color: #ffffff !important; }
 
     .card-brown {
-        background-color: #8d6e63 !important;
-        border: 1px solid #a1887f !important;
-        border-radius: 8px !important;
-        padding: 16px 20px !important;
-        margin-bottom: 12px !important;
-        color: #1b1b1b !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.25) !important;
+      background-color: #9e8652;
+      border: 2px solid #7a663b;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 14px;
+      color: #000000 !important;
+      font-size: 1.05rem !important;
+      line-height: 1.6 !important;
     }
-    .card-brown b, .card-brown strong { color: #000000 !important; }
+    .card-brown .card-title,
+    .card-brown .status-text,
+    .card-brown strong,
+    .card-brown b,
+    .card-brown small,
+    .card-brown i { color: #000000 !important; }
 
-    /* Badges / Destaques de Dados */
+    .card-fire {
+      background-color: #451a03;
+      border: 2px solid #b45309;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 14px;
+      color: #fef3c7 !important;
+      font-size: 1.05rem !important;
+      line-height: 1.6 !important;
+    }
+    .card-fire b, .card-fire strong { color: #ffffff !important; }
+
+    .card-trava {
+      background-color: #262626;
+      border: 2px solid #525252;
+      border-radius: 8px;
+      padding: 16px 20px;
+      margin-bottom: 14px;
+      color: #a3a3a3 !important;
+      font-size: 1.05rem !important;
+      line-height: 1.6 !important;
+    }
+    .card-trava strong, .card-trava b { color: #f5f5f5 !important; }
+
     .st-emotion-cache-znj1k1, .tag-verde-destaque, code {
-        padding: 0.25em 0.5em !important;
-        border-radius: 0.3em !important;
-        background: #3e2723 !important;
-        color: #ffe0b2 !important;
-        border: 1px solid #5d4037 !important;
-        font-family: "Source Code Pro", monospace !important;
-        font-size: 0.85em !important;
-        font-weight: 600 !important;
-        display: inline-block !important;
+      padding: 0.2em 0.4em !important;
+      overflow-wrap: break-word !important;
+      white-space: pre-wrap !important;
+      margin: 0px !important;
+      border-radius: 0.25rem !important;
+      background: rgb(26, 28, 36) !important;
+      color: rgb(92, 228, 136) !important;
+      font-family: "Source Code Pro", monospace !important;
+      font-size: 0.75em !important;
+      font-weight: 400 !important;
+      display: inline-block !important;
     }
 
-    /* Botões Principais */
-    div.stButton > button[kind="primary"] {
-        background-color: #5d4037 !important;
-        color: #ffe0b2 !important;
-        border: 1px solid #8d6e63 !important;
+    [data-testid="stMetricValue"] {
+        font-size: 1.8rem !important;
         font-weight: bold !important;
     }
-    div.stButton > button[kind="primary"]:hover {
-        background-color: #4e342e !important;
-        border-color: #bcaaa4 !important;
+    [data-testid="stMetricLabel"] {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        font-size: 1.05rem !important;
+        font-weight: 600 !important;
+        line-height: 1.3 !important;
     }
     </style>
     """, unsafe_allow_html=True)
