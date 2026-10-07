@@ -1,6 +1,6 @@
 """
 ==============================================================================
-🛡️ SIOP PMMG - Cabeçalho Tático Operacional Dinâmico
+🛡️ SIOP PMMG - Cabeçalho Tático Operacional
 Arquivo: modules/tco/estilo_tco.py
 ==============================================================================
 """
@@ -12,7 +12,7 @@ import streamlit as st
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 def formatar_matricula_pm(mat: str) -> str:
-    """Formata 1764921 para 176.492-1 caso seja numérico."""
+    """Formata matricula numerica para padrao militar (ex: 1337468 -> 133.746-8)."""
     mat_limpa = "".join(filter(str.isalnum, str(mat)))
     if len(mat_limpa) == 7:
         return f"{mat_limpa[:3]}.{mat_limpa[3:6]}-{mat_limpa[6]}"
@@ -20,9 +20,9 @@ def formatar_matricula_pm(mat: str) -> str:
 
 def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     """
-    Renderiza o cabeçalho tático com as cores dos botões da sidebar e dados 100% dinâmicos.
+    Renderiza o cabecalho tatico com o card grande na mesma cor exata do simbolo pequeno.
     """
-    # 1. Extração Dinâmica do Operador
+    # 1. Dados dinamicos do Militar
     posto_grad = str(usr_dados.get("cargo_funcao") or usr_dados.get("posto_grad") or "").strip().upper()
     nome_guerra = str(usr_dados.get("nome_guerra") or usr_dados.get("nome_completo") or "OPERADOR").strip().upper()
     
@@ -31,7 +31,7 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     else:
         militar_completo = nome_guerra
 
-    # 2. Extração Dinâmica da Matrícula
+    # 2. Matricula formatada
     mat_raw = str(
         usr_dados.get("num_policia") 
         or usr_dados.get("usuario_login") 
@@ -40,28 +40,26 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     ).strip()
     matricula_fmt = formatar_matricula_pm(mat_raw)
 
-    # 3. Extração Dinâmica da Unidade
+    # 3. Unidade da sessao
     unidade_atual = str(
         st.session_state.get("cfg_unidade") 
         or usr_dados.get("unidade") 
         or "21º BPM"
     ).strip().upper()
 
-    # Montagem da lotação CREDS
     if "21" in unidade_atual and "UBÁ" not in unidade_atual and "UBA" not in unidade_atual:
         tag_local = f"CREDS TCO / {unidade_atual} (Ubá-MG)"
     else:
         tag_local = f"CREDS TCO / {unidade_atual}"
 
-    # 4. Data e Hora Operacional em Tempo Real
+    # 4. Horario de Brasilia em tempo real
     hora_atual = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
 
-    # 5. CSS com as cores dos cards da sidebar (#8c7343 / #a38953 / texto #f7e6d0)
+    # 5. CARD GRANDE COM A COR EXATA DO SIMBOLO PEQUENO (#7a6237 / #8c7343 e borda #c5a059)
     st.markdown(f"""
-    <style>
-    .siop-header-container {{
-        background: linear-gradient(135deg, #2b231d 0%, #1e1814 100%);
-        border: 1.5px solid #6b5735;
+    <div style="
+        background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
+        border: 2px solid #c5a059;
         border-radius: 12px;
         padding: 14px 20px;
         margin-bottom: 22px;
@@ -70,144 +68,62 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
         justify-content: space-between;
         gap: 16px;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
-    }}
-
-    .siop-header-left {{
-        display: flex;
-        align-items: center;
-        gap: 16px;
-    }}
-
-    /* Emblema Escudo - Cor exata dos botões da sidebar */
-    .siop-shield-badge {{
-        background: linear-gradient(135deg, #8c7343 0%, #6e5932 100%);
-        border: 1.5px solid #c5a059;
-        border-radius: 10px;
-        width: 50px;
-        height: 50px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-        flex-shrink: 0;
-    }}
-
-    .siop-title-text h1 {{
-        font-size: 1.30rem !important;
-        font-weight: 800 !important;
-        color: #f7e6d0 !important;
-        margin: 0 0 3px 0 !important;
-        padding: 0 !important;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }}
-
-    .siop-subtitle-text {{
-        font-size: 0.84rem;
-        color: #bfa59a;
-        margin: 0;
-    }}
-
-    .siop-location-tag {{
-        color: #c5a059;
-        font-weight: 700;
-    }}
-
-    .siop-header-right {{
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }}
-
-    /* Relógio Digital Operacional */
-    .siop-clock-badge {{
-        background: #140f0d;
-        border: 1px solid #54432a;
-        border-radius: 8px;
-        padding: 8px 12px;
-        color: #e5c78b;
-        font-family: 'Consolas', 'Courier New', monospace;
-        font-size: 0.86rem;
-        font-weight: 700;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        white-space: nowrap;
-    }}
-
-    .siop-pulse-dot {{
-        width: 8px;
-        height: 8px;
-        background-color: #22c55e;
-        border-radius: 50%;
-        display: inline-block;
-        box-shadow: 0 0 6px #22c55e;
-    }}
-
-    /* Badge do Militar Logado */
-    .siop-user-badge {{
-        background: #140f0d;
-        border: 1px solid #54432a;
-        border-radius: 8px;
-        padding: 7px 14px;
-        text-align: left;
-        line-height: 1.35;
-        white-space: nowrap;
-    }}
-
-    .siop-user-name {{
-        color: #f7e6d0;
-        font-size: 0.86rem;
-        font-weight: 800;
-    }}
-
-    .siop-user-mat {{
-        color: #a89389;
-        font-size: 0.80rem;
-        font-weight: normal;
-    }}
-
-    .siop-user-unit {{
-        color: #c5a059;
-        font-size: 0.76rem;
-        font-weight: 700;
-    }}
-
-    @media (max-width: 900px) {{
-        .siop-header-container {{
-            flex-direction: column;
-            align-items: flex-start;
-        }}
-        .siop-header-right {{
-            width: 100%;
-            justify-content: space-between;
-        }}
-    }}
-    </style>
-
-    <div class="siop-header-container">
-        <div class="siop-header-left">
-            <div class="siop-shield-badge">🛡️</div>
-            <div class="siop-title-text">
-                <h1>📦 Custódia de Materiais TCO & Cadeia de Custódia</h1>
-                <div class="siop-subtitle-text">
+    ">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="
+                background: linear-gradient(135deg, #8f7442 0%, #5e4b29 100%);
+                border: 1.5px solid #e0c283;
+                border-radius: 10px;
+                width: 50px;
+                height: 50px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 24px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                flex-shrink: 0;
+            ">🛡️</div>
+            <div>
+                <h1 style="font-size: 1.30rem; font-weight: 800; color: #ffffff; margin: 0 0 3px 0; padding: 0; display: flex; align-items: center; gap: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.4);">
+                    📦 Custódia de Materiais TCO & Cadeia de Custódia
+                </h1>
+                <div style="font-size: 0.84rem; color: #f5ebe0; margin: 0;">
                     SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável • 
-                    <span class="siop-location-tag">📍 {tag_local}</span>
+                    <span style="color: #ffe0b2; font-weight: 700;">📍 {tag_local}</span>
                 </div>
             </div>
         </div>
-        <div class="siop-header-right">
-            <div class="siop-clock-badge">
-                <span class="siop-pulse-dot"></span>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="
+                background: rgba(20, 15, 13, 0.65);
+                border: 1px solid #c5a059;
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: #ffe0b2;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 0.86rem;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                white-space: nowrap;
+            ">
+                <span style="width: 8px; height: 8px; background-color: #22c55e; border-radius: 50%; display: inline-block; box-shadow: 0 0 6px #22c55e;"></span>
                 <span>{hora_atual}</span>
             </div>
-            <div class="siop-user-badge">
-                <div class="siop-user-name">
-                    👤 {militar_completo} <span class="siop-user-mat">(Mat. {matricula_fmt})</span>
+            <div style="
+                background: rgba(20, 15, 13, 0.65);
+                border: 1px solid #c5a059;
+                border-radius: 8px;
+                padding: 7px 14px;
+                text-align: left;
+                line-height: 1.35;
+                white-space: nowrap;
+            ">
+                <div style="color: #ffffff; font-size: 0.86rem; font-weight: 800;">
+                    👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.80rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
                 </div>
-                <div class="siop-user-unit">
+                <div style="color: #ffe0b2; font-size: 0.76rem; font-weight: 700;">
                     🏛️ {unidade_atual} — PLANTÃO
                 </div>
             </div>
