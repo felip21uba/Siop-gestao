@@ -67,15 +67,22 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
     aba_atual = st.session_state["subaba_tramitacao_ativa"]
 
+    # =========================================================================
+    # 🔲 RETÂNGULO GRANDE PRINCIPAL ENGLOBANDO OS 3 BOTÕES MENORES
+    # =========================================================================
     st.markdown("""
     <style>
-    .painel-tramitacao-container {
-        background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
-        border: 2px solid #c5a059;
-        border-radius: 12px;
-        padding: 16px 20px;
-        margin-bottom: 18px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
+    /* Estilização da caixa pai que engloba o cabeçalho e os 3 botões */
+    div[data-testid="stVerticalBlock"]:has(> div > .painel-tramitacao-cabecalho) {
+        background: linear-gradient(135deg, #7d6539 0%, #63502c 100%) !important;
+        border: 2px solid #c5a059 !important;
+        border-radius: 12px !important;
+        padding: 18px 20px 20px 20px !important;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45) !important;
+        margin-bottom: 22px !important;
+    }
+    .painel-tramitacao-cabecalho {
+        margin-bottom: 14px;
     }
     .painel-tramitacao-titulo {
         font-size: 1.25rem !important;
@@ -90,16 +97,16 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     .painel-tramitacao-subtitulo {
         font-size: 0.84rem;
         color: #f5ebe0;
-        margin-bottom: 14px;
+        margin: 0;
     }
     </style>
     """, unsafe_allow_html=True)
 
     with st.container():
         st.markdown("""
-        <div class="painel-tramitacao-container">
+        <div class="painel-tramitacao-cabecalho">
             <div class="painel-tramitacao-titulo">
-                🎒 Custódia Física & Tramitação Unificada
+                🎒 Custódia Física &amp; Tramitação Unificada
             </div>
             <div class="painel-tramitacao-subtitulo">
                 Gerencie os bens sob sua posse, realize remessas para policiais/órgãos e consulte o histórico imutável das movimentações.
@@ -126,8 +133,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             if st.button("📜 Histórico Permanente de Envios & Ocorrência", key="nav_btn_hist_v9", type=btn_tipo3, use_container_width=True):
                 st.session_state["subaba_tramitacao_ativa"] = "HISTORICO"
                 st.rerun()
-
-    st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
 
     if "fila_tramitacao_mapeada" not in st.session_state:
         st.session_state["fila_tramitacao_mapeada"] = []
@@ -332,7 +337,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         num_oficio_unid = ""
                         recibo_unid_file = None
 
-                    # PLACEHOLDER PLACEBO ATUALIZADO SEM DADOS REAIS
                     recebedor_info = st.text_input(
                         "Informe Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", 
                         placeholder="nome e matricula", 
@@ -587,13 +591,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             font-weight: 800;
             text-transform: uppercase;
         }
-        .caixa-filtro-tatico {
-            background: linear-gradient(135deg, #2b231d 0%, #1e1814 100%);
-            border: 1.5px solid #6b5735;
-            border-radius: 10px;
-            padding: 14px;
-            margin-bottom: 16px;
-        }
         .tag-info-retangulo {
             background-color: #140f0d;
             border: 1px solid #54432a;
@@ -609,16 +606,13 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         </style>
         """, unsafe_allow_html=True)
 
-        with st.container():
-            st.markdown('<div class="caixa-filtro-tatico">', unsafe_allow_html=True)
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                busca_reds_hist = st.text_input("🔍 Pesquisar por Nº do REDS (Busca Geral):", placeholder="Ex: 2026-000484967", key="txt_busca_reds_hist_v8").strip()
-            with col_f2:
-                dt_hoje = datetime.date.today()
-                dt_30d = dt_hoje - datetime.timedelta(days=90)
-                intervalo_datas = st.date_input("🗓️ Filtrar por Período:", value=(dt_30d, dt_hoje), format="DD/MM/YYYY", key="date_hist_envios_v8")
-            st.markdown('</div>', unsafe_allow_html=True)
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            busca_reds_hist = st.text_input("🔍 Pesquisar por Nº do REDS (Busca Geral):", placeholder="Ex: 2026-000484967", key="txt_busca_reds_hist_v8").strip()
+        with col_f2:
+            dt_hoje = datetime.date.today()
+            dt_30d = dt_hoje - datetime.timedelta(days=90)
+            intervalo_datas = st.date_input("🗓️ Filtrar por Período:", value=(dt_30d, dt_hoje), format="DD/MM/YYYY", key="date_hist_envios_v8")
 
         envios_militar = []
         for b in all_bens or []:
