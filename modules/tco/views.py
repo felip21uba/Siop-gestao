@@ -19,96 +19,123 @@ from modules.tco.estilo_tco import modal_cadeia_custodia_timeline, modal_guia_te
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
 # ==============================================================================
-# 🎨 IDENTIDADE VISUAL PADRÃO ESCALAS / TÁTICO SUAVE
+# 🎨 IDENTIDADE VISUAL OFICIAL (FOTO 2: BOTÕES DOURADOS SÓLIDOS & CARDS MATTE)
 # ==============================================================================
 
 def injetar_css_cards_alternados():
-    """Injeta a padronização visual das Escalas com cards suaves e leitura confortável."""
+    """Injeta as cores oficiais da Foto 2 (sem cinzas apagados) e cards matte sem brilho."""
     st.markdown("""
     <style>
-    /* 1. Estrutura Padrão Escalas (Sem cinzas opacos na sidebar) */
-    .stApp { background-color: #0f172a !important; color: #f8fafc !important; }
-    section[data-testid="stSidebar"] { 
-        background-color: #1e293b !important; 
-        border-right: 1.5px solid #4E442A !important; 
-    }
-    section[data-testid="stSidebar"] p, 
-    section[data-testid="stSidebar"] span, 
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] div { 
+    /* 1. Sidebar e Botões Principais no Padrão da Foto 2 (Dourado Quente Oficial) */
+    .stApp { 
+        background-color: #0f172a !important; 
         color: #f8fafc !important; 
     }
+    
+    section[data-testid="stSidebar"] { 
+        background-color: #172033 !important; 
+        border-right: 1.5px solid #2e3e54 !important; 
+    }
 
-    /* 2. Cartões de Métricas (KPIs) */
+    /* Botões da Sidebar / Primários em Dourado Quente (Foto 2) */
+    div.stButton > button[kind="primary"],
+    div[data-testid="stSidebar"] button[kind="primary"],
+    .btn-dourado-foto2 {
+        background-color: #a38048 !important;
+        color: #140d07 !important;
+        border: 1px solid #c49d5a !important;
+        font-weight: 800 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3) !important;
+    }
+    div.stButton > button[kind="primary"]:hover,
+    div[data-testid="stSidebar"] button[kind="primary"]:hover {
+        background-color: #b89355 !important;
+        color: #000000 !important;
+        border-color: #dfb66d !important;
+    }
+
+    div.stButton > button[kind="secondary"],
+    div[data-testid="stSidebar"] button[kind="secondary"] {
+        background-color: #242f44 !important;
+        color: #e2e8f0 !important;
+        border: 1px solid #3d4f6d !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+    }
+    div.stButton > button[kind="secondary"]:hover {
+        background-color: #33415c !important;
+        border-color: #a38048 !important;
+        color: #ffffff !important;
+    }
+
+    /* 2. Métricas / KPIs Sóbrios */
     [data-testid="stMetric"], .stMetric {
         background-color: #1e293b !important;
-        border: 1px solid #4E442A !important;
+        border: 1px solid #334155 !important;
         padding: 12px 14px !important;
         border-radius: 8px !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
     }
     [data-testid="stMetricValue"] {
-        font-size: 1.60rem !important;
+        font-size: 1.65rem !important;
         font-weight: 800 !important;
-        color: #ffe0b2 !important;
+        color: #fef08a !important;
     }
     [data-testid="stMetricLabel"] {
-        font-size: 0.84rem !important;
+        font-size: 0.85rem !important;
         font-weight: 600 !important;
-        color: #94a3b8 !important;
+        color: #cbd5e1 !important;
     }
 
-    /* 3. Cards de Materiais: Leves, Sem Peso e Confortáveis à Vista */
+    /* 3. Cards de Materiais: Foscos (Matte), Sem Brilho e Sem Tons Avermelhados */
     .card-material-item {
         border-radius: 8px !important;
         padding: 14px 18px !important;
         margin-bottom: 12px !important;
         line-height: 1.6 !important;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25) !important;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25) !important;
     }
 
-    /* Card Par: Fundo Dark Azulado/Ardósia Leve */
+    /* Card Par: Fundo Dark Neutro Confortável */
     .card-material-item.card-par {
-        background-color: #1a2332 !important;
-        border: 1.5px solid #2e3e54 !important;
-        color: #e2e8f0 !important;
+        background-color: #1e1b18 !important;
+        border: 1px solid #38322c !important;
+        color: #e2dfd9 !important;
     }
     .card-material-item.card-par b, .card-material-item.card-par strong {
         color: #ffffff !important;
     }
 
-    /* Card Ímpar: Fundo Caqui Militar Suave */
+    /* Card Ímpar: Fundo Caqui Escuro Matte (Sem Rosa / Sem Brilho Forte) */
     .card-material-item.card-impar {
-        background-color: #2b251d !important;
-        border: 1.5px solid #4d4133 !important;
-        color: #f5ebe0 !important;
+        background-color: #27221b !important;
+        border: 1px solid #453c30 !important;
+        color: #ece7de !important;
     }
     .card-material-item.card-impar b, .card-material-item.card-impar strong {
-        color: #ffe0b2 !important;
+        color: #ffffff !important;
     }
 
-    /* Badges e Destaques */
+    /* Caixas de Data/Hora e Tags sem Brilho */
     .tag-data-discreta {
-        background-color: rgba(15, 23, 42, 0.7) !important;
-        border: 1px solid #4E442A !important;
-        color: #ffe0b2 !important;
+        background-color: #14110e !important;
+        border: 1px solid #38322c !important;
+        color: #fef08a !important;
         padding: 2px 8px !important;
         border-radius: 4px !important;
         font-family: monospace !important;
-        font-size: 0.85rem !important;
+        font-size: 0.84rem !important;
         font-weight: 600 !important;
     }
 
     .badge-creds-status {
-        border: 1px solid #9D8B5C !important;
-        background-color: rgba(78, 68, 42, 0.4) !important;
-        color: #ffe0b2 !important;
-        border-radius: 6px !important;
-        padding: 3px 10px !important;
+        border: 1px solid #574a38 !important;
+        background-color: #1b1712 !important;
+        color: #e4d7b5 !important;
+        border-radius: 5px !important;
+        padding: 3px 9px !important;
         font-size: 0.78rem !important;
-        font-weight: 800 !important;
-        letter-spacing: 0.5px !important;
+        font-weight: 700 !important;
         display: inline-flex !important;
         align-items: center !important;
         text-transform: uppercase !important;
@@ -116,39 +143,29 @@ def injetar_css_cards_alternados():
     }
 
     .linha-auditoria-div {
-        border-top: 1px dashed rgba(157, 139, 92, 0.35) !important;
+        border-top: 1px dashed #38322c !important;
         margin-top: 10px !important;
         padding-top: 8px !important;
-        font-size: 0.84rem !important;
-        color: #cbd5e1 !important;
+        font-size: 0.82rem !important;
+        color: #a8a29e !important;
         display: flex !important;
         align-items: center !important;
         gap: 18px !important;
     }
+    .linha-auditoria-div strong {
+        color: #ffffff !important;
+    }
 
-    /* Botões Padrão Escalas */
-    div.stButton > button[kind="secondary"] {
-        background-color: #9D8B5C !important;
-        color: #000000 !important;
-        border: 1.5px solid #4E442A !important;
+    /* Badges de Trâmite e Alerta */
+    .badge-alerta-dias {
+        background-color: #3b1717 !important;
+        border: 1px solid #7f2323 !important;
+        color: #fca5a5 !important;
+        border-radius: 4px !important;
+        padding: 2px 7px !important;
+        font-size: 0.72rem !important;
         font-weight: 700 !important;
-        border-radius: 6px !important;
-    }
-    div.stButton > button[kind="secondary"]:hover {
-        background-color: #4E442A !important;
-        color: #ffffff !important;
-    }
-
-    div.stButton > button[kind="primary"] {
-        background-color: #4E442A !important;
-        color: #ffffff !important;
-        border: 1.5px solid #9D8B5C !important;
-        font-weight: 800 !important;
-        border-radius: 6px !important;
-    }
-    div.stButton > button[kind="primary"]:hover {
-        background-color: #9D8B5C !important;
-        color: #000000 !important;
+        display: inline-flex !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -293,7 +310,7 @@ def obter_status_gargalo_e_tempo(bem, e_marrom=False):
     texto_tempo, e_alerta_4dias, dias_num = calcular_tempo_decorrido_detalhado(dt_ref)
     
     def tag_destaque(txt):
-        return f"<b style='color: #ffe0b2;'>{txt}</b>"
+        return f"<b style='color: #fef08a;'>{txt}</b>"
 
     if dest_pend and status_tr in ["Pendente de Aceite", "Pendente Aceite"]:
         ponto_cadeia = f"⏳ <b>Aguardando Aceite por:</b> {tag_destaque(dest_pend)} ({bem.get('unidade_destinatario_pendente', 'N/I')})"
@@ -527,7 +544,7 @@ renderizar_aba_ingestao = renderizar_aba_importacao
 
 
 # =============================================================================
-# ABA 3: PAINEL DO CREDS (COM BUSCA POR REDS/AUTOR, CARDS LEVES E MODAIS)
+# ABA 3: PAINEL DO CREDS (BUSCA POR REDS/AUTOR, PERÍODO, CARDS LEVES E MODAIS)
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_css_cards_alternados()
@@ -537,7 +554,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO têm acesso às funções deste painel.")
         return
 
-    st.caption(f"⚙ **Gestão Institucional Ativa:** Operando como **CREDS TCO - {unidade_militar_atual}** | Assinatura digital do Gestor: **{nome_militar_atual}**")
+    st.caption(f"⚙ **Gestão Institucional Ativa:** Operando como **CREDS TCO - {unidade_militar_atual}** | Gestor: **{nome_militar_atual}**")
 
     if "itens_selecionados_creds_painel" not in st.session_state:
         st.session_state["itens_selecionados_creds_painel"] = {}
@@ -546,7 +563,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.session_state["filtro_card_ativo"] = "TODOS"
 
     # =========================================================================
-    # BARRA SUPERIOR: FILTRO DE UNIDADE, PERÍODO E BUSCA POR REDS / AUTOR
+    # BARRA DE FILTROS SUPERIORES: BUSCA POR REDS / AUTOR + PERÍODO DE ENTRADA
     # =========================================================================
     with st.container(border=True):
         st.markdown("##### 🔍 Filtros & Pesquisa Geral do Acervo")
@@ -558,12 +575,12 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
         with c_exp2:
             dt_hoje = datetime.date.today()
-            dt_30d = dt_hoje - datetime.timedelta(days=90)
+            dt_inicio_padrao = dt_hoje - datetime.timedelta(days=90)
             periodo_datas = st.date_input(
-                "Período de Entrada (DD/MM/AAAA):",
-                value=(dt_30d, dt_hoje),
+                "Filtrar por Período de Data:",
+                value=(dt_inicio_padrao, dt_hoje),
                 format="DD/MM/YYYY",
-                key="range_datas_creds"
+                key="range_datas_creds_painel"
             )
 
         with c_exp3:
@@ -572,7 +589,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             if bens_filtrados_painel:
                 excel_bytes = gerar_excel_panoramico_tco(bens_filtrados_painel)
                 st.download_button(
-                    label=f"📥 Baixar Excel ({len(bens_filtrados_painel)} itens)",
+                    label=f"📥 Baixar Excel ({len(bens_filtrados_painel)})",
                     data=excel_bytes,
                     file_name=f"Relatorio_TCO_{creds_selecionado.replace(' ', '_')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -580,11 +597,11 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     use_container_width=True
                 )
 
-        # Campo de busca rápida solicitado: por REDS ou Nome do Autor
-        termo_busca_painel = st.text_input(
-            "🔎 Pesquisar no Painel por Nº do REDS ou Nome do Autor:",
-            placeholder="Digite o número do REDS ou nome do autor...",
-            key="txt_busca_painel_creds_reds_autor"
+        # Campo solicitado: Pesquisa dinâmica por Número do REDS ou Nome do Autor
+        busca_reds_ou_autor = st.text_input(
+            "🔎 Pesquisar por Nº do REDS ou Nome do Autor:",
+            placeholder="Ex: 2026-000484967 ou MARCIO DE ALMEIDA...",
+            key="txt_busca_creds_reds_autor"
         ).strip().lower()
 
     if creds_selecionado != "TODOS OS CREDS (ACERVO GERAL)":
@@ -596,6 +613,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                unid_str.lower() in str(extrair_unidade_mae_creds(str(b.get("unidade_posse_atual", ""))) or "").lower()
         ]
 
+    # Filtragem pelo intervalo de datas
     if isinstance(periodo_datas, tuple) and len(periodo_datas) == 2:
         d_ini, d_fim = periodo_datas
         bens_periodo = []
@@ -612,16 +630,17 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 bens_periodo.append(b)
         bens_filtrados_painel = bens_periodo
 
-    # Aplicação do filtro de busca por REDS ou Autor
-    if termo_busca_painel:
+    # Filtragem por texto: REDS ou Autor
+    if busca_reds_ou_autor:
         bens_filtrados_painel = [
             b for b in bens_filtrados_painel
-            if termo_busca_painel in str(b.get("num_reds", "")).lower()
-            or termo_busca_painel in str(b.get("autores", "")).lower()
-            or termo_busca_painel in str(b.get("involucro_lacre", "")).lower()
+            if busca_reds_ou_autor in str(b.get("num_reds", "")).lower()
+            or busca_reds_ou_autor in str(b.get("autores", "")).lower()
+            or busca_reds_ou_autor in str(b.get("involucro_lacre", "")).lower()
+            or busca_reds_ou_autor in str(b.get("descricao", "")).lower()
         ]
 
-    # Distribuição dos grupos
+    # Distribuição dos grupos operacionais
     bens_custodia_ativa_creds = []
     bens_aguardando_destruicao = []
     bens_pendentes_aceite_creds = []
@@ -728,13 +747,13 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
     filtro_card = st.session_state.get("filtro_card_ativo", "TODOS")
 
-    # Carrega logs reais do Supabase para a auditoria de etapas
+    # Carrega logs reais do Supabase para auditoria
     todos_logs_banco = carregar_logs_supabase() or []
     usr_dados = st.session_state.get("usuario_dados", {})
     mat_op = str(usr_dados.get("num_policia") or usr_dados.get("usuario_login") or "1764921")
 
     # =========================================================================
-    # RETÂNGULO 1: 🎒 ACERVO ATIVO CONFIRMADO NO CREDS (CARDS LEVES E MODAIS)
+    # RETÂNGULO 1: 🎒 ACERVO ATIVO NO CREDS (CARDS LEVES E BOTÕES DE CADEIA/GUIA)
     # =========================================================================
     if filtro_card in ["TODOS", "CREDS", "PARADOS"]:
         with st.container(border=True):
@@ -746,7 +765,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             qtd_reds_disponiveis = df_disp_reds["num_reds"].nunique() if not df_disp_reds.empty else 0
 
             st.markdown(f"##### 🎒 1. Acervo Ativo no Depósito do CREDS ({qtd_reds_disponiveis} REDS)")
-            st.caption("Materiais sob custódia física com acesso à Cadeia de Custódia e impressão de guias oficiais.")
+            st.caption("Materiais sob guarda com consulta à Cadeia de Custódia e impressão de Termos Oficiais.")
 
             if bens_r1:
                 grupos_creds_reds = df_disp_reds.groupby("num_reds", sort=False)
@@ -767,7 +786,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             unid_posse_b = bem.get("unidade_posse_atual", unidade_militar_atual)
                             resp_b = bem.get("ultimo_gestor_movimentou") or f"{nome_militar_atual} - MAT. {formatar_matricula_pm(mat_op)}"
 
-                            # Contagem real de etapas na cadeia de custódia
+                            # Contagem real de etapas na cadeia
                             logs_item = [
                                 l for l in todos_logs_banco
                                 if str(l.get("num_reds", "")).strip() == num_reds_c
@@ -775,7 +794,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             ]
                             qtd_etapas = len(logs_item) if logs_item else 1
 
-                            # Alternância suave sem peso visual (Par: card-par, Ímpar: card-impar)
+                            # Alternância suave sem brilho: par = card-par | ímpar = card-impar
                             classe_card = "card-par" if (idx_global_card % 2 == 0) else "card-impar"
 
                             col_chk_b, col_card_b = st.columns([0.5, 9.5])
@@ -804,7 +823,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 """
                                 st.markdown(html_item, unsafe_allow_html=True)
 
-                                # Barra com os botões de ação e impressão solicitados
+                                # Barra com os botões de ação e impressão
                                 c_sp, c_btn_cad, c_btn_guia = st.columns([6, 2, 2])
                                 with c_btn_cad:
                                     if st.button("🔗 Cadeia de Custódia", key=f"btn_cad_r1_{id_bem}_{idx_global_card}", use_container_width=True):
@@ -829,7 +848,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 
                 tipo_dest_creds = st.radio(
                     "Selecione a Operação do Gestor:",
-                    ["🔥 Autorizar Destruição / Incineração no Depósito", "🏛️ Enviar para Órgão Externo (PCMG / Perícia / JECRIM / Outros)", "👤 Transferir para Policial / Fiel Depositário"],
+                    ["🔥 Autorizar Destruição / Incineração no Depósito", "🏛️ Enviar para Órgão Externo (PCMG / Perícia / JECRIM / Outros)", "👤 Transferir para Policial / Fiel Depositário", "🏢 Aguardando no CREDS-TC / Custódia"],
                     horizontal=True,
                     key="radio_tipo_destinatario_creds_v4"
                 )
@@ -852,6 +871,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             )
                             tipo_ret = st.radio("Natureza da Transferência:", ["🔄 Com Retorno (Em Tramitação)", "🔒 Definitiva (Procedimento Encerrado/Sem Retorno)"], key="radio_def_v4")
                             eh_definitiva_ext = ("Definitiva" in tipo_ret)
+                        elif "Aguardando no CREDS" in tipo_dest_creds:
+                            destinatario_final = f"CREDS TCO - {unidade_militar_atual}"
+                            eh_definitiva_ext = False
                         else:
                             lista_m = carregar_militares_supabase() or []
                             opcoes_mil = [f"{m.get('posto_grad','PM')} {m.get('nome_completo','MILITAR')} ({m.get('num_policia','')})" for m in lista_m]
@@ -876,6 +898,15 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 disabled=True,
                                 key="sb_fase_destruicao_disabled"
                             )
+                        elif "Aguardando no CREDS" in tipo_dest_creds:
+                            fase_final = "Aguardando no CREDS-TC / Custódia"
+                            st.selectbox(
+                                "Atualizar Fase de Destinação:",
+                                options=["Aguardando no CREDS-TC / Custódia"],
+                                index=0,
+                                disabled=True,
+                                key="sb_fase_creds_ret_disabled"
+                            )
                         else:
                             fase_final = st.selectbox(
                                 "Atualizar Fase de Destinação Final (Acesso Gestor CREDS):",
@@ -894,7 +925,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             sucessos = 0
 
                             for id_bem_c, dados_c in selecionados_creds_map.items():
-                                status_final = "Transferido Definitivo" if eh_definitiva_ext else ("Pendente de Aceite" if eh_policial_dest else "Em Tramitação")
+                                status_final = "Transferido Definitivo" if eh_definitiva_ext else ("Pendente de Aceite" if eh_policial_dest else "Em Custódia")
                                 
                                 payload = {
                                     "destinatario_pendente": destinatario_final if eh_policial_dest else None,
@@ -1140,7 +1171,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 """
                                 st.markdown(html_ext, unsafe_allow_html=True)
 
-                                # Adicionados botões de consulta de cadeia e emissão de guia também para itens externos
+                                # Botões de consulta de cadeia e guia oficial integrados
                                 c_sp_e, c_cad_e, c_guia_e = st.columns([6, 2, 2])
                                 with c_cad_e:
                                     if st.button("🔗 Cadeia", key=f"btn_cad_ext_{id_bem_e}_{idx_e}", use_container_width=True):
@@ -1474,7 +1505,6 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                                             st.rerun()
             else:
                 st.info("Nenhum gestor ou operador elevado cadastrado nesta lotação.")
-
 
 # =============================================================================
 # ALIASES DE RETROCOMPATIBILIDADE
