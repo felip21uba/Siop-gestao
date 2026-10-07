@@ -1,7 +1,7 @@
 """
 ==============================================================================
 🛡️ SIOP PMMG - Identidade Visual, Cabeçalho Tático & Modais de Custódia
-Arquivo: modules/tco/estilo_tco.py
+Arquivo: modules/tco/estilo_tco.py (Cores idênticas aos cards do Passo 3)
 ==============================================================================
 """
 
@@ -25,64 +25,65 @@ def formatar_matricula_pm(mat: str) -> str:
 
 def injetar_estilo_cards_selecao_invertida():
     """
-    Aplica:
-    - Padrão: Bege claro / Caqui areia suave com texto escuro legível.
-    - Selecionado: Escurece para o castanho café (#2c1d18) com letras bege suave (#ffe0b2).
+    Aplica as cores exatas do Passo 3:
+    - Padrão (Sem Seleção): Caqui militar suave (#9e854e) com borda #bfa76f e texto escuro.
+    - Selecionado: Marrom oliva escuro (#4a3e20) com borda dourada (#d4af37) e texto bege claro.
     """
     st.markdown("""
     <style>
-    /* 1. CARD PADRÃO: Bege Claro Operacional */
+    /* 1. CARD PADRÃO: Caqui Militar (Igual ao militar disponível no Passo 3) */
     .card-material-item {
-        background-color: #8d6e63 !important;
-        border: 1.5px solid #a1887f !important;
+        background-color: #9e854e !important;
+        border: 1.5px solid #bfa76f !important;
         border-radius: 8px !important;
         padding: 14px 18px !important;
         margin-bottom: 10px !important;
         color: #1b1b1b !important;
         line-height: 1.55 !important;
         transition: all 0.2s ease-in-out !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.18) !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.25) !important;
     }
     .card-material-item strong, .card-material-item b {
         color: #000000 !important;
     }
     .card-material-item .tag-codigo, .card-material-item code {
-        background-color: #72554b !important;
+        background-color: #7d6539 !important;
         color: #ffe0b2 !important;
-        border: 1px solid #5d4037 !important;
-        padding: 2px 6px !important;
+        border: 1px solid #54432a !important;
+        padding: 2px 7px !important;
         border-radius: 4px !important;
         font-family: monospace !important;
         font-weight: 700 !important;
     }
 
-    /* 2. CARD SELECIONADO: Escurece para Castanho Café (#2c1d18) */
+    /* 2. CARD MARCADO: Marrom Oliva Militar (Igual ao militar selecionado no Passo 3) */
     .card-material-item.selecionado {
-        background-color: #2c1d18 !important;
-        border: 1.5px solid #c5a059 !important;
-        color: #d7ccc8 !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+        background-color: #4a3e20 !important;
+        border: 1.5px solid #d4af37 !important;
+        border-radius: 8px !important;
+        color: #f7e6d0 !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.55) !important;
     }
     .card-material-item.selecionado strong, .card-material-item.selecionado b {
         color: #ffe0b2 !important;
     }
     .card-material-item.selecionado .tag-codigo, .card-material-item.selecionado code {
-        background-color: #3e2723 !important;
+        background-color: #2b2313 !important;
         color: #ffe0b2 !important;
-        border: 1px solid #5d4037 !important;
+        border: 1px solid #c5a059 !important;
     }
 
-    /* 3. BOTÕES GERAIS */
+    /* 3. BOTÕES NO MESMO PADRÃO DO PASSO 3 */
     div.stButton > button[kind="secondary"] {
-        background-color: #8d6e63 !important;
+        background-color: #9e854e !important;
         color: #1b1b1b !important;
-        border: 1px solid #a1887f !important;
+        border: 1.5px solid #bfa76f !important;
         font-weight: 700 !important;
     }
     div.stButton > button[kind="primary"] {
-        background-color: #2c1d18 !important;
+        background-color: #4a3e20 !important;
         color: #ffe0b2 !important;
-        border: 1.5px solid #c5a059 !important;
+        border: 1.5px solid #d4af37 !important;
         font-weight: 800 !important;
     }
     </style>
@@ -91,7 +92,7 @@ def injetar_estilo_cards_selecao_invertida():
 
 def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     """
-    Renderiza o cabeçalho tático com o cartão grande na tonalidade caqui bronze do símbolo
+    Renderiza o cabeçalho tático com o card grande na tonalidade caqui bronze do símbolo
     e dados dinâmicos da sessão do militar.
     """
     injetar_estilo_cards_selecao_invertida()
@@ -129,7 +130,7 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     # 4. Horário de Brasília em tempo real
     hora_atual = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
 
-    # 5. Cartão Grande na cor caqui bronze (#7d6539 / #63502c) com contorno dourado (#c5a059)
+    # 5. Card Grande na tonalidade caqui bronze (#7d6539 / #63502c) com contorno dourado (#c5a059)
     st.markdown(f"""
     <div style="
         background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
