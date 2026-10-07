@@ -861,15 +861,17 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     with st.expander(f"📦 **CARD REDS: {num_reds_c}** ({len(df_grupo_c)} item/ns sob custódia oficial do CREDS)", expanded=False):
                         for _, bem in df_grupo_c.iterrows():
                             idx_global_card += 1
-                            e_marrom = (idx_global_card % 2 != 0)
-                            classe_card = "card-brown" if e_marrom else "card-blue"
-                            _, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
                             id_bem = str(bem.get("id_bem") or bem.get("id"))
                             dt_mov_exata = formatar_data_hora_exata(bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao"))
 
                             col_c1, col_c2 = st.columns([0.6, 9.4])
                             with col_c1:
                                 is_sel_creds = st.checkbox("Selecionar", key=f"chk_creds_card_{id_bem}_{idx_global_card}", label_visibility="collapsed")
+
+                            # INVERSÃO EXCLUSIVA: Padrão Bege Claro (card-brown). Se selecionado -> Escurece (card-blue)
+                            classe_card = "card-blue" if is_sel_creds else "card-brown"
+                            e_marrom = (classe_card == "card-brown")
+                            _, tempo_str_card, alerta_4d_card, _ = obter_status_gargalo_e_tempo(bem, e_marrom=e_marrom)
 
                             with col_c2:
                                 html_item = f"""
