@@ -1,6 +1,6 @@
 """
 ==============================================================================
-🛡️ SIOP PMMG - Identidade Visual, Cabeçalho Tático & Modais com Impressão Real
+🛡️ SIOP PMMG - Identidade Visual, Cabeçalho Tático & Modais de Custódia
 Arquivo: modules/tco/estilo_tco.py
 ==============================================================================
 """
@@ -31,7 +31,7 @@ def injetar_estilo_cards_selecao_invertida():
     """
     st.markdown("""
     <style>
-    /* 1. CARD PADRÃO: Caqui Militar */
+    /* 1. CARD PADRÃO: Caqui Militar (Igual ao militar disponível no Passo 3) */
     .card-material-item {
         background-color: #9e854e !important;
         border: 1.5px solid #bfa76f !important;
@@ -56,7 +56,7 @@ def injetar_estilo_cards_selecao_invertida():
         font-weight: 700 !important;
     }
 
-    /* 2. CARD MARCADO: Marrom Oliva Militar */
+    /* 2. CARD MARCADO: Marrom Oliva Militar (Igual ao militar selecionado no Passo 3) */
     .card-material-item.selecionado {
         background-color: #4a3e20 !important;
         border: 1.5px solid #d4af37 !important;
@@ -130,6 +130,7 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     # 4. Horário de Brasília em tempo real
     hora_atual = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
 
+    # 5. Card Grande na tonalidade caqui bronze (#7d6539 / #63502c) com contorno dourado (#c5a059)
     st.markdown(f"""
     <div style="
         background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
@@ -207,12 +208,12 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
 
 
 # ==============================================================================
-# MODAL 1: CADEIA DE CUSTÓDIA COM TIMELINE E IMPRESSÃO
+# MODAL 1: CADEIA DE CUSTÓDIA COM LOCAL DA TRAMITAÇÃO E IMPRESSÃO
 # ==============================================================================
 
 @st.dialog("🔗 Cadeia de Custódia — Histórico Imutável", width="large")
 def modal_cadeia_custodia_timeline(bem: dict):
-    """Exibe modal com rastreabilidade vertical do Art. 158-B do CPP e suporte a impressão."""
+    """Exibe modal com rastreabilidade vertical do Art. 158-B do CPP, local e impressão."""
     num_reds = bem.get("num_reds", "N/I")
     id_bem = str(bem.get("id_bem") or bem.get("id", ""))
     desc = bem.get("descricao", "N/I")
@@ -237,10 +238,12 @@ def modal_cadeia_custodia_timeline(bem: dict):
             "acao": "Entrada e Acondicionamento Inicial",
             "origem": custodiante,
             "unidade_origem": unidade,
+            "unidade_destino": unidade,
+            "destino": custodiante,
             "detalhe": f"Material registrado no sistema sob custódia de {custodiante}."
         }]
 
-    # Construção dos eventos da timeline
+    # Construção dos eventos com o Local onde tramitou
     itens_timeline_html = ""
     for log in logs_especificos:
         dt_raw = log.get("data_hora", "")
@@ -249,13 +252,27 @@ def modal_cadeia_custodia_timeline(bem: dict):
         except Exception:
             dt_fmt = str(dt_raw)[:16]
 
+        # Extração dinâmica do local exato da movimentação
+        local_tramitacao = (
+            log.get("unidade_destino")
+            or log.get("destino")
+            or log.get("unidade_origem")
+            or unidade
+            or "CREDS TCO"
+        )
+        if "CREDS" not in str(local_tramitacao).upper() and ("CIA" in str(local_tramitacao).upper() or "BPM" in str(local_tramitacao).upper()):
+            local_exibicao = f"CREDS {local_tramitacao}"
+        else:
+            local_exibicao = str(local_tramitacao)
+
         itens_timeline_html += f"""
         <div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 14px; position: relative;">
             <div style="position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #c5a059;"></div>
             <div style="background: rgba(30, 24, 20, 0.95); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">
                 <span style="color: #c5a059; font-size: 0.80rem; font-weight: 700;">⏱️ {dt_fmt}</span><br/>
                 <span style="color: #ffffff; font-size: 0.90rem; font-weight: 700;">{log.get('acao', 'Movimentação')}</span><br/>
-                <span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{log.get('origem', 'Operador')}</b> ({log.get('unidade_origem', 'Unidade')})</span><br/>
+                <span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{log.get('origem', 'Operador')}</b></span><br/>
+                <span style="color: #e5c78b; font-size: 0.82rem; font-weight: 600;">📍 Local: {local_exibicao}</span><br/>
                 <span style="color: #a89389; font-size: 0.80rem;">{log.get('detalhe', '')}</span>
             </div>
         </div>
@@ -304,7 +321,7 @@ def modal_cadeia_custodia_timeline(bem: dict):
 
 @st.dialog("📄 Termo de Custódia & Depósito PMMG", width="large")
 def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
-    """Exibe e imprime o Auto de Apreensão e Depósito conforme as normas da PMMG com dados 100% dinâmicos."""
+    """Exibe e imprime o Auto de Apreensão e Depósito conforme as normas da PMMG com dados dinâmicos."""
     num_reds = bem.get("num_reds", "N/I")
     lacre = bem.get("involucro_lacre", "SEM LACRE")
     desc = bem.get("descricao", "N/I")
@@ -313,10 +330,9 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
     unid_val = bem.get("unidade_medida", "UN")
     custodiante_real = bem.get("fiel_depositario_atual", "CREDS TCO")
     unidade_posse = bem.get("unidade_posse_atual", operador_unid)
-    
-    # Extrai o remetente / recebedor real do histórico ou da tramitação
+
+    # Identificação dinâmica do policial/recebedor da última movimentação
     recebedor_real = bem.get("ultimo_gestor_movimentou") or bem.get("destinatario_pendente") or "Policial Condutor / Recebedor"
-    observacao_rec = bem.get("dados_originais_pdf", {}).get("recibo") or ""
 
     dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or "Data N/I"
     try:
