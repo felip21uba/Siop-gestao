@@ -1,7 +1,7 @@
 """
 ==============================================================================
-🛡️ SIOP PMMG - Identidade Visual, Cabeçalho Tático & Modais de Custódia
-Arquivo: modules/tco/estilo_tco.py (Cores idênticas aos cards do Passo 3)
+🛡️ SIOP PMMG - Identidade Visual, Cabeçalho Tático & Modais com Impressão Real
+Arquivo: modules/tco/estilo_tco.py
 ==============================================================================
 """
 
@@ -31,7 +31,7 @@ def injetar_estilo_cards_selecao_invertida():
     """
     st.markdown("""
     <style>
-    /* 1. CARD PADRÃO: Caqui Militar (Igual ao militar disponível no Passo 3) */
+    /* 1. CARD PADRÃO: Caqui Militar */
     .card-material-item {
         background-color: #9e854e !important;
         border: 1.5px solid #bfa76f !important;
@@ -56,7 +56,7 @@ def injetar_estilo_cards_selecao_invertida():
         font-weight: 700 !important;
     }
 
-    /* 2. CARD MARCADO: Marrom Oliva Militar (Igual ao militar selecionado no Passo 3) */
+    /* 2. CARD MARCADO: Marrom Oliva Militar */
     .card-material-item.selecionado {
         background-color: #4a3e20 !important;
         border: 1.5px solid #d4af37 !important;
@@ -130,7 +130,6 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     # 4. Horário de Brasília em tempo real
     hora_atual = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
 
-    # 5. Card Grande na tonalidade caqui bronze (#7d6539 / #63502c) com contorno dourado (#c5a059)
     st.markdown(f"""
     <div style="
         background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
@@ -208,12 +207,12 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
 
 
 # ==============================================================================
-# MODAIS OPERACIONAIS: CADEIA DE CUSTÓDIA & TERMO DE DEPÓSITO
+# MODAL 1: CADEIA DE CUSTÓDIA COM TIMELINE E IMPRESSÃO
 # ==============================================================================
 
 @st.dialog("🔗 Cadeia de Custódia — Histórico Imutável", width="large")
 def modal_cadeia_custodia_timeline(bem: dict):
-    """Exibe modal com rastreabilidade vertical do Art. 158-B do CPP."""
+    """Exibe modal com rastreabilidade vertical do Art. 158-B do CPP e suporte a impressão."""
     num_reds = bem.get("num_reds", "N/I")
     id_bem = str(bem.get("id_bem") or bem.get("id", ""))
     desc = bem.get("descricao", "N/I")
@@ -221,17 +220,9 @@ def modal_cadeia_custodia_timeline(bem: dict):
     autor = bem.get("autores", "N/I")
     custodiante = bem.get("fiel_depositario_atual", "N/I")
     unidade = bem.get("unidade_posse_atual", "N/I")
+    fase_atual = bem.get("fase_destinacao") or bem.get("status_tramite") or "Em Custódia"
 
-    st.markdown(f"""
-    <div style="background: rgba(20, 15, 13, 0.75); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
-        <span style="color: #bfa59a; font-size: 0.85rem;">REDS: <b style="color: #ffffff;">{num_reds}</b> | Lacre Oficial: <code style="background: #3e2723; color: #ffe0b2; padding: 2px 6px; border-radius: 4px;">{lacre}</code></span><br/>
-        <span style="color: #ffffff; font-size: 0.95rem; font-weight: 700;">Material: {desc} (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})</span><br/>
-        <span style="color: #d7ccc8; font-size: 0.82rem;">Autor da Ocorrência: <b>{autor}</b> | Custodiante Atual: <b style="color: #c5a059;">{custodiante} ({unidade})</b></span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<h5 style='color: #c5a059;'>🔗 Rastreabilidade em Cadeia Fechada (Art. 158-B CPP):</h5>", unsafe_allow_html=True)
-
+    # Busca logs reais gravados no Supabase
     logs_todos = carregar_logs_supabase() or []
     logs_especificos = [
         l for l in logs_todos
@@ -249,6 +240,8 @@ def modal_cadeia_custodia_timeline(bem: dict):
             "detalhe": f"Material registrado no sistema sob custódia de {custodiante}."
         }]
 
+    # Construção dos eventos da timeline
+    itens_timeline_html = ""
     for log in logs_especificos:
         dt_raw = log.get("data_hora", "")
         try:
@@ -256,65 +249,137 @@ def modal_cadeia_custodia_timeline(bem: dict):
         except Exception:
             dt_fmt = str(dt_raw)[:16]
 
-        st.markdown(f"""
-        <div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 12px; position: relative;">
+        itens_timeline_html += f"""
+        <div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 14px; position: relative;">
             <div style="position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #c5a059;"></div>
-            <div style="background: rgba(30, 24, 20, 0.85); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">
+            <div style="background: rgba(30, 24, 20, 0.95); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">
                 <span style="color: #c5a059; font-size: 0.80rem; font-weight: 700;">⏱️ {dt_fmt}</span><br/>
                 <span style="color: #ffffff; font-size: 0.90rem; font-weight: 700;">{log.get('acao', 'Movimentação')}</span><br/>
                 <span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{log.get('origem', 'Operador')}</b> ({log.get('unidade_origem', 'Unidade')})</span><br/>
                 <span style="color: #a89389; font-size: 0.80rem;">{log.get('detalhe', '')}</span>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """
 
+    html_completo_timeline = f"""
+    <div id="print-area-cadeia" style="font-family: 'Segoe UI', Arial, sans-serif;">
+        <div style="background: rgba(20, 15, 13, 0.85); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
+            <span style="color: #bfa59a; font-size: 0.85rem;">REDS: <b style="color: #ffffff;">{num_reds}</b> | Lacre Oficial: <code style="background: #3e2723; color: #ffe0b2; padding: 2px 6px; border-radius: 4px;">{lacre}</code></span><br/>
+            <span style="color: #ffffff; font-size: 0.95rem; font-weight: 700;">Material: {desc} (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})</span><br/>
+            <span style="color: #d7ccc8; font-size: 0.82rem;">Autor da Ocorrência: <b>{autor}</b> | Custodiante Atual: <b style="color: #c5a059;">{custodiante} ({unidade})</b></span><br/>
+            <span style="color: #e5c78b; font-size: 0.80rem;">Fase Atual: <b>{fase_atual}</b></span>
+        </div>
+        <h5 style="color: #c5a059; margin-bottom: 12px;">🔗 Rastreabilidade em Cadeia Fechada (Art. 158-B CPP):</h5>
+        {itens_timeline_html}
+    </div>
+    """
+
+    st.markdown(html_completo_timeline, unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col_btn_p, col_btn_f = st.columns([1.5, 1])
+    with col_btn_p:
+        if st.button("🖨️ Imprimir Rastreabilidade", type="primary", use_container_width=True):
+            components.html(f"""
+            <script>
+                var printContents = `{html_completo_timeline}`;
+                var win = window.open('', '', 'height=700,width=900');
+                win.document.write('<html><head><title>Cadeia de Custódia - {num_reds}</title>');
+                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;}} div{{color:#111 !important;}} span{{color:#111 !important;}} code{{border:1px solid #999;padding:2px 4px;}}</style>');
+                win.document.write('</head><body>');
+                win.document.write(printContents);
+                win.document.write('</body></html>');
+                win.document.close();
+                win.print();
+            </script>
+            """, height=0)
+    with col_btn_f:
+        if st.button("Fechar", use_container_width=True):
+            st.rerun()
+
+
+# ==============================================================================
+# MODAL 2: GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO COM DADOS REAIS E IMPRESSÃO
+# ==============================================================================
 
 @st.dialog("📄 Termo de Custódia & Depósito PMMG", width="large")
 def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
-    """Exibe o termo formal para impressão conforme expediente da PMMG."""
+    """Exibe e imprime o Auto de Apreensão e Depósito conforme as normas da PMMG com dados 100% dinâmicos."""
     num_reds = bem.get("num_reds", "N/I")
     lacre = bem.get("involucro_lacre", "SEM LACRE")
     desc = bem.get("descricao", "N/I")
     autor = bem.get("autores", "N/I")
+    qtd_val = bem.get("quantidade", 1)
+    unid_val = bem.get("unidade_medida", "UN")
+    custodiante_real = bem.get("fiel_depositario_atual", "CREDS TCO")
+    unidade_posse = bem.get("unidade_posse_atual", operador_unid)
+    
+    # Extrai o remetente / recebedor real do histórico ou da tramitação
+    recebedor_real = bem.get("ultimo_gestor_movimentou") or bem.get("destinatario_pendente") or "Policial Condutor / Recebedor"
+    observacao_rec = bem.get("dados_originais_pdf", {}).get("recibo") or ""
+
     dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or "Data N/I"
     try:
         dt_fmt = pd.to_datetime(dt_criacao).strftime("%d/%m/%Y às %H:%M")
     except Exception:
         dt_fmt = str(dt_criacao)
 
+    mat_operador_fmt = formatar_matricula_pm(operador_mat)
+
     html_termo = f"""
-    <div style="background: #fdfbf7; color: #111827; padding: 25px; border-radius: 8px; border: 1px solid #d1d5db; font-family: 'Segoe UI', Arial, sans-serif;">
+    <div id="print-area-guia" style="background: #ffffff; color: #111827; padding: 25px; border-radius: 8px; border: 1px solid #d1d5db; font-family: 'Segoe UI', Arial, sans-serif;">
         <div style="text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 15px;">
             <h4 style="margin: 0; font-size: 0.95rem; color: #111827; text-transform: uppercase;">POLÍCIA MILITAR DE MINAS GERAIS</h4>
-            <p style="margin: 2px 0; font-size: 0.80rem; color: #374151;">{operador_unid} • CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO</p>
-            <h3 style="margin: 8px 0 0 0; font-size: 1.1rem; color: #111827;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA</h3>
+            <p style="margin: 3px 0; font-size: 0.80rem; color: #374151;">{operador_unid} • CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>
+            <h3 style="margin: 8px 0 0 0; font-size: 1.1rem; color: #111827; text-transform: uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA</h3>
         </div>
         <p style="font-size: 0.85rem; line-height: 1.6; text-align: justify; color: #1f2937;">
-            Certifico que, aos <b>{dt_fmt}</b>, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG,
+            Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG,
             foi devidamente arrecadado, acondicionado e depositado sob guarda o material abaixo caracterizado:
         </p>
-        <div style="background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin: 15px 0; font-size: 0.84rem; line-height: 1.7;">
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin: 15px 0; font-size: 0.84rem; line-height: 1.8;">
             • <b>REDS:</b> {num_reds}<br/>
             • <b>NÚMERO DO LACRE INVIOLÁVEL:</b> <span style="font-family: monospace; font-weight: 700;">{lacre}</span><br/>
             • <b>AUTOR/CONDUZIDO:</b> {autor}<br/>
             • <b>DESCRIÇÃO DO OBJETO:</b> {desc}<br/>
-            • <b>QUANTIDADE/MEDIDA:</b> {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')}<br/>
-            • <b>CUSTODIANTE ATUAL:</b> {bem.get('fiel_depositario_atual', 'CREDS TCO')} ({bem.get('unidade_posse_atual', operador_unid)})
+            • <b>QUANTIDADE/PESO:</b> {qtd_val} {unid_val}<br/>
+            • <b>CUSTODIANTE ATUAL:</b> {custodiante_real} ({unidade_posse})
         </div>
         <p style="font-size: 0.82rem; color: #4b5563; text-align: justify;">
             O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.
         </p>
-        <div style="margin-top: 35px; display: flex; justify-content: space-around; text-align: center;">
+        <div style="margin-top: 40px; display: flex; justify-content: space-around; text-align: center;">
             <div style="border-top: 1px solid #111827; width: 45%; padding-top: 5px; font-size: 0.80rem;">
-                <b>{operador_nome}</b><br/>MAT. {operador_mat}
+                <b>{operador_nome} - MAT. {mat_operador_fmt}</b><br/>
+                Responsável pelo CREDS TCO / {operador_unid}
             </div>
             <div style="border-top: 1px solid #111827; width: 45%; padding-top: 5px; font-size: 0.80rem;">
-                <b>CREDS TCO / CUSTODIANTE</b><br/>Visto da Seção
+                <b>{recebedor_real}</b><br/>
+                Policial Condutor / Recebedor
             </div>
         </div>
     </div>
     """
+
     st.markdown(html_termo, unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🖨️ Imprimir Guia Oficial", type="primary", use_container_width=True):
-        components.html(f"{html_termo}<script>window.print();</script>", height=0)
+
+    col_g_print, col_g_close = st.columns([1.5, 1])
+    with col_g_print:
+        if st.button("🖨️ Imprimir Guia Oficial", type="primary", use_container_width=True):
+            components.html(f"""
+            <script>
+                var printContents = `{html_termo}`;
+                var win = window.open('', '', 'height=750,width=900');
+                win.document.write('<html><head><title>Guia de Custódia - {num_reds}</title>');
+                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;}}</style>');
+                win.document.write('</head><body>');
+                win.document.write(printContents);
+                win.document.write('</body></html>');
+                win.document.close();
+                win.print();
+            </script>
+            """, height=0)
+    with col_g_close:
+        if st.button("Fechar Guia", use_container_width=True):
+            st.rerun()
