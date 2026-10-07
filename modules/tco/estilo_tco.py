@@ -16,7 +16,7 @@ FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 
 def formatar_matricula_pm(mat: str) -> str:
-    """Formata matrícula funcional de 7 dígitos para o padrão militar (Ex: 1764921 -> 176.492-1)."""
+    """Formata matrícula funcional de 7 dígitos para o padrão militar (Ex: 1337468 -> 133.746-8)."""
     mat_limpa = "".join(filter(str.isalnum, str(mat)))
     if len(mat_limpa) == 7:
         return f"{mat_limpa[:3]}.{mat_limpa[3:6]}-{mat_limpa[6]}"
@@ -26,15 +26,15 @@ def formatar_matricula_pm(mat: str) -> str:
 def injetar_estilo_cards_selecao_invertida():
     """
     Aplica:
-    - Padrão: Bege claro / Caqui areia (suave e legível).
-    - Selecionado: Escurece para o marrom escuro (#2c1d18) com letras claras.
+    - Padrão: Bege claro / Caqui areia suave com texto escuro legível.
+    - Selecionado: Escurece para o castanho café (#2c1d18) com letras bege suave (#ffe0b2).
     """
     st.markdown("""
     <style>
-    /* 1. CARD PADRÃO: Bege Claro / Castanho Suave */
+    /* 1. CARD PADRÃO: Bege Claro Operacional */
     .card-material-item {
-        background-color: #a1887f !important;
-        border: 1.5px solid #bcaaa4 !important;
+        background-color: #8d6e63 !important;
+        border: 1.5px solid #a1887f !important;
         border-radius: 8px !important;
         padding: 14px 18px !important;
         margin-bottom: 10px !important;
@@ -47,19 +47,19 @@ def injetar_estilo_cards_selecao_invertida():
         color: #000000 !important;
     }
     .card-material-item .tag-codigo, .card-material-item code {
-        background-color: #8d6e63 !important;
+        background-color: #72554b !important;
         color: #ffe0b2 !important;
-        border: 1px solid #6d4c41 !important;
-        padding: 2px 7px !important;
+        border: 1px solid #5d4037 !important;
+        padding: 2px 6px !important;
         border-radius: 4px !important;
         font-family: monospace !important;
         font-weight: 700 !important;
     }
 
-    /* 2. CARD SELECIONADO: Escurece para Marrom Café (#2c1d18) */
+    /* 2. CARD SELECIONADO: Escurece para Castanho Café (#2c1d18) */
     .card-material-item.selecionado {
         background-color: #2c1d18 !important;
-        border: 1.5px solid #d7ccc8 !important;
+        border: 1.5px solid #c5a059 !important;
         color: #d7ccc8 !important;
         box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
     }
@@ -74,15 +74,15 @@ def injetar_estilo_cards_selecao_invertida():
 
     /* 3. BOTÕES GERAIS */
     div.stButton > button[kind="secondary"] {
-        background-color: #a1887f !important;
+        background-color: #8d6e63 !important;
         color: #1b1b1b !important;
-        border: 1px solid #bcaaa4 !important;
+        border: 1px solid #a1887f !important;
         font-weight: 700 !important;
     }
     div.stButton > button[kind="primary"] {
-        background-color: #3e2723 !important;
+        background-color: #2c1d18 !important;
         color: #ffe0b2 !important;
-        border: 1.5px solid #8d6e63 !important;
+        border: 1.5px solid #c5a059 !important;
         font-weight: 800 !important;
     }
     </style>
@@ -91,8 +91,8 @@ def injetar_estilo_cards_selecao_invertida():
 
 def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     """
-    Renderiza o cabeçalho tático com o card grande na cor exata do símbolo caqui bronze
-    e informações extraídas em tempo real da sessão do militar.
+    Renderiza o cabeçalho tático com o cartão grande na tonalidade caqui bronze do símbolo
+    e dados dinâmicos da sessão do militar.
     """
     injetar_estilo_cards_selecao_invertida()
 
@@ -129,7 +129,7 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     # 4. Horário de Brasília em tempo real
     hora_atual = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
 
-    # 5. Card Grande na tonalidade caqui bronze do símbolo (#7d6539 / #63502c)
+    # 5. Cartão Grande na cor caqui bronze (#7d6539 / #63502c) com contorno dourado (#c5a059)
     st.markdown(f"""
     <div style="
         background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
