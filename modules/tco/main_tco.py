@@ -1,3 +1,4 @@
+from modules.tco.estilo_tco import renderizar_cabecalho_tatico_tco
 """
 ==============================================================================
 🛡️ SIOP PMMG - Módulo TCO / Cadeia de Custódia
@@ -48,18 +49,9 @@ def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
             return
 
     # =========================================================================
-    # 📦 ÁREA LOGADA DO TCO
+    # 📦 CABEÇALHO OPERACIONAL TÁTICO UNIFICADO (FOTO 2)
     # =========================================================================
-    st.markdown("### 📦 Custódia de Materiais TCO & Cadeia de Custódia")
-    
-    with st.container(border=True):
-        col_hdr1, col_hdr2 = st.columns(2)
-        with col_hdr1:
-            st.markdown(f"👤 **Operador Ativo:** **{nome_militar_atual}**")
-        with col_hdr2:
-            st.markdown(f"🏛️ **Unidade Atual:** **{unidade_militar_atual}**")
-
-    st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
+    renderizar_cabecalho_tatico_tco(usr_logado)
 
     eh_gestor_creds = (
         "PROGRAMADOR" in cargo_str or 
