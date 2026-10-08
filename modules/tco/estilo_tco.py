@@ -388,104 +388,119 @@ def modal_cadeia_custodia_timeline(bem: dict):
 
 
 # ==============================================================================
-# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO PMMG
+# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO PMMG (AUTO DE APREENSÃO)
 # ==============================================================================
 
+@st.dialog("📄 Auto de Apreensão e Guia de Cadeia de Custódia PMMG", width="large")
 def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
-    """Exibe e imprime o Auto de Apreensão e Guia Oficial da PMMG."""
-    @st.dialog("📄 Auto de Apreensão e Guia de Cadeia de Custódia PMMG", width="large")
-    def _dialog_guia():
-        num_reds = str(bem.get("num_reds") or "N/I").strip()
-        lacre_real = str(bem.get("involucro_lacre") or "SEM LACRE").strip()
-        desc_real = str(bem.get("descricao") or "N/I").strip()
-        autor_real = str(bem.get("autores") or "AUTOR NÃO INFORMADO").strip()
-        qtd_val = bem.get("quantidade", 1)
-        unid_med = bem.get("unidade_medida", "UN")
+    """Exibe e imprime o Auto de Apreensão e Guia Oficial da PMMG com dados reais."""
+    if not bem or not isinstance(bem, dict):
+        st.error("Não foi possível carregar os dados do material selecionado.")
+        return
 
-        custodiante_real = str(bem.get("fiel_depositario_atual") or "CREDS TCO - 35ª CIA PM").strip()
+    # Extração com fallback para todas as variações de chaves do banco
+    num_reds = str(bem.get("num_reds") or bem.get("numero_reds") or "N/I").strip()
+    lacre_real = str(bem.get("involucro_lacre") or bem.get("involucro") or bem.get("lacre") or "SEM LACRE").strip()
+    desc_real = str(bem.get("descricao") or bem.get("material") or "N/I").strip()
+    autor_real = str(bem.get("autores") or bem.get("autor") or "AUTOR NÃO INFORMADO").strip()
+    
+    qtd_val = bem.get("quantidade", 1.0)
+    try:
+        qtd_val = float(qtd_val)
+        if qtd_val.is_integer():
+            qtd_val = int(qtd_val)
+    except Exception:
+        pass
+        
+    unid_med = str(bem.get("unidade_medida") or bem.get("unidade") or "UN").strip()
+    custodiante_real = str(bem.get("fiel_depositario_atual") or bem.get("custodiante") or "CREDS TCO - 35ª CIA PM").strip()
 
-        dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or "Data N/I"
-        try:
-            dt_fmt = pd.to_datetime(dt_criacao).strftime("%d/%m/%Y às %H:%M")
-        except Exception:
-            dt_fmt = str(dt_criacao)[:16]
+    # Data e hora com fallback
+    dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or bem.get("created_at") or "Data N/I"
+    try:
+        dt_fmt = pd.to_datetime(dt_criacao).strftime("%d/%m/%Y às %H:%M")
+    except Exception:
+        dt_fmt = str(dt_criacao)[:16]
 
-        logs_todos = carregar_logs_supabase() or []
-        logs_especificos = [l for l in logs_todos if str(l.get("num_reds", "")).strip() == num_reds]
-        condutor_real = ""
-        for l in logs_especificos:
-            orig = str(l.get("origem", ""))
-            if "Relator:" in orig:
-                condutor_real = orig.split("Relator:")[1].replace(")", "").strip()
-                break
-            elif l.get("acao") == "IMPORTAÇÃO / CUSTÓDIA INICIAL":
-                condutor_real = str(l.get("origem", "")).strip()
+    # Busca condutor/relator nos logs do Supabase
+    logs_todos = carregar_logs_supabase() or []
+    logs_especificos = [l for l in logs_todos if str(l.get("num_reds", "")).strip() == num_reds]
+    condutor_real = ""
+    for l in logs_especificos:
+        orig = str(l.get("origem", ""))
+        if "Relator:" in orig:
+            condutor_real = orig.split("Relator:")[1].replace(")", "").strip()
+            break
+        elif l.get("acao") == "IMPORTAÇÃO / CUSTÓDIA INICIAL":
+            condutor_real = str(l.get("origem", "")).strip()
 
-        if not condutor_real:
-            condutor_real = str(bem.get("ultimo_gestor_movimentou") or f"{operador_nome} - MAT. {formatar_matricula_pm(operador_mat)}").strip()
+    if not condutor_real:
+        condutor_real = str(bem.get("ultimo_gestor_movimentou") or f"{operador_nome} - MAT. {formatar_matricula_pm(operador_mat)}").strip()
 
-        mat_operador_fmt = formatar_matricula_pm(operador_mat)
+    mat_operador_fmt = formatar_matricula_pm(operador_mat)
 
-        id_clean = "".join(filter(str.isdigit, str(bem.get("id_bem") or "2")))
-        num_guia = f"{id_clean[-3:] if len(id_clean) >= 3 else '2'}/2026"
+    # Identificador numérico da guia
+    id_bruto = str(bem.get("id_bem") or bem.get("id") or "2")
+    id_clean = "".join(filter(str.isdigit, id_bruto))
+    num_guia = f"{id_clean[-3:] if len(id_clean) >= 3 else '2'}/2026"
 
-        html_termo = f"""
-        <div id="print-area-guia" style="background: #ffffff; color: #111827; padding: 25px; border-radius: 8px; border: 1px solid #d1d5db; font-family: 'Segoe UI', Arial, sans-serif;">
-            <div style="text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 15px;">
-                <h4 style="margin: 0; font-size: 0.95rem; color: #111827; text-transform: uppercase;">POLÍCIA MILITAR DE MINAS GERAIS</h4>
-                <p style="margin: 3px 0; font-size: 0.80rem; color: #374151;">4ª RPM • 21º BATALHÃO DE POLÍCIA MILITAR • 35ª COMPANHIA PM (UBÁ/MG)</p>
-                <p style="margin: 1px 0; font-size: 0.78rem; font-weight: 700; color: #1f2937;">CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>
-                <h3 style="margin: 8px 0 0 0; font-size: 1.05rem; color: #111827; text-transform: uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA Nº {num_guia}</h3>
+    html_termo = f"""
+    <div id="print-area-guia" style="background: #ffffff; color: #111827; padding: 25px; border-radius: 8px; border: 1px solid #d1d5db; font-family: 'Segoe UI', Arial, sans-serif;">
+        <div style="text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 15px;">
+            <h4 style="margin: 0; font-size: 0.95rem; color: #111827; text-transform: uppercase;">POLÍCIA MILITAR DE MINAS GERAIS</h4>
+            <p style="margin: 3px 0; font-size: 0.80rem; color: #374151;">4ª RPM • 21º BATALHÃO DE POLÍCIA MILITAR • 35ª COMPANHIA PM (UBÁ/MG)</p>
+            <p style="margin: 1px 0; font-size: 0.78rem; font-weight: 700; color: #1f2937;">CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>
+            <h3 style="margin: 8px 0 0 0; font-size: 1.05rem; color: #111827; text-transform: uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA Nº {num_guia}</h3>
+        </div>
+        <p style="font-size: 0.85rem; line-height: 1.6; text-align: justify; color: #1f2937;">
+            Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG,
+            foi devidamente arrecadado, acondicionado e depositado sob guarda o material abaixo caracterizado:
+        </p>
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin: 15px 0; font-size: 0.84rem; line-height: 1.8;">
+            • <b>REDS:</b> {num_reds}<br/>
+            • <b>NÚMERO DO LACRE INVIOLÁVEL:</b> <span style="font-family: monospace; font-weight: 700; background: #e5e7eb; padding: 1px 6px; border-radius: 4px;">{lacre_real}</span><br/>
+            • <b>AUTOR/CONDUZIDO:</b> {autor_real}<br/>
+            • <b>DESCRIÇÃO DO OBJETO:</b> {desc_real}<br/>
+            • <b>QUANTIDADE/PESO:</b> {qtd_val} {unid_med}<br/>
+            • <b>CUSTODIANTE ATUAL:</b> {custodiante_real}
+        </div>
+        <p style="font-size: 0.82rem; color: #4b5563; text-align: justify;">
+            O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.
+        </p>
+        <div style="margin-top: 45px; display: flex; justify-content: space-around; text-align: center;">
+            <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
+                <b>{operador_nome} - MAT. {mat_operador_fmt}</b><br/>
+                Responsável pelo CREDS TCO / 35ª Cia PM
             </div>
-            <p style="font-size: 0.85rem; line-height: 1.6; text-align: justify; color: #1f2937;">
-                Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG,
-                foi devidamente arrecadado, acondicionado e depositado sob guarda o material abaixo caracterizado:
-            </p>
-            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin: 15px 0; font-size: 0.84rem; line-height: 1.8;">
-                • <b>REDS:</b> {num_reds}<br/>
-                • <b>NÚMERO DO LACRE INVIOLÁVEL:</b> <span style="font-family: monospace; font-weight: 700; background: #e5e7eb; padding: 1px 6px; border-radius: 4px;">{lacre_real}</span><br/>
-                • <b>AUTOR/CONDUZIDO:</b> {autor_real}<br/>
-                • <b>DESCRIÇÃO DO OBJETO:</b> {desc_real}<br/>
-                • <b>QUANTIDADE/PESO:</b> {qtd_val} {unid_med}<br/>
-                • <b>CUSTODIANTE ATUAL:</b> {custodiante_real}
-            </div>
-            <p style="font-size: 0.82rem; color: #4b5563; text-align: justify;">
-                O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.
-            </p>
-            <div style="margin-top: 45px; display: flex; justify-content: space-around; text-align: center;">
-                <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
-                    <b>{operador_nome} - MAT. {mat_operador_fmt}</b><br/>
-                    Responsável pelo CREDS TCO / 35ª Cia PM
-                </div>
-                <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
-                    <b>{condutor_real}</b><br/>
-                    Policial Condutor / Recebedor
-                </div>
+            <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
+                <b>{condutor_real}</b><br/>
+                Policial Condutor / Recebedor
             </div>
         </div>
-        """
+    </div>
+    """
 
-        st.markdown(html_termo, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(html_termo, unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
 
-        col_g_print, col_g_close = st.columns([1.5, 1])
-        with col_g_print:
-            if st.button("🖨️ Imprimir Guia Oficial", type="primary", use_container_width=True):
-                components.html(f"""
-                <script>
-                    var printContents = `{html_termo}`;
-                    var win = window.open('', '', 'height=750,width=900');
-                    win.document.write('<html><head><title>Guia de Custodia - {num_reds}</title>');
-                    win.document.write('<style>body{{font-family:Arial,sans-serif;padding:25px;color:#111;background:#fff;}}</style>');
-                    win.document.write('</head><body>');
-                    win.document.write(printContents);
-                    win.document.write('</body></html>');
-                    win.document.close();
-                    win.print();
-                </script>
-                """, height=0)
-        with col_g_close:
-            if st.button("Fechar Guia", use_container_width=True):
-                st.rerun()
+    col_g_print, col_g_close = st.columns([1.5, 1])
+    with col_g_print:
+        if st.button("🖨️ Imprimir Guia Oficial", type="primary", use_container_width=True, key=f"btn_act_print_guia_{id_bruto}"):
+            components.html(f"""
+            <script>
+                var printContents = `{html_termo}`;
+                var win = window.open('', '', 'height=750,width=900');
+                win.document.write('<html><head><title>Guia de Custodia - {num_reds}</title>');
+                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:25px;color:#111;background:#fff;}}</style>');
+                win.document.write('</head><body>');
+                win.document.write(printContents);
+                win.document.write('</body></html>');
+                win.document.close();
+                win.print();
+            </script>
+            """, height=0)
+    with col_g_close:
+        if st.button("Fechar Guia", use_container_width=True, key=f"btn_act_close_guia_{id_bruto}"):
+            st.rerun()
 
     _dialog_guia()

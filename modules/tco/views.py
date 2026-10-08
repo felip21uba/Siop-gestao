@@ -664,7 +664,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                         modal_cadeia_custodia_timeline(bem.to_dict())
                                 with c_btn_guia:
                                     if st.button("🖨️ Guia / Termo", key=f"btn_guia_r1_{id_bem}_{idx_global_card}", use_container_width=True):
-                                        modal_guia_termo_oficial(bem.to_dict(), nome_militar_atual, mat_op, unidade_militar_atual)
+                                        modal_guia_termo_oficial(dict(bem), nome_militar_atual, mat_op, unidade_militar_atual)
                                 with c_btn_mov:
                                     if st.button("🛒 Movimentar", key=f"btn_mov_r1_{id_bem}_{idx_global_card}", type="primary", use_container_width=True):
                                         st.session_state["material_selecionado_mov"] = bem.to_dict()
