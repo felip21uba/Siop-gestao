@@ -24,7 +24,7 @@ def formatar_matricula_pm(mat: str) -> str:
 
 
 def injetar_estilo_passo3_tco():
-    """Injeta as cores do Passo 3 das Escalas (Caqui #9e854e e Marrom Oliva #4a3e20) sem alterar fundo global."""
+    """Injeta as cores do Passo 3 das Escalas mantendo fundo do app intacto."""
     st.markdown("""
     <style>
     /* 1. Botões nos Tons do Passo 3 */
@@ -256,173 +256,153 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
 
 
 # ==============================================================================
-# MODAL 1: 🔗 FAV - RENDERIZAÇÃO CORRETA DOS BLOCOS VERTICAIS
+# MODAL 1: 🔗 FAV - RENDERIZAÇÃO DIRETA VIA @st.dialog
 # ==============================================================================
 
+@st.dialog("🔗 FAV — Ficha de Acompanhamento de Vestígio (Art. 158-B CPP)", width="large")
 def modal_cadeia_custodia_timeline(bem: dict):
-    """Exibe modal com a estrutura vertical de blocos da FAV renderizada perfeitamente."""
-    @st.dialog("🔗 FAV — Ficha de Acompanhamento de Vestígio (Art. 158-B CPP)", width="large")
-    def _dialog_fav():
-        num_reds = str(bem.get("num_reds") or "N/I").strip()
-        id_bem = str(bem.get("id_bem") or bem.get("id") or "").strip()
-        desc = str(bem.get("descricao") or "N/I").strip()
-        lacre = str(bem.get("involucro_lacre") or "SEM LACRE").strip()
-        autor = str(bem.get("autores") or "N/I").strip()
-        custodiante = str(bem.get("fiel_depositario_atual") or "N/I").strip()
-        unidade = str(bem.get("unidade_posse_atual") or "N/I").strip()
-        fase_atual = str(bem.get("fase_destinacao") or bem.get("status_tramite") or "Em Custódia").strip()
-
-        logs_todos = carregar_logs_supabase() or []
-        logs_especificos = [
-            l for l in logs_todos
-            if str(l.get("num_reds", "")).strip() == num_reds
-            or (id_bem and id_bem in str(l.get("bem_id", "")))
-        ]
-
-        if logs_especificos:
-            try:
-                logs_especificos.sort(key=lambda x: str(x.get("data_hora", "")), reverse=True)
-            except Exception:
-                pass
-        else:
-            dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or "Data N/I"
-            logs_especificos = [{
-                "data_hora": dt_criacao,
-                "acao": "IMPORTAÇÃO / CUSTÓDIA INICIAL",
-                "origem": custodiante,
-                "unidade_origem": unidade,
-                "unidade_destino": unidade,
-                "destino": custodiante,
-                "detalhe": f"Importação individual do material ({desc} | Qtd: {bem.get('quantidade', 1)} | Lacre: {lacre})"
-            }]
-
-        itens_html = []
-        for log in logs_especificos:
-            dt_raw = log.get("data_hora", "")
-            try:
-                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y às %H:%M")
-            except Exception:
-                dt_fmt = str(dt_raw)[:16]
-
-            acao_str = str(log.get("acao", "Movimentação")).strip()
-            agente_orig = str(log.get("origem") or "Operador").strip()
-            detalhe_str = str(log.get("detalhe") or "").strip()
-
-            if "confirmada por" in detalhe_str.lower():
-                partes = detalhe_str.split("confirmada por")
-                agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
-            elif "confirmado pelo operador" in detalhe_str.lower():
-                partes = detalhe_str.split("confirmado pelo operador")
-                agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
-            elif agente_orig.startswith("Entregue ao "):
-                agente_responsavel = agente_orig.replace("Entregue ao ", "")
-            else:
-                agente_responsavel = agente_orig
-
-            local_raw = str(log.get("unidade_destino") or log.get("destino") or log.get("unidade_origem") or unidade).strip()
-            if "Entregue ao " in local_raw:
-                local_raw = local_raw.replace("Entregue ao ", "").split("(Ofício:")[0].strip()
-
-            if any(term in local_raw.upper() for term in ["PERÍCIA", "PCMG", "DELEGACIA", "JECRIM", "FÓRUM", "MINISTÉRIO PÚBLICO", "TRIBUNAL"]):
-                local_exibicao = f"CREDS {local_raw}" if not local_raw.startswith("CREDS") else local_raw
-            elif local_raw.upper().startswith("CREDS"):
-                local_exibicao = local_raw
-            elif any(c in local_raw.upper() for c in ["BPM", "CIA", "PEL"]):
-                local_exibicao = f"CREDS {local_raw}"
-            else:
-                local_exibicao = local_raw
-
-            bloco = (
-                '<div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 14px; position: relative;">'
-                '<div style="position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #c5a059;"></div>'
-                '<div style="background: rgba(30, 24, 20, 0.95); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">'
-                f'<span style="color: #c5a059; font-size: 0.80rem; font-weight: 700;">⏱️ {dt_fmt}</span><br/>'
-                f'<span style="color: #ffffff; font-size: 0.90rem; font-weight: 700;">{acao_str}</span><br/>'
-                f'<span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{agente_responsavel}</b></span><br/>'
-                f'<span style="color: #e5c78b; font-size: 0.82rem; font-weight: 600;">📍 Local: {local_exibicao}</span><br/>'
-                f'<span style="color: #a89389; font-size: 0.80rem;">{detalhe_str}</span>'
-                '</div>'
-                '</div>'
-            )
-            itens_html.append(bloco)
-
-        corpo_eventos = "".join(itens_html)
-
-        html_fav = (
-            '<div id="print-area-fav" style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;">'
-            '<div style="background: rgba(20, 15, 13, 0.85); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">'
-            f'<span style="color: #bfa59a; font-size: 0.85rem;">REDS: <b style="color: #ffffff;">{num_reds}</b> | Lacre Oficial: <code style="background: #3e2723; color: #ffe0b2; padding: 2px 6px; border-radius: 4px;">{lacre}</code></span><br/>'
-            f'<span style="color: #ffffff; font-weight: 700;">Material: {desc} (Qtd: {bem.get("quantidade", 1)} {bem.get("unidade_medida", "UN")})</span><br/>'
-            f'<span style="color: #d7ccc8; font-size: 0.82rem;">Autor da Ocorrência: <b>{autor}</b> | Custodiante Atual: <b style="color: #c5a059;">{custodiante} ({unidade})</b></span><br/>'
-            f'<span style="color: #e5c78b; font-size: 0.80rem;">Fase Atual: <b>{fase_atual}</b></span>'
-            '</div>'
-            '<h5 style="color: #c5a059; margin-bottom: 12px;">🔗 Rastreabilidade em Cadeia Fechada (Art. 158-B CPP):</h5>'
-            f'{corpo_eventos}'
-            '</div>'
-        )
-
-        st.markdown(html_fav, unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        col_btn_p, col_btn_f = st.columns([1.5, 1])
-        with col_btn_p:
-            if st.button("🖨️ Imprimir FAV", type="primary", use_container_width=True):
-                components.html(f"""
-                <script>
-                    var printContents = `{html_fav}`;
-                    var win = window.open('', '', 'height=700,width=900');
-                    win.document.write('<html><head><title>FAV - Cadeia de Custodia - {num_reds}</title>');
-                    win.document.write('<style>body{{font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;}} div{{color:#111 !important;}} span{{color:#111 !important;}} code{{border:1px solid #999;padding:2px 4px;}}</style>');
-                    win.document.write('</head><body>');
-                    win.document.write(printContents);
-                    win.document.write('</body></html>');
-                    win.document.close();
-                    win.print();
-                </script>
-                """, height=0)
-        with col_btn_f:
-            if st.button("Fechar", use_container_width=True):
-                st.rerun()
-
-    _dialog_fav()
-
-
-# ==============================================================================
-# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO PMMG (AUTO DE APREENSÃO)
-# ==============================================================================
-
-@st.dialog("📄 Auto de Apreensão e Guia de Cadeia de Custódia PMMG", width="large")
-def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
-    """Exibe e imprime o Auto de Apreensão e Guia Oficial com dados reais e alto contraste preto no branco."""
+    """Exibe modal com a estrutura vertical de blocos da FAV sem aninhamento de função."""
     if not bem or not isinstance(bem, dict):
         st.error("Dados do material não encontrados.")
         return
 
-    # 1. Extração segura dos dados reais com fallback abrangente
-    num_reds = str(
-        bem.get("num_reds") 
-        or bem.get("numero_reds") 
-        or "N/I"
-    ).strip()
+    num_reds = str(bem.get("num_reds") or bem.get("numero_reds") or "N/I").strip()
+    id_bem = str(bem.get("id_bem") or bem.get("id") or "").strip()
+    desc = str(bem.get("descricao") or bem.get("material") or "N/I").strip()
+    lacre = str(bem.get("involucro_lacre") or bem.get("involucro") or bem.get("lacre") or "SEM LACRE").strip()
+    autor = str(bem.get("autores") or bem.get("autor") or "N/I").strip()
+    custodiante = str(bem.get("fiel_depositario_atual") or bem.get("custodiante") or "N/I").strip()
+    unidade = str(bem.get("unidade_posse_atual") or bem.get("unidade") or "N/I").strip()
+    fase_atual = str(bem.get("fase_destinacao") or bem.get("status_tramite") or "Em Custódia").strip()
 
-    lacre_real = str(
-        bem.get("involucro_lacre") 
-        or bem.get("involucro") 
-        or bem.get("lacre") 
-        or "SEM LACRE"
-    ).strip()
+    logs_todos = carregar_logs_supabase() or []
+    logs_especificos = [
+        l for l in logs_todos
+        if str(l.get("num_reds", "")).strip() == num_reds
+        or (id_bem and id_bem in str(l.get("bem_id", "")))
+    ]
 
-    desc_real = str(
-        bem.get("descricao") 
-        or bem.get("material") 
-        or "MATERIAL NÃO DISCRIMINADO"
-    ).strip()
+    if logs_especificos:
+        try:
+            logs_especificos.sort(key=lambda x: str(x.get("data_hora", "")), reverse=True)
+        except Exception:
+            pass
+    else:
+        dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or "Data N/I"
+        logs_especificos = [{
+            "data_hora": dt_criacao,
+            "acao": "IMPORTAÇÃO / CUSTÓDIA INICIAL",
+            "origem": custodiante,
+            "unidade_origem": unidade,
+            "unidade_destino": unidade,
+            "destino": custodiante,
+            "detalhe": f"Importação individual do material ({desc} | Qtd: {bem.get('quantidade', 1)} | Lacre: {lacre})"
+        }]
 
-    autor_real = str(
-        bem.get("autores") 
-        or bem.get("autor") 
-        or "AUTOR NÃO INFORMADO"
-    ).strip()
+    itens_html = []
+    for log in logs_especificos:
+        dt_raw = log.get("data_hora", "")
+        try:
+            dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y às %H:%M")
+        except Exception:
+            dt_fmt = str(dt_raw)[:16]
+
+        acao_str = str(log.get("acao", "Movimentação")).strip()
+        agente_orig = str(log.get("origem") or "Operador").strip()
+        detalhe_str = str(log.get("detalhe") or "").strip()
+
+        if "confirmada por" in detalhe_str.lower():
+            partes = detalhe_str.split("confirmada por")
+            agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
+        elif "confirmado pelo operador" in detalhe_str.lower():
+            partes = detalhe_str.split("confirmado pelo operador")
+            agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
+        elif agente_orig.startswith("Entregue ao "):
+            agente_responsavel = agente_orig.replace("Entregue ao ", "")
+        else:
+            agente_responsavel = agente_orig
+
+        local_raw = str(log.get("unidade_destino") or log.get("destino") or log.get("unidade_origem") or unidade).strip()
+        if "Entregue ao " in local_raw:
+            local_raw = local_raw.replace("Entregue ao ", "").split("(Ofício:")[0].strip()
+
+        if any(term in local_raw.upper() for term in ["PERÍCIA", "PCMG", "DELEGACIA", "JECRIM", "FÓRUM", "MINISTÉRIO PÚBLICO", "TRIBUNAL"]):
+            local_exibicao = f"CREDS {local_raw}" if not local_raw.startswith("CREDS") else local_raw
+        elif local_raw.upper().startswith("CREDS"):
+            local_exibicao = local_raw
+        elif any(c in local_raw.upper() for c in ["BPM", "CIA", "PEL"]):
+            local_exibicao = f"CREDS {local_raw}"
+        else:
+            local_exibicao = local_raw
+
+        bloco = (
+            '<div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 14px; position: relative;">'
+            '<div style="position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #c5a059;"></div>'
+            '<div style="background: rgba(30, 24, 20, 0.95); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">'
+            f'<span style="color: #c5a059; font-size: 0.80rem; font-weight: 700;">⏱️ {dt_fmt}</span><br/>'
+            f'<span style="color: #ffffff; font-size: 0.90rem; font-weight: 700;">{acao_str}</span><br/>'
+            f'<span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{agente_responsavel}</b></span><br/>'
+            f'<span style="color: #e5c78b; font-size: 0.82rem; font-weight: 600;">📍 Local: {local_exibicao}</span><br/>'
+            f'<span style="color: #a89389; font-size: 0.80rem;">{detalhe_str}</span>'
+            '</div>'
+            '</div>'
+        )
+        itens_html.append(bloco)
+
+    corpo_eventos = "".join(itens_html)
+
+    html_fav = (
+        '<div id="print-area-fav" style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;">'
+        '<div style="background: rgba(20, 15, 13, 0.85); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">'
+        f'<span style="color: #bfa59a; font-size: 0.85rem;">REDS: <b style="color: #ffffff;">{num_reds}</b> | Lacre Oficial: <code style="background: #3e2723; color: #ffe0b2; padding: 2px 6px; border-radius: 4px;">{lacre}</code></span><br/>'
+        f'<span style="color: #ffffff; font-weight: 700;">Material: {desc} (Qtd: {bem.get("quantidade", 1)} {bem.get("unidade_medida", "UN")})</span><br/>'
+        f'<span style="color: #d7ccc8; font-size: 0.82rem;">Autor da Ocorrência: <b>{autor}</b> | Custodiante Atual: <b style="color: #c5a059;">{custodiante} ({unidade})</b></span><br/>'
+        f'<span style="color: #e5c78b; font-size: 0.80rem;">Fase Atual: <b>{fase_atual}</b></span>'
+        '</div>'
+        '<h5 style="color: #c5a059; margin-bottom: 12px;">🔗 Rastreabilidade em Cadeia Fechada (Art. 158-B CPP):</h5>'
+        f'{corpo_eventos}'
+        '</div>'
+    )
+
+    st.markdown(html_fav, unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col_btn_p, col_btn_f = st.columns([1.5, 1])
+    with col_btn_p:
+        if st.button("🖨️ Imprimir FAV", type="primary", use_container_width=True, key=f"btn_print_fav_{num_reds}_{id_bem}"):
+            components.html(f"""
+            <script>
+                var printContents = `{html_fav}`;
+                var win = window.open('', '', 'height=700,width=900');
+                win.document.write('<html><head><title>FAV - Cadeia de Custodia - {num_reds}</title>');
+                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;}} div{{color:#111 !important;}} span{{color:#111 !important;}} code{{border:1px solid #999;padding:2px 4px;}}</style>');
+                win.document.write('</head><body>');
+                win.document.write(printContents);
+                win.document.write('</body></html>');
+                win.document.close();
+                win.print();
+            </script>
+            """, height=0)
+    with col_btn_f:
+        if st.button("Fechar", use_container_width=True, key=f"btn_close_fav_{num_reds}_{id_bem}"):
+            st.rerun()
+
+
+# ==============================================================================
+# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO PMMG (DIRETO VIA @st.dialog)
+# ==============================================================================
+
+@st.dialog("📄 Auto de Apreensão e Guia de Cadeia de Custódia PMMG", width="large")
+def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
+    """Exibe e imprime o Auto de Apreensão e Guia Oficial com dados reais sem função aninhada."""
+    if not bem or not isinstance(bem, dict):
+        st.error("Dados do material não encontrados.")
+        return
+
+    num_reds = str(bem.get("num_reds") or bem.get("numero_reds") or "N/I").strip()
+    lacre_real = str(bem.get("involucro_lacre") or bem.get("involucro") or bem.get("lacre") or "SEM LACRE").strip()
+    desc_real = str(bem.get("descricao") or bem.get("material") or "MATERIAL NÃO DISCRIMINADO").strip()
+    autor_real = str(bem.get("autores") or bem.get("autor") or "AUTOR NÃO INFORMADO").strip()
 
     qtd_raw = bem.get("quantidade", 1.0)
     try:
@@ -431,33 +411,15 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
     except Exception:
         qtd_val = qtd_raw
 
-    unid_med = str(
-        bem.get("unidade_medida") 
-        or bem.get("unidade") 
-        or "UN"
-    ).strip()
+    unid_med = str(bem.get("unidade_medida") or bem.get("unidade") or "UN").strip()
+    custodiante_real = str(bem.get("fiel_depositario_atual") or bem.get("custodiante") or "CREDS TCO - 35ª CIA PM").strip()
 
-    custodiante_real = str(
-        bem.get("fiel_depositario_atual") 
-        or bem.get("custodiante") 
-        or bem.get("unidade_posse_atual") 
-        or "CREDS TCO - 35ª CIA PM"
-    ).strip()
-
-    # 2. Data e hora do trâmite
-    dt_criacao = (
-        bem.get("data_envio_tramite") 
-        or bem.get("data_posse_atual") 
-        or bem.get("data_ingestao") 
-        or bem.get("created_at") 
-        or "Data N/I"
-    )
+    dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or "Data N/I"
     try:
         dt_fmt = pd.to_datetime(dt_criacao).strftime("%d/%m/%Y às %H:%M")
     except Exception:
         dt_fmt = str(dt_criacao)[:16]
 
-    # 3. Resgate dinâmico do condutor/relator da ocorrência
     logs_todos = carregar_logs_supabase() or []
     logs_especificos = [l for l in logs_todos if str(l.get("num_reds", "")).strip() == num_reds]
     condutor_real = ""
@@ -470,19 +432,14 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
             condutor_real = str(l.get("origem", "")).strip()
 
     if not condutor_real:
-        condutor_real = str(
-            bem.get("ultimo_gestor_movimentou") 
-            or f"{operador_nome} - MAT. {formatar_matricula_pm(operador_mat)}"
-        ).strip()
+        condutor_real = str(bem.get("ultimo_gestor_movimentou") or f"{operador_nome} - MAT. {formatar_matricula_pm(operador_mat)}").strip()
 
     mat_operador_fmt = formatar_matricula_pm(operador_mat)
 
-    # 4. Numeração do Auto de Apreensão
     id_bruto = str(bem.get("id_bem") or bem.get("id") or "2")
     id_clean = "".join(filter(str.isdigit, id_bruto))
     num_guia = f"{id_clean[-3:] if len(id_clean) >= 3 else '2'}/2026"
 
-    # 5. HTML com CSS forçado (Preto no Branco Puro) para anular o tema escuro do Streamlit
     html_termo = f"""
     <div id="print-area-guia" style="
         background-color: #ffffff !important; 
@@ -568,5 +525,3 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
     with col_g_close:
         if st.button("Fechar Guia", use_container_width=True, key=f"btn_close_guia_clean_{id_clean}"):
             st.rerun()
-
-    _dialog_guia()
