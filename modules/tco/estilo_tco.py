@@ -261,7 +261,7 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
 
 @st.dialog("🔗 FAV — Ficha de Acompanhamento de Vestígio (Art. 158-B CPP)", width="large")
 def modal_cadeia_custodia_timeline(bem: dict):
-    """Exibe modal com a estrutura vertical de blocos da FAV com HTML sem indentação de código."""
+    """Exibe modal com a estrutura vertical de blocos da FAV com renderização limpa."""
     if not bem or not isinstance(bem, dict):
         st.error("Dados do material não encontrados.")
         return
@@ -388,12 +388,12 @@ def modal_cadeia_custodia_timeline(bem: dict):
 
 
 # ==============================================================================
-# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO PMMG (ALTO CONTRASTE PRETO NO BRANCO)
+# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO PMMG (AUTO DE APREENSÃO)
 # ==============================================================================
 
 @st.dialog("📄 Auto de Apreensão e Guia de Cadeia de Custódia PMMG", width="large")
 def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
-    """Exibe e imprime o Auto de Apreensão e Guia Oficial com texto 100% preto nítido sobre papel branco."""
+    """Exibe e imprime o Auto de Apreensão e Guia Oficial da PMMG com visual branco e texto preto nítido."""
     if not bem or not isinstance(bem, dict):
         st.error("Dados do material não encontrados.")
         return
@@ -439,33 +439,155 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
     id_clean = "".join(filter(str.isdigit, id_bruto))
     num_guia = f"{id_clean[-3:] if len(id_clean) >= 3 else '2'}/2026"
 
-    # Força cor preta absoluta em todos os elementos para eliminar o conflito do dark mode
-    html_termo = (
-        '<div id="print-area-guia" style="background-color: #ffffff !important; color: #000000 !important; padding: 30px !important; border-radius: 8px !important; border: 2px solid #000000 !important; font-family: Arial, Helvetica, sans-serif !important; line-height: 1.6 !important;">'
-        '<div style="text-align: center; border-bottom: 2px solid #000000; padding-bottom: 12px; margin-bottom: 16px;">'
-        '<h4 style="margin: 0; font-size: 1.05rem; font-weight: 900; color: #000000 !important; text-transform: uppercase; letter-spacing: 0.5px;">POLÍCIA MILITAR DE MINAS GERAIS</h4>'
-        '<p style="margin: 4px 0 2px 0; font-size: 0.85rem; font-weight: 700; color: #1a1a1a !important;">4ª RPM • 21º BATALHÃO DE POLÍCIA MILITAR • 35ª COMPANHIA PM (UBÁ/MG)</p>'
-        '<p style="margin: 0; font-size: 0.82rem; font-weight: 800; color: #000000 !important;">CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>'
-        f'<h3 style="margin: 10px 0 0 0; font-size: 1.15rem; font-weight: 900; color: #000000 !important; text-transform: uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA Nº {num_guia}</h3>'
-        '</div>'
-        f'<p style="font-size: 0.90rem; line-height: 1.6; text-align: justify; color: #000000 !important; margin-bottom: 14px;">Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG, foi devidamente arrecadado, acondicionado e depositado sob guarda o material abaixo caracterizado:</p>'
-        '<div style="background-color: #f4f4f5 !important; border: 1.5px solid #000000 !important; border-radius: 6px; padding: 14px 16px; margin: 16px 0; font-size: 0.88rem; line-height: 1.85; color: #000000 !important;">'
-        f'• <strong style="color: #000000 !important;">REDS:</strong> <span style="color: #000000 !important;">{num_reds}</span><br/>'
-        f'• <strong style="color: #000000 !important;">NÚMERO DO LACRE INVIOLÁVEL:</strong> <span style="font-family: monospace; font-weight: 900; background-color: #e4e4e7 !important; color: #000000 !important; padding: 2px 8px; border-radius: 4px; border: 1px solid #71717a;">{lacre_real}</span><br/>'
-        f'• <strong style="color: #000000 !important;">AUTOR/CONDUZIDO:</strong> <span style="color: #000000 !important;">{autor_real}</span><br/>'
-        f'• <strong style="color: #000000 !important;">DESCRIÇÃO DO OBJETO:</strong> <span style="color: #000000 !important;">{desc_real}</span><br/>'
-        f'• <strong style="color: #000000 !important;">QUANTIDADE/PESO:</strong> <span style="color: #000000 !important;">{qtd_val} {unid_med}</span><br/>'
-        f'• <strong style="color: #000000 !important;">CUSTODIANTE ATUAL:</strong> <span style="color: #000000 !important;">{custodiante_real}</span>'
-        '</div>'
-        '<p style="font-size: 0.86rem; color: #1a1a1a !important; text-align: justify; margin-top: 14px; line-height: 1.5;">O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.</p>'
-        '<div style="margin-top: 50px; display: flex; justify-content: space-around; text-align: center; color: #000000 !important;">'
-        f'<div style="border-top: 2px solid #000000; width: 44%; padding-top: 6px; font-size: 0.84rem; color: #000000 !important;"><b style="color: #000000 !important;">{operador_nome} - MAT. {mat_operador_fmt}</b><br/><span style="color: #1a1a1a !important;">Responsável pelo CREDS TCO / 35ª Cia PM</span></div>'
-        f'<div style="border-top: 2px solid #000000; width: 44%; padding-top: 6px; font-size: 0.84rem; color: #000000 !important;"><b style="color: #000000 !important;">{condutor_real}</b><br/><span style="color: #1a1a1a !important;">Policial Condutor / Recebedor</span></div>'
-        '</div>'
-        '</div>'
-    )
+    # Componente HTML puro encapsulado para impedir que o tema Dark Mode do Streamlit esconda o texto preto
+    html_folha_a4 = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            * {{
+                box-sizing: border-box;
+                font-family: Arial, Helvetica, sans-serif;
+                margin: 0;
+                padding: 0;
+            }}
+            body {{
+                background-color: #ffffff;
+                color: #000000;
+                padding: 24px;
+            }}
+            .container {{
+                background-color: #ffffff;
+                color: #000000;
+                border: 2px solid #000000;
+                border-radius: 8px;
+                padding: 26px;
+                line-height: 1.6;
+            }}
+            .header {{
+                text-align: center;
+                border-bottom: 2px solid #000000;
+                padding-bottom: 12px;
+                margin-bottom: 16px;
+            }}
+            .header h4 {{
+                font-size: 1.05rem;
+                font-weight: 900;
+                color: #000000;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 4px;
+            }}
+            .header p.sub {{
+                font-size: 0.82rem;
+                font-weight: 700;
+                color: #222222;
+                margin-bottom: 2px;
+            }}
+            .header p.creds {{
+                font-size: 0.80rem;
+                font-weight: 800;
+                color: #000000;
+            }}
+            .header h3 {{
+                font-size: 1.12rem;
+                font-weight: 900;
+                color: #000000;
+                text-transform: uppercase;
+                margin-top: 10px;
+            }}
+            .certifico {{
+                font-size: 0.90rem;
+                line-height: 1.6;
+                text-align: justify;
+                color: #000000;
+                margin-bottom: 14px;
+            }}
+            .box-dados {{
+                background-color: #f4f4f5;
+                border: 1.5px solid #000000;
+                border-radius: 6px;
+                padding: 14px 16px;
+                margin: 16px 0;
+                font-size: 0.88rem;
+                line-height: 1.85;
+                color: #000000;
+            }}
+            .lacre-tag {{
+                font-family: monospace;
+                font-weight: 900;
+                background-color: #e4e4e7;
+                color: #000000;
+                padding: 2px 8px;
+                border-radius: 4px;
+                border: 1px solid #71717a;
+            }}
+            .encerramento {{
+                font-size: 0.86rem;
+                color: #1a1a1a;
+                text-align: justify;
+                margin-top: 14px;
+                line-height: 1.5;
+            }}
+            .assinaturas {{
+                margin-top: 45px;
+                display: flex;
+                justify-content: space-around;
+                text-align: center;
+                color: #000000;
+            }}
+            .ass-bloco {{
+                border-top: 2px solid #000000;
+                width: 44%;
+                padding-top: 6px;
+                font-size: 0.84rem;
+                color: #000000;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container" id="printable-area">
+            <div class="header">
+                <h4>POLÍCIA MILITAR DE MINAS GERAIS</h4>
+                <p class="sub">4ª RPM • 21º BATALHÃO DE POLÍCIA MILITAR • 35ª COMPANHIA PM (UBÁ/MG)</p>
+                <p class="creds">CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>
+                <h3>AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA Nº {num_guia}</h3>
+            </div>
 
-    st.markdown(html_termo, unsafe_allow_html=True)
+            <p class="certifico">
+                Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG, foi devidamente arrecadado, acondicionado e depositado sob guarda o material abaixo caracterizado:
+            </p>
+
+            <div class="box-dados">
+                • <strong>REDS:</strong> {num_reds}<br/>
+                • <strong>NÚMERO DO LACRE INVIOLÁVEL:</strong> <span class="lacre-tag">{lacre_real}</span><br/>
+                • <strong>AUTOR/CONDUZIDO:</strong> {autor_real}<br/>
+                • <strong>DESCRIÇÃO DO OBJETO:</strong> {desc_real}<br/>
+                • <strong>QUANTIDADE/PESO:</strong> {qtd_val} {unid_med}<br/>
+                • <strong>CUSTODIANTE ATUAL:</strong> {custodiante_real}
+            </div>
+
+            <p class="encerramento">
+                O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.
+            </p>
+
+            <div class="assinaturas">
+                <div class="ass-bloco">
+                    <b>{operador_nome} - MAT. {mat_operador_fmt}</b><br/>
+                    Responsável pelo CREDS TCO / 35ª Cia PM
+                </div>
+                <div class="ass-bloco">
+                    <b>{condutor_real}</b><br/>
+                    Policial Condutor / Recebedor
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+    components.html(html_folha_a4, height=520, scrolling=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     col_g_print, col_g_close = st.columns([1.5, 1])
@@ -473,15 +595,11 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
         if st.button("🖨️ Imprimir Guia Oficial", type="primary", use_container_width=True, key=f"btn_print_guia_{num_reds}_{id_clean}"):
             components.html(f"""
             <script>
-                var printContents = `{html_termo}`;
                 var win = window.open('', '', 'height=750,width=900');
-                win.document.write('<html><head><title>Guia de Custodia - {num_reds}</title>');
-                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:25px;color:#000;background:#fff;}}</style>');
-                win.document.write('</head><body>');
-                win.document.write(printContents);
-                win.document.write('</body></html>');
+                win.document.write(`{html_folha_a4}`);
                 win.document.close();
-                win.print();
+                win.focus();
+                setTimeout(() => {{ win.print(); }}, 400);
             </script>
             """, height=0)
     with col_g_close:
