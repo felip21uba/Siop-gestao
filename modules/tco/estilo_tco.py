@@ -24,27 +24,10 @@ def formatar_matricula_pm(mat: str) -> str:
 
 
 def injetar_estilo_passo3_tco():
-    """Injeta as cores oficiais do Passo 3 das Escalas (Caqui #9e854e e Marrom Oliva #4a3e20)."""
+    """Injeta as cores do Passo 3 das Escalas (Caqui #9e854e e Marrom Oliva #4a3e20) sem alterar fundo global."""
     st.markdown("""
     <style>
-    /* 1. Estrutura Geral e Sidebar no Padrão Escalas */
-    .stApp { 
-        background-color: #1a1412 !important; 
-        color: #f5ebe0 !important; 
-    }
-    
-    section[data-testid="stSidebar"] { 
-        background-color: #241c18 !important; 
-        border-right: 1.5px solid #4a3e20 !important; 
-    }
-    section[data-testid="stSidebar"] p, 
-    section[data-testid="stSidebar"] span, 
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] div { 
-        color: #f5ebe0 !important; 
-    }
-
-    /* 2. Botões nos Tons do Passo 3 */
+    /* 1. Botões nos Tons do Passo 3 */
     div.stButton > button[kind="secondary"] {
         background-color: #9e854e !important;
         color: #1b1b1b !important;
@@ -71,10 +54,10 @@ def injetar_estilo_passo3_tco():
         border-color: #bfa76f !important;
     }
 
-    /* 3. Caixas de Métricas */
+    /* 2. Caixas de Métricas */
     [data-testid="stMetric"], .stMetric {
-        background-color: #2b231d !important;
-        border: 1.5px solid #4a3e20 !important;
+        background-color: #1e293b !important;
+        border: 1px solid #334155 !important;
         padding: 12px 14px !important;
         border-radius: 8px !important;
     }
@@ -86,10 +69,10 @@ def injetar_estilo_passo3_tco():
     [data-testid="stMetricLabel"] {
         font-size: 0.85rem !important;
         font-weight: 600 !important;
-        color: #d7ccc8 !important;
+        color: #cbd5e1 !important;
     }
 
-    /* 4. Cards Alternados com o Visual Exato das Fotos */
+    /* 3. Cards Alternados com o Visual Exato */
     .card-material-item {
         border-radius: 8px !important;
         padding: 16px 20px 14px 20px !important;
@@ -124,7 +107,6 @@ def injetar_estilo_passo3_tco():
         color: #ffe0b2 !important;
         border-radius: 6px !important;
         padding: 2px 10px !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         font-size: 0.88rem !important;
         font-weight: 700 !important;
         display: inline-block !important;
@@ -146,7 +128,6 @@ def injetar_estilo_passo3_tco():
         color: #ffe0b2 !important; 
     }
 
-    /* Badge Superior Direito */
     .badge-creds-status {
         border: 1.5px solid #d4af37 !important;
         background-color: transparent !important;
@@ -161,24 +142,12 @@ def injetar_estilo_passo3_tco():
         text-transform: uppercase !important;
         white-space: nowrap !important;
     }
-
-    .badge-alerta-dias {
-        background-color: #491212 !important;
-        border: 1px solid #d32f2f !important;
-        color: #ffcdd2 !important;
-        border-radius: 4px !important;
-        padding: 2px 8px !important;
-        font-size: 0.74rem !important;
-        font-weight: 800 !important;
-        display: inline-flex !important;
-        margin-top: 4px !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
 
 def renderizar_cabecalho_tatico_tco(usr_dados: dict):
-    """Renderiza o cabeçalho tático operacional com as cores do Passo 3."""
+    """Renderiza o cabeçalho tático operacional oficial."""
     injetar_estilo_passo3_tco()
 
     posto_grad = str(usr_dados.get("cargo_funcao") or usr_dados.get("posto_grad") or "").strip().upper()
@@ -287,227 +256,236 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
 
 
 # ==============================================================================
-# MODAL 1: 🔗 FAV - FICHA DE ACOMPANHAMENTO DE VESTÍGIO (CADEIA DE CUSTÓDIA)
+# MODAL 1: 🔗 FAV - RENDERIZAÇÃO CORRETA DOS BLOCOS VERTICAIS
 # ==============================================================================
 
-@st.dialog("🔗 FAV — Ficha de Acompanhamento de Vestígio (Art. 158-B CPP)", width="large")
 def modal_cadeia_custodia_timeline(bem: dict):
-    """Exibe e imprime a Ficha de Acompanhamento de Vestígio com rastreabilidade vertical exata."""
-    num_reds = str(bem.get("num_reds") or "N/I").strip()
-    id_bem = str(bem.get("id_bem") or bem.get("id") or "").strip()
-    desc = str(bem.get("descricao") or "N/I").strip()
-    lacre = str(bem.get("involucro_lacre") or "SEM LACRE").strip()
-    autor = str(bem.get("autores") or "N/I").strip()
-    custodiante = str(bem.get("fiel_depositario_atual") or "N/I").strip()
-    unidade = str(bem.get("unidade_posse_atual") or "N/I").strip()
-    fase_atual = str(bem.get("fase_destinacao") or bem.get("status_tramite") or "Em Custódia").strip()
+    """Exibe modal com a estrutura vertical de blocos da FAV renderizada perfeitamente."""
+    @st.dialog("🔗 FAV — Ficha de Acompanhamento de Vestígio (Art. 158-B CPP)", width="large")
+    def _dialog_fav():
+        num_reds = str(bem.get("num_reds") or "N/I").strip()
+        id_bem = str(bem.get("id_bem") or bem.get("id") or "").strip()
+        desc = str(bem.get("descricao") or "N/I").strip()
+        lacre = str(bem.get("involucro_lacre") or "SEM LACRE").strip()
+        autor = str(bem.get("autores") or "N/I").strip()
+        custodiante = str(bem.get("fiel_depositario_atual") or "N/I").strip()
+        unidade = str(bem.get("unidade_posse_atual") or "N/I").strip()
+        fase_atual = str(bem.get("fase_destinacao") or bem.get("status_tramite") or "Em Custódia").strip()
 
-    logs_todos = carregar_logs_supabase() or []
-    logs_especificos = [
-        l for l in logs_todos
-        if str(l.get("num_reds", "")).strip() == num_reds
-        or (id_bem and id_bem in str(l.get("bem_id", "")))
-    ]
+        logs_todos = carregar_logs_supabase() or []
+        logs_especificos = [
+            l for l in logs_todos
+            if str(l.get("num_reds", "")).strip() == num_reds
+            or (id_bem and id_bem in str(l.get("bem_id", "")))
+        ]
 
-    if logs_especificos:
-        try:
-            logs_especificos.sort(key=lambda x: str(x.get("data_hora", "")), reverse=True)
-        except Exception:
-            pass
-    else:
+        if logs_especificos:
+            try:
+                logs_especificos.sort(key=lambda x: str(x.get("data_hora", "")), reverse=True)
+            except Exception:
+                pass
+        else:
+            dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or "Data N/I"
+            logs_especificos = [{
+                "data_hora": dt_criacao,
+                "acao": "IMPORTAÇÃO / CUSTÓDIA INICIAL",
+                "origem": custodiante,
+                "unidade_origem": unidade,
+                "unidade_destino": unidade,
+                "destino": custodiante,
+                "detalhe": f"Importação individual do material ({desc} | Qtd: {bem.get('quantidade', 1)} | Lacre: {lacre})"
+            }]
+
+        itens_html = []
+        for log in logs_especificos:
+            dt_raw = log.get("data_hora", "")
+            try:
+                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y às %H:%M")
+            except Exception:
+                dt_fmt = str(dt_raw)[:16]
+
+            acao_str = str(log.get("acao", "Movimentação")).strip()
+            agente_orig = str(log.get("origem") or "Operador").strip()
+            detalhe_str = str(log.get("detalhe") or "").strip()
+
+            if "confirmada por" in detalhe_str.lower():
+                partes = detalhe_str.split("confirmada por")
+                agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
+            elif "confirmado pelo operador" in detalhe_str.lower():
+                partes = detalhe_str.split("confirmado pelo operador")
+                agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
+            elif agente_orig.startswith("Entregue ao "):
+                agente_responsavel = agente_orig.replace("Entregue ao ", "")
+            else:
+                agente_responsavel = agente_orig
+
+            local_raw = str(log.get("unidade_destino") or log.get("destino") or log.get("unidade_origem") or unidade).strip()
+            if "Entregue ao " in local_raw:
+                local_raw = local_raw.replace("Entregue ao ", "").split("(Ofício:")[0].strip()
+
+            if any(term in local_raw.upper() for term in ["PERÍCIA", "PCMG", "DELEGACIA", "JECRIM", "FÓRUM", "MINISTÉRIO PÚBLICO", "TRIBUNAL"]):
+                local_exibicao = f"CREDS {local_raw}" if not local_raw.startswith("CREDS") else local_raw
+            elif local_raw.upper().startswith("CREDS"):
+                local_exibicao = local_raw
+            elif any(c in local_raw.upper() for c in ["BPM", "CIA", "PEL"]):
+                local_exibicao = f"CREDS {local_raw}"
+            else:
+                local_exibicao = local_raw
+
+            bloco = (
+                '<div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 14px; position: relative;">'
+                '<div style="position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #c5a059;"></div>'
+                '<div style="background: rgba(30, 24, 20, 0.95); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">'
+                f'<span style="color: #c5a059; font-size: 0.80rem; font-weight: 700;">⏱️ {dt_fmt}</span><br/>'
+                f'<span style="color: #ffffff; font-size: 0.90rem; font-weight: 700;">{acao_str}</span><br/>'
+                f'<span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{agente_responsavel}</b></span><br/>'
+                f'<span style="color: #e5c78b; font-size: 0.82rem; font-weight: 600;">📍 Local: {local_exibicao}</span><br/>'
+                f'<span style="color: #a89389; font-size: 0.80rem;">{detalhe_str}</span>'
+                '</div>'
+                '</div>'
+            )
+            itens_html.append(bloco)
+
+        corpo_eventos = "".join(itens_html)
+
+        html_fav = (
+            '<div id="print-area-fav" style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;">'
+            '<div style="background: rgba(20, 15, 13, 0.85); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">'
+            f'<span style="color: #bfa59a; font-size: 0.85rem;">REDS: <b style="color: #ffffff;">{num_reds}</b> | Lacre Oficial: <code style="background: #3e2723; color: #ffe0b2; padding: 2px 6px; border-radius: 4px;">{lacre}</code></span><br/>'
+            f'<span style="color: #ffffff; font-weight: 700;">Material: {desc} (Qtd: {bem.get("quantidade", 1)} {bem.get("unidade_medida", "UN")})</span><br/>'
+            f'<span style="color: #d7ccc8; font-size: 0.82rem;">Autor da Ocorrência: <b>{autor}</b> | Custodiante Atual: <b style="color: #c5a059;">{custodiante} ({unidade})</b></span><br/>'
+            f'<span style="color: #e5c78b; font-size: 0.80rem;">Fase Atual: <b>{fase_atual}</b></span>'
+            '</div>'
+            '<h5 style="color: #c5a059; margin-bottom: 12px;">🔗 Rastreabilidade em Cadeia Fechada (Art. 158-B CPP):</h5>'
+            f'{corpo_eventos}'
+            '</div>'
+        )
+
+        st.markdown(html_fav, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        col_btn_p, col_btn_f = st.columns([1.5, 1])
+        with col_btn_p:
+            if st.button("🖨️ Imprimir FAV", type="primary", use_container_width=True):
+                components.html(f"""
+                <script>
+                    var printContents = `{html_fav}`;
+                    var win = window.open('', '', 'height=700,width=900');
+                    win.document.write('<html><head><title>FAV - Cadeia de Custodia - {num_reds}</title>');
+                    win.document.write('<style>body{{font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;}} div{{color:#111 !important;}} span{{color:#111 !important;}} code{{border:1px solid #999;padding:2px 4px;}}</style>');
+                    win.document.write('</head><body>');
+                    win.document.write(printContents);
+                    win.document.write('</body></html>');
+                    win.document.close();
+                    win.print();
+                </script>
+                """, height=0)
+        with col_btn_f:
+            if st.button("Fechar", use_container_width=True):
+                st.rerun()
+
+    _dialog_fav()
+
+
+# ==============================================================================
+# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO PMMG
+# ==============================================================================
+
+def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
+    """Exibe e imprime o Auto de Apreensão e Guia Oficial da PMMG."""
+    @st.dialog("📄 Auto de Apreensão e Guia de Cadeia de Custódia PMMG", width="large")
+    def _dialog_guia():
+        num_reds = str(bem.get("num_reds") or "N/I").strip()
+        lacre_real = str(bem.get("involucro_lacre") or "SEM LACRE").strip()
+        desc_real = str(bem.get("descricao") or "N/I").strip()
+        autor_real = str(bem.get("autores") or "AUTOR NÃO INFORMADO").strip()
+        qtd_val = bem.get("quantidade", 1)
+        unid_med = bem.get("unidade_medida", "UN")
+
+        custodiante_real = str(bem.get("fiel_depositario_atual") or "CREDS TCO - 35ª CIA PM").strip()
+
         dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or "Data N/I"
-        logs_especificos = [{
-            "data_hora": dt_criacao,
-            "acao": "IMPORTAÇÃO / CUSTÓDIA INICIAL",
-            "origem": custodiante,
-            "unidade_origem": unidade,
-            "unidade_destino": unidade,
-            "destino": custodiante,
-            "detalhe": f"Entrada e acondicionamento inicial sob custódia de {custodiante}."
-        }]
-
-    itens_timeline_html = ""
-    for log in logs_especificos:
-        dt_raw = log.get("data_hora", "")
         try:
-            dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y às %H:%M")
+            dt_fmt = pd.to_datetime(dt_criacao).strftime("%d/%m/%Y às %H:%M")
         except Exception:
-            dt_fmt = str(dt_raw)[:16]
+            dt_fmt = str(dt_criacao)[:16]
 
-        acao_str = str(log.get("acao", "Movimentação")).strip()
-        agente_orig = str(log.get("origem") or "Operador").strip()
-        detalhe_str = str(log.get("detalhe") or "").strip()
+        logs_todos = carregar_logs_supabase() or []
+        logs_especificos = [l for l in logs_todos if str(l.get("num_reds", "")).strip() == num_reds]
+        condutor_real = ""
+        for l in logs_especificos:
+            orig = str(l.get("origem", ""))
+            if "Relator:" in orig:
+                condutor_real = orig.split("Relator:")[1].replace(")", "").strip()
+                break
+            elif l.get("acao") == "IMPORTAÇÃO / CUSTÓDIA INICIAL":
+                condutor_real = str(l.get("origem", "")).strip()
 
-        if "confirmada por" in detalhe_str.lower():
-            partes = detalhe_str.split("confirmada por")
-            agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
-        elif "confirmado pelo operador" in detalhe_str.lower():
-            partes = detalhe_str.split("confirmado pelo operador")
-            agente_responsavel = partes[1].split(".")[0].split("|")[0].strip() if len(partes) > 1 else agente_orig
-        elif agente_orig.startswith("Entregue ao "):
-            agente_responsavel = agente_orig.replace("Entregue ao ", "")
-        else:
-            agente_responsavel = agente_orig
+        if not condutor_real:
+            condutor_real = str(bem.get("ultimo_gestor_movimentou") or f"{operador_nome} - MAT. {formatar_matricula_pm(operador_mat)}").strip()
 
-        local_raw = str(log.get("unidade_destino") or log.get("destino") or log.get("unidade_origem") or unidade).strip()
-        if "Entregue ao " in local_raw:
-            local_raw = local_raw.replace("Entregue ao ", "").split("(Ofício:")[0].strip()
+        mat_operador_fmt = formatar_matricula_pm(operador_mat)
 
-        if any(term in local_raw.upper() for term in ["PERÍCIA", "PCMG", "DELEGACIA", "JECRIM", "FÓRUM", "MINISTÉRIO PÚBLICO", "TRIBUNAL"]):
-            local_exibicao = f"CREDS {local_raw}" if not local_raw.startswith("CREDS") else local_raw
-        elif local_raw.upper().startswith("CREDS"):
-            local_exibicao = local_raw
-        elif any(c in local_raw.upper() for c in ["BPM", "CIA", "PEL"]):
-            local_exibicao = f"CREDS {local_raw}"
-        else:
-            local_exibicao = local_raw
+        id_clean = "".join(filter(str.isdigit, str(bem.get("id_bem") or "2")))
+        num_guia = f"{id_clean[-3:] if len(id_clean) >= 3 else '2'}/2026"
 
-        itens_timeline_html += f"""
-        <div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 14px; position: relative;">
-            <div style="position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #c5a059;"></div>
-            <div style="background: rgba(30, 24, 20, 0.95); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">
-                <span style="color: #c5a059; font-size: 0.80rem; font-weight: 700;">⏱️ {dt_fmt}</span><br/>
-                <span style="color: #ffffff; font-size: 0.90rem; font-weight: 700;">{acao_str}</span><br/>
-                <span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{agente_responsavel}</b></span><br/>
-                <span style="color: #e5c78b; font-size: 0.82rem; font-weight: 600;">📍 Local: {local_exibicao}</span><br/>
-                <span style="color: #a89389; font-size: 0.80rem;">{detalhe_str}</span>
+        html_termo = f"""
+        <div id="print-area-guia" style="background: #ffffff; color: #111827; padding: 25px; border-radius: 8px; border: 1px solid #d1d5db; font-family: 'Segoe UI', Arial, sans-serif;">
+            <div style="text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 15px;">
+                <h4 style="margin: 0; font-size: 0.95rem; color: #111827; text-transform: uppercase;">POLÍCIA MILITAR DE MINAS GERAIS</h4>
+                <p style="margin: 3px 0; font-size: 0.80rem; color: #374151;">4ª RPM • 21º BATALHÃO DE POLÍCIA MILITAR • 35ª COMPANHIA PM (UBÁ/MG)</p>
+                <p style="margin: 1px 0; font-size: 0.78rem; font-weight: 700; color: #1f2937;">CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>
+                <h3 style="margin: 8px 0 0 0; font-size: 1.05rem; color: #111827; text-transform: uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA Nº {num_guia}</h3>
+            </div>
+            <p style="font-size: 0.85rem; line-height: 1.6; text-align: justify; color: #1f2937;">
+                Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG,
+                foi devidamente arrecadado, acondicionado e depositado sob guarda o material abaixo caracterizado:
+            </p>
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin: 15px 0; font-size: 0.84rem; line-height: 1.8;">
+                • <b>REDS:</b> {num_reds}<br/>
+                • <b>NÚMERO DO LACRE INVIOLÁVEL:</b> <span style="font-family: monospace; font-weight: 700; background: #e5e7eb; padding: 1px 6px; border-radius: 4px;">{lacre_real}</span><br/>
+                • <b>AUTOR/CONDUZIDO:</b> {autor_real}<br/>
+                • <b>DESCRIÇÃO DO OBJETO:</b> {desc_real}<br/>
+                • <b>QUANTIDADE/PESO:</b> {qtd_val} {unid_med}<br/>
+                • <b>CUSTODIANTE ATUAL:</b> {custodiante_real}
+            </div>
+            <p style="font-size: 0.82rem; color: #4b5563; text-align: justify;">
+                O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.
+            </p>
+            <div style="margin-top: 45px; display: flex; justify-content: space-around; text-align: center;">
+                <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
+                    <b>{operador_nome} - MAT. {mat_operador_fmt}</b><br/>
+                    Responsável pelo CREDS TCO / 35ª Cia PM
+                </div>
+                <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
+                    <b>{condutor_real}</b><br/>
+                    Policial Condutor / Recebedor
+                </div>
             </div>
         </div>
         """
 
-    html_completo_timeline = f"""
-    <div id="print-area-fav" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-        <div style="background: rgba(20, 15, 13, 0.85); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">
-            <span style="color: #bfa59a; font-size: 0.85rem;">REDS: <b style="color: #ffffff;">{num_reds}</b> | Lacre Oficial: <code style="background: #3e2723; color: #ffe0b2; padding: 2px 6px; border-radius: 4px;">{lacre}</code></span><br/>
-            <span style="color: #ffffff; font-weight: 700;">Material: {desc} (Qtd: {bem.get('quantidade', 1)} {bem.get('unidade_medida', 'UN')})</span><br/>
-            <span style="color: #d7ccc8; font-size: 0.82rem;">Autor da Ocorrência: <b>{autor}</b> | Custodiante Atual: <b style="color: #c5a059;">{custodiante} ({unidade})</b></span><br/>
-            <span style="color: #e5c78b; font-size: 0.80rem;">Fase Atual: <b>{fase_atual}</b></span>
-        </div>
-        <h5 style="color: #c5a059; margin-bottom: 12px;">🔗 Rastreabilidade em Cadeia Fechada (Art. 158-B CPP):</h5>
-        {itens_timeline_html}
-    </div>
-    """
+        st.markdown(html_termo, unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
-    st.markdown(html_completo_timeline, unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
+        col_g_print, col_g_close = st.columns([1.5, 1])
+        with col_g_print:
+            if st.button("🖨️ Imprimir Guia Oficial", type="primary", use_container_width=True):
+                components.html(f"""
+                <script>
+                    var printContents = `{html_termo}`;
+                    var win = window.open('', '', 'height=750,width=900');
+                    win.document.write('<html><head><title>Guia de Custodia - {num_reds}</title>');
+                    win.document.write('<style>body{{font-family:Arial,sans-serif;padding:25px;color:#111;background:#fff;}}</style>');
+                    win.document.write('</head><body>');
+                    win.document.write(printContents);
+                    win.document.write('</body></html>');
+                    win.document.close();
+                    win.print();
+                </script>
+                """, height=0)
+        with col_g_close:
+            if st.button("Fechar Guia", use_container_width=True):
+                st.rerun()
 
-    col_btn_p, col_btn_f = st.columns([1.5, 1])
-    with col_btn_p:
-        if st.button("🖨️ Imprimir Rastreabilidade", type="primary", use_container_width=True):
-            components.html(f"""
-            <script>
-                var printContents = `{html_completo_timeline}`;
-                var win = window.open('', '', 'height=700,width=900');
-                win.document.write('<html><head><title>FAV - Cadeia de Custodia - {num_reds}</title>');
-                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:20px;color:#111;background:#fff;}} div{{color:#111 !important;}} span{{color:#111 !important;}} code{{border:1px solid #999;padding:2px 4px;}}</style>');
-                win.document.write('</head><body>');
-                win.document.write(printContents);
-                win.document.write('</body></html>');
-                win.document.close();
-                win.print();
-            </script>
-            """, height=0)
-    with col_btn_f:
-        if st.button("Fechar", use_container_width=True):
-            st.rerun()
-
-
-# ==============================================================================
-# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO COM DADOS REAIS DA PMMG
-# ==============================================================================
-
-@st.dialog("📄 Auto de Apreensão e Guia de Cadeia de Custódia PMMG", width="large")
-def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
-    """Exibe e imprime o Auto de Apreensão e Guia Oficial com dados reais da PMMG."""
-    num_reds = str(bem.get("num_reds") or "N/I").strip()
-    lacre_real = str(bem.get("involucro_lacre") or "SEM LACRE").strip()
-    desc_real = str(bem.get("descricao") or "N/I").strip()
-    autor_real = str(bem.get("autores") or "AUTOR NÃO INFORMADO").strip()
-    qtd_val = bem.get("quantidade", 1)
-    unid_med = bem.get("unidade_medida", "UN")
-
-    custodiante_real = str(bem.get("fiel_depositario_atual") or "CREDS TCO - 35ª CIA PM").strip()
-
-    dt_criacao = bem.get("data_envio_tramite") or bem.get("data_posse_atual") or bem.get("data_ingestao") or "Data N/I"
-    try:
-        dt_fmt = pd.to_datetime(dt_criacao).strftime("%d/%m/%Y às %H:%M")
-    except Exception:
-        dt_fmt = str(dt_criacao)[:16]
-
-    logs_todos = carregar_logs_supabase() or []
-    logs_especificos = [l for l in logs_todos if str(l.get("num_reds", "")).strip() == num_reds]
-    condutor_real = ""
-    for l in logs_especificos:
-        orig = str(l.get("origem", ""))
-        if "Relator:" in orig:
-            condutor_real = orig.split("Relator:")[1].replace(")", "").strip()
-            break
-        elif l.get("acao") == "IMPORTAÇÃO / CUSTÓDIA INICIAL":
-            condutor_real = str(l.get("origem", "")).strip()
-
-    if not condutor_real:
-        condutor_real = str(bem.get("ultimo_gestor_movimentou") or f"{operador_nome} - MAT. {formatar_matricula_pm(operador_mat)}").strip()
-
-    mat_operador_fmt = formatar_matricula_pm(operador_mat)
-
-    id_clean = "".join(filter(str.isdigit, str(bem.get("id_bem") or "2")))
-    num_guia = f"{id_clean[-3:] if len(id_clean) >= 3 else '2'}/2026"
-
-    html_termo = f"""
-    <div id="print-area-guia" style="background: #ffffff; color: #111827; padding: 25px; border-radius: 8px; border: 1px solid #d1d5db; font-family: 'Segoe UI', Arial, sans-serif;">
-        <div style="text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 15px;">
-            <h4 style="margin: 0; font-size: 0.95rem; color: #111827; text-transform: uppercase;">POLÍCIA MILITAR DE MINAS GERAIS</h4>
-            <p style="margin: 3px 0; font-size: 0.80rem; color: #374151;">4ª RPM • 21º BATALHÃO DE POLÍCIA MILITAR • 35ª COMPANHIA PM (UBÁ/MG)</p>
-            <p style="margin: 1px 0; font-size: 0.78rem; font-weight: 700; color: #1f2937;">CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>
-            <h3 style="margin: 8px 0 0 0; font-size: 1.05rem; color: #111827; text-transform: uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA Nº {num_guia}</h3>
-        </div>
-        <p style="font-size: 0.85rem; line-height: 1.6; text-align: justify; color: #1f2937;">
-            Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG,
-            foi devidamente arrecadado, acondicionado e depositado sob guarda o material abaixo caracterizado:
-        </p>
-        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin: 15px 0; font-size: 0.84rem; line-height: 1.8;">
-            • <b>REDS:</b> {num_reds}<br/>
-            • <b>NÚMERO DO LACRE INVIOLÁVEL:</b> <span style="font-family: monospace; font-weight: 700; background: #e5e7eb; padding: 1px 6px; border-radius: 4px;">{lacre_real}</span><br/>
-            • <b>AUTOR/CONDUZIDO:</b> {autor_real}<br/>
-            • <b>DESCRIÇÃO DO OBJETO:</b> {desc_real}<br/>
-            • <b>QUANTIDADE/PESO:</b> {qtd_val} {unid_med}<br/>
-            • <b>CUSTODIANTE ATUAL:</b> {custodiante_real}
-        </div>
-        <p style="font-size: 0.82rem; color: #4b5563; text-align: justify;">
-            O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.
-        </p>
-        <div style="margin-top: 45px; display: flex; justify-content: space-around; text-align: center;">
-            <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
-                <b>{operador_nome} - MAT. {mat_operador_fmt}</b><br/>
-                Responsável pelo CREDS TCO / 35ª Cia PM
-            </div>
-            <div style="border-top: 1px solid #111827; width: 44%; padding-top: 5px; font-size: 0.80rem;">
-                <b>{condutor_real}</b><br/>
-                Policial Condutor / Recebedor
-            </div>
-        </div>
-    </div>
-    """
-
-    st.markdown(html_termo, unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    col_g_print, col_g_close = st.columns([1.5, 1])
-    with col_g_print:
-        if st.button("🖨️ Imprimir Guia Oficial", type="primary", use_container_width=True):
-            components.html(f"""
-            <script>
-                var printContents = `{html_termo}`;
-                var win = window.open('', '', 'height=750,width=900');
-                win.document.write('<html><head><title>Guia de Custodia - {num_reds}</title>');
-                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:25px;color:#111;background:#fff;}}</style>');
-                win.document.write('</head><body>');
-                win.document.write(printContents);
-                win.document.write('</body></html>');
-                win.document.close();
-                win.print();
-            </script>
-            """, height=0)
-    with col_g_close:
-        if st.button("Fechar Guia", use_container_width=True):
-            st.rerun()
+    _dialog_guia()

@@ -445,7 +445,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                     use_container_width=True
                 )
 
-        # Campo solicitado: Pesquisa dinâmica por Número do REDS, Nome do Autor ou Lacre
         busca_reds_ou_autor = st.text_input(
             "🔎 Pesquisar por Nº do REDS, Nome do Autor ou Lacre:",
             placeholder="Ex: 2026-000484968-001, CARLOS EDUARDO SILVA ou B981234112...",
@@ -461,7 +460,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                unid_str.lower() in str(extrair_unidade_mae_creds(str(b.get("unidade_posse_atual", ""))) or "").lower()
         ]
 
-    # Filtragem pelo intervalo de datas
     if isinstance(periodo_datas, tuple) and len(periodo_datas) == 2:
         d_ini, d_fim = periodo_datas
         bens_periodo = []
@@ -478,7 +476,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                 bens_periodo.append(b)
         bens_filtrados_painel = bens_periodo
 
-    # Filtragem pelo campo de busca
     if busca_reds_ou_autor:
         bens_filtrados_painel = [
             b for b in bens_filtrados_painel
@@ -488,7 +485,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             or busca_reds_ou_autor in str(b.get("descricao", "")).lower()
         ]
 
-    # Distribuição dos grupos operacionais
     bens_custodia_ativa_creds = []
     bens_aguardando_destruicao = []
     bens_pendentes_aceite_creds = []
@@ -612,7 +608,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             qtd_reds_disponiveis = df_disp_reds["num_reds"].nunique() if not df_disp_reds.empty else 0
 
             st.markdown(f"##### 🎒 1. Acervo Ativo no Depósito do CREDS ({qtd_reds_disponiveis} REDS)")
-            st.caption("Materiais sob custódia oficial. Acesse a Cadeia de Custódia ou gere a Guia Oficial de Depósito.")
+            st.caption("Materiais sob custódia oficial. Acesse a FAV ou gere a Guia Oficial de Depósito.")
 
             if bens_r1:
                 grupos_creds_reds = df_disp_reds.groupby("num_reds", sort=False)
@@ -646,7 +642,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 is_sel_creds = st.checkbox("Selecionar", key=f"chk_creds_card_{id_bem}_{idx_global_card}", label_visibility="collapsed")
 
                             with col_card_b:
-                                # RENDERIZAÇÃO IDÊNTICA ÀS FOTOS 1 E 2
+                                # RENDERIZAÇÃO IDÊNTICA ÀS FOTOS
                                 html_item = f"""
                                 <div class="card-material-item {classe_card}">
                                     📄 REDS: <b>{num_reds_c}</b> | Material: <b>{desc_b}</b> (Qtd: {qtd_b} {unid_b})<br/>
@@ -661,10 +657,10 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 """
                                 st.markdown(html_item, unsafe_allow_html=True)
 
-                                # Barra com os 3 botões alinhados
+                                # Barra com os 3 botões funcionais
                                 c_sp, c_btn_cad, c_btn_guia, c_btn_mov = st.columns([4.6, 1.8, 1.8, 1.8])
                                 with c_btn_cad:
-                                    if st.button("🔗 Cadeia de Custódia", key=f"btn_cad_r1_{id_bem}_{idx_global_card}", use_container_width=True):
+                                    if st.button("🔗 FAV (Cadeia)", key=f"btn_cad_r1_{id_bem}_{idx_global_card}", use_container_width=True):
                                         modal_cadeia_custodia_timeline(bem.to_dict())
                                 with c_btn_guia:
                                     if st.button("🖨️ Guia / Termo", key=f"btn_guia_r1_{id_bem}_{idx_global_card}", use_container_width=True):
@@ -1090,14 +1086,14 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                     📍 <b>Destino / Fase:</b> {dest_e}<br/>
                                     📊 Situação: {tag_situacao}<br/>
                                     👤 <b>Movimentado por:</b> {remetente_orig}<br/>
-                                    ⏱️ <b>Data/Hora da Transferência:</b> <span class="caixa-data-destaque">{dt_ext_exata}</span>
+                                    ⏱️ <b>Data/Hora da Transferência:</b> <span class="tag-data-destaque">{dt_ext_exata}</span>
                                 </div>
                                 """
                                 st.markdown(html_ext, unsafe_allow_html=True)
 
                                 c_sp_e, c_cad_e, c_guia_e = st.columns([6, 2, 2])
                                 with c_cad_e:
-                                    if st.button("🔗 Cadeia", key=f"btn_cad_ext_{id_bem_e}_{idx_e}", use_container_width=True):
+                                    if st.button("🔗 FAV", key=f"btn_cad_ext_{id_bem_e}_{idx_e}", use_container_width=True):
                                         modal_cadeia_custodia_timeline(item_e.to_dict())
                                 with c_guia_e:
                                     if st.button("🖨️ Guia", key=f"btn_guia_ext_{id_bem_e}_{idx_e}", use_container_width=True):
