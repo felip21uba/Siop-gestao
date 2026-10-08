@@ -24,7 +24,7 @@ def formatar_matricula_pm(mat: str) -> str:
 
 
 def injetar_estilo_passo3_tco():
-    """Injeta as cores do Passo 3 das Escalas mantendo fundo do app intacto."""
+    """Injeta as cores do Passo 3 das Escalas mantendo o fundo padrão do aplicativo."""
     st.markdown("""
     <style>
     /* 1. Botões nos Tons do Passo 3 */
@@ -72,7 +72,7 @@ def injetar_estilo_passo3_tco():
         color: #cbd5e1 !important;
     }
 
-    /* 3. Cards Alternados com o Visual Exato */
+    /* 3. Cards Alternados com Visual Fosco */
     .card-material-item {
         border-radius: 8px !important;
         padding: 16px 20px 14px 20px !important;
@@ -256,12 +256,12 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
 
 
 # ==============================================================================
-# MODAL 1: 🔗 FAV - RENDERIZAÇÃO DIRETA VIA @st.dialog
+# MODAL 1: 🔗 FAV - FICHA DE ACOMPANHAMENTO DE VESTÍGIO (CADEIA DE CUSTÓDIA)
 # ==============================================================================
 
 @st.dialog("🔗 FAV — Ficha de Acompanhamento de Vestígio (Art. 158-B CPP)", width="large")
 def modal_cadeia_custodia_timeline(bem: dict):
-    """Exibe modal com a estrutura vertical de blocos da FAV sem aninhamento de função."""
+    """Exibe modal com a estrutura vertical de blocos da FAV com HTML sem indentação de código."""
     if not bem or not isinstance(bem, dict):
         st.error("Dados do material não encontrados.")
         return
@@ -336,32 +336,31 @@ def modal_cadeia_custodia_timeline(bem: dict):
             local_exibicao = local_raw
 
         bloco = (
-            '<div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 14px; position: relative;">'
-            '<div style="position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #c5a059;"></div>'
-            '<div style="background: rgba(30, 24, 20, 0.95); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">'
+            f'<div style="border-left: 2px solid #c5a059; padding-left: 14px; margin-left: 8px; margin-bottom: 14px; position: relative;">'
+            f'<div style="position: absolute; left: -6px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #c5a059;"></div>'
+            f'<div style="background: rgba(30, 24, 20, 0.95); border: 1px solid #54432a; border-radius: 6px; padding: 10px 14px;">'
             f'<span style="color: #c5a059; font-size: 0.80rem; font-weight: 700;">⏱️ {dt_fmt}</span><br/>'
             f'<span style="color: #ffffff; font-size: 0.90rem; font-weight: 700;">{acao_str}</span><br/>'
             f'<span style="color: #d7ccc8; font-size: 0.82rem;">Agente Responsável: <b>{agente_responsavel}</b></span><br/>'
             f'<span style="color: #e5c78b; font-size: 0.82rem; font-weight: 600;">📍 Local: {local_exibicao}</span><br/>'
             f'<span style="color: #a89389; font-size: 0.80rem;">{detalhe_str}</span>'
-            '</div>'
-            '</div>'
+            f'</div></div>'
         )
         itens_html.append(bloco)
 
     corpo_eventos = "".join(itens_html)
 
     html_fav = (
-        '<div id="print-area-fav" style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;">'
-        '<div style="background: rgba(20, 15, 13, 0.85); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">'
+        f'<div id="print-area-fav" style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif;">'
+        f'<div style="background: rgba(20, 15, 13, 0.85); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">'
         f'<span style="color: #bfa59a; font-size: 0.85rem;">REDS: <b style="color: #ffffff;">{num_reds}</b> | Lacre Oficial: <code style="background: #3e2723; color: #ffe0b2; padding: 2px 6px; border-radius: 4px;">{lacre}</code></span><br/>'
         f'<span style="color: #ffffff; font-weight: 700;">Material: {desc} (Qtd: {bem.get("quantidade", 1)} {bem.get("unidade_medida", "UN")})</span><br/>'
         f'<span style="color: #d7ccc8; font-size: 0.82rem;">Autor da Ocorrência: <b>{autor}</b> | Custodiante Atual: <b style="color: #c5a059;">{custodiante} ({unidade})</b></span><br/>'
         f'<span style="color: #e5c78b; font-size: 0.80rem;">Fase Atual: <b>{fase_atual}</b></span>'
-        '</div>'
-        '<h5 style="color: #c5a059; margin-bottom: 12px;">🔗 Rastreabilidade em Cadeia Fechada (Art. 158-B CPP):</h5>'
+        f'</div>'
+        f'<h5 style="color: #c5a059; margin-bottom: 12px;">🔗 Rastreabilidade em Cadeia Fechada (Art. 158-B CPP):</h5>'
         f'{corpo_eventos}'
-        '</div>'
+        f'</div>'
     )
 
     st.markdown(html_fav, unsafe_allow_html=True)
@@ -389,12 +388,12 @@ def modal_cadeia_custodia_timeline(bem: dict):
 
 
 # ==============================================================================
-# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO PMMG (DIRETO VIA @st.dialog)
+# MODAL 2: 📄 GUIA OFICIAL DE CUSTÓDIA & DEPÓSITO PMMG (SEM INDENTAÇÃO DE CÓDIGO)
 # ==============================================================================
 
 @st.dialog("📄 Auto de Apreensão e Guia de Cadeia de Custódia PMMG", width="large")
 def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, operador_unid: str):
-    """Exibe e imprime o Auto de Apreensão e Guia Oficial com dados reais sem função aninhada."""
+    """Exibe e imprime o Auto de Apreensão e Guia Oficial em folha branca sem markdown indentado."""
     if not bem or not isinstance(bem, dict):
         st.error("Dados do material não encontrados.")
         return
@@ -440,81 +439,44 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
     id_clean = "".join(filter(str.isdigit, id_bruto))
     num_guia = f"{id_clean[-3:] if len(id_clean) >= 3 else '2'}/2026"
 
-    html_termo = f"""
-    <div id="print-area-guia" style="
-        background-color: #ffffff !important; 
-        color: #111827 !important; 
-        padding: 28px !important; 
-        border-radius: 8px !important; 
-        border: 1.5px solid #d1d5db !important; 
-        font-family: Arial, Helvetica, sans-serif !important;
-        line-height: 1.5 !important;
-    ">
-        <style>
-            #print-area-guia, #print-area-guia * {{
-                color: #111827 !important;
-                background-color: transparent;
-            }}
-            #print-area-guia .box-dados-cinza {{
-                background-color: #f3f4f6 !important;
-                border: 1px solid #e5e7eb !important;
-            }}
-            #print-area-guia .lacre-tag-box {{
-                background-color: #e5e7eb !important;
-                color: #000000 !important;
-            }}
-        </style>
-
-        <div style="text-align: center; border-bottom: 2px solid #111827; padding-bottom: 10px; margin-bottom: 16px;">
-            <h4 style="margin: 0; font-size: 0.95rem; font-weight: 800; text-transform: uppercase;">POLÍCIA MILITAR DE MINAS GERAIS</h4>
-            <p style="margin: 3px 0; font-size: 0.80rem; font-weight: 600; color: #374151 !important;">4ª RPM • 21º BATALHÃO DE POLÍCIA MILITAR • 35ª COMPANHIA PM (UBÁ/MG)</p>
-            <p style="margin: 1px 0; font-size: 0.78rem; font-weight: 700; color: #111827 !important;">CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>
-            <h3 style="margin: 10px 0 0 0; font-size: 1.05rem; font-weight: 800; text-transform: uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA Nº {num_guia}</h3>
-        </div>
-
-        <p style="font-size: 0.88rem; line-height: 1.6; text-align: justify; margin-bottom: 14px;">
-            Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG,
-            foi devidamente arrecadado, acondicionado e depositado sob guarda o material abaixo caracterizado:
-        </p>
-
-        <div class="box-dados-cinza" style="border-radius: 6px; padding: 14px 16px; margin: 14px 0; font-size: 0.86rem; line-height: 1.85;">
-            • <b>REDS:</b> {num_reds}<br/>
-            • <b>NÚMERO DO LACRE INVIOLÁVEL:</b> <span class="lacre-tag-box" style="font-family: monospace; font-weight: 800; padding: 2px 7px; border-radius: 4px;">{lacre_real}</span><br/>
-            • <b>AUTOR/CONDUZIDO:</b> {autor_real}<br/>
-            • <b>DESCRIÇÃO DO OBJETO:</b> {desc_real}<br/>
-            • <b>QUANTIDADE/PESO:</b> {qtd_val} {unid_med}<br/>
-            • <b>CUSTODIANTE ATUAL:</b> {custodiante_real}
-        </div>
-
-        <p style="font-size: 0.84rem; text-align: justify; margin-top: 14px; color: #374151 !important;">
-            O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.
-        </p>
-
-        <div style="margin-top: 48px; display: flex; justify-content: space-around; text-align: center;">
-            <div style="border-top: 1.5px solid #111827; width: 44%; padding-top: 6px; font-size: 0.80rem;">
-                <b>{operador_nome} - MAT. {mat_operador_fmt}</b><br/>
-                Responsável pelo CREDS TCO / 35ª Cia PM
-            </div>
-            <div style="border-top: 1.5px solid #111827; width: 44%; padding-top: 6px; font-size: 0.80rem;">
-                <b>{condutor_real}</b><br/>
-                Policial Condutor / Recebedor
-            </div>
-        </div>
-    </div>
-    """
+    # HTML montado em bloco único sem recuo de margem (evita bloco de código Streamlit)
+    html_termo = (
+        '<div id="print-area-guia" style="background:#ffffff;color:#111827;padding:26px;border-radius:8px;border:1px solid #d1d5db;font-family:Arial,sans-serif;line-height:1.5;">'
+        '<div style="text-align:center;border-bottom:2px solid #111827;padding-bottom:10px;margin-bottom:15px;">'
+        '<h4 style="margin:0;font-size:0.95rem;font-weight:bold;color:#111827;text-transform:uppercase;">POLÍCIA MILITAR DE MINAS GERAIS</h4>'
+        '<p style="margin:3px 0;font-size:0.80rem;color:#374151;">4ª RPM • 21º BATALHÃO DE POLÍCIA MILITAR • 35ª COMPANHIA PM (UBÁ/MG)</p>'
+        '<p style="margin:1px 0;font-size:0.78rem;font-weight:bold;color:#1f2937;">CENTRO DE REGISTRO E CUSTÓDIA DE MATERIAIS DE TCO (CREDS TCO)</p>'
+        f'<h3 style="margin:8px 0 0 0;font-size:1.05rem;font-weight:bold;color:#111827;text-transform:uppercase;">AUTO DE APREENSÃO E GUIA DE CADEIA DE CUSTÓDIA Nº {num_guia}</h3>'
+        '</div>'
+        f'<p style="font-size:0.86rem;line-height:1.6;text-align:justify;color:#1f2937;margin-bottom:14px;">Certifico que, aos <b>{dt_fmt}</b>, nesta cidade de Ubá/MG, nos termos do Art. 6º, II c/c Arts. 158-A a 158-F do Código de Processo Penal e normativas da PMMG, foi devidamente arrecadado, acondicionado e depositado sob guarda o material abaixo caracterizado:</p>'
+        '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:12px 14px;margin:14px 0;font-size:0.84rem;line-height:1.85;color:#111827;">'
+        f'• <b>REDS:</b> {num_reds}<br/>'
+        f'• <b>NÚMERO DO LACRE INVIOLÁVEL:</b> <span style="font-family:monospace;font-weight:bold;background:#e5e7eb;color:#000;padding:2px 6px;border-radius:4px;">{lacre_real}</span><br/>'
+        f'• <b>AUTOR/CONDUZIDO:</b> {autor_real}<br/>'
+        f'• <b>DESCRIÇÃO DO OBJETO:</b> {desc_real}<br/>'
+        f'• <b>QUANTIDADE/PESO:</b> {qtd_val} {unid_med}<br/>'
+        f'• <b>CUSTODIANTE ATUAL:</b> {custodiante_real}'
+        '</div>'
+        '<p style="font-size:0.82rem;color:#4b5563;text-align:justify;margin-top:14px;">O presente invólucro encontra-se devidamente lacrado, não apresentando sinais de rompimento ou violação. A integridade física e o trâmite processual ficam asseverados pelo sistema SIOP PMMG.</p>'
+        '<div style="margin-top:45px;display:flex;justify-content:space-around;text-align:center;color:#111827;">'
+        f'<div style="border-top:1px solid #111827;width:44%;padding-top:5px;font-size:0.80rem;"><b>{operador_nome} - MAT. {mat_operador_fmt}</b><br/>Responsável pelo CREDS TCO / 35ª Cia PM</div>'
+        f'<div style="border-top:1px solid #111827;width:44%;padding-top:5px;font-size:0.80rem;"><b>{condutor_real}</b><br/>Policial Condutor / Recebedor</div>'
+        '</div>'
+        '</div>'
+    )
 
     st.markdown(html_termo, unsafe_allow_html=True)
     st.markdown("<br>", unsafe_allow_html=True)
 
     col_g_print, col_g_close = st.columns([1.5, 1])
     with col_g_print:
-        if st.button("🖨️ Imprimir Guia Oficial", type="primary", use_container_width=True, key=f"btn_print_guia_clean_{id_clean}"):
+        if st.button("🖨️ Imprimir Guia Oficial", type="primary", use_container_width=True, key=f"btn_print_guia_{num_reds}_{id_clean}"):
             components.html(f"""
             <script>
                 var printContents = `{html_termo}`;
                 var win = window.open('', '', 'height=750,width=900');
                 win.document.write('<html><head><title>Guia de Custodia - {num_reds}</title>');
-                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:25px;color:#000;background:#fff;}}</style>');
+                win.document.write('<style>body{{font-family:Arial,sans-serif;padding:25px;color:#111;background:#fff;}}</style>');
                 win.document.write('</head><body>');
                 win.document.write(printContents);
                 win.document.write('</body></html>');
@@ -523,5 +485,5 @@ def modal_guia_termo_oficial(bem: dict, operador_nome: str, operador_mat: str, o
             </script>
             """, height=0)
     with col_g_close:
-        if st.button("Fechar Guia", use_container_width=True, key=f"btn_close_guia_clean_{id_clean}"):
+        if st.button("Fechar Guia", use_container_width=True, key=f"btn_close_guia_{num_reds}_{id_clean}"):
             st.rerun()
