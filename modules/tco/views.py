@@ -340,8 +340,34 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 
         if d["materiais"]:
             df_mats = pd.DataFrame(d["materiais"])
+            
+            # Garante a existência de todas as colunas necessárias sem KeyError
+            if "remover" not in df_mats.columns:
+                df_mats.insert(0, "remover", False)
+            if "item_num" not in df_mats.columns:
+                df_mats["item_num"] = [str(i + 1) for i in range(len(df_mats))]
+            if "descricao" not in df_mats.columns:
+                df_mats["descricao"] = "MATERIAL DIVERSO"
+            if "quantidade" not in df_mats.columns:
+                df_mats["quantidade"] = 1.0
+            if "unidade" not in df_mats.columns:
+                df_mats["unidade"] = "UNIDADE"
+            if "involucro" not in df_mats.columns:
+                df_mats["involucro"] = "SEM LACRE"
+            if "autor" not in df_mats.columns:
+                df_mats["autor"] = "AUTOR NÃO INFORMADO"
+            
             df_editado_ing = st.data_editor(
                 df_mats[["remover", "item_num", "descricao", "quantidade", "unidade", "involucro", "autor"]],
+                column_config={
+                    "remover": st.column_config.CheckboxColumn("🗑️ Excluir", default=False, width="small"),
+                    "item_num": st.column_config.TextColumn("Item", disabled=True, width="small"),
+                    "descricao": st.column_config.TextColumn("Descrição do Material", width="large"),
+                    "quantidade": st.column_config.NumberColumn("Qtd", min_value=0.1, step=1.0, width="small"),
+                    "unidade": st.column_config.TextColumn("Unid", width="small"),
+                    "involucro": st.column_config.TextColumn("Nº Lacre / Invólucro", width="medium"),
+                    "autor": st.column_config.TextColumn("Autor Vinculado", width="medium")
+                },
                 hide_index=True,
                 use_container_width=True,
                 key="editor_materiais_importacao_v35"
