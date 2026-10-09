@@ -1,9 +1,26 @@
+"""
+==============================================================================
+Módulo Principal de Gestão de Escalas (modules/escalas/__init__.py)
+==============================================================================
+"""
+
 import streamlit as st
+from modules.escalas.cabecalho import renderizar_cabecalho_escalas
 
 def recalcular_matriz_passo5():
     st.session_state["atualizar_quadro_passo5"] = True
 
 def exibir_modulo_escalas():
+    usr_dados = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_dados, str):
+        usr_dados = {}
+
+    unidade_usr = st.session_state.get("cfg_unidade") or usr_dados.get("unidade") or "21º BPM"
+    subunidade_usr = st.session_state.get("cfg_subunidade") or usr_dados.get("subunidade") or "35ª CIA PM"
+
+    # Renderização do cabeçalho institucional das Escalas no topo
+    renderizar_cabecalho_escalas(unidade_usr, subunidade_usr)
+
     passo_ativo = st.session_state.get("passo_escala_ativo", "VISUALIZAR TODOS")
     
     st.title("📅 Módulo de Gestão de Escalas")
