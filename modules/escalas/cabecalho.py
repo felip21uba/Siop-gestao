@@ -2,13 +2,14 @@
 ==============================================================================
 Módulo de Cabeçalho Institucional PMMG - Escalas (modules/escalas/cabecalho.py)
 Design tático no padrão oficial com relógio dinâmico (JavaScript em tempo real)
-e dados do operador em tom Azul Corporativo do Módulo de Escalas.
+e dados do operador no tom Azul Corporativo do Módulo de Escalas.
 ==============================================================================
 """
 
 import datetime
 from zoneinfo import ZoneInfo
 import streamlit as st
+import streamlit.components.v1 as components
 
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
@@ -48,23 +49,40 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
 
     lotacao_detalhada = f"{subunidade_atual} / P3/EM/{unidade_atual}/4 RPM" if "P3" not in subunidade_atual else subunidade_atual
 
-    st.markdown(f"""
-    <div style="
-        background-color: #232a35;
-        border: 1px solid #3c4858;
-        border-radius: 8px;
-        padding: 12px 18px;
-        margin-bottom: 20px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 16px;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    ">
-        <!-- LADO ESQUERDO: ÍCONE INSÍGNIA + TÍTULOS -->
-        <div style="display: flex; align-items: center; gap: 14px;">
-            <div style="
+    # Renderização HTML/CSS do Container com Relógio JS Encapsulado
+    html_componente = f"""
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="utf-8">
+        <style>
+            * {{
+                box-sizing: border-box;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                margin: 0;
+                padding: 0;
+            }}
+            body {{
+                background-color: transparent;
+            }}
+            .header-container {{
+                background-color: #232a35;
+                border: 1px solid #3c4858;
+                border-radius: 8px;
+                padding: 12px 18px;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 16px;
+                justify-content: space-between;
+                align-items: center;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            }}
+            .header-left {{
+                display: flex;
+                align-items: center;
+                gap: 14px;
+            }}
+            .insignia-box {{
                 width: 44px;
                 height: 44px;
                 background-color: #1a222d;
@@ -76,65 +94,53 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
                 color: #93c5fd;
                 font-size: 20px;
                 flex-shrink: 0;
-            ">
-                🛡️
-            </div>
-            <div>
-                <div style="
-                    font-size: 1.15rem;
-                    color: #f0f4f8;
-                    margin: 0 0 2px 0;
-                    padding: 0;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    font-weight: 700;
-                ">
-                    📅 {titulo_modulo}
-                </div>
-                <div style="
-                    font-size: 0.82rem;
-                    color: #94a3b8;
-                    margin: 0;
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    flex-wrap: wrap;
-                ">
-                    <span>SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável</span>
-                    <span>•</span>
-                    <span style="color: #60a5fa; font-weight: 600;">📍 {subunidade_atual} - {unidade_atual} (Ubá-MG)</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- LADO DIREITO: RELÓGIO EM TEMPO REAL (DINÂMICO) E CAIXA DO USUÁRIO -->
-        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-            <div style="
+            }}
+            .title-main {{
+                font-size: 1.15rem;
+                color: #f0f4f8;
+                margin-bottom: 2px;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            .subtitle-main {{
+                font-size: 0.82rem;
+                color: #94a3b8;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-wrap: wrap;
+            }}
+            .header-right {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+            }}
+            .clock-box {{
                 background-color: #161c24;
                 border: 1px solid #334155;
                 padding: 6px 12px;
                 border-radius: 6px;
                 font-size: 0.85rem;
                 color: #e6dfd5;
-                font-family: 'Consolas', monospace;
+                font-family: 'Consolas', 'Courier New', monospace;
                 font-weight: 700;
                 display: flex;
                 align-items: center;
                 gap: 8px;
                 white-space: nowrap;
-            ">
-                <span style="
-                    width: 7px;
-                    height: 7px;
-                    border-radius: 50%;
-                    background-color: #22c55e;
-                    display: inline-block;
-                    box-shadow: 0 0 5px #22c55e;
-                "></span>
-                <span id="relogio_escalas_dinamico">--/--/---- --:--:--</span>
-            </div>
-            <div style="
+            }}
+            .pulse-green {{
+                width: 7px;
+                height: 7px;
+                border-radius: 50%;
+                background-color: #22c55e;
+                display: inline-block;
+                box-shadow: 0 0 5px #22c55e;
+            }}
+            .user-box {{
                 background-color: #161c24;
                 border: 1px solid #334155;
                 padding: 5px 12px;
@@ -143,33 +149,58 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
                 color: #ffffff;
                 line-height: 1.25;
                 white-space: nowrap;
-            ">
-                <div style="font-size: 0.82rem; font-weight: 800; color: #ffffff;">
-                    <span style="color: #a855f7;">👤</span> {militar_completo} <span style="color: #a39683; font-size: 0.78rem;">(Mat. {matricula_fmt})</span>
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header-container">
+            <div class="header-left">
+                <div class="insignia-box">🛡️</div>
+                <div>
+                    <div class="title-main">📅 {titulo_modulo}</div>
+                    <div class="subtitle-main">
+                        <span>SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável</span>
+                        <span>•</span>
+                        <span style="color: #60a5fa; font-weight: 600;">📍 {subunidade_atual} - {unidade_atual} (Ubá-MG)</span>
+                    </div>
                 </div>
-                <div style="font-size: 0.75rem; color: #a39683; font-weight: 600;">
-                    🏛️ {lotacao_detalhada} — PLANTÃO
+            </div>
+
+            <div class="header-right">
+                <div class="clock-box">
+                    <span class="pulse-green"></span>
+                    <span id="relogio_escalas_dinamico">--/--/---- --:--:--</span>
+                </div>
+                <div class="user-box">
+                    <div style="font-weight: 800; color: #ffffff;">
+                        <span style="color: #a855f7;">👤</span> {militar_completo} <span style="color: #a39683; font-weight: 500; font-size: 0.78rem;">(Mat. {matricula_fmt})</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #a39683; font-weight: 600;">
+                        🏛️ {lotacao_detalhada} — PLANTÃO
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- SCRIPT JAVASCRIPT NATIVO PARA ATUALIZAR OS SEGUNDOS EM TEMPO REAL -->
-    <script>
-        function atualizarRelogioEscalas() {
-            const spanRelogio = document.getElementById("relogio_escalas_dinamico");
-            if (spanRelogio) {
-                const agora = new Date();
-                const dia = String(agora.getDate()).padStart(2, '0');
-                const mes = String(agora.getMonth() + 1).padStart(2, '0');
-                const ano = agora.getFullYear();
-                const horas = String(agora.getHours()).padStart(2, '0');
-                const minutos = String(agora.getMinutes()).padStart(2, '0');
-                const segundos = String(agora.getSeconds()).padStart(2, '0');
-                spanRelogio.textContent = `${dia}/${mes}/${ano} ${horas}:${minutos}:${segundos}`;
-            }
-        }
-        atualizarRelogioEscalas();
-        setInterval(atualizarRelogioEscalas, 1000);
-    </script>
-    """, unsafe_allow_html=True)
+        <script>
+            function atualizarRelogioEscalas() {{
+                const spanRelogio = document.getElementById("relogio_escalas_dinamico");
+                if (spanRelogio) {{
+                    const agora = new Date();
+                    const dia = String(agora.getDate()).padStart(2, '0');
+                    const mes = String(agora.getMonth() + 1).padStart(2, '0');
+                    const ano = agora.getFullYear();
+                    const horas = String(agora.getHours()).padStart(2, '0');
+                    const minutos = String(agora.getMinutes()).padStart(2, '0');
+                    const segundos = String(agora.getSeconds()).padStart(2, '0');
+                    spanRelogio.textContent = dia + "/" + mes + "/" + ano + " " + horas + ":" + minutos + ":" + segundos;
+                }}
+            }}
+            atualizarRelogioEscalas();
+            setInterval(atualizarRelogioEscalas, 1000);
+        </script>
+    </body>
+    </html>
+    """
+
+    components.html(html_componente, height=95, scrolling=False)
