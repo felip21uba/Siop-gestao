@@ -18,12 +18,10 @@ def exibir_modulo_escalas():
     unidade_usr = st.session_state.get("cfg_unidade") or usr_dados.get("unidade") or "21º BPM"
     subunidade_usr = st.session_state.get("cfg_subunidade") or usr_dados.get("subunidade") or "35ª CIA PM"
 
-    # Renderização do cabeçalho institucional das Escalas no topo
+    # Renderiza o cabeçalho tático corporativo no topo
     renderizar_cabecalho_escalas(unidade_usr, subunidade_usr)
 
     passo_ativo = st.session_state.get("passo_escala_ativo", "VISUALIZAR TODOS")
-    
-    st.title("📅 Módulo de Gestão de Escalas")
     
     try:
         from modules.escalas.passos.passo1_unidade import renderizar_passo1
