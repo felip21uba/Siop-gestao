@@ -14,7 +14,13 @@ from core.database import (
 from core.permissions import usuario_eh_gestor_creds
 from modules.tco.parser_reds import extrair_dados_reds_pdf
 from modules.tco.storage import upload_midia_supabase
-from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase, carregar_logs_supabase
+from modules.tco.database import (
+    salvar_material_supabase, 
+    atualizar_material_supabase, 
+    registrar_log_supabase, 
+    carregar_logs_supabase,
+    verificar_material_existente_banco
+)
 from modules.tco.estilo_tco import (
     injetar_estilo_passo3_tco,
     formatar_matricula_pm,
@@ -240,7 +246,7 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", peri
 
 
 # =============================================================================
-# ABA 1: IMPORTAÇÃO E UPLOAD
+# ABA 1: IMPORTAÇÃO E UPLOAD (CORRIGIDO TRAVA DE DEDUPLICAÇÃO)
 # =============================================================================
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_estilo_passo3_tco()
@@ -381,22 +387,31 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 
             if btn_limpar:
                 st.session_state["temp_reds_extraido"] = None
+                st.session_state["confirmou_duplicidade_reds"] = False
                 st.rerun()
 
             if btn_confirmar:
                 itens_validos = df_editado_ing[df_editado_ing["remover"] == False]
                 now_iso = datetime.datetime.now().isoformat()
+                qtd_salvos = 0
                 
                 for idx_row, row in itens_validos.iterrows():
-                    id_bem_unico = f"BEM-{d['num_reds']}-{row['item_num']}-{uuid.uuid4().hex[:4]}"
+                    num_reds_clean = str(d['num_reds']).strip()
+                    item_num_clean = str(row['item_num']).strip()
+                    desc_clean = str(row["descricao"]).strip()
+                    lacre_clean = str(row["involucro"]).strip()
+
+                    # ID determinístico por REDS + ITEM (evita geração de novos UUIDs ao reimportar)
+                    id_bem_unico = f"BEM-{num_reds_clean}-ITEM-{item_num_clean}"
+                    
                     novo_bem = {
                         "id_bem": id_bem_unico,
-                        "num_reds": d["num_reds"],
+                        "num_reds": num_reds_clean,
                         "autores": str(row["autor"]).strip(),
-                        "descricao": str(row["descricao"]).strip(),
+                        "descricao": desc_clean,
                         "quantidade": float(row["quantidade"]),
                         "unidade_medida": str(row["unidade"]).strip(),
-                        "involucro_lacre": str(row["involucro"]).strip(),
+                        "involucro_lacre": lacre_clean,
                         "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
                         "fiel_depositario_atual": nome_militar_atual,
                         "unidade_posse_atual": unidade_militar_atual,
@@ -405,17 +420,20 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                         "status_tramite": "Em Custódia",
                         "data_ingestao": now_iso
                     }
-                    salvar_material_supabase(novo_bem)
+                    
+                    if salvar_material_supabase(novo_bem):
+                        qtd_salvos += 1
 
                 del st.session_state["temp_reds_extraido"]
-                st.success("Materiais cadastrados com sucesso!")
+                st.session_state["confirmou_duplicidade_reds"] = False
+                st.success(f"🎉 {qtd_salvos} material(is) confirmado(s) com sucesso na sua custódia!")
                 st.rerun()
 
 renderizar_aba_ingestao = renderizar_aba_importacao
 
 
 # =============================================================================
-# ABA 3: PAINEL DO CREDS (CARDS IDÊNTICOS ÀS FOTOS COM TODAS AS FUNÇÕES)
+# ABA 3: PAINEL DO CREDS
 # =============================================================================
 def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual):
     injetar_estilo_passo3_tco()
@@ -668,7 +686,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 is_sel_creds = st.checkbox("Selecionar", key=f"chk_creds_card_{id_bem}_{idx_global_card}", label_visibility="collapsed")
 
                             with col_card_b:
-                                # RENDERIZAÇÃO IDÊNTICA ÀS FOTOS
                                 html_item = f"""
                                 <div class="card-material-item {classe_card}">
                                     📄 REDS: <b>{num_reds_c}</b> | Material: <b>{desc_b}</b> (Qtd: {qtd_b} {unid_b})<br/>
@@ -683,7 +700,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 """
                                 st.markdown(html_item, unsafe_allow_html=True)
 
-                                # Barra com os 3 botões funcionais
                                 c_sp, c_btn_cad, c_btn_guia, c_btn_mov = st.columns([4.6, 1.8, 1.8, 1.8])
                                 with c_btn_cad:
                                     if st.button("🔗 FAV (Cadeia)", key=f"btn_cad_r1_{id_bem}_{idx_global_card}", use_container_width=True):
