@@ -59,7 +59,6 @@ def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, po
 
         hash_senha = gerar_hash_senha(senha_inicial)
         
-        # Payload ajustado estritamente com as colunas existentes na tabela 'usuarios'
         payload_novo = {
             "usuario_login": m_digitos,
             "usuario": m_digitos,
@@ -322,96 +321,138 @@ def exibir_tela_gestao_usuarios():
 
         st.divider()
 
-        # TABELA EDITÁVEL DE PERMISSÕES
+        # TABELA EDITÁVEL DE PERMISSÕES COM BARRA DE BUSCA
         with st.expander("📜 Tabela Geral de Permissões", expanded=True):
-            col_q1, col_q2 = st.columns([3, 1])
-            with col_q1: 
-                st.caption("💡 Edite qualquer permissão na tabela e as alterações serão gravadas imediatamente na tabela `usuarios`.")
-            with col_q2: 
-                if st.button("🔄 Recarregar Tabela", use_container_width=True):
+            
+            # --- NOVO BLOCO DE BUSCA E FILTROS RÁPIDOS ---
+            c_src1, c_src2, c_src3 = st.columns([3, 1.5, 1])
+            with c_src1:
+                termo_busca_militar = st.text_input(
+                    "🔍 Pesquisar por Nome, Matrícula/PM, Lotação ou Posto:", 
+                    placeholder="Digite o nome, PM (ex: 123456) ou Cia...",
+                    key="txt_busca_tabela_militar"
+                ).strip().lower()
+            
+            with c_src2:
+                filtro_perfil_ativo = st.selectbox(
+                    "Filtrar por Nível Geral:",
+                    options=["TODOS OS NÍVEIS"] + PERFIS_NIVEL_GERAL,
+                    key="sb_filtro_nivel_geral_tabela"
+                )
+                
+            with c_src3:
+                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+                if st.button("🔄 Recarregar", use_container_width=True):
                     st.session_state["gestao_usr_version"] += 1
                     st.rerun()
+
+            st.caption("💡 Edite qualquer permissão na tabela e as alterações serão gravadas imediatamente na tabela `usuarios`.")
 
             if efetivo_banco:
                 linhas_display = []
                 for m in efetivo_banco:
                     num_pm = str(m.get("num_policia", "N/I")).strip().upper()
                     nome_comp = m.get("nome_completo") or m.get("nome_guerra", "MILITAR")
-                    
+                    lotacao_str = str(m.get("lotacao", m.get("unidade", "21º BPM")))
+                    posto_str = str(m.get("posto_grad", "SD PM"))
+                    nivel_geral_str = str(m.get("nivel_acesso", "TROPA"))
+
+                    # --- APLICAÇÃO DOS FILTROS DA BUSCA ---
+                    if termo_busca_militar:
+                        num_pm_limpo = extrair_digitos_matricula(num_pm)
+                        termo_limpo = extrair_digitos_matricula(termo_busca_militar)
+                        
+                        match_texto = (
+                            termo_busca_militar in nome_comp.lower() or
+                            termo_busca_militar in num_pm.lower() or
+                            termo_busca_militar in lotacao_str.lower() or
+                            termo_busca_militar in posto_str.lower()
+                        )
+                        match_num = (termo_limpo and termo_limpo in num_pm_limpo) if termo_limpo else False
+
+                        if not (match_texto or match_num):
+                            continue
+
+                    if filtro_perfil_ativo != "TODOS OS NÍVEIS" and nivel_geral_str != filtro_perfil_ativo:
+                        continue
+
                     linhas_display.append({
                         "MATRÍCULA": num_pm,
-                        "POSTO/GRAD": m.get("posto_grad", "SD PM"),
+                        "POSTO/GRAD": posto_str,
                         "MILITAR": nome_comp,
-                        "LOTAÇÃO": m.get("lotacao", m.get("unidade", "21º BPM")),
+                        "LOTAÇÃO": lotacao_str,
                         "FUNÇÃO CREDS": m.get("perfil_creds", "TROPA"),
                         "FUNÇÃO ESCALA": m.get("perfil_escala", "TROPA"),
-                        "NÍVEL GERAL": m.get("nivel_acesso", "TROPA"),
+                        "NÍVEL GERAL": nivel_geral_str,
                         "CONTA ATIVA": bool(m.get("ativo", True))
                     })
 
-                df_display = pd.DataFrame(linhas_display)
+                if not linhas_display:
+                    st.warning("🔍 Nenhum militar localizado com os parâmetros de pesquisa informados.")
+                else:
+                    df_display = pd.DataFrame(linhas_display)
 
-                config_cols = {
-                    "MATRÍCULA": st.column_config.TextColumn("MATRÍCULA", disabled=True),
-                    "POSTO/GRAD": st.column_config.TextColumn("POSTO/GRAD", disabled=True),
-                    "MILITAR": st.column_config.TextColumn("NOME COMPLETO", disabled=True),
-                    "LOTAÇÃO": st.column_config.TextColumn("LOTAÇÃO / CIA", disabled=True),
-                    "FUNÇÃO CREDS": st.column_config.SelectboxColumn("FUNÇÃO CREDS", options=PERFIS_CREDS, required=True),
-                    "FUNÇÃO ESCALA": st.column_config.SelectboxColumn("FUNÇÃO ESCALA", options=PERFIS_ESCALA, required=True),
-                    "NÍVEL GERAL": st.column_config.SelectboxColumn("NÍVEL GERAL", options=PERFIS_NIVEL_GERAL, required=True),
-                    "CONTA ATIVA": st.column_config.CheckboxColumn("CONTA ATIVA")
-                }
+                    config_cols = {
+                        "MATRÍCULA": st.column_config.TextColumn("MATRÍCULA", disabled=True),
+                        "POSTO/GRAD": st.column_config.TextColumn("POSTO/GRAD", disabled=True),
+                        "MILITAR": st.column_config.TextColumn("NOME COMPLETO", disabled=True),
+                        "LOTAÇÃO": st.column_config.TextColumn("LOTAÇÃO / CIA", disabled=True),
+                        "FUNÇÃO CREDS": st.column_config.SelectboxColumn("FUNÇÃO CREDS", options=PERFIS_CREDS, required=True),
+                        "FUNÇÃO ESCALA": st.column_config.SelectboxColumn("FUNÇÃO ESCALA", options=PERFIS_ESCALA, required=True),
+                        "NÍVEL GERAL": st.column_config.SelectboxColumn("NÍVEL GERAL", options=PERFIS_NIVEL_GERAL, required=True),
+                        "CONTA ATIVA": st.column_config.CheckboxColumn("CONTA ATIVA")
+                    }
 
-                chave_editor = f"editor_acessos_v{st.session_state['gestao_usr_version']}"
-                df_editado = st.data_editor(
-                    df_display, 
-                    column_config=config_cols, 
-                    hide_index=True, 
-                    use_container_width=True, 
-                    key=chave_editor
-                )
+                    chave_editor = f"editor_acessos_v{st.session_state['gestao_usr_version']}"
+                    df_editado = st.data_editor(
+                        df_display, 
+                        column_config=config_cols, 
+                        hide_index=True, 
+                        use_container_width=True, 
+                        key=chave_editor
+                    )
 
-                mapa_efetivo_digitos = {
-                    extrair_digitos_matricula(m.get("num_policia")): m 
-                    for m in efetivo_banco 
-                    if m.get("num_policia")
-                }
+                    mapa_efetivo_digitos = {
+                        extrair_digitos_matricula(m.get("num_policia")): m 
+                        for m in efetivo_banco 
+                        if m.get("num_policia")
+                    }
 
-                houve_mudanca = False
-                for idx, row in df_editado.iterrows():
-                    matr_raw = str(row["MATRÍCULA"])
-                    matr_digitos = extrair_digitos_matricula(matr_raw)
-                    
-                    p_creds_novo = str(row["FUNÇÃO CREDS"])
-                    p_escala_novo = str(row["FUNÇÃO ESCALA"])
-                    p_geral_novo = str(row["NÍVEL GERAL"])
-                    s_novo = bool(row["CONTA ATIVA"])
-                    
-                    m_orig = mapa_efetivo_digitos.get(matr_digitos, {})
-                    
-                    if (p_creds_novo != str(m_orig.get("perfil_creds", "TROPA")) or 
-                        p_escala_novo != str(m_orig.get("perfil_escala", "TROPA")) or 
-                        p_geral_novo != str(m_orig.get("nivel_acesso", "TROPA")) or 
-                        s_novo != bool(m_orig.get("ativo", True))):
+                    houve_mudanca = False
+                    for idx, row in df_editado.iterrows():
+                        matr_raw = str(row["MATRÍCULA"])
+                        matr_digitos = extrair_digitos_matricula(matr_raw)
                         
-                        nome_comp_m = m_orig.get("nome_completo") or row["MILITAR"]
-                        if salvar_permissao_militar(
-                            matricula=matr_raw, 
-                            perfil_creds=p_creds_novo,
-                            perfil_escala=p_escala_novo,
-                            nivel_acesso=p_geral_novo, 
-                            ativo=s_novo,
-                            posto=m_orig.get("posto_grad", "SD PM"),
-                            nome=m_orig.get("nome_guerra", "MILITAR"),
-                            nome_completo=nome_comp_m
-                        ):
-                            registrar_audit_log(usr_id_operador, matr_raw, "ALTERAR_ACESSO_TABELA", f"CREDS: [{p_creds_novo}] | ESCALA: [{p_escala_novo}] | GERAL: [{p_geral_novo}]")
-                            houve_mudanca = True
+                        p_creds_novo = str(row["FUNÇÃO CREDS"])
+                        p_escala_novo = str(row["FUNÇÃO ESCALA"])
+                        p_geral_novo = str(row["NÍVEL GERAL"])
+                        s_novo = bool(row["CONTA ATIVA"])
+                        
+                        m_orig = mapa_efetivo_digitos.get(matr_digitos, {})
+                        
+                        if (p_creds_novo != str(m_orig.get("perfil_creds", "TROPA")) or 
+                            p_escala_novo != str(m_orig.get("perfil_escala", "TROPA")) or 
+                            p_geral_novo != str(m_orig.get("nivel_acesso", "TROPA")) or 
+                            s_novo != bool(m_orig.get("ativo", True))):
+                            
+                            nome_comp_m = m_orig.get("nome_completo") or row["MILITAR"]
+                            if salvar_permissao_militar(
+                                matricula=matr_raw, 
+                                perfil_creds=p_creds_novo,
+                                perfil_escala=p_escala_novo,
+                                nivel_acesso=p_geral_novo, 
+                                ativo=s_novo,
+                                posto=m_orig.get("posto_grad", "SD PM"),
+                                nome=m_orig.get("nome_guerra", "MILITAR"),
+                                nome_completo=nome_comp_m
+                            ):
+                                registrar_audit_log(usr_id_operador, matr_raw, "ALTERAR_ACESSO_TABELA", f"CREDS: [{p_creds_novo}] | ESCALA: [{p_escala_novo}] | GERAL: [{p_geral_novo}]")
+                                houve_mudanca = True
 
-                if houve_mudanca:
-                    st.session_state["gestao_usr_version"] += 1
-                    st.toast("✅ Permissões salvas com sucesso no Supabase!", icon="🟢")
-                    st.rerun()
+                    if houve_mudanca:
+                        st.session_state["gestao_usr_version"] += 1
+                        st.toast("✅ Permissões salvas com sucesso no Supabase!", icon="🟢")
+                        st.rerun()
 
     # ABA 2: CADASTRO DE UNIDADES
     with abas[1]:
