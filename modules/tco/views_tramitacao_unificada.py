@@ -22,19 +22,16 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
     unidades_set = set()
 
     def normalizar_para_nivel_pelotao(texto_unid):
-        """Reduz frações menores (GPs) para o nível máximo de Pelotão/Cia/BPM."""
         u_str = str(texto_unid).strip().upper()
         if not u_str or u_str in ["NONE", "NAN", "N/I", ""]:
             return ""
             
-        # Se contiver Grupo (GP), remove a parte do Grupo e mantém do Pelotão em diante
         if "GP/" in u_str:
             partes = u_str.split("GP/")
             if len(partes) > 1:
                 sub_partes = partes[1].split("/", 1)
                 u_str = sub_partes[1].strip() if len(sub_partes) > 1 else partes[1].strip()
         
-        # Garante a formatação limpa no padrão CREDS
         if not u_str.startswith("CREDS"):
             return f"CREDS {u_str}"
         return u_str
@@ -83,9 +80,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
     aba_atual = st.session_state["subaba_tramitacao_ativa"]
 
-    # =========================================================================
-    # 🔲 RETÂNGULO GRANDE PRINCIPAL ENGLOBANDO OS 3 BOTÕES MENORES
-    # =========================================================================
     st.markdown("""
     <style>
     div[data-testid="stVerticalBlock"]:has(> div > .painel-tramitacao-cabecalho) {
@@ -113,6 +107,28 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         font-size: 0.84rem;
         color: #f5ebe0;
         margin: 0;
+    }
+    .badge-fase-status {
+        background-color: #8c7343 !important;
+        color: #ffffff !important;
+        border: 1px solid #c5a059 !important;
+        border-radius: 6px;
+        padding: 4px 10px;
+        font-size: 0.76rem;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+    .tag-info-retangulo {
+        background-color: #140f0d;
+        border: 1px solid #54432a;
+        border-radius: 6px;
+        padding: 3px 8px;
+        color: #ffe0b2;
+        font-family: monospace;
+        font-size: 0.82rem;
+        font-weight: 700;
+        display: inline-block;
+        margin-right: 4px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -177,27 +193,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         if not bens_posse and not reds_sem_materiais and not st.session_state["fila_tramitacao_mapeada"]:
             st.info("ℹ️ Nenhum material ativo pendente de nova tramitação na sua custódia individual no momento.")
         else:
-            if reds_sem_materiais:
-                with st.expander("📄 **REDS sem Materiais Apreendidos (Tramitar Apenas Procedimento/Autos)**", expanded=False):
-                    st.caption("Selecione um REDS sem apreensão física para registrar o encaminhamento dos autos ao Judiciário/CREDS.")
-                    reds_avulso_sel = st.selectbox("Selecione o REDS:", list(reds_sem_materiais), key="sb_reds_sem_mat_tramite")
-                    if st.button("➕ Tramitar Autos deste REDS", key="btn_add_reds_sem_mat", width="stretch"):
-                        id_fake = f"AUTOS-{reds_avulso_sel}"
-                        st.session_state["fila_tramitacao_mapeada"].append({
-                            "id_bem": id_fake,
-                            "num_reds": reds_avulso_sel,
-                            "descricao": "AUTOS DO PROCEDIMENTO (SEM MATERIAL FÍSICO)",
-                            "quantidade": 1,
-                            "unidade_medida": "UN",
-                            "destinatario": "PODER JUDICIÁRIO / TRIBUNAL DE JUSTIÇA (JECRIM)",
-                            "unidade_destinatario": "JECRIM / FÓRUM",
-                            "fase_destinacao": "Entregue ao Poder Judiciário / Fórum",
-                            "observacao": "Encaminhamento ordinário do Termo Circunstanciado de Ocorrência",
-                            "eh_creds": True
-                        })
-                        st.success(f"REDS {reds_avulso_sel} adicionado à fila de confirmação!")
-                        st.rerun()
-
             if bens_posse:
                 st.markdown(f"##### 🎒 Seus Bens em Custódia Física ({len(bens_posse)} item/ns)")
 
@@ -225,19 +220,32 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
                 lista_unidades_creds = extrair_unidades_creds_banco(unidade_militar_atual)
 
+                idx_card_global = 0
                 for num_reds, df_grupo in grupos_reds:
                     qtd_itens_reds = len(df_grupo)
                     
-                    with st.expander(f"➕ **REDS: {num_reds}** ({qtd_itens_reds} item/ns apreendido/s)", expanded=False):
+                    with st.expander(f"➕ **REDS: {num_reds}** ({qtd_itens_reds} item/ns apreendido/s)", expanded=True):
                         for idx, row in df_grupo.iterrows():
+                            idx_card_global += 1
                             id_bem = str(row.get("id_bem") or row.get("id"))
                             desc = str(row.get("descricao", "SEM DESCRIÇÃO")).strip()
                             qtd = row.get("quantidade", 1)
-                            unid = row.get("unidade_medida", "UN")
+                            unid = str(row.get("unidade_medida", "UN")).strip()
                             lacre = str(row.get("involucro_lacre", "SEM LACRE")).strip()
                             autor = str(row.get("autores", "N/I")).strip()
+                            custod = str(row.get("fiel_depositario_atual", nome_militar_atual)).strip()
+                            status_b = str(row.get("status_tramite", "Em Custódia")).strip()
+                            dt_raw = row.get("data_posse_atual") or row.get("data_ingestao")
+                            
+                            try:
+                                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y às %H:%M")
+                            except Exception:
+                                dt_fmt = str(dt_raw)[:16] if dt_raw else "N/I"
 
-                            c_chk, c_info, c_midia = st.columns([0.6, 7.4, 2.0])
+                            # Alternância visual de tons tom castanho/dourado
+                            bg_gradient = "linear-gradient(135deg, #2b231d 0%, #1e1814 100%)" if (idx_card_global % 2 == 0) else "linear-gradient(135deg, #382d25 0%, #241d18 100%)"
+
+                            c_chk, c_card_info, c_card_btn = st.columns([0.5, 6.8, 2.7])
                             
                             with c_chk:
                                 is_selected = st.checkbox(
@@ -246,17 +254,37 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     label_visibility="collapsed"
                                 )
 
-                            with c_info:
-                                st.markdown(
-                                    f"<div style='font-size: 0.95rem; font-weight: 500; color: #E2E8F0; line-height: 1.5;'>"
-                                    f"<b>Item:</b> {desc} | <b>Qtd:</b> {qtd} {unid} | <b>Lacre:</b> {lacre} | <b>Autor:</b> {autor}"
-                                    f"</div>",
-                                    unsafe_allow_html=True
-                                )
+                            with c_card_info:
+                                html_card_mat = f"""
+                                <div style="background: {bg_gradient}; border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
+                                    📄 REDS: <strong style="color: #ffffff;">{num_reds}</strong> | Material: <strong style="color: #ffe0b2;">{desc}</strong> (Qtd: {qtd} {unid})<br/>
+                                    🏷️ Lacre: <strong style="color: #ffffff;">{lacre}</strong> | Autor: <strong style="color: #ffe0b2;">{autor}</strong><br/>
+                                    📍 Custodiante: <strong style="color: #c5a059;">{custod}</strong><br/>
+                                    <div style="margin-top: 8px;">
+                                        🎯 Status: <span class="tag-info-retangulo">{status_b}</span>
+                                        ⏱️ Data/Hora: <span class="tag-info-retangulo">{dt_fmt}</span>
+                                    </div>
+                                </div>
+                                """
+                                st.markdown(html_card_mat, unsafe_allow_html=True)
 
-                            with c_midia:
-                                if st.button("📷 Editar / Mídias", key=f"btn_midia_card_{id_bem}_{idx}", use_container_width=True):
-                                    abrir_modal_edicao_material(row.to_dict(), nome_militar_atual, unidade_militar_atual)
+                            with c_card_btn:
+                                st.markdown(f"""
+                                <div style="display: flex; justify-content: flex-end; margin-bottom: 6px;">
+                                    <span class="badge-fase-status">📦 CUSTÓDIA</span>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                c_b1, c_b2, c_b3 = st.columns(3)
+                                with c_b1:
+                                    if st.button("🔗 Cadeia", key=f"btn_cad_tr_{id_bem}_{idx}", use_container_width=True):
+                                        modal_cadeia_custodia_timeline(row.to_dict())
+                                with c_b2:
+                                    if st.button("📄 Guia", key=f"btn_guia_tr_{id_bem}_{idx}", use_container_width=True):
+                                        modal_guia_termo_oficial(row.to_dict(), nome_militar_atual, num_pm_logado, unidade_militar_atual)
+                                with c_b3:
+                                    if st.button("📷 Mídias", key=f"btn_midia_tr_{id_bem}_{idx}", use_container_width=True):
+                                        abrir_modal_edicao_material(row.to_dict(), nome_militar_atual, unidade_militar_atual)
 
                             if is_selected:
                                 st.session_state["itens_selecionados_tramite"][id_bem] = row.to_dict()
@@ -361,7 +389,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         eh_definitivo_val = False
                         num_oficio_unid = ""
                         recibo_unid_file = None
-                        # Para repasses internos entre Policiais/CREDS, reaproveita a identificação cadastrada
                         recebedor_info = str(destinatario_final or nome_militar_atual)
 
                     st.markdown("<br>", unsafe_allow_html=True)
@@ -455,12 +482,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     id_bem=f_item["id_bem"]
                                 )
 
-                            # =========================================================================
-                            # HIGIENIZA O PREFIXO PARA EVITAR DUPLICAÇÃO DE "Entregue ao"
-                            # =========================================================================
                             if f_item.get("eh_orgao_ext"):
                                 status_tr_f = "Transferido Definitivo" if f_item.get("eh_definitivo") else "Em Tramitação"
-                                
                                 dest_limpo = str(f_item["destinatario"]).replace("Entregue ao ", "").replace("Entregue ao", "").strip()
                                 fiel_f = dest_limpo
                                 
@@ -513,7 +536,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             st.rerun()
 
     # =========================================================================
-    # ABA 2: CONFIRMAR RETORNO / DEVOLUÇÃO DE ÓRGÃO EXTERNO
+    # ABA 2: CONFIRMAR RETORNO DE ÓRGÃO EXTERNO
     # =========================================================================
     elif aba_atual == "EXTERNO":
         st.markdown("##### 🏛️ Materiais em Tramitação Externa (PCMG, JECRIM, Perícia, MP)")
@@ -582,56 +605,11 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     st.rerun()
 
     # =========================================================================
-    # ABA 3: HISTÓRICO PERMANENTE DE ENVIOS & OCORRÊNCIAS (PADRÃO TÁTICO)
+    # ABA 3: HISTÓRICO PERMANENTE DE ENVIOS & OCORRÊNCIAS
     # =========================================================================
     elif aba_atual == "HISTORICO":
         st.markdown("<h5 style='color: #ffe0b2;'>📜 Histórico Permanente de Envios & Ocorrências</h5>", unsafe_allow_html=True)
         st.caption("Consulte todas as tramitações, visualize a cadeia de custódia imutável ou emita a guia oficial de depósito.")
-
-        st.markdown("""
-        <style>
-        @keyframes pulseAlert {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-            70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
-        .badge-animado-alerta {
-            background-color: #7f1d1d !important;
-            color: #fecaca !important;
-            border: 1px solid #ef4444 !important;
-            border-radius: 6px;
-            padding: 4px 10px;
-            font-size: 0.76rem;
-            font-weight: 800;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            animation: pulseAlert 2s infinite;
-        }
-        .badge-fase-status {
-            background-color: #8c7343 !important;
-            color: #ffffff !important;
-            border: 1px solid #c5a059 !important;
-            border-radius: 6px;
-            padding: 4px 10px;
-            font-size: 0.76rem;
-            font-weight: 800;
-            text-transform: uppercase;
-        }
-        .tag-info-retangulo {
-            background-color: #140f0d;
-            border: 1px solid #54432a;
-            border-radius: 6px;
-            padding: 3px 8px;
-            color: #ffe0b2;
-            font-family: monospace;
-            font-size: 0.82rem;
-            font-weight: 700;
-            display: inline-block;
-            margin-right: 4px;
-        }
-        </style>
-        """, unsafe_allow_html=True)
 
         col_f1, col_f2 = st.columns(2)
         with col_f1:
@@ -677,14 +655,15 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                 df_hist.sort_values(by="data_envio_tramite", ascending=False, inplace=True)
             
             reds_unicos = list(df_hist["num_reds"].unique())
-            agora_now = datetime.datetime.now()
 
+            idx_card_hist = 0
             for num_reds_h in reds_unicos:
                 df_grupo_h = df_hist[df_hist["num_reds"] == num_reds_h]
                 qtd_h = len(df_grupo_h)
                 
                 with st.expander(f"📄 **REDS: {num_reds_h}** ({qtd_h} item/ns no histórico do procedimento)", expanded=False):
                     for idx_h, item_h in df_grupo_h.iterrows():
+                        idx_card_hist += 1
                         id_bem_h = str(item_h.get("id_bem") or item_h.get("id"))
                         desc_h = item_h.get("descricao", "N/I")
                         qtd_h_val = item_h.get("quantidade", 1)
@@ -693,20 +672,17 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         autor_h = item_h.get("autores", "N/I")
                         custod_h = item_h.get("fiel_depositario_atual", "N/I")
                         
-                        # TRATAMENTO SEGURO CONTRA NoneType
                         dest_h_raw = item_h.get("destinatario_pendente") or item_h.get("fase_destinacao") or "N/I"
                         dest_h = str(dest_h_raw).strip()
                         
                         status_h = item_h.get("status_tramite", "Em Custódia")
                         dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual") or item_h.get("data_ingestao")
 
-                        dias_parado = 0
                         dt_fmt_exata = "Data N/I"
                         if dt_env_str:
                             try:
                                 dt_obj_item = pd.to_datetime(dt_env_str)
                                 dt_fmt_exata = dt_obj_item.strftime("%d/%m/%Y às %H:%M")
-                                dias_parado = (agora_now - dt_obj_item.to_pydatetime().replace(tzinfo=None)).days
                             except Exception:
                                 dt_fmt_exata = str(dt_env_str)[:16]
 
@@ -722,11 +698,13 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         else:
                             fase_tag_txt = f"📦 {dest_h[:18]}" if dest_h else "📦 N/I"
 
+                        bg_gradient = "linear-gradient(135deg, #2b231d 0%, #1e1814 100%)" if (idx_card_hist % 2 == 0) else "linear-gradient(135deg, #382d25 0%, #241d18 100%)"
+
                         col_card_info, col_card_lateral = st.columns([7.2, 2.8])
                         
                         with col_card_info:
                             html_card_mat = f"""
-                            <div style="background: linear-gradient(135deg, #2b231d 0%, #1e1814 100%); border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
+                            <div style="background: {bg_gradient}; border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
                                 📄 REDS: <strong style="color: #ffffff;">{num_reds_h}</strong> | Material: <strong style="color: #ffe0b2;">{desc_h}</strong> (Qtd: {qtd_h_val} {unid_med})<br/>
                                 🏷️ Lacre: <strong style="color: #ffffff;">{lacre_h}</strong> | Autor: <strong style="color: #ffe0b2;">{autor_h}</strong><br/>
                                 📍 Custodiante: <strong style="color: #c5a059;">{custod_h}</strong><br/>
@@ -743,7 +721,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             html_badges = f"""
                             <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end; margin-bottom: 8px;">
                                 <div class="badge-fase-status">{fase_tag_txt}</div>
-                                {'<div class="badge-animado-alerta">⚠️ ' + str(dias_parado) + ' DIAS SEM TRÂMITE</div>' if dias_parado >= 4 else ''}
                             </div>
                             """
                             st.markdown(html_badges, unsafe_allow_html=True)
