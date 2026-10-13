@@ -91,6 +91,50 @@ def upload_midia_supabase(file_bytes: bytes, file_name: str, file_type: str, num
         return None
 
 
+def upload_oficio_pdf_supabase(file_bytes: bytes, file_name: str, num_reds: str) -> str:
+    """
+    Realiza o upload de PDFs de ofícios gerados para o bucket e retorna a URL pública.
+    """
+    if not supabase:
+        st.error("❌ Conexão com o Supabase não disponível.")
+        return None
+
+    try:
+        nome_limpo = sanitizar_nome_arquivo(file_name)
+        if not nome_limpo.endswith(".pdf"):
+            nome_limpo += ".pdf"
+
+        reds_sanitizado = str(num_reds).replace("/", "_").replace("-", "_").strip()
+        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        caminho_storage = f"oficios/{reds_sanitizado}/{timestamp_str}_{nome_limpo}"
+
+        supabase.storage.from_(BUCKET_NAME).upload(
+            path=caminho_storage,
+            file=file_bytes,
+            file_options={"content-type": "application/pdf", "upsert": "true"}
+        )
+
+        return supabase.storage.from_(BUCKET_NAME).get_public_url(caminho_storage)
+    except Exception as e:
+        st.error(f"Erro ao realizar upload do ofício PDF: {e}")
+        return None
+
+
+def deletar_arquivo_storage_supabase(caminho_storage: str) -> bool:
+    """
+    Remove um arquivo do bucket no Supabase Storage.
+    """
+    if not supabase or not caminho_storage:
+        return False
+
+    try:
+        supabase.storage.from_(BUCKET_NAME).remove([caminho_storage])
+        return True
+    except Exception as e:
+        st.error(f"Erro ao deletar arquivo do storage: {e}")
+        return False
+
+
 def listar_midias_reds_supabase(num_reds: str) -> list:
     """
     Lista todas as mídias e documentos vinculados a um determinado REDS.
@@ -114,11 +158,9 @@ def excluir_midia_supabase(id_midia: str, caminho_storage: str) -> bool:
         return False
 
     try:
-        # Exclui o arquivo do Storage
         if caminho_storage:
             supabase.storage.from_(BUCKET_NAME).remove([caminho_storage])
 
-        # Exclui a linha do banco de dados
         supabase.table("tco_midias").delete().eq("id", id_midia).execute()
         return True
     except Exception as e:
