@@ -1,7 +1,14 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import re
 from core.database import supabase, registrar_audit_log
+
+def extrair_digitos_matricula(val):
+    """Extrai apenas os números da matrícula para busca uniforme no Supabase."""
+    if not val:
+        return ""
+    return re.sub(r'\D', '', str(val))
 
 def obter_texto_termo_ativo():
     if supabase:
@@ -69,13 +76,17 @@ def renderizar_aba_termos_aceites(eh_admin, cargo_operador, nome_operador):
             st.caption("Pesquise a concordância formal dos militares com o termo de custódia.")
 
             filtro_pm = st.text_input("Filtrar por Policial (Nome ou Nº PM):", placeholder="Ex: ASSUNCAO ou 145890").strip().upper()
+            filtro_digitos = extrair_digitos_matricula(filtro_pm)
 
             aceites_banco = []
             if supabase:
                 try:
                     query = supabase.table("aceites_compliance").select("*")
                     if filtro_pm:
-                        query = query.ilike("nome_militar", f"%{filtro_pm}%")
+                        if filtro_digitos:
+                            query = query.or_(f"nome_militar.ilike.%{filtro_pm}%,num_policia.ilike.%{filtro_digitos}%")
+                        else:
+                            query = query.ilike("nome_militar", f"%{filtro_pm}%")
                     res_ac = query.order("data_aceite", desc=True).limit(50).execute()
                     aceites_banco = res_ac.data or []
                 except Exception:
