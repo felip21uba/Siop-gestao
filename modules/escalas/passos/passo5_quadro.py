@@ -615,16 +615,16 @@ def renderizar_passo5():
             with col_h4:
                 if status_escala != "HOMOLOGADA":
                     btn_homol_disabled = not pode_homologar
-                    if st.button("🔒 Homologar", type="primary", use_container_width=True, disabled=btn_homol_disabled, help="Aprova a escala e trava a edição do Quadro. Requer perfil de Comandante/Oficial."):
+                    if st.button("🔒 Homologar", type="primary", use_container_width=True, disabled=btn_homol_disabled, help="Aprova a escala e trava a edição do Quadro para dias passados. Requer perfil de Comandante/Oficial."):
                         st.session_state["status_escala_ativo"] = "HOMOLOGADA"
-                        st.session_state["toggle_trava_quadro"] = True
+                        st.session_state["toggle_trava_quadro"] = False  # Mantém o quadro e painel interativos para hoje/futuro
                         st.session_state["escala_fechada_auditoria"] = True
                         executar_auto_save_banco(status_escala="HOMOLOGADA")
-                        st.success("🎉 Escala homologada e travada com sucesso!")
+                        st.success("🎉 Escala homologada com sucesso! Dias passados travados para alteração.")
                         st.rerun()
                 else:
                     btn_reabrir_disabled = not pode_homologar
-                    if st.button("🔓 Reabrir", type="secondary", use_container_width=True, disabled=btn_reabrir_disabled, help="Destrava o Quadro para edições. Requer perfil de Comandante/Oficial."):
+                    if st.button("🔓 Reabrir", type="secondary", use_container_width=True, disabled=btn_reabrir_disabled, help="Destrava o Quadro para edições retroativas. Requer perfil de Comandante/Oficial."):
                         st.session_state["status_escala_ativo"] = "RASCUNHO"
                         st.session_state["toggle_trava_quadro"] = False
                         st.session_state["escala_fechada_auditoria"] = False
@@ -655,7 +655,7 @@ def renderizar_passo5():
                 st.rerun()
 
         with col_btn3:
-            if st.button("🖥️️ 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
+            if st.button("🖥 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
                 abrir_segunda_janela_popup(m_mes, m_ano)
 
         if (bloqueios or avisos_descanso) and not st.session_state.get("limpar_avisos_manual", False):
@@ -707,7 +707,7 @@ def renderizar_passo5():
 
         # PAINEL DE AJUSTE RÁPIDO COM CALENDÁRIO NATIVO E SELEÇÃO AVULSA
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote / Remoção)", expanded=False):
-            if mils_ord and not quadro_travado:
+            if mils_ord:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
                 
                 equipes_no_quadro = sorted(list(set(m['equipe'] for m in mils_ord)))
@@ -803,14 +803,14 @@ def renderizar_passo5():
                     else:
                         dias_alvo = dias_finais_alvo
 
-                        # TRAVA DE DIAS PASSADOS: Bloqueia alterações retroativas se homologada
+                        # TRAVA DE DIAS PASSADOS: Bloqueia alterações apenas se o dia for ESTRITAMENTE menor que HOJE em escala homologada
                         dias_passados_tentados = [
                             d_a for d_a in dias_alvo 
                             if datetime.date(m_ano, m_mes, d_a) < dt_hoje
                         ]
                         
-                        if status_escala == "HOMOLOGADA" and dias_passados_tentados and not pode_homologar:
-                            st.error(f"🔒 **TRAVA DE AUDITORIA:** A alteração para os dias {dias_passados_tentados} foi bloqueada pois são datas do passado em uma escala homologada.")
+                        if status_escala == "HOMOLOGADA" and dias_passados_tentados:
+                            st.error(f"🔒 **TRAVA DE AUDITORIA:** A alteração para os dias {dias_passados_tentados} foi bloqueada pois são datas do passado em uma escala homologada. Para hoje e dias futuros, a edição é permitida!")
                         else:
                             salvar_estado_undo()
                             grade_tmp = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
@@ -853,20 +853,20 @@ def renderizar_passo5():
                                         cnt += 1
                                 msg_sucesso = f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!"
 
-                        if cnt:
-                            grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
-                            st.session_state["limpar_avisos_manual"] = False
-                            
-                            tem_bloqueio = verificar_trava_sobreposicao(dias_filtro=dias_alvo, militares_filtro=mids_lote, grade_submetida=grade_tmp)
-                            
-                            if tem_bloqueio and "[REMOVER" not in tipo_ev and "[LIMPAR" not in tipo_ev:
-                                st.session_state["grade_escala_lancamentos"] = grade_backup
-                                st.error("⛔ **Lançamento Cancelado:** Foi detetado choque de horário para o militar! O aviso detalhado foi gerado no painel abaixo.")
-                            else:
-                                st.session_state["grade_escala_lancamentos"] = grade_tmp
-                                executar_auto_save_banco(status_escala=status_escala)
-                                st.success(msg_sucesso)
-                                st.rerun()
+                            if cnt:
+                                grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
+                                st.session_state["limpar_avisos_manual"] = False
+                                
+                                tem_bloqueio = verificar_trava_sobreposicao(dias_filtro=dias_alvo, militares_filtro=mids_lote, grade_submetida=grade_tmp)
+                                
+                                if tem_bloqueio and "[REMOVER" not in tipo_ev and "[LIMPAR" not in tipo_ev:
+                                    st.session_state["grade_escala_lancamentos"] = grade_backup
+                                    st.error("⛔ **Lançamento Cancelado:** Foi detetado choque de horário para o militar! O aviso detalhado foi gerado no painel abaixo.")
+                                else:
+                                    st.session_state["grade_escala_lancamentos"] = grade_tmp
+                                    executar_auto_save_banco(status_escala=status_escala)
+                                    st.success(msg_sucesso)
+                                    st.rerun()
 
         colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
         matriz = []
@@ -918,30 +918,37 @@ def renderizar_passo5():
                 use_container_width=True,
                 hide_index=True,
                 height=450,
-                disabled=quadro_travado,
+                disabled=False,  # Editor interativo liberado para edição direta
                 key="editor_escala_principal"
             )
 
-            if not quadro_travado:
-                alterou_quadro = False
-                grade_backup_ed = copy.deepcopy(grade)
+            alterou_quadro = False
+            grade_backup_ed = copy.deepcopy(grade)
+            dt_hoje_ed = datetime.date.today()
 
-                for idx_r, row in df_ed.iterrows():
-                    if idx_r >= len(mils_ord):
-                        continue
+            for idx_r, row in df_ed.iterrows():
+                if idx_r >= len(mils_ord):
+                    continue
 
-                    it = mils_ord[idx_r]
-                    nova_ordem = int(row.get("ORDEM", idx_r + 1))
+                it = mils_ord[idx_r]
+                nova_ordem = int(row.get("ORDEM", idx_r + 1))
 
-                    if st.session_state["ordem_customizada_map"].get(it["chave_linha"]) != nova_ordem:
-                        salvar_estado_undo()
-                        st.session_state["ordem_customizada_map"][it["chave_linha"]] = nova_ordem
-                        alterou_quadro = True
+                if st.session_state["ordem_customizada_map"].get(it["chave_linha"]) != nova_ordem:
+                    salvar_estado_undo()
+                    st.session_state["ordem_customizada_map"][it["chave_linha"]] = nova_ordem
+                    alterou_quadro = True
 
-                    for d, col_name in colunas_dias:
-                        val_editado = str(row.get(col_name, "")).strip()
-                        ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d:02d}"
-                        if grade.get(ck, "") != val_editado:
+                for d, col_name in colunas_dias:
+                    val_editado = str(row.get(col_name, "")).strip()
+                    ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d:02d}"
+                    
+                    if grade.get(ck, "") != val_editado:
+                        dt_celula = datetime.date(m_ano, m_mes, d)
+                        
+                        # Trava direta na célula caso a escala seja homologada e a data seja um dia do passado
+                        if status_escala == "HOMOLOGADA" and dt_celula < dt_hoje_ed:
+                            st.error(f"🔒 A célula do Dia {d:02d}/{m_mes:02d} ({it['nome_guerra']}) está travada por ser uma data do passado em escala homologada.")
+                        else:
                             salvar_estado_undo()
                             if val_editado == "":
                                 grade.pop(ck, None)
@@ -949,16 +956,16 @@ def renderizar_passo5():
                                 grade[ck] = padronizar_entrada_quadro(val_editado)
                             alterou_quadro = True
 
-                if alterou_quadro:
-                    st.session_state["limpar_avisos_manual"] = False
-                    tem_bloqueio_ed = verificar_trava_sobreposicao(grade_submetida=grade)
-                    
-                    if tem_bloqueio_ed:
-                        st.session_state["grade_escala_lancamentos"] = grade_backup_ed
-                        st.error("⛔ **Lançamento Direto Cancelado:** A edição manual gerou choque de horários! Consulte os avisos abaixo.")
-                    else:
-                        st.session_state["grade_escala_lancamentos"] = grade
-                        executar_auto_save_banco(status_escala=status_escala)
+            if alterou_quadro:
+                st.session_state["limpar_avisos_manual"] = False
+                tem_bloqueio_ed = verificar_trava_sobreposicao(grade_submetida=grade)
+                
+                if tem_bloqueio_ed:
+                    st.session_state["grade_escala_lancamentos"] = grade_backup_ed
+                    st.error("⛔ **Lançamento Direto Cancelado:** A edição manual gerou choque de horários! Consulte os avisos abaixo.")
+                else:
+                    st.session_state["grade_escala_lancamentos"] = grade
+                    executar_auto_save_banco(status_escala=status_escala)
         else:
             st.info("💡 Clique em '⚡ Aplicar Lançamentos' para montar a escala com os militares selecionados.")
 
@@ -966,7 +973,7 @@ def renderizar_passo5():
         c_act1, c_act2 = st.columns(2)
 
         with c_act1:
-            if st.button("🧹 Limpar Todo o Quadro", use_container_width=True, disabled=quadro_travado):
+            if st.button("🧹 Limpar Todo o Quadro", use_container_width=True, disabled=(status_escala == "HOMOLOGADA")):
                 salvar_estado_undo()
                 st.session_state["grade_escala_lancamentos"] = {}
                 st.session_state["militares_no_quadro_chaves"] = []
@@ -978,6 +985,6 @@ def renderizar_passo5():
                 st.rerun()
 
         with c_act2:
-            if st.button("💾 Salvar Rascunho no Banco", type="primary", use_container_width=True, disabled=quadro_travado):
+            if st.button("💾 Salvar Rascunho no Banco", type="primary", use_container_width=True):
                 if executar_auto_save_banco(status_escala=status_escala):
                     st.success("✅ Rascunho da escala salvo no Supabase com sucesso!")
