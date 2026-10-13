@@ -2,7 +2,7 @@
 ==============================================================================
 Módulo de Gestão de Usuários e Permissões SIOP
 Gerencia acessos por perfil (CREDS e Escala), unidades e limpeza seletiva.
-Inclui criação e ativação direta de novos operadores no sistema.
+Mapeamento de colunas fiel ao esquema SQL public.usuarios.
 ==============================================================================
 """
 
@@ -41,7 +41,7 @@ def formatar_matricula_pm_padrao(val):
     return str(val)
 
 def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, posto_grad, unidade, perfil_creds, perfil_escala, nivel_acesso, senha_inicial="Pmmg@190"):
-    """Cadastra um novo operador/militar diretamente na tabela 'usuarios' do Supabase."""
+    """Cadastra um novo operador/militar diretamente na tabela 'usuarios' do Supabase usando o schema oficial."""
     if not supabase or not num_policia or not nome_guerra:
         return False, "Dados insuficientes para cadastro."
 
@@ -59,6 +59,7 @@ def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, po
 
         hash_senha = gerar_hash_senha(senha_inicial)
         
+        # Payload com o mapeamento estrito das colunas do ficheiro SQL
         payload_novo = {
             "usuario_login": m_digitos,
             "usuario": m_digitos,
@@ -73,6 +74,8 @@ def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, po
             "senha": senha_inicial,
             "senha_hash": hash_senha,
             "ativo": True,
+            "primeiro_acesso": True,
+            "tentativas_erradas": 0,
             "termo_compliance_aceito": False
         }
 
@@ -89,7 +92,7 @@ def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, po
         return False, f"Erro ao salvar no banco de dados: {e}"
 
 def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, nivel_acesso=None, ativo=True, posto="SD", nome="MILITAR", nome_completo=None):
-    """Atualiza as permissões flexibilizando a busca para encontrar a matrícula limpa ou formatada."""
+    """Atualiza as permissões flexibilizando a busca nas colunas usuario_login e usuario."""
     if supabase and matricula:
         try:
             m_raw = str(matricula).strip().upper()
@@ -216,9 +219,9 @@ def exibir_tela_gestao_usuarios():
                 novo_nome_guerra = st.text_input("Nome de Guerra:", placeholder="Ex: PEREIRA").strip().upper()
             with c_cad2:
                 novo_nome_completo = st.text_input("Nome Completo:", placeholder="Ex: CARLOS ALBERTO PEREIRA").strip().upper()
-                novo_posto = st.selectbox("Posto / Graduação:", ["SD PM", "CB PM", "3º SGT PM", "2º SGT PM", "1º SGT PM", "SUB TEN PM", "2º TEN PM", "1º TEN PM", "CAP PM", "MAJ PM", "TEN CEL PM", "CEL PM"])
+                novo_posto = st.selectbox("Posto / Graduação:", ["SD", "CB", "3º SGT", "2º SGT", "1º SGT", "SUB TEN", "2º TEN", "1º TEN", "CAP", "MAJ", "TEN CEL", "CEL"])
             with c_cad3:
-                unidade_usr = str(usr.get("unidade") or "35ª CIA PM").strip().upper()
+                unidade_usr = str(usr.get("unidade") or "35 CIA PM/21 BPM/4 RPM").strip().upper()
                 nova_unidade = st.text_input("Unidade / Lotação:", value=unidade_usr).strip().upper()
                 nova_senha_init = st.text_input("Senha Inicial de Acesso:", value="Pmmg@190", type="password")
 
@@ -308,7 +311,7 @@ def exibir_tela_gestao_usuarios():
                             perfil_escala=perfil_escala_lote,
                             nivel_acesso=nivel_geral_lote,
                             ativo=True,
-                            posto=m_obj.get("posto_grad", "SD PM"),
+                            posto=m_obj.get("posto_grad", "SD"),
                             nome=m_obj.get("nome_guerra", "MILITAR"),
                             nome_completo=nome_comp_m
                         ):
@@ -323,8 +326,6 @@ def exibir_tela_gestao_usuarios():
 
         # TABELA EDITÁVEL DE PERMISSÕES COM BARRA DE BUSCA
         with st.expander("📜 Tabela Geral de Permissões", expanded=True):
-            
-            # --- NOVO BLOCO DE BUSCA E FILTROS RÁPIDOS ---
             c_src1, c_src2, c_src3 = st.columns([3, 1.5, 1])
             with c_src1:
                 termo_busca_militar = st.text_input(
@@ -354,10 +355,9 @@ def exibir_tela_gestao_usuarios():
                     num_pm = str(m.get("num_policia", "N/I")).strip().upper()
                     nome_comp = m.get("nome_completo") or m.get("nome_guerra", "MILITAR")
                     lotacao_str = str(m.get("lotacao", m.get("unidade", "21º BPM")))
-                    posto_str = str(m.get("posto_grad", "SD PM"))
+                    posto_str = str(m.get("posto_grad", "SD"))
                     nivel_geral_str = str(m.get("nivel_acesso", "TROPA"))
 
-                    # --- APLICAÇÃO DOS FILTROS DA BUSCA ---
                     if termo_busca_militar:
                         num_pm_limpo = extrair_digitos_matricula(num_pm)
                         termo_limpo = extrair_digitos_matricula(termo_busca_militar)
@@ -442,7 +442,7 @@ def exibir_tela_gestao_usuarios():
                                 perfil_escala=p_escala_novo,
                                 nivel_acesso=p_geral_novo, 
                                 ativo=s_novo,
-                                posto=m_orig.get("posto_grad", "SD PM"),
+                                posto=m_orig.get("posto_grad", "SD"),
                                 nome=m_orig.get("nome_guerra", "MILITAR"),
                                 nome_completo=nome_comp_m
                             ):
