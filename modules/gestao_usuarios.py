@@ -34,7 +34,7 @@ def extrair_digitos_matricula(val):
     return re.sub(r'\D', '', str(val))
 
 def formatar_matricula_pm_padrao(val):
-    """Formata a matrícula limpa no padrão PMMG (133.746-8)."""
+    """Formata a matrícula limpa no padrão PMMG (123.456-7)."""
     dig = extrair_digitos_matricula(val)
     if len(dig) == 7:
         return f"{dig[:3]}.{dig[3:6]}-{dig[6]}"
@@ -79,7 +79,6 @@ def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, po
 
         supabase.table("usuarios").insert(payload_novo).execute()
         
-        # Limpa o cache da função central do database.py
         try:
             carregar_militares_supabase.clear()
         except Exception:
@@ -205,9 +204,8 @@ def exibir_tela_gestao_usuarios():
         st.session_state["gestao_usr_version"] = 0
 
     usr = st.session_state.get("usuario_dados") or {}
-    usr_id_operador = str(usr.get("usuario_login") or usr.get("usuario") or "1337468").strip()
+    usr_id_operador = str(usr.get("usuario_login") or usr.get("usuario") or "123456").strip()
 
-    # RENDERIZAÇÃO DIRETA SEM TRAVAS DE PERMISSÃO
     st.markdown("### ➕ Cadastrar / Ativar Novo Operador no SIOP")
     with st.container(border=True):
         st.caption("Cadastre diretamente um militar no banco de dados para conceder acesso imediato aos módulos.")
@@ -215,7 +213,7 @@ def exibir_tela_gestao_usuarios():
         with st.form("form_cadastrar_novo_operador_direto", clear_on_submit=True):
             c_cad1, c_cad2, c_cad3 = st.columns(3)
             with c_cad1:
-                novo_num_pm = st.text_input("Número de Polícia / Matrícula (Login):", placeholder="Ex: 1337468").strip()
+                novo_num_pm = st.text_input("Número de Polícia / Matrícula (Login):", placeholder="Ex: 123456").strip()
                 novo_nome_guerra = st.text_input("Nome de Guerra:", placeholder="Ex: PEREIRA").strip().upper()
             with c_cad2:
                 novo_nome_completo = st.text_input("Nome Completo:", placeholder="Ex: CARLOS ALBERTO PEREIRA").strip().upper()
@@ -459,7 +457,7 @@ def exibir_tela_gestao_usuarios():
     # ABA 4: LIMPEZA SELETIVA DE DADOS
     with abas[3]:
         st.markdown("### 🚨 Limpeza Seletiva do Banco de Dados (Acesso Restrito ao Programador)")
-        st.warning("⚠️ **ATENÇÃO:** Esta ferramenta exclui usuários da tabela **`usuarios`** do Supabase. O login do Programador (`1337468`) **NUNCA** será apagado.")
+        st.warning("⚠️ **ATENÇÃO:** Esta ferramenta exclui usuários da tabela **`usuarios`** do Supabase. O login do Programador (`123456`) **NUNCA** será apagado.")
 
         unidades_disponiveis = set()
         for m in efetivo_banco:
@@ -470,7 +468,7 @@ def exibir_tela_gestao_usuarios():
                 if bpm_m:
                     unidades_disponiveis.add(f"TODOS DO {bpm_m}")
 
-        opcoes_limpeza = sorted(list(unidades_disponiveis)) + ["🔥 ZERAR TUDO (EXCETO PROGRAMADOR 1337468)"]
+        opcoes_limpeza = sorted(list(unidades_disponiveis)) + ["🔥 ZERAR TUDO (EXCETO PROGRAMADOR 123456)"]
 
         col_limp1, col_limp2 = st.columns([3, 2])
         with col_limp1:
@@ -496,8 +494,8 @@ def exibir_tela_gestao_usuarios():
                             apagar_tudo = any("ZERAR TUDO" in u for u in unidades_alvo)
 
                             if apagar_tudo:
-                                supabase.table("usuarios").delete().neq("usuario_login", "1337468").neq("usuario", "1337468").execute()
-                                msg_sucesso = "✅ Todos os usuários foram excluídos do Supabase (mantido apenas o Programador 1337468)!"
+                                supabase.table("usuarios").delete().neq("usuario_login", "123456").neq("usuario", "123456").execute()
+                                msg_sucesso = "✅ Todos os usuários foram excluídos do Supabase (mantido apenas o Programador 123456)!"
                             else:
                                 mils_remover = []
                                 for u_alvo in unidades_alvo:
@@ -516,7 +514,7 @@ def exibir_tela_gestao_usuarios():
                                 logins_remover = [
                                     str(m.get("num_policia")).strip().upper() 
                                     for m in mils_remover 
-                                    if str(m.get("num_policia")).strip() != "1337468"
+                                    if str(m.get("num_policia")).strip() != "123456"
                                 ]
 
                                 if logins_remover:
