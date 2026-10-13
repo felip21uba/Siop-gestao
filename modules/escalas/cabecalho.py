@@ -67,3 +67,146 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
             .banner-container {{
                 background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
                 border: 2px solid #c5a059;
+                border-radius: 12px;
+                padding: 14px 20px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
+                box-sizing: border-box;
+            }}
+            .left-box {{
+                display: flex;
+                align-items: center;
+                gap: 16px;
+            }}
+            .icon-box {{
+                background: linear-gradient(135deg, #8f7442 0%, #5e4b29 100%);
+                border: 1.5px solid #e0c283;
+                border-radius: 10px;
+                width: 50px;
+                height: 50px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 24px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                flex-shrink: 0;
+            }}
+            .title-txt {{
+                font-size: 1.30rem;
+                font-weight: 800;
+                color: #ffffff;
+                margin: 0 0 3px 0;
+                padding: 0;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+            }}
+            .subtitle-txt {{
+                font-size: 0.84rem;
+                color: #f5ebe0;
+                margin: 0;
+            }}
+            .right-box {{
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }}
+            .clock-box {{
+                background: rgba(20, 15, 13, 0.65);
+                border: 1px solid #c5a059;
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: #ffe0b2;
+                font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 0.86rem;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                white-space: nowrap;
+            }}
+            .green-dot {{
+                width: 8px;
+                height: 8px;
+                background-color: #22c55e;
+                border-radius: 50%;
+                display: inline-block;
+                box-shadow: 0 0 6px #22c55e;
+            }}
+            .user-box {{
+                background: rgba(20, 15, 13, 0.65);
+                border: 1px solid #c5a059;
+                border-radius: 8px;
+                padding: 7px 14px;
+                text-align: left;
+                line-height: 1.35;
+                white-space: nowrap;
+            }}
+            .user-name {{
+                color: #ffffff;
+                font-size: 0.86rem;
+                font-weight: 800;
+            }}
+            .user-sub {{
+                color: #ffe0b2;
+                font-size: 0.76rem;
+                font-weight: 700;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="banner-container">
+            <div class="left-box">
+                <div class="icon-box">🛡️</div>
+                <div>
+                    <div class="title-txt">
+                        📅 {titulo_modulo}
+                    </div>
+                    <div class="subtitle-txt">
+                        SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável • 
+                        <span style="color: #ffe0b2; font-weight: 700;">📍 {tag_local}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="right-box">
+                <div class="clock-box">
+                    <span class="green-dot"></span>
+                    <span id="relogio_escalas_iframe">--/--/---- --:--:--</span>
+                </div>
+                <div class="user-box">
+                    <div class="user-name">
+                        👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.80rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
+                    </div>
+                    <div class="user-sub">
+                        🏛️ {subunidade_atual} — PLANTÃO
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function atualizarRelogioIframe() {{
+                var el = document.getElementById('relogio_escalas_iframe');
+                if (el) {{
+                    var agora = new Date();
+                    var dia = String(agora.getDate()).padStart(2, '0');
+                    var mes = String(agora.getMonth() + 1).padStart(2, '0');
+                    var ano = agora.getFullYear();
+                    var horas = String(agora.getHours()).padStart(2, '0');
+                    var minutos = String(agora.getMinutes()).padStart(2, '0');
+                    var segundos = String(agora.getSeconds()).padStart(2, '0');
+                    el.innerText = dia + '/' + mes + '/' + ano + ' ' + horas + ':' + minutos + ':' + segundos;
+                }}
+            }}
+            atualizarRelogioIframe();
+            setInterval(atualizarRelogioIframe, 1000);
+        </script>
+    </body>
+    </html>
+    """
+
+    components.html(html_cabecalho_escalas, height=95)
