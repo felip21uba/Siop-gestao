@@ -1,7 +1,7 @@
 """
 ==============================================================================
 Módulo de Estilos e Componentes Visuais do TCO (modules/tco/estilo_tco.py)
-Contém o cabeçalho tático oficial (com relógio dinâmico em tempo real) e os
+Contém o cabeçalho tático oficial (com relógio dinâmico em tempo real isolado) e os
 modais da Cadeia de Custódia e Guia Oficial de Depósito.
 ==============================================================================
 """
@@ -9,6 +9,7 @@ modais da Cadeia de Custódia e Guia Oficial de Depósito.
 import datetime
 from zoneinfo import ZoneInfo
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
@@ -90,23 +91,37 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     else:
         tag_local = f"CREDS TCO / {unidade_atual}"
 
-    hora_inicial = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
-
-    st.markdown(f"""
-    <div style="
-        background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
-        border: 2px solid #c5a059;
-        border-radius: 12px;
-        padding: 14px 20px;
-        margin-bottom: 22px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
-    ">
-        <div style="display: flex; align-items: center; gap: 16px;">
-            <div style="
+    # Renderização HTML + JS do Cabeçalho e Relógio num iframe isolado de altura exata
+    html_cabecalho = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                background-color: transparent;
+            }}
+            .banner-container {{
+                background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
+                border: 2px solid #c5a059;
+                border-radius: 12px;
+                padding: 14px 20px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
+                box-sizing: border-box;
+            }}
+            .left-box {{
+                display: flex;
+                align-items: center;
+                gap: 16px;
+            }}
+            .icon-box {{
                 background: linear-gradient(135deg, #8f7442 0%, #5e4b29 100%);
                 border: 1.5px solid #e0c283;
                 border-radius: 10px;
@@ -118,19 +133,29 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
                 font-size: 24px;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.3);
                 flex-shrink: 0;
-            ">🛡️</div>
-            <div>
-                <h1 style="font-size: 1.30rem; font-weight: 800; color: #ffffff; margin: 0 0 3px 0; padding: 0; display: flex; align-items: center; gap: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.4);">
-                    📦 Custódia de Materiais TCO &amp; Cadeia de Custódia
-                </h1>
-                <div style="font-size: 0.84rem; color: #f5ebe0; margin: 0;">
-                    SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável • 
-                    <span style="color: #ffe0b2; font-weight: 700;">📍 {tag_local}</span>
-                </div>
-            </div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="
+            }}
+            .title-txt {{
+                font-size: 1.30rem;
+                font-weight: 800;
+                color: #ffffff;
+                margin: 0 0 3px 0;
+                padding: 0;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+            }}
+            .subtitle-txt {{
+                font-size: 0.84rem;
+                color: #f5ebe0;
+                margin: 0;
+            }}
+            .right-box {{
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }}
+            .clock-box {{
                 background: rgba(20, 15, 13, 0.65);
                 border: 1px solid #c5a059;
                 border-radius: 8px;
@@ -143,11 +168,16 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
                 align-items: center;
                 gap: 8px;
                 white-space: nowrap;
-            ">
-                <span style="width: 8px; height: 8px; background-color: #22c55e; border-radius: 50%; display: inline-block; box-shadow: 0 0 6px #22c55e;"></span>
-                <span id="relogio_tco_vivo">{hora_inicial}</span>
-            </div>
-            <div style="
+            }}
+            .green-dot {{
+                width: 8px;
+                height: 8px;
+                background-color: #22c55e;
+                border-radius: 50%;
+                display: inline-block;
+                box-shadow: 0 0 6px #22c55e;
+            }}
+            .user-box {{
                 background: rgba(20, 15, 13, 0.65);
                 border: 1px solid #c5a059;
                 border-radius: 8px;
@@ -155,42 +185,71 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
                 text-align: left;
                 line-height: 1.35;
                 white-space: nowrap;
-            ">
-                <div style="color: #ffffff; font-size: 0.86rem; font-weight: 800;">
-                    👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.80rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
+            }}
+            .user-name {{
+                color: #ffffff;
+                font-size: 0.86rem;
+                font-weight: 800;
+            }}
+            .user-sub {{
+                color: #ffe0b2;
+                font-size: 0.76rem;
+                font-weight: 700;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="banner-container">
+            <div class="left-box">
+                <div class="icon-box">🛡️</div>
+                <div>
+                    <div class="title-txt">
+                        📦 Custódia de Materiais TCO &amp; Cadeia de Custódia
+                    </div>
+                    <div class="subtitle-txt">
+                        SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável • 
+                        <span style="color: #ffe0b2; font-weight: 700;">📍 {tag_local}</span>
+                    </div>
                 </div>
-                <div style="color: #ffe0b2; font-size: 0.76rem; font-weight: 700;">
-                    🏛️ {unidade_atual} — PLANTÃO
+            </div>
+            <div class="right-box">
+                <div class="clock-box">
+                    <span class="green-dot"></span>
+                    <span id="relogio_tco_iframe">--/--/---- --:--:--</span>
+                </div>
+                <div class="user-box">
+                    <div class="user-name">
+                        👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.80rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
+                    </div>
+                    <div class="user-sub">
+                        🏛️ {unidade_atual} — PLANTÃO
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <script>
-    (function() {{
-        if (window.timerRelogioTcoVivo) {{
-            clearInterval(window.timerRelogioTcoVivo);
-        }}
-        
-        function atualizarRelogioTcoVivo() {{
-            var elemento = document.getElementById('relogio_tco_vivo');
-            if (elemento) {{
-                var agora = new Date();
-                var dia = String(agora.getDate()).padStart(2, '0');
-                var mes = String(agora.getMonth() + 1).padStart(2, '0');
-                var ano = agora.getFullYear();
-                var horas = String(agora.getHours()).padStart(2, '0');
-                var minutos = String(agora.getMinutes()).padStart(2, '0');
-                var segundos = String(agora.getSeconds()).padStart(2, '0');
-                elemento.innerText = dia + '/' + mes + '/' + ano + ' ' + horas + ':' + minutos + ':' + segundos;
+        <script>
+            function atualizarRelogioIframe() {{
+                var el = document.getElementById('relogio_tco_iframe');
+                if (el) {{
+                    var agora = new Date();
+                    var dia = String(agora.getDate()).padStart(2, '0');
+                    var mes = String(agora.getMonth() + 1).padStart(2, '0');
+                    var ano = agora.getFullYear();
+                    var horas = String(agora.getHours()).padStart(2, '0');
+                    var minutos = String(agora.getMinutes()).padStart(2, '0');
+                    var segundos = String(agora.getSeconds()).padStart(2, '0');
+                    el.innerText = dia + '/' + mes + '/' + ano + ' ' + horas + ':' + minutos + ':' + segundos;
+                }}
             }}
-        }}
-        
-        atualizarRelogioTcoVivo();
-        window.timerRelogioTcoVivo = setInterval(atualizarRelogioTcoVivo, 1000);
-    }})();
-    </script>
-    """, unsafe_allow_html=True)
+            atualizarRelogioIframe();
+            setInterval(atualizarRelogioIframe, 1000);
+        </script>
+    </body>
+    </html>
+    """
+
+    components.html(html_cabecalho, height=95)
 
 
 @st.dialog("🔗 Cadeia de Custódia Imutável (Art. 158-B do CPP)", width="large")
