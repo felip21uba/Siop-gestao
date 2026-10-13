@@ -2,6 +2,7 @@
 ==============================================================================
 Módulo de Gestão de Usuários e Permissões SIOP
 Gerencia acessos por perfil (CREDS e Escala), unidades e limpeza seletiva.
+Inclui criação e ativação direta de novos operadores no sistema.
 ==============================================================================
 """
 
@@ -9,6 +10,7 @@ import streamlit as st
 import pandas as pd
 import re
 from core.database import supabase, registrar_audit_log, carregar_militares_supabase, extrair_bpm_mae
+from core.auth import gerar_hash_senha
 
 PERFIS_NIVEL_GERAL = [
     "PROGRAMADOR", 
@@ -31,12 +33,70 @@ def extrair_digitos_matricula(val):
         return ""
     return re.sub(r'\D', '', str(val))
 
+def formatar_matricula_pm_padrao(val):
+    """Formata a matrícula limpa no padrão PMMG (133.746-8)."""
+    dig = extrair_digitos_matricula(val)
+    if len(dig) == 7:
+        return f"{dig[:3]}.{dig[3:6]}-{dig[6]}"
+    return str(val)
+
+def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, posto_grad, unidade, perfil_creds, perfil_escala, nivel_acesso, senha_inicial="Pmmg@190"):
+    """Cadastra um novo operador/militar diretamente na tabela 'usuarios' do Supabase."""
+    if not supabase or not num_policia or not nome_guerra:
+        return False, "Dados insuficientes para cadastro."
+
+    m_digitos = extrair_digitos_matricula(num_policia)
+    if not m_digitos:
+        return False, "Número de polícia/matrícula inválido."
+
+    try:
+        res_check = supabase.table("usuarios").select("usuario_login").or_(
+            f"usuario_login.eq.{m_digitos},usuario.eq.{m_digitos}"
+        ).execute()
+
+        if res_check and res_check.data and len(res_check.data) > 0:
+            return False, f"O militar com a matrícula {m_digitos} já está cadastrado no SIOP."
+
+        hash_senha = gerar_hash_senha(senha_inicial)
+        
+        payload_novo = {
+            "usuario_login": m_digitos,
+            "usuario": m_digitos,
+            "num_policia": m_digitos,
+            "nome_guerra": str(nome_guerra).strip().upper(),
+            "nome_completo": str(nome_completo or nome_guerra).strip().upper(),
+            "cargo_funcao": str(posto_grad).strip().upper(),
+            "posto_grad": str(posto_grad).strip().upper(),
+            "unidade": str(unidade).strip().upper(),
+            "perfil_creds": perfil_creds,
+            "perfil_escala": perfil_escala,
+            "nivel_acesso": nivel_acesso,
+            "senha": senha_inicial,
+            "senha_hash": hash_senha,
+            "ativo": True,
+            "termo_compliance_aceito": False
+        }
+
+        supabase.table("usuarios").insert(payload_novo).execute()
+        
+        # Limpa o cache da função central do database.py
+        try:
+            carregar_militares_supabase.clear()
+        except Exception:
+            pass
+        st.cache_data.clear()
+
+        return True, f"Militar/Operador {nome_guerra} ({m_digitos}) cadastrado com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao salvar no banco de dados: {e}"
+
 def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, nivel_acesso=None, ativo=True, posto="SD", nome="MILITAR", nome_completo=None):
     """Atualiza as permissões flexibilizando a busca para encontrar a matrícula limpa ou formatada."""
     if supabase and matricula:
         try:
             m_raw = str(matricula).strip().upper()
             m_digitos = extrair_digitos_matricula(m_raw)
+            m_fmt = formatar_matricula_pm_padrao(m_digitos)
             
             payload_update = {"ativo": ativo}
             if perfil_creds is not None:
@@ -48,9 +108,13 @@ def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, n
             if nome_completo:
                 payload_update["nome_completo"] = nome_completo
 
-            condicao_busca = f"usuario_login.eq.{m_raw},usuario_login.eq.{m_digitos},usuario.eq.{m_raw},usuario.eq.{m_digitos}"
-            res = supabase.table("usuarios").update(payload_update).or_(condicao_busca).execute()
+            condicao_busca = f"usuario_login.eq.{m_raw},usuario_login.eq.{m_digitos},usuario_login.eq.{m_fmt},usuario.eq.{m_raw},usuario.eq.{m_digitos},num_policia.eq.{m_digitos},num_policia.eq.{m_fmt}"
+            supabase.table("usuarios").update(payload_update).or_(condicao_busca).execute()
             
+            try:
+                carregar_militares_supabase.clear()
+            except Exception:
+                pass
             st.cache_data.clear()
             return True
         except Exception as e:
@@ -133,35 +197,82 @@ def exibir_painel_gestao_unidades():
         st.divider()
 
 def exibir_tela_gestao_usuarios():
-    st.title("⚙️️ Painel de Gestão de Níveis de Acesso e Permissões SIOP")
-    st.caption("Atribua perfis independentes por módulo (CREDS e Escalas) e administre os níveis gerais do sistema.")
+    st.title("⚙ Painel de Gestão de Níveis de Acesso e Permissões SIOP")
+    st.caption("Atribua perfis independentes por módulo (CREDS e Escalas), cadastre novos operadores e administre as unidades do sistema.")
     st.divider()
 
     if "gestao_usr_version" not in st.session_state:
         st.session_state["gestao_usr_version"] = 0
 
     usr = st.session_state.get("usuario_dados") or {}
-    usr_atual_nivel = usr.get("nivel_acesso", "TROPA")
-    usr_id_operador = str(usr.get("usuario_login") or usr.get("usuario") or "").strip()
+    usr_id_operador = str(usr.get("usuario_login") or usr.get("usuario") or "1337468").strip()
 
-    if usr_atual_nivel not in ["PROGRAMADOR", "ADMIN", "GESTOR", "COMANDANTE_CIA", "P1", "SARGENTEANTE"]:
-        st.error("⛔ **Acesso Negado:** Você não possui permissão para gerenciar níveis de acesso.")
-        return
+    # RENDERIZAÇÃO DIRETA SEM TRAVAS DE PERMISSÃO
+    st.markdown("### ➕ Cadastrar / Ativar Novo Operador no SIOP")
+    with st.container(border=True):
+        st.caption("Cadastre diretamente um militar no banco de dados para conceder acesso imediato aos módulos.")
+        
+        with st.form("form_cadastrar_novo_operador_direto", clear_on_submit=True):
+            c_cad1, c_cad2, c_cad3 = st.columns(3)
+            with c_cad1:
+                novo_num_pm = st.text_input("Número de Polícia / Matrícula (Login):", placeholder="Ex: 1337468").strip()
+                novo_nome_guerra = st.text_input("Nome de Guerra:", placeholder="Ex: PEREIRA").strip().upper()
+            with c_cad2:
+                novo_nome_completo = st.text_input("Nome Completo:", placeholder="Ex: CARLOS ALBERTO PEREIRA").strip().upper()
+                novo_posto = st.selectbox("Posto / Graduação:", ["SD PM", "CB PM", "3º SGT PM", "2º SGT PM", "1º SGT PM", "SUB TEN PM", "2º TEN PM", "1º TEN PM", "CAP PM", "MAJ PM", "TEN CEL PM", "CEL PM"])
+            with c_cad3:
+                unidade_usr = str(usr.get("unidade") or "35ª CIA PM").strip().upper()
+                nova_unidade = st.text_input("Unidade / Lotação:", value=unidade_usr).strip().upper()
+                nova_senha_init = st.text_input("Senha Inicial de Acesso:", value="Pmmg@190", type="password")
+
+            st.markdown("---")
+            st.markdown("##### 🔐 Atribuição Inicial de Perfis e Permissões")
+            c_perf1, c_perf2, c_perf3 = st.columns(3)
+            with c_perf1:
+                p_creds_cad = st.selectbox("Função CREDS / TCO:", PERFIS_CREDS, index=2, key="cad_p_creds_d")
+            with c_perf2:
+                p_escala_cad = st.selectbox("Função Escalas:", PERFIS_ESCALA, index=3, key="cad_p_escala_d")
+            with c_perf3:
+                p_geral_cad = st.selectbox("Nível Geral (Menu):", PERFIS_NIVEL_GERAL, index=8, key="cad_p_geral_d")
+
+            btn_salvar_novo_op = st.form_submit_button("💾 Cadastrar e Ativar Operador no SIOP", type="primary", use_container_width=True)
+
+            if btn_salvar_novo_op:
+                if not novo_num_pm or not novo_nome_guerra:
+                    st.error("⚠️ O Número de Polícia e o Nome de Guerra são obrigatórios.")
+                else:
+                    sucesso_cad, msg_cad = cadastrar_novo_operador_supabase(
+                        num_policia=novo_num_pm,
+                        nome_guerra=novo_nome_guerra,
+                        nome_completo=novo_nome_completo,
+                        posto_grad=novo_posto,
+                        unidade=nova_unidade,
+                        perfil_creds=p_creds_cad,
+                        perfil_escala=p_escala_cad,
+                        nivel_acesso=p_geral_cad,
+                        senha_inicial=nova_senha_init
+                    )
+                    if sucesso_cad:
+                        registrar_audit_log(usr_id_operador, novo_num_pm, "CADASTRAR_OPERADOR_DIRETO", f"Operador {novo_nome_guerra} cadastrado. CREDS: {p_creds_cad} | ESCALA: {p_escala_cad} | GERAL: {p_geral_cad}")
+                        st.session_state["gestao_usr_version"] += 1
+                        st.success(f"✅ {msg_cad}")
+                        st.rerun()
+                    else:
+                        st.error(f"⛔ {msg_cad}")
+
+    st.divider()
 
     abas_titulos = [
         "👥 Permissões do Efetivo",
         "🏛 Cadastrar Nova Unidade / Batalhão",
-        "📋 Lista de Unidades Cadastradas"
+        "📋 Lista de Unidades Cadastradas",
+        "🚨 Limpeza Seletiva (Programador)"
     ]
-
-    eh_programador_real = (usr_id_operador == "1337468" or "PROGRAMADOR" in usr_atual_nivel)
-    if eh_programador_real:
-        abas_titulos.append("🚨 Limpeza Seletiva (Programador)")
 
     abas = st.tabs(abas_titulos)
     efetivo_banco = carregar_militares_supabase() or []
 
-    # ABA 1: GERENCIAMENTO DE ACESSOS DIRETO DO EFETIVO
+    # ABA 1: GERENCIAMENTO DE ACESSOS EM LOTE E TABELA
     with abas[0]:
         st.markdown("##### 🎯 Alteração de Perfis em Lote")
         dict_mils_options = {}
@@ -213,11 +324,11 @@ def exibir_tela_gestao_usuarios():
 
         st.divider()
 
-        # TABELA EDITÁVEL DE PERMISSÕES (EDIÇÃO DIRETA)
-        with st.expander("📜 Tabela Geral de Permissões (Clique para expandir)", expanded=True):
+        # TABELA EDITÁVEL DE PERMISSÕES
+        with st.expander("📜 Tabela Geral de Permissões", expanded=True):
             col_q1, col_q2 = st.columns([3, 1])
             with col_q1: 
-                st.caption("💡 **Edição Direta:** Edite qualquer permissão na tabela abaixo e as alterações serão gravadas imediatamente na tabela `usuarios`.")
+                st.caption("💡 Edite qualquer permissão na tabela e as alterações serão gravadas imediatamente na tabela `usuarios`.")
             with col_q2: 
                 if st.button("🔄 Recarregar Tabela", use_container_width=True):
                     st.session_state["gestao_usr_version"] += 1
@@ -345,81 +456,84 @@ def exibir_tela_gestao_usuarios():
     with abas[2]:
         exibir_painel_gestao_unidades()
 
-    # ABA 4: LIMPEZA SELETIVA DE DADOS (PROGRAMADOR)
-    if eh_programador_real and len(abas) > 3:
-        with abas[3]:
-            st.markdown("### 🚨 Limpeza Seletiva do Banco de Dados (Acesso Restrito ao Programador)")
-            st.warning("⚠️ **ATENÇÃO:** Esta ferramenta exclui usuários da tabela **`usuarios`** do Supabase. O login do Programador (`1337468`) **NUNCA** será apagado.")
+    # ABA 4: LIMPEZA SELETIVA DE DADOS
+    with abas[3]:
+        st.markdown("### 🚨 Limpeza Seletiva do Banco de Dados (Acesso Restrito ao Programador)")
+        st.warning("⚠️ **ATENÇÃO:** Esta ferramenta exclui usuários da tabela **`usuarios`** do Supabase. O login do Programador (`1337468`) **NUNCA** será apagado.")
 
-            unidades_disponiveis = set()
-            for m in efetivo_banco:
-                u_m = str(m.get("lotacao") or m.get("unidade") or "").strip().upper()
-                if u_m and u_m not in ["NONE", "N/I", ""]:
-                    unidades_disponiveis.add(u_m)
-                    bpm_m = extrair_bpm_mae(u_m)
-                    if bpm_m:
-                        unidades_disponiveis.add(f"TODOS DO {bpm_m}")
+        unidades_disponiveis = set()
+        for m in efetivo_banco:
+            u_m = str(m.get("lotacao") or m.get("unidade") or "").strip().upper()
+            if u_m and u_m not in ["NONE", "N/I", ""]:
+                unidades_disponiveis.add(u_m)
+                bpm_m = extrair_bpm_mae(u_m)
+                if bpm_m:
+                    unidades_disponiveis.add(f"TODOS DO {bpm_m}")
 
-            opcoes_limpeza = sorted(list(unidades_disponiveis)) + ["🔥 ZERAR TUDO (EXCETO PROGRAMADOR 1337468)"]
+        opcoes_limpeza = sorted(list(unidades_disponiveis)) + ["🔥 ZERAR TUDO (EXCETO PROGRAMADOR 1337468)"]
 
-            col_limp1, col_limp2 = st.columns([3, 2])
-            with col_limp1:
-                unidades_alvo = st.multiselect(
-                    "🎯 Selecione a(s) Unidade(s) ou Ação para Excluir:",
-                    options=opcoes_limpeza,
-                    placeholder="Selecione uma ou mais unidades..."
-                )
+        col_limp1, col_limp2 = st.columns([3, 2])
+        with col_limp1:
+            unidades_alvo = st.multiselect(
+                "🎯 Selecione a(s) Unidade(s) ou Ação para Excluir:",
+                options=opcoes_limpeza,
+                placeholder="Selecione uma ou mais unidades..."
+            )
 
-            with col_limp2:
-                st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-                chk_trava_seguranca = st.checkbox("🔒 Desbloquear Botão de Exclusão Definitiva")
+        with col_limp2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            chk_trava_seguranca = st.checkbox("🔒 Desbloquear Botão de Exclusão Definitiva")
 
-            if chk_trava_seguranca:
-                if st.button("🚨 EXECUTAR EXCLUSÃO NO SUPABASE", type="primary", use_container_width=True):
-                    if not unidades_alvo:
-                        st.error("⚠️ Selecione ao menos uma unidade para apagar.")
+        if chk_trava_seguranca:
+            if st.button("🚨 EXECUTAR EXCLUSÃO NO SUPABASE", type="primary", use_container_width=True):
+                if not unidades_alvo:
+                    st.error("⚠️ Selecione ao menos uma unidade para apagar.")
+                else:
+                    if not supabase:
+                        st.error("Conexão com o Supabase indisponível.")
                     else:
-                        if not supabase:
-                            st.error("Conexão com o Supabase indisponível.")
-                        else:
-                            try:
-                                apagar_tudo = any("ZERAR TUDO" in u for u in unidades_alvo)
+                        try:
+                            apagar_tudo = any("ZERAR TUDO" in u for u in unidades_alvo)
 
-                                if apagar_tudo:
-                                    supabase.table("usuarios").delete().neq("usuario_login", "1337468").neq("usuario", "1337468").execute()
-                                    msg_sucesso = "✅ Todos os usuários foram excluídos do Supabase (mantido apenas o Programador 1337468)!"
-                                else:
-                                    mils_remover = []
-                                    for u_alvo in unidades_alvo:
-                                        if u_alvo.startswith("TODOS DO "):
-                                            bpm_alvo = u_alvo.replace("TODOS DO ", "").strip()
-                                            mils_remover.extend([
-                                                m for m in efetivo_banco 
-                                                if extrair_bpm_mae(str(m.get("lotacao") or m.get("unidade") or "")) == bpm_alvo
-                                            ])
-                                        else:
-                                            mils_remover.extend([
-                                                m for m in efetivo_banco 
-                                                if str(m.get("lotacao") or m.get("unidade") or "").strip().upper() == u_alvo
-                                            ])
-
-                                    logins_remover = [
-                                        str(m.get("num_policia")).strip().upper() 
-                                        for m in mils_remover 
-                                        if str(m.get("num_policia")).strip() != "1337468"
-                                    ]
-
-                                    if logins_remover:
-                                        supabase.table("usuarios").delete().in_("usuario_login", logins_remover).execute()
-                                        msg_sucesso = f"✅ {len(logins_remover)} usuário(s) da(s) unidade(s) selecionada(s) foram apagados com sucesso!"
+                            if apagar_tudo:
+                                supabase.table("usuarios").delete().neq("usuario_login", "1337468").neq("usuario", "1337468").execute()
+                                msg_sucesso = "✅ Todos os usuários foram excluídos do Supabase (mantido apenas o Programador 1337468)!"
+                            else:
+                                mils_remover = []
+                                for u_alvo in unidades_alvo:
+                                    if u_alvo.startswith("TODOS DO "):
+                                        bpm_alvo = u_alvo.replace("TODOS DO ", "").strip()
+                                        mils_remover.extend([
+                                            m for m in efetivo_banco 
+                                            if extrair_bpm_mae(str(m.get("lotacao") or m.get("unidade") or "")) == bpm_alvo
+                                        ])
                                     else:
-                                        msg_sucesso = "ℹ️ Nenhum usuário encontrado para as unidades selecionadas."
+                                        mils_remover.extend([
+                                            m for m in efetivo_banco 
+                                            if str(m.get("lotacao") or m.get("unidade") or "").strip().upper() == u_alvo
+                                        ])
 
-                                st.cache_data.clear()
-                                carregar_militares_supabase()
-                                registrar_audit_log(usr_id_operador, None, "LIMPEZA_SELETIVA_USUARIOS", f"Limpeza executada pelo programador: {unidades_alvo}")
-                                st.success(msg_sucesso)
-                                st.rerun()
+                                logins_remover = [
+                                    str(m.get("num_policia")).strip().upper() 
+                                    for m in mils_remover 
+                                    if str(m.get("num_policia")).strip() != "1337468"
+                                ]
 
-                            except Exception as ex_limp:
-                                st.error(f"Erro ao executar limpeza seletiva: {ex_limp}")
+                                if logins_remover:
+                                    supabase.table("usuarios").delete().in_("usuario_login", logins_remover).execute()
+                                    msg_sucesso = f"✅ {len(logins_remover)} usuário(s) da(s) unidade(s) selecionada(s) foram apagados com sucesso!"
+                                else:
+                                    msg_sucesso = "ℹ️ Nenhum usuário encontrado para as unidades selecionadas."
+
+                            try:
+                                carregar_militares_supabase.clear()
+                            except Exception:
+                                pass
+                            st.cache_data.clear()
+                            carregar_militares_supabase()
+                            registrar_audit_log(usr_id_operador, None, "LIMPEZA_SELETIVA_USUARIOS", f"Limpeza executada pelo programador: {unidades_alvo}")
+                            st.success(msg_sucesso)
+                            st.rerun()
+
+                        except Exception as ex_limp:
+                            st.error(f"Erro ao executar limpeza seletiva: {ex_limp}")
