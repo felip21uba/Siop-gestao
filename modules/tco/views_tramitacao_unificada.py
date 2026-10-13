@@ -118,12 +118,21 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         font-weight: 800;
         text-transform: uppercase;
     }
-    .tag-info-retangulo {
-        background-color: #140f0d;
-        border: 1px solid #54432a;
+    .badge-prazo-alerta {
+        background-color: #7f1d1d !important;
+        color: #fecaca !important;
+        border: 1px solid #ef4444 !important;
         border-radius: 6px;
         padding: 3px 8px;
-        color: #ffe0b2;
+        font-size: 0.74rem;
+        font-weight: 800;
+    }
+    .tag-info-retangulo {
+        background-color: #2b2118;
+        border: 1px solid #7d6339;
+        border-radius: 6px;
+        padding: 3px 8px;
+        color: #ffe8cd;
         font-family: monospace;
         font-size: 0.82rem;
         font-weight: 700;
@@ -224,7 +233,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                 for num_reds, df_grupo in grupos_reds:
                     qtd_itens_reds = len(df_grupo)
                     
-                    with st.expander(f"➕ **REDS: {num_reds}** ({qtd_itens_reds} item/ns apreendido/s)", expanded=True):
+                    with st.expander(f"📄 **REDS: {num_reds}** ({qtd_itens_reds} item/ns apreendido/s)", expanded=True):
                         for idx, row in df_grupo.iterrows():
                             idx_card_global += 1
                             id_bem = str(row.get("id_bem") or row.get("id"))
@@ -233,57 +242,79 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             unid = str(row.get("unidade_medida", "UN")).strip()
                             lacre = str(row.get("involucro_lacre", "SEM LACRE")).strip()
                             autor = str(row.get("autores", "N/I")).strip()
-                            custod = str(row.get("fiel_depositario_atual", nome_militar_atual)).strip()
+                            custod = str(row.get("fiel_depositario_atual") or row.get("unidade_posse_atual") or nome_militar_atual).strip()
+                            dest_raw = row.get("destinatario_pendente") or row.get("fase_destinacao") or "Com Fiel Depositário / Policial"
+                            dest_str = str(dest_raw).strip()
                             status_b = str(row.get("status_tramite", "Em Custódia")).strip()
-                            dt_raw = row.get("data_posse_atual") or row.get("data_ingestao")
+                            dt_raw = row.get("data_envio_tramite") or row.get("data_posse_atual") or row.get("data_ingestao")
                             
-                            try:
-                                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y às %H:%M")
-                            except Exception:
-                                dt_fmt = str(dt_raw)[:16] if dt_raw else "N/I"
+                            dt_fmt = "N/I"
+                            dias_parado = 0
+                            if dt_raw:
+                                try:
+                                    dt_obj = pd.to_datetime(dt_raw)
+                                    dt_fmt = dt_obj.strftime("%d/%m/%Y às %H:%M")
+                                    dias_parado = (datetime.datetime.now() - dt_obj.to_pydatetime().replace(tzinfo=None)).days
+                                except Exception:
+                                    dt_fmt = str(dt_raw)[:16]
 
-                            # Alternância visual de tons tom castanho/dourado
-                            bg_gradient = "linear-gradient(135deg, #2b231d 0%, #1e1814 100%)" if (idx_card_global % 2 == 0) else "linear-gradient(135deg, #382d25 0%, #241d18 100%)"
+                            # Identificador de Localização
+                            fase_u = str(dest_str).upper()
+                            if "PERÍCIA" in fase_u:
+                                tag_local_fase = "🔬 PERÍCIA"
+                            elif "JECRIM" in fase_u or "JUDICIÁRIO" in fase_u:
+                                tag_local_fase = "⚖️ JECRIM"
+                            elif "PCMG" in fase_u or "DELEGACIA" in fase_u:
+                                tag_local_fase = "🏛️ POLÍCIA CIVIL"
+                            else:
+                                tag_local_fase = f"📦 {custod[:22]}"
+
+                            # Alternância de cores: Marrom Claro e Marrom um pouco mais Escuro
+                            bg_card = "linear-gradient(135deg, #574431 0%, #423324 100%)" if (idx_card_global % 2 == 0) else "linear-gradient(135deg, #3b2e23 0%, #291f17 100%)"
 
                             c_chk, c_card_info, c_card_btn = st.columns([0.5, 6.8, 2.7])
                             
                             with c_chk:
                                 is_selected = st.checkbox(
                                     "Selecionar", 
-                                    key=f"chk_tramite_{id_bem}",
+                                    value=(id_bem in st.session_state["itens_selecionados_tramite"]),
+                                    key=f"chk_tramite_{id_bem}_{idx_card_global}",
                                     label_visibility="collapsed"
                                 )
 
                             with c_card_info:
                                 html_card_mat = f"""
-                                <div style="background: {bg_gradient}; border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
+                                <div style="background: {bg_card}; border: 1.5px solid #a3824b; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; color: #ffffff;">
                                     📄 REDS: <strong style="color: #ffffff;">{num_reds}</strong> | Material: <strong style="color: #ffe0b2;">{desc}</strong> (Qtd: {qtd} {unid})<br/>
                                     🏷️ Lacre: <strong style="color: #ffffff;">{lacre}</strong> | Autor: <strong style="color: #ffe0b2;">{autor}</strong><br/>
-                                    📍 Custodiante: <strong style="color: #c5a059;">{custod}</strong><br/>
+                                    📍 <b>Custodiante / Posse:</b> <strong style="color: #ffd180;">{custod}</strong><br/>
                                     <div style="margin-top: 8px;">
-                                        🎯 Status: <span class="tag-info-retangulo">{status_b}</span>
-                                        ⏱️ Data/Hora: <span class="tag-info-retangulo">{dt_fmt}</span>
+                                        🎯 <b>Destino:</b> <span class="tag-info-retangulo">{dest_str}</span>
+                                        📊 <b>Status:</b> <span class="tag-info-retangulo">{status_b}</span>
+                                        ⏱️ <b>Data/Hora:</b> <span class="tag-info-retangulo">{dt_fmt}</span>
                                     </div>
                                 </div>
                                 """
                                 st.markdown(html_card_mat, unsafe_allow_html=True)
 
                             with c_card_btn:
+                                badge_dias_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado} dias parado</span>' if dias_parado >= 1 else ''
                                 st.markdown(f"""
-                                <div style="display: flex; justify-content: flex-end; margin-bottom: 6px;">
-                                    <span class="badge-fase-status">📦 CUSTÓDIA</span>
+                                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
+                                    <span class="badge-fase-status">{tag_local_fase}</span>
+                                    {badge_dias_html}
                                 </div>
                                 """, unsafe_allow_html=True)
                                 
                                 c_b1, c_b2, c_b3 = st.columns(3)
                                 with c_b1:
-                                    if st.button("🔗 Cadeia", key=f"btn_cad_tr_{id_bem}_{idx}", use_container_width=True):
+                                    if st.button("🔗 Cadeia", key=f"btn_cad_tr_{id_bem}_{idx_card_global}", use_container_width=True):
                                         modal_cadeia_custodia_timeline(row.to_dict())
                                 with c_b2:
-                                    if st.button("📄 Guia", key=f"btn_guia_tr_{id_bem}_{idx}", use_container_width=True):
+                                    if st.button("🖨️ Guia", key=f"btn_guia_tr_{id_bem}_{idx_card_global}", use_container_width=True):
                                         modal_guia_termo_oficial(row.to_dict(), nome_militar_atual, num_pm_logado, unidade_militar_atual)
                                 with c_b3:
-                                    if st.button("📷 Mídias", key=f"btn_midia_tr_{id_bem}_{idx}", use_container_width=True):
+                                    if st.button("📷 Mídias", key=f"btn_midia_tr_{id_bem}_{idx_card_global}", use_container_width=True):
                                         abrir_modal_edicao_material(row.to_dict(), nome_militar_atual, unidade_militar_atual)
 
                             if is_selected:
@@ -670,67 +701,66 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         unid_med = item_h.get("unidade_medida", "UN")
                         lacre_h = item_h.get("involucro_lacre", "SEM LACRE")
                         autor_h = item_h.get("autores", "N/I")
-                        custod_h = item_h.get("fiel_depositario_atual", "N/I")
-                        
+                        custod_h = str(item_h.get("fiel_depositario_atual") or item_h.get("unidade_posse_atual") or "N/I").strip()
                         dest_h_raw = item_h.get("destinatario_pendente") or item_h.get("fase_destinacao") or "N/I"
                         dest_h = str(dest_h_raw).strip()
-                        
                         status_h = item_h.get("status_tramite", "Em Custódia")
                         dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual") or item_h.get("data_ingestao")
 
                         dt_fmt_exata = "Data N/I"
+                        dias_parado_h = 0
                         if dt_env_str:
                             try:
                                 dt_obj_item = pd.to_datetime(dt_env_str)
                                 dt_fmt_exata = dt_obj_item.strftime("%d/%m/%Y às %H:%M")
+                                dias_parado_h = (datetime.datetime.now() - dt_obj_item.to_pydatetime().replace(tzinfo=None)).days
                             except Exception:
                                 dt_fmt_exata = str(dt_env_str)[:16]
 
                         fase_u = str(dest_h).upper()
-                        if "INCINERAÇÃO" in fase_u or "DESTRUIÇÃO" in fase_u:
-                            fase_tag_txt = "🔥 INCINERAÇÃO"
-                        elif "PERÍCIA" in fase_u:
-                            fase_tag_txt = "🔬 PERÍCIA"
-                        elif "PCMG" in fase_u or "DELEGACIA" in fase_u:
-                            fase_tag_txt = "🏛️ POLÍCIA CIVIL"
+                        if "PERÍCIA" in fase_u:
+                            tag_local_hist = "🔬 PERÍCIA"
                         elif "JECRIM" in fase_u or "JUDICIÁRIO" in fase_u:
-                            fase_tag_txt = "⚖️ JECRIM"
+                            tag_local_hist = "⚖️ JECRIM"
+                        elif "PCMG" in fase_u or "DELEGACIA" in fase_u:
+                            tag_local_hist = "🏛️ POLÍCIA CIVIL"
                         else:
-                            fase_tag_txt = f"📦 {dest_h[:18]}" if dest_h else "📦 N/I"
+                            tag_local_hist = f"📦 {custod_h[:22]}"
 
-                        bg_gradient = "linear-gradient(135deg, #2b231d 0%, #1e1814 100%)" if (idx_card_hist % 2 == 0) else "linear-gradient(135deg, #382d25 0%, #241d18 100%)"
+                        bg_card_h = "linear-gradient(135deg, #574431 0%, #423324 100%)" if (idx_card_hist % 2 == 0) else "linear-gradient(135deg, #3b2e23 0%, #291f17 100%)"
 
-                        col_card_info, col_card_lateral = st.columns([7.2, 2.8])
+                        col_card_info, col_card_lateral = st.columns([7.3, 2.7])
                         
                         with col_card_info:
                             html_card_mat = f"""
-                            <div style="background: {bg_gradient}; border: 1.5px solid #6b5735; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
+                            <div style="background: {bg_card_h}; border: 1.5px solid #a3824b; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; color: #ffffff;">
                                 📄 REDS: <strong style="color: #ffffff;">{num_reds_h}</strong> | Material: <strong style="color: #ffe0b2;">{desc_h}</strong> (Qtd: {qtd_h_val} {unid_med})<br/>
                                 🏷️ Lacre: <strong style="color: #ffffff;">{lacre_h}</strong> | Autor: <strong style="color: #ffe0b2;">{autor_h}</strong><br/>
-                                📍 Custodiante: <strong style="color: #c5a059;">{custod_h}</strong><br/>
+                                📍 <b>Custodiante / Posse:</b> <strong style="color: #ffd180;">{custod_h}</strong><br/>
                                 <div style="margin-top: 8px;">
-                                    🎯 Destino: <span class="tag-info-retangulo">{dest_h}</span>
-                                    📊 Status: <span class="tag-info-retangulo">{status_h}</span>
-                                    ⏱️ Data/Hora: <span class="tag-info-retangulo">{dt_fmt_exata}</span>
+                                    🎯 <b>Destino:</b> <span class="tag-info-retangulo">{dest_h}</span>
+                                    📊 <b>Status:</b> <span class="tag-info-retangulo">{status_h}</span>
+                                    ⏱️ <b>Data/Hora:</b> <span class="tag-info-retangulo">{dt_fmt_exata}</span>
                                 </div>
                             </div>
                             """
                             st.markdown(html_card_mat, unsafe_allow_html=True)
 
                         with col_card_lateral:
-                            html_badges = f"""
-                            <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end; margin-bottom: 8px;">
-                                <div class="badge-fase-status">{fase_tag_txt}</div>
+                            badge_dias_hist_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado_h} dias parado</span>' if dias_parado_h >= 1 else ''
+                            st.markdown(f"""
+                            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
+                                <span class="badge-fase-status">{tag_local_hist}</span>
+                                {badge_dias_hist_html}
                             </div>
-                            """
-                            st.markdown(html_badges, unsafe_allow_html=True)
+                            """, unsafe_allow_html=True)
 
                             col_b1, col_b2, col_b3 = st.columns(3)
                             with col_b1:
                                 if st.button("🔗 Cadeia", key=f"btn_cad_{id_bem_h}_{idx_h}", help="Ver histórico imutável (Art. 158-B CPP)", use_container_width=True):
                                     modal_cadeia_custodia_timeline(item_h.to_dict())
                             with col_b2:
-                                if st.button("📄 Guia", key=f"btn_guia_{id_bem_h}_{idx_h}", help="Gerar Termo de Depósito e Apreensão", use_container_width=True):
+                                if st.button("🖨️ Guia", key=f"btn_guia_{id_bem_h}_{idx_h}", help="Gerar Termo de Depósito e Apreensão", use_container_width=True):
                                     modal_guia_termo_oficial(item_h.to_dict(), nome_militar_atual, num_pm_logado, unidade_militar_atual)
                             with col_b3:
                                 if st.button("📷 Mídias", key=f"btn_midia_hist_{id_bem_h}_{idx_h}", help="Anexar ou visualizar fotos/documentos do bem", use_container_width=True):
