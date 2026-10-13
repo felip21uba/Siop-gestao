@@ -48,26 +48,25 @@ def verificar_existencia_reds_banco(num_reds: str):
     return False, None, None
 
 
+@st.dialog("⚠️ Atenção: REDS Já Registrado")
 def modal_alerta_reds_duplicado(num_reds, dt_cad, op_cad):
-    @st.dialog("⚠️ Atenção: REDS Já Registrado")
-    def _dialog():
-        st.warning(f"O REDS **{num_reds}** já foi importado anteriormente na base de dados.")
-        st.write(f"📅 **Data de Registro:** {dt_cad}")
-        st.write(f"👮‍♂️ **Operador Responsável:** {op_cad}")
-        st.info("Deseja prosseguir e incluir/atualizar este REDS assim mesmo?")
+    st.warning(f"O REDS **{num_reds}** já foi importado anteriormente na base de dados.")
+    st.write(f"📅 **Data de Registro:** {dt_cad}")
+    st.write(f"👮‍♂️ **Operador Responsável:** {op_cad}")
+    st.info("Deseja prosseguir e incluir/atualizar este REDS assim mesmo?")
 
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            if st.button("🔄 Sim, Incluir / Sobrescrever", type="primary", use_container_width=True):
-                st.session_state["confirmou_duplicidade_reds"] = True
-                st.rerun()
-        with col_c2:
-            if st.button("❌ Cancelar", use_container_width=True):
-                st.session_state.pop("temp_reds_extraido", None)
-                st.session_state["confirmou_duplicidade_reds"] = False
-                st.rerun()
-
-    _dialog()
+    col_c1, col_c2 = st.columns(2)
+    with col_c1:
+        if st.button("🔄 Sim, Incluir / Sobrescrever", type="primary", use_container_width=True, key="btn_confirm_dupl_sim"):
+            st.session_state["confirmou_duplicidade_reds"] = True
+            st.session_state["exibir_modal_duplicidade"] = False
+            st.rerun()
+    with col_c2:
+        if st.button("❌ Cancelar", use_container_width=True, key="btn_confirm_dupl_nao"):
+            st.session_state["temp_reds_extraido"] = None
+            st.session_state["confirmou_duplicidade_reds"] = False
+            st.session_state["exibir_modal_duplicidade"] = False
+            st.rerun()
 
 
 def extrair_unidade_mae_creds(str_unidade):
@@ -250,6 +249,12 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     if "temp_reds_extraido" not in st.session_state:
         st.session_state["temp_reds_extraido"] = None
 
+    if "confirmou_duplicidade_reds" not in st.session_state:
+        st.session_state["confirmou_duplicidade_reds"] = False
+
+    if "exibir_modal_duplicidade" not in st.session_state:
+        st.session_state["exibir_modal_duplicidade"] = False
+
     col_ing1, col_ing2 = st.columns(2)
     
     with col_ing1:
@@ -268,10 +273,17 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                             st.session_state["temp_reds_extraido"] = dados_reds
                             
                             existe_reds, dt_cad, op_cad = verificar_existencia_reds_banco(dados_reds["num_reds"])
+                            
                             if existe_reds and not st.session_state.get("confirmou_duplicidade_reds", False):
-                                modal_alerta_reds_duplicado(dados_reds["num_reds"], dt_cad, op_cad)
+                                st.session_state["dados_duplicidade_temp"] = (dados_reds["num_reds"], dt_cad, op_cad)
+                                st.session_state["exibir_modal_duplicidade"] = True
                             else:
                                 st.success("Leitura do REDS concluída!")
+
+    # Exibe o modal de diálogo caso a flag de duplicidade tenha sido acionada
+    if st.session_state.get("exibir_modal_duplicidade", False):
+        n_r, d_c, o_c = st.session_state.get("dados_duplicidade_temp", ("N/I", "N/I", "N/I"))
+        modal_alerta_reds_duplicado(n_r, d_c, o_c)
 
     with col_ing2:
         with st.container(border=True):
@@ -324,7 +336,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                             st.success(f"Item '{man_desc}' adicionado!")
                             st.rerun()
 
-    if st.session_state.get("temp_reds_extraido"):
+    if st.session_state.get("temp_reds_extraido") and not st.session_state.get("exibir_modal_duplicidade", False):
         d = st.session_state["temp_reds_extraido"]
         st.divider()
         
