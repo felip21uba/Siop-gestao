@@ -59,10 +59,10 @@ def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, po
 
         hash_senha = gerar_hash_senha(senha_inicial)
         
+        # Payload ajustado estritamente com as colunas existentes na tabela 'usuarios'
         payload_novo = {
             "usuario_login": m_digitos,
             "usuario": m_digitos,
-            "num_policia": m_digitos,
             "nome_guerra": str(nome_guerra).strip().upper(),
             "nome_completo": str(nome_completo or nome_guerra).strip().upper(),
             "cargo_funcao": str(posto_grad).strip().upper(),
@@ -107,7 +107,7 @@ def salvar_permissao_militar(matricula, perfil_creds=None, perfil_escala=None, n
             if nome_completo:
                 payload_update["nome_completo"] = nome_completo
 
-            condicao_busca = f"usuario_login.eq.{m_raw},usuario_login.eq.{m_digitos},usuario_login.eq.{m_fmt},usuario.eq.{m_raw},usuario.eq.{m_digitos},num_policia.eq.{m_digitos},num_policia.eq.{m_fmt}"
+            condicao_busca = f"usuario_login.eq.{m_raw},usuario_login.eq.{m_digitos},usuario_login.eq.{m_fmt},usuario.eq.{m_raw},usuario.eq.{m_digitos}"
             supabase.table("usuarios").update(payload_update).or_(condicao_busca).execute()
             
             try:
