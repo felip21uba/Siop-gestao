@@ -5,6 +5,7 @@ from core.database import supabase, carregar_militares_supabase
 from core.permissions import usuario_eh_gestor_creds
 from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
 from modules.tco.storage import upload_midia_supabase
+from modules.tco.modais import abrir_modal_edicao_material, modal_cadeia_custodia_timeline, modal_guia_termo_oficial
 from utils.file_validator import sanitizar_nome_arquivo
 
 
@@ -235,7 +236,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             lacre = str(row.get("involucro_lacre", "SEM LACRE")).strip()
                             autor = str(row.get("autores", "N/I")).strip()
 
-                            c_chk, c_info = st.columns([0.6, 9.4])
+                            c_chk, c_info, c_midia = st.columns([0.6, 7.4, 2.0])
                             
                             with c_chk:
                                 is_selected = st.checkbox(
@@ -251,6 +252,10 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     f"</div>",
                                     unsafe_allow_html=True
                                 )
+
+                            with c_midia:
+                                if st.button("📷 Editar / Mídias", key=f"btn_midia_card_{id_bem}_{idx}", use_container_width=True):
+                                    abrir_modal_edicao_material(row.to_dict(), nome_militar_atual, unidade_militar_atual)
 
                             if is_selected:
                                 st.session_state["itens_selecionados_tramite"][id_bem] = row.to_dict()
@@ -345,23 +350,25 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             num_oficio_unid = st.text_input("Nº do Ofício / Protocolo de Entrega (OBRIGATÓRIO):", placeholder="Ex: Ofício 123/2026", key="txt_ofic_unificado_v8").strip()
                         
                         recibo_unid_file = st.file_uploader("Foto ou PDF do Recibo Assinado / Termo de Aceite (OPCIONAL):", type=["jpg", "jpeg", "png", "pdf"], key="upl_rec_unificado_v8")
+                        
+                        recebedor_info = st.text_input(
+                            "Informe Nome Completo e Matrícula de quem recebeu no Órgão Externo (OBRIGATÓRIO):", 
+                            placeholder="Ex: INVESTIGADOR SILVA - MAT 12345", 
+                            key="txt_recebedor_info_v11"
+                        ).strip()
                     else:
                         eh_definitivo_val = False
                         num_oficio_unid = ""
                         recibo_unid_file = None
-
-                    recebedor_info = st.text_input(
-                        "Informe Nome Completo e Matrícula de quem recebeu (OBRIGATÓRIO):", 
-                        placeholder="nome e matricula", 
-                        key="txt_recebedor_info_v11"
-                    ).strip()
+                        # Para repasses internos entre Policiais/CREDS, reaproveita a identificação cadastrada
+                        recebedor_info = str(destinatario_final or nome_militar_atual)
 
                     st.markdown("<br>", unsafe_allow_html=True)
                     if st.button("➕ Adicionar à Fila de Tramitação", type="secondary", width="stretch"):
                         if not destinatario_final:
                             st.error("⚠️ Selecione o destinatário antes de adicionar à fila.")
-                        elif not recebedor_info:
-                            st.error("⚠️ O preenchimento do Nome Completo e Matrícula de quem recebeu é OBRIGATÓRIO.")
+                        elif eh_orgao_ext_unid and not recebedor_info:
+                            st.error("⚠️ O preenchimento do Nome Completo e Matrícula de quem recebeu no órgão externo é OBRIGATÓRIO.")
                         elif eh_orgao_ext_unid and not num_oficio_unid:
                             st.error("⚠️ O preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO para órgãos externos.")
                         else:
@@ -577,8 +584,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     # ABA 3: HISTÓRICO PERMANENTE DE ENVIOS & OCORRÊNCIAS (PADRÃO TÁTICO)
     # =========================================================================
     elif aba_atual == "HISTORICO":
-        from modules.tco.estilo_tco import modal_cadeia_custodia_timeline, modal_guia_termo_oficial
-
         st.markdown("<h5 style='color: #ffe0b2;'>📜 Histórico Permanente de Envios & Ocorrências</h5>", unsafe_allow_html=True)
         st.caption("Consulte todas as tramitações, visualize a cadeia de custódia imutável ou emita a guia oficial de depósito.")
 
@@ -686,7 +691,11 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         lacre_h = item_h.get("involucro_lacre", "SEM LACRE")
                         autor_h = item_h.get("autores", "N/I")
                         custod_h = item_h.get("fiel_depositario_atual", "N/I")
-                        dest_h = item_h.get("destinatario_pendente") or item_h.get("fase_destinacao") or "N/I"
+                        
+                        # TRATAMENTO SEGURO CONTRA NoneType
+                        dest_h_raw = item_h.get("destinatario_pendente") or item_h.get("fase_destinacao") or "N/I"
+                        dest_h = str(dest_h_raw).strip()
+                        
                         status_h = item_h.get("status_tramite", "Em Custódia")
                         dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual") or item_h.get("data_ingestao")
 
@@ -710,7 +719,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         elif "JECRIM" in fase_u or "JUDICIÁRIO" in fase_u:
                             fase_tag_txt = "⚖️ JECRIM"
                         else:
-                            fase_tag_txt = f"📦 {dest_h[:18]}"
+                            fase_tag_txt = f"📦 {dest_h[:18]}" if dest_h else "📦 N/I"
 
                         col_card_info, col_card_lateral = st.columns([7.2, 2.8])
                         
@@ -738,10 +747,13 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             """
                             st.markdown(html_badges, unsafe_allow_html=True)
 
-                            col_b1, col_b2 = st.columns(2)
+                            col_b1, col_b2, col_b3 = st.columns(3)
                             with col_b1:
                                 if st.button("🔗 Cadeia", key=f"btn_cad_{id_bem_h}_{idx_h}", help="Ver histórico imutável (Art. 158-B CPP)", use_container_width=True):
                                     modal_cadeia_custodia_timeline(item_h.to_dict())
                             with col_b2:
                                 if st.button("📄 Guia", key=f"btn_guia_{id_bem_h}_{idx_h}", help="Gerar Termo de Depósito e Apreensão", use_container_width=True):
                                     modal_guia_termo_oficial(item_h.to_dict(), nome_militar_atual, num_pm_logado, unidade_militar_atual)
+                            with col_b3:
+                                if st.button("📷 Mídias", key=f"btn_midia_hist_{id_bem_h}_{idx_h}", help="Anexar ou visualizar fotos/documentos do bem", use_container_width=True):
+                                    abrir_modal_edicao_material(item_h.to_dict(), nome_militar_atual, unidade_militar_atual)
