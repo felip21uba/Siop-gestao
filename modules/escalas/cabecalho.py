@@ -1,7 +1,8 @@
 """
 ==============================================================================
 Módulo de Cabeçalho Institucional PMMG - Escalas (modules/escalas/cabecalho.py)
-Design tático idêntico ao padrão oficial do TCO (gradiente caqui/dourado).
+Design tático idêntico ao padrão oficial do TCO (gradiente caqui/dourado)
+com relógio dinâmico em tempo real rodando segundo a segundo.
 ==============================================================================
 """
 
@@ -20,7 +21,7 @@ def formatar_matricula_pm(mat: str) -> str:
 
 def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao="35ª CIA PM", titulo_modulo="Gestão de Escalas & Planejamento Operacional"):
     """
-    Renderiza o cabeçalho tático corporativo em HTML/CSS nativo idêntico ao TCO.
+    Renderiza o cabeçalho tático corporativo em HTML/CSS com relógio vivo em tempo real.
     """
     usr_dados = st.session_state.get("usuario_dados", {})
     if isinstance(usr_dados, str):
@@ -50,7 +51,7 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
     else:
         tag_local = f"{subunidade_atual} / P3/EM/{unidade_atual}/4 RPM"
 
-    hora_atual = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
+    hora_inicial = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
 
     st.markdown(f"""
     <div style="
@@ -105,7 +106,7 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
                 white-space: nowrap;
             ">
                 <span style="width: 8px; height: 8px; background-color: #22c55e; border-radius: 50%; display: inline-block; box-shadow: 0 0 6px #22c55e;"></span>
-                <span id="relogio_escalas_nativo">{hora_atual}</span>
+                <span id="relogio_escalas_vivo">{hora_inicial}</span>
             </div>
             <div style="
                 background: rgba(20, 15, 13, 0.65);
@@ -126,24 +127,25 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
         </div>
     </div>
 
-    <img src="x" onerror="
-        if (!window.relogioEscalasIniciado) {{
-            window.relogioEscalasIniciado = true;
-            function attRelogio() {{
-                var el = document.getElementById('relogio_escalas_nativo');
-                if (el) {{
-                    var agora = new Date();
-                    var d = String(agora.getDate()).padStart(2, '0');
-                    var m = String(agora.getMonth() + 1).padStart(2, '0');
-                    var a = agora.getFullYear();
-                    var h = String(agora.getHours()).padStart(2, '0');
-                    var min = String(agora.getMinutes()).padStart(2, '0');
-                    var s = String(agora.getSeconds()).padStart(2, '0');
-                    el.innerText = d + '/' + m + '/' + a + ' ' + h + ':' + min + ':' + s;
-                }}
+    <script>
+    (function() {{
+        function atualizarRelogioVivo() {{
+            var elemento = document.getElementById('relogio_escalas_vivo');
+            if (elemento) {{
+                var agora = new Date();
+                var dia = String(agora.getDate()).padStart(2, '0');
+                var mes = String(agora.getMonth() + 1).padStart(2, '0');
+                var ano = agora.getFullYear();
+                var horas = String(agora.getHours()).padStart(2, '0');
+                var minutos = String(agora.getMinutes()).padStart(2, '0');
+                var segundos = String(agora.getSeconds()).padStart(2, '0');
+                elemento.innerText = dia + '/' + mes + '/' + ano + ' ' + horas + ':' + minutos + ':' + segundos;
             }}
-            attRelogio();
-            setInterval(attRelogio, 1000);
         }}
-    " style="display:none;" />
+        atualizarRelogioVivo();
+        if (!window.timerRelogioEscalasVivo) {{
+            window.timerRelogioEscalasVivo = setInterval(atualizarRelogioVivo, 1000);
+        }}
+    }})();
+    </script>
     """, unsafe_allow_html=True)
