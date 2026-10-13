@@ -59,14 +59,13 @@ def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, po
 
         hash_senha = gerar_hash_senha(senha_inicial)
         
-        # Payload com o mapeamento estrito das colunas do ficheiro SQL
+        # Payload com o mapeamento estrito das colunas existentes na tabela 'usuarios'
         payload_novo = {
             "usuario_login": m_digitos,
             "usuario": m_digitos,
             "nome_guerra": str(nome_guerra).strip().upper(),
             "nome_completo": str(nome_completo or nome_guerra).strip().upper(),
             "cargo_funcao": str(posto_grad).strip().upper(),
-            "posto_grad": str(posto_grad).strip().upper(),
             "unidade": str(unidade).strip().upper(),
             "perfil_creds": perfil_creds,
             "perfil_escala": perfil_escala,
