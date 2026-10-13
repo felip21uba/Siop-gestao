@@ -1,8 +1,7 @@
 """
 ==============================================================================
 Módulo de Cabeçalho Institucional PMMG - Escalas (modules/escalas/cabecalho.py)
-Design tático idêntico ao padrão oficial, sem iframe, com relógio dinâmico 
-em tempo real e paleta de cores do Módulo de Escalas (Azul Corporativo).
+Design tático idêntico ao padrão oficial do TCO (gradiente caqui/dourado).
 ==============================================================================
 """
 
@@ -21,7 +20,7 @@ def formatar_matricula_pm(mat: str) -> str:
 
 def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao="35ª CIA PM", titulo_modulo="Gestão de Escalas & Planejamento Operacional"):
     """
-    Renderiza o cabeçalho tático corporativo em HTML/CSS nativo (sem iframe) no tom Azul das Escalas.
+    Renderiza o cabeçalho tático corporativo em HTML/CSS nativo idêntico ao TCO.
     """
     usr_dados = st.session_state.get("usuario_dados", {})
     if isinstance(usr_dados, str):
@@ -46,109 +45,82 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
     unidade_atual = str(st.session_state.get("cfg_unidade") or unidade_lotacao or "21º BPM").strip().upper()
     subunidade_atual = str(st.session_state.get("cfg_subunidade") or subunidade_lotacao or "35ª CIA PM").strip().upper()
 
-    lotacao_detalhada = f"{subunidade_atual} - P3/EM/{unidade_atual}/4 RPM" if "P3" not in subunidade_atual else subunidade_atual
+    if "21" in unidade_atual and "UBÁ" not in unidade_atual and "UBA" not in unidade_atual:
+        tag_local = f"{subunidade_atual} / P3/EM/{unidade_atual}/4 RPM (Ubá-MG)"
+    else:
+        tag_local = f"{subunidade_atual} / P3/EM/{unidade_atual}/4 RPM"
+
+    hora_atual = datetime.datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
 
     st.markdown(f"""
     <div style="
-        background-color: #232a35;
-        border: 1px solid #3c4858;
-        border-radius: 8px;
+        background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
+        border: 2px solid #c5a059;
+        border-radius: 12px;
         padding: 14px 20px;
-        margin-bottom: 20px;
+        margin-bottom: 22px;
         display: flex;
-        flex-wrap: wrap;
-        gap: 16px;
-        justify-content: space-between;
         align-items: center;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        justify-content: space-between;
+        gap: 16px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
     ">
-        <!-- LADO ESQUERDO: INSÍGNIA + TÍTULOS -->
-        <div style="display: flex; align-items: center; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 16px;">
             <div style="
-                width: 44px;
-                height: 44px;
-                background-color: #1a222d;
-                border: 1px solid #5b7fa6;
-                border-radius: 6px;
+                background: linear-gradient(135deg, #8f7442 0%, #5e4b29 100%);
+                border: 1.5px solid #e0c283;
+                border-radius: 10px;
+                width: 50px;
+                height: 50px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                color: #93c5fd;
-                font-size: 20px;
+                font-size: 24px;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
                 flex-shrink: 0;
-            ">
-                🛡️
-            </div>
+            ">🛡️</div>
             <div>
-                <h1 style="
-                    font-size: 1.15rem;
-                    color: #f0f4f8;
-                    margin: 0 0 2px 0;
-                    padding: 0;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    font-weight: 700;
-                ">
+                <h1 style="font-size: 1.30rem; font-weight: 800; color: #ffffff; margin: 0 0 3px 0; padding: 0; display: flex; align-items: center; gap: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.4);">
                     📅 {titulo_modulo}
                 </h1>
-                <p style="
-                    font-size: 0.82rem;
-                    color: #94a3b8;
-                    margin: 0;
-                    display: flex;
-                    align-items: center;
-                    gap: 6px;
-                    flex-wrap: wrap;
-                ">
-                    <span>SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável</span>
-                    <span>•</span>
-                    <span style="color: #60a5fa; font-weight: 600;">📍 {lotacao_detalhada} (Ubá-MG)</span>
-                </p>
+                <div style="font-size: 0.84rem; color: #f5ebe0; margin: 0;">
+                    SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável • 
+                    <span style="color: #ffe0b2; font-weight: 700;">📍 {tag_local}</span>
+                </div>
             </div>
         </div>
-
-        <!-- LADO DIREITO: RELÓGIO TEMPO REAL E DADOS DO OPERADOR -->
-        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 12px;">
             <div style="
-                background-color: #161c24;
-                border: 1px solid #334155;
-                padding: 6px 12px;
-                border-radius: 6px;
-                font-size: 0.85rem;
-                color: #e6dfd5;
+                background: rgba(20, 15, 13, 0.65);
+                border: 1px solid #c5a059;
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: #ffe0b2;
                 font-family: 'Consolas', 'Courier New', monospace;
+                font-size: 0.86rem;
                 font-weight: 700;
                 display: flex;
                 align-items: center;
                 gap: 8px;
                 white-space: nowrap;
             ">
-                <span style="
-                    width: 7px;
-                    height: 7px;
-                    border-radius: 50%;
-                    background-color: #22c55e;
-                    display: inline-block;
-                    box-shadow: 0 0 5px #22c55e;
-                "></span>
-                <span id="relogio_escalas_nativo">--/--/---- --:--:--</span>
+                <span style="width: 8px; height: 8px; background-color: #22c55e; border-radius: 50%; display: inline-block; box-shadow: 0 0 6px #22c55e;"></span>
+                <span id="relogio_escalas_nativo">{hora_atual}</span>
             </div>
             <div style="
-                background-color: #161c24;
-                border: 1px solid #334155;
-                padding: 5px 12px;
-                border-radius: 6px;
-                font-size: 0.82rem;
-                color: #ffffff;
-                line-height: 1.25;
+                background: rgba(20, 15, 13, 0.65);
+                border: 1px solid #c5a059;
+                border-radius: 8px;
+                padding: 7px 14px;
+                text-align: left;
+                line-height: 1.35;
                 white-space: nowrap;
             ">
-                <div style="font-size: 0.82rem; font-weight: 800; color: #ffffff;">
-                    <span style="color: #a855f7;">👤</span> {militar_completo} <span style="color: #a39683; font-weight: 500; font-size: 0.78rem;">(Mat. {matricula_fmt})</span>
+                <div style="color: #ffffff; font-size: 0.86rem; font-weight: 800;">
+                    👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.80rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
                 </div>
-                <div style="font-size: 0.75rem; color: #a39683; font-weight: 600;">
-                    🏛️ {lotacao_detalhada} — PLANTÃO
+                <div style="color: #ffe0b2; font-size: 0.76rem; font-weight: 700;">
+                    🏛️ {subunidade_atual} — PLANTÃO
                 </div>
             </div>
         </div>
