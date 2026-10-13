@@ -1,14 +1,18 @@
 """
 ==============================================================================
 Módulo de Estilos e Componentes Visuais do TCO (modules/tco/estilo_tco.py)
+Contém o cabeçalho tático oficial (com relógio dinâmico em tempo real) e os
+modais da Cadeia de Custódia e Guia Oficial de Depósito.
 ==============================================================================
 """
 
 import datetime
 from zoneinfo import ZoneInfo
 import streamlit as st
+import pandas as pd
 
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
+
 
 def formatar_matricula_pm(mat: str) -> str:
     """Formata a matrícula funcional de 7 dígitos para o padrão PM (Ex: 1337468 -> 133.746-8)."""
@@ -16,6 +20,7 @@ def formatar_matricula_pm(mat: str) -> str:
     if len(mat_limpa) == 7:
         return f"{mat_limpa[:3]}.{mat_limpa[3:6]}-{mat_limpa[6]}"
     return str(mat)
+
 
 def injetar_estilo_passo3_tco():
     """Injeta estilos CSS táticos para os modais e cards do TCO."""
@@ -43,8 +48,16 @@ def injetar_estilo_passo3_tco():
             display: inline-block;
             margin-right: 4px;
         }
+        .timeline-item-box {
+            background-color: #1e1814;
+            border-left: 4px solid #c5a059;
+            padding: 10px 14px;
+            margin-bottom: 10px;
+            border-radius: 0 6px 6px 0;
+        }
     </style>
     """, unsafe_allow_html=True)
+
 
 def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     """Renderiza o cabeçalho tático operacional oficial do TCO com relógio dinâmico segundo a segundo."""
@@ -175,3 +188,84 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     }})();
     </script>
     """, unsafe_allow_html=True)
+
+
+@st.dialog("🔗 Cadeia de Custódia Imutável (Art. 158-B do CPP)", width="large")
+def modal_cadeia_custodia_timeline(item_dados: dict):
+    """Exibe a linha do tempo imutável das movimentações do material."""
+    num_reds = item_dados.get("num_reds", "N/I")
+    desc = item_dados.get("descricao", "N/I")
+    id_bem = item_dados.get("id_bem") or item_dados.get("id", "N/I")
+    lacre = item_dados.get("involucro_lacre", "SEM LACRE")
+
+    st.markdown(f"##### 📦 Material: **{desc}**")
+    st.markdown(f"📄 REDS: **`{num_reds}`** | 🏷️ Invólucro/Lacre: **`{lacre}`** | 🆔 ID Bem: **`{id_bem}`**")
+    st.divider()
+
+    from core.database import supabase
+
+    logs = []
+    if supabase:
+        try:
+            res = supabase.table("tco_logs").select("*").eq("num_reds", num_reds).order("data_hora", desc=False).execute()
+            logs = res.data or []
+        except Exception as e:
+            st.error(f"Erro ao buscar histórico: {e}")
+
+    if logs:
+        st.markdown("##### 📜 Histórico Sequencial de Rastreabilidade:")
+        for idx, l in enumerate(logs):
+            dt_raw = l.get("data_hora", "")
+            try:
+                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y às %H:%M:%S")
+            except Exception:
+                dt_fmt = str(dt_raw)
+
+            st.markdown(f"""
+            <div class="timeline-item-box">
+                <strong style="color: #ffe0b2;">#{idx+1} — {l.get('acao', 'EVENTO')}</strong> ({dt_fmt})<br/>
+                👤 <strong>Origem:</strong> {l.get('origem', 'N/I')} ({l.get('unidade_origem', 'N/I')}) ➔ 
+                🎯 <strong>Destino:</strong> {l.get('destino', 'N/I')} ({l.get('unidade_destino', 'N/I')})<br/>
+                📝 <em>{l.get('detalhe', '')}</em>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("Nenhum histórico registrado para este material na tabela de auditoria.")
+
+
+@st.dialog("📄 Guia Oficial de Depósito e Apreensão TCO", width="large")
+def modal_guia_termo_oficial(item_dados: dict, nome_operador: str, num_pm_operador: str, unidade_operador: str):
+    """Gera e exibe a Guia Oficial de Depósito de Bens Apreendidos."""
+    num_reds = item_dados.get("num_reds", "N/I")
+    desc = item_dados.get("descricao", "N/I")
+    qtd = item_dados.get("quantidade", 1)
+    unid = item_dados.get("unidade_medida", "UN")
+    lacre = item_dados.get("involucro_lacre", "SEM LACRE")
+    autor = item_dados.get("autores", "N/I")
+    fiel = item_dados.get("fiel_depositario_atual", nome_operador)
+    fase = item_dados.get("fase_destinacao", "Com Fiel Depositário / Policial")
+    dt_agora = datetime.datetime.now().strftime("%d/%m/%Y às %H:%M:%S")
+
+    st.markdown(f"#### 🏛️ TERMO DE FIEL DEPÓSITO E GUARDA DE BENS — REDS {num_reds}")
+    
+    st.markdown(f"""
+    Aos **{datetime.datetime.now().strftime('%d de %B de %Y')}**, na sede da **{unidade_operador}**, o militar 
+    **{nome_operador}** (Matrícula {num_pm_operador}) fez a entrega/conferência formal do bem apreendido abaixo discriminado, 
+    ficando o depositário **{fiel}** devidamente cientificado da responsabilidade de guarda e conservação da Cadeia de Custódia (Art. 158-A CPP).
+    """)
+
+    st.markdown("---")
+    st.markdown(f"📦 **Descrição:** {desc}")
+    st.markdown(f"📊 **Quantidade:** {qtd} {unid} | 🏷️ **Invólucro/Lacre:** {lacre}")
+    st.markdown(f"👤 **Autor/Envolvido:** {autor}")
+    st.markdown(f"📍 **Situação Atual:** {fase}")
+    st.markdown(f"⏱️ **Data da Emissão:** {dt_agora}")
+    st.markdown("---")
+
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        st.caption("✍️ Assinatura do Fiel Depositário")
+        st.markdown(f"______________________________________  \n**{fiel}**")
+    with col_g2:
+        st.caption("✍️ Assinatura do Responsável pela Custódia")
+        st.markdown(f"______________________________________  \n**{nome_operador} ({num_pm_operador})**")
