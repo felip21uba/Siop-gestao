@@ -51,14 +51,14 @@ def verificar_existencia_reds_banco(num_reds: str):
 def modal_alerta_reds_duplicado(num_reds, dt_cad, op_cad):
     @st.dialog("⚠️ Atenção: REDS Já Registrado")
     def _dialog():
-        st.warning(f"O REDS **{num_reds}** já foi importado anteriormente.")
+        st.warning(f"O REDS **{num_reds}** já foi importado anteriormente na base de dados.")
         st.write(f"📅 **Data de Registro:** {dt_cad}")
-        st.write(f"👮‍♂️ **Operador:** {op_cad}")
-        st.info("Caso prossiga, as informações serão atualizadas na base de dados.")
+        st.write(f"👮‍♂️ **Operador Responsável:** {op_cad}")
+        st.info("Deseja prosseguir e incluir/atualizar este REDS assim mesmo?")
 
         col_c1, col_c2 = st.columns(2)
         with col_c1:
-            if st.button("🔄 Sobrescrever / Atualizar", type="primary", use_container_width=True):
+            if st.button("🔄 Sim, Incluir / Sobrescrever", type="primary", use_container_width=True):
                 st.session_state["confirmou_duplicidade_reds"] = True
                 st.rerun()
         with col_c2:
