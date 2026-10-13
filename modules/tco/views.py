@@ -33,36 +33,47 @@ def verificar_existencia_reds_banco(num_reds: str):
 
     num_clean = str(num_reds).strip().upper()
     try:
-        res = supabase.table("tco_registros").select("created_at, operador_cadastro").eq("num_reds", num_clean).execute()
-        if res and res.data and len(res.data) > 0:
-            reg = res.data[0]
-            return True, reg.get("created_at", "Data N/I"), reg.get("operador_cadastro", "Operador N/I")
-            
-        res_m = supabase.table("tco_materiais").select("created_at, fiel_depositario_atual").eq("num_reds", num_clean).limit(1).execute()
+        res_m = supabase.table("tco_materiais").select("created_at, fiel_depositario_atual").eq("num_reds", num_clean).order("created_at", desc=True).limit(1).execute()
         if res_m and res_m.data and len(res_m.data) > 0:
             reg_m = res_m.data[0]
-            return True, reg_m.get("created_at", "Data N/I"), reg_m.get("fiel_depositario_atual", "Operador N/I")
+            dt_raw = reg_m.get("created_at", "Data N/I")
+            try:
+                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y às %H:%M")
+            except Exception:
+                dt_fmt = str(dt_raw)[:16]
+            return True, dt_fmt, reg_m.get("fiel_depositario_atual", "Operador N/I")
+
+        res = supabase.table("tco_registros").select("created_at, operador_cadastro").eq("num_reds", num_clean).limit(1).execute()
+        if res and res.data and len(res.data) > 0:
+            reg = res.data[0]
+            dt_raw = reg.get("created_at", "Data N/I")
+            try:
+                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y às %H:%M")
+            except Exception:
+                dt_fmt = str(dt_raw)[:16]
+            return True, dt_fmt, reg.get("operador_cadastro", "Operador N/I")
     except Exception as e:
         print(f"Aviso ao verificar existência do REDS {num_clean}: {e}")
 
     return False, None, None
 
 
-@st.dialog("⚠️ Atenção: REDS Já Registrado")
+@st.dialog("⚠️ REDS / Arquivo Já Cadastrado")
 def modal_alerta_reds_duplicado(num_reds, dt_cad, op_cad):
-    st.warning(f"O REDS **{num_reds}** já foi importado anteriormente na base de dados.")
-    st.write(f"📅 **Data de Registro:** {dt_cad}")
-    st.write(f"👮‍♂️ **Operador Responsável:** {op_cad}")
-    st.info("Deseja prosseguir e incluir/atualizar este REDS assim mesmo?")
+    st.warning(f"⚠️ O REDS **{num_reds}** já foi importado anteriormente na base de dados.")
+    st.markdown(f"📅 **Data do Cadastro Anterior:** `{dt_cad}`")
+    st.markdown(f"👮‍♂️ **Responsável / Fiel Depositário:** `{op_cad}`")
+    st.markdown("---")
+    st.info("Deseja prosseguir com a inclusão / atualização deste REDS assim mesmo?")
 
     col_c1, col_c2 = st.columns(2)
     with col_c1:
-        if st.button("🔄 Sim, Incluir / Sobrescrever", type="primary", use_container_width=True, key="btn_confirm_dupl_sim"):
+        if st.button("🔄 Sim, Prosseguir e Incluir", type="primary", use_container_width=True, key="btn_confirm_dupl_sim_v2"):
             st.session_state["confirmou_duplicidade_reds"] = True
             st.session_state["exibir_modal_duplicidade"] = False
             st.rerun()
     with col_c2:
-        if st.button("❌ Cancelar", use_container_width=True, key="btn_confirm_dupl_nao"):
+        if st.button("❌ Cancelar Importação", use_container_width=True, key="btn_confirm_dupl_nao_v2"):
             st.session_state["temp_reds_extraido"] = None
             st.session_state["confirmou_duplicidade_reds"] = False
             st.session_state["exibir_modal_duplicidade"] = False
@@ -255,6 +266,11 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     if "exibir_modal_duplicidade" not in st.session_state:
         st.session_state["exibir_modal_duplicidade"] = False
 
+    # VERIFICAÇÃO E RENDERIZAÇÃO DO MODAL NO TOPO DA ABA
+    if st.session_state.get("exibir_modal_duplicidade", False):
+        n_r, d_c, o_c = st.session_state.get("dados_duplicidade_temp", ("N/I", "N/I", "N/I"))
+        modal_alerta_reds_duplicado(n_r, d_c, o_c)
+
     col_ing1, col_ing2 = st.columns(2)
     
     with col_ing1:
@@ -277,13 +293,9 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                             if existe_reds and not st.session_state.get("confirmou_duplicidade_reds", False):
                                 st.session_state["dados_duplicidade_temp"] = (dados_reds["num_reds"], dt_cad, op_cad)
                                 st.session_state["exibir_modal_duplicidade"] = True
+                                st.rerun()
                             else:
                                 st.success("Leitura do REDS concluída!")
-
-    # Exibe o modal de diálogo caso a flag de duplicidade tenha sido acionada
-    if st.session_state.get("exibir_modal_duplicidade", False):
-        n_r, d_c, o_c = st.session_state.get("dados_duplicidade_temp", ("N/I", "N/I", "N/I"))
-        modal_alerta_reds_duplicado(n_r, d_c, o_c)
 
     with col_ing2:
         with st.container(border=True):
@@ -406,7 +418,6 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                     desc_clean = str(row["descricao"]).strip()
                     lacre_clean = str(row["involucro"]).strip()
 
-                    # ID determinístico único por REDS e ITEM
                     id_bem_unico = f"BEM-{num_reds_clean}-ITEM-{item_num_clean}"
                     
                     novo_bem = {
