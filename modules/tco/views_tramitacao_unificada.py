@@ -72,7 +72,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     # =========================================================================
     st.markdown("""
     <style>
-    /* Estilização da caixa pai que engloba o cabeçalho e os 3 botões */
     div[data-testid="stVerticalBlock"]:has(> div > .painel-tramitacao-cabecalho) {
         background: linear-gradient(135deg, #7d6539 0%, #63502c 100%) !important;
         border: 2px solid #c5a059 !important;
@@ -434,11 +433,19 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     id_bem=f_item["id_bem"]
                                 )
 
+                            # =========================================================================
+                            # CORREÇÃO APLICADA: HIGIENIZA O PREFIXO PARA EVITAR DUPLICAÇÃO DE "Entregue ao"
+                            # =========================================================================
                             if f_item.get("eh_orgao_ext"):
                                 status_tr_f = "Transferido Definitivo" if f_item.get("eh_definitivo") else "Em Tramitação"
-                                dest_p_f = None
-                                fiel_f = f_item["destinatario"]
-                                fase_f = f"Entregue ao {f_item['destinatario']} (Ofício: {f_item.get('num_oficio')})"
+                                
+                                dest_limpo = str(f_item["destinatario"]).replace("Entregue ao ", "").replace("Entregue ao", "").strip()
+                                fiel_f = dest_limpo
+                                
+                                if f_item.get("num_oficio"):
+                                    fase_f = f"Entregue ao {dest_limpo} (Ofício: {f_item.get('num_oficio')})"
+                                else:
+                                    fase_f = f"Entregue ao {dest_limpo}"
                             else:
                                 status_tr_f = "Pendente de Aceite"
                                 dest_p_f = f_item["destinatario"]
@@ -446,8 +453,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 fase_f = f_item["fase_destinacao"]
 
                             payload_update = {
-                                "destinatario_pendente": dest_p_f,
-                                "unidade_destinatario_pendente": f_item["unidade_destinatario"] if dest_p_f else None,
+                                "destinatario_pendente": dest_p_f if not f_item.get("eh_orgao_ext") else None,
+                                "unidade_destinatario_pendente": f_item["unidade_destinatario"] if not f_item.get("eh_orgao_ext") else None,
                                 "fiel_depositario_atual": fiel_f,
                                 "data_envio_tramite": agora_iso,
                                 "fase_destinacao": fase_f,
