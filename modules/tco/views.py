@@ -14,13 +14,7 @@ from core.database import (
 from core.permissions import usuario_eh_gestor_creds
 from modules.tco.parser_reds import extrair_dados_reds_pdf
 from modules.tco.storage import upload_midia_supabase
-from modules.tco.database import (
-    salvar_material_supabase, 
-    atualizar_material_supabase, 
-    registrar_log_supabase, 
-    carregar_logs_supabase,
-    verificar_material_existente_banco
-)
+from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase, carregar_logs_supabase
 from modules.tco.estilo_tco import (
     injetar_estilo_passo3_tco,
     formatar_matricula_pm,
@@ -246,7 +240,7 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", peri
 
 
 # =============================================================================
-# ABA 1: IMPORTAÇÃO E UPLOAD (CORRIGIDO TRAVA DE DEDUPLICAÇÃO)
+# ABA 1: IMPORTAÇÃO E UPLOAD
 # =============================================================================
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_estilo_passo3_tco()
@@ -347,7 +341,6 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
         if d["materiais"]:
             df_mats = pd.DataFrame(d["materiais"])
             
-            # Garante a existência de todas as colunas necessárias sem KeyError
             if "remover" not in df_mats.columns:
                 df_mats.insert(0, "remover", False)
             if "item_num" not in df_mats.columns:
@@ -401,7 +394,7 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                     desc_clean = str(row["descricao"]).strip()
                     lacre_clean = str(row["involucro"]).strip()
 
-                    # ID determinístico por REDS + ITEM (evita geração de novos UUIDs ao reimportar)
+                    # ID determinístico único por REDS e ITEM
                     id_bem_unico = f"BEM-{num_reds_clean}-ITEM-{item_num_clean}"
                     
                     novo_bem = {
@@ -640,7 +633,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     mat_op = str(usr_dados.get("num_policia") or usr_dados.get("usuario_login") or "1764921")
 
     # =========================================================================
-    # RETÂNGULO 1: 🎒 ACERVO ATIVO (CARDS COM DADOS EXATOS DAS FOTOS)
+    # RETÂNGULO 1: 🎒 ACERVO ATIVO
     # =========================================================================
     if filtro_card in ["TODOS", "CREDS", "PARADOS"]:
         with st.container(border=True):
