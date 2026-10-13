@@ -121,7 +121,7 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
             ">🛡️</div>
             <div>
                 <h1 style="font-size: 1.30rem; font-weight: 800; color: #ffffff; margin: 0 0 3px 0; padding: 0; display: flex; align-items: center; gap: 8px; text-shadow: 0 1px 2px rgba(0,0,0,0.4);">
-                    📦 Custódia de Materiais TCO & Cadeia de Custódia
+                    📦 Custódia de Materiais TCO &amp; Cadeia de Custódia
                 </h1>
                 <div style="font-size: 0.84rem; color: #f5ebe0; margin: 0;">
                     SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável • 
@@ -168,6 +168,10 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
 
     <script>
     (function() {{
+        if (window.timerRelogioTcoVivo) {{
+            clearInterval(window.timerRelogioTcoVivo);
+        }}
+        
         function atualizarRelogioTcoVivo() {{
             var elemento = document.getElementById('relogio_tco_vivo');
             if (elemento) {{
@@ -181,10 +185,9 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
                 elemento.innerText = dia + '/' + mes + '/' + ano + ' ' + horas + ':' + minutos + ':' + segundos;
             }}
         }}
+        
         atualizarRelogioTcoVivo();
-        if (!window.timerRelogioTcoVivo) {{
-            window.timerRelogioTcoVivo = setInterval(atualizarRelogioTcoVivo, 1000);
-        }}
+        window.timerRelogioTcoVivo = setInterval(atualizarRelogioTcoVivo, 1000);
     }})();
     </script>
     """, unsafe_allow_html=True)
