@@ -80,11 +80,14 @@ def renderizar_relogio_sessao(tempo_minutos=20):
         components.html(html_relogio, height=48)
 
 def auto_salvar_rascunho_escala_supabase(usuario_id):
-    """Salva automaticamente o progresso da escala no Supabase."""
+    """Salva automaticamente o progresso da escala no Supabase garantindo o usuario_login unificado."""
     if not supabase or not usuario_id or usuario_id == "default_user":
         return
     try:
         now_iso = datetime.datetime.now().isoformat()
+        usr_logado = st.session_state.get("usuario_dados", {})
+        login_limpo = str(usr_logado.get("usuario_login") or usr_logado.get("num_policia") or usuario_id).strip().upper()
+
         estado_escala = {
             "grade_escala_lancamentos": st.session_state.get("grade_escala_lancamentos", {}),
             "militares_selecionados_ids": st.session_state.get("militares_selecionados_ids", []),
@@ -93,7 +96,7 @@ def auto_salvar_rascunho_escala_supabase(usuario_id):
         }
         
         payload = {
-            "usuario_id": str(usuario_id),
+            "usuario_id": login_limpo,
             "estado_json": json.dumps(estado_escala, ensure_ascii=False),
             "ultima_atividade": now_iso
         }
@@ -103,12 +106,20 @@ def auto_salvar_rascunho_escala_supabase(usuario_id):
         pass
 
 def restaurar_rascunho_escala_supabase(usuario_id):
-    """Restaura os dados do rascunho de onde o operador parou."""
+    """Restaura os dados do rascunho de onde o operador parou consultando pelo identificador fixo."""
     if not supabase or not usuario_id or st.session_state.get("escala_restaurada", False):
         return
     try:
-        res = supabase.table("escalas_sessao_rascunho").select("*").eq("usuario_id", str(usuario_id)).execute()
-        if res.data and len(res.data) > 0:
+        usr_logado = st.session_state.get("usuario_dados", {})
+        login_limpo = str(usr_logado.get("usuario_login") or usr_logado.get("num_policia") or usuario_id).strip().upper()
+
+        res = supabase.table("escalas_sessao_rascunho").select("*").eq("usuario_id", login_limpo).execute()
+        
+        # Fallback de busca caso haja registro salvo com o id antigo
+        if not (res and res.data) and str(usuario_id) != login_limpo:
+            res = supabase.table("escalas_sessao_rascunho").select("*").eq("usuario_id", str(usuario_id)).execute()
+
+        if res and res.data and len(res.data) > 0:
             rec = res.data[0]
             estado = json.loads(rec.get("estado_json", "{}"))
             
@@ -131,7 +142,7 @@ def gerenciar_timeout_sessao():
         return
 
     usr_logado = st.session_state.get("usuario_dados", {})
-    usr_id = str(usr_logado.get("id") or usr_logado.get("usuario_login") or "").strip()
+    usr_id = str(usr_logado.get("usuario_login") or usr_logado.get("num_policia") or usr_logado.get("id") or "").strip()
     now_ts = time.time()
 
     ultima_ts = st.session_state.get("ultima_atividade_ts")
