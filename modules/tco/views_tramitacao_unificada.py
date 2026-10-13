@@ -5,7 +5,8 @@ from core.database import supabase, carregar_militares_supabase
 from core.permissions import usuario_eh_gestor_creds
 from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
 from modules.tco.storage import upload_midia_supabase
-from modules.tco.modais import abrir_modal_edicao_material, modal_cadeia_custodia_timeline, modal_guia_termo_oficial
+from modules.tco.modais import abrir_modal_edicao_material
+from modules.tco.estilo_tco import modal_cadeia_custodia_timeline, modal_guia_termo_oficial
 from utils.file_validator import sanitizar_nome_arquivo
 
 
