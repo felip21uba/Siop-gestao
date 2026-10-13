@@ -19,35 +19,49 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
     unidades_set = set()
 
+    def normalizar_para_nivel_pelotao(texto_unid):
+        """Reduz frações menores (GPs) para o nível máximo de Pelotão/Cia/BPM."""
+        u_str = str(texto_unid).strip().upper()
+        if not u_str or u_str in ["NONE", "NAN", "N/I", ""]:
+            return ""
+            
+        # Se contiver Grupo (GP), remove a parte do Grupo e mantém do Pelotão em diante
+        if "GP/" in u_str:
+            partes = u_str.split("GP/")
+            if len(partes) > 1:
+                sub_partes = partes[1].split("/", 1)
+                u_str = sub_partes[1].strip() if len(sub_partes) > 1 else partes[1].strip()
+        
+        # Garante a formatação limpa no padrão CREDS
+        if not u_str.startswith("CREDS"):
+            return f"CREDS {u_str}"
+        return u_str
+
     if supabase:
         try:
             res = supabase.table("usuarios").select("unidade").execute()
             if res and res.data:
                 for row in res.data:
                     unid_raw = str(row.get("unidade") or "").strip().upper()
-                    if unid_raw and unid_raw != "NONE":
-                        fragmentos = [f.strip() for f in unid_raw.split("/") if f.strip()]
-                        for frag in fragmentos:
-                            if not frag.startswith("CREDS"):
-                                unidades_set.add(f"CREDS {frag}")
-                            else:
-                                unidades_set.add(frag)
+                    unid_fmt = normalizar_para_nivel_pelotao(unid_raw)
+                    if unid_fmt:
+                        unidades_set.add(unid_fmt)
         except Exception as e:
-            print(f"Aviso ao consultar unidades para o CREDS: {e}")
+            print(f"Aviso ao consultar unidades para o CREDS no Supabase: {e}")
 
     if unidade_militar_atual:
-        unid_op = str(unidade_militar_atual).strip().upper()
-        fragmentos_op = [f.strip() for f in unid_op.split("/") if f.strip()]
-        for frag in fragmentos_op:
-            if not frag.startswith("CREDS"):
-                unidades_set.add(f"CREDS {frag}")
-            else:
-                unidades_set.add(frag)
+        unid_op_fmt = normalizar_para_nivel_pelotao(unidade_militar_atual)
+        if unid_op_fmt:
+            unidades_set.add(unid_op_fmt)
 
     if not unidades_set:
-        unidades_set.add("CREDS 35ª CIA PM")
-        unidades_set.add("CREDS 111ª CIA PM")
-        unidades_set.add("CREDS 285ª CIA TM")
+        unidades_set.add("CREDS 35ª CIA PM / 21º BPM")
+        unidades_set.add("CREDS 1º PEL / 35ª CIA PM / 21º BPM")
+        unidades_set.add("CREDS 2º PEL / 35ª CIA PM / 21º BPM")
+        unidades_set.add("CREDS 3º PEL / 35ª CIA PM / 21º BPM")
+        unidades_set.add("CREDS 4º PEL / 35ª CIA PM / 21º BPM")
+        unidades_set.add("CREDS 111ª CIA PM / 21º BPM")
+        unidades_set.add("CREDS 285ª CIA TM / 21º BPM")
         unidades_set.add("CREDS 21º BPM")
 
     return sorted(list(unidades_set)) + orgaos_externos
@@ -434,7 +448,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 )
 
                             # =========================================================================
-                            # CORREÇÃO APLICADA: HIGIENIZA O PREFIXO PARA EVITAR DUPLICAÇÃO DE "Entregue ao"
+                            # HIGIENIZA O PREFIXO PARA EVITAR DUPLICAÇÃO DE "Entregue ao"
                             # =========================================================================
                             if f_item.get("eh_orgao_ext"):
                                 status_tr_f = "Transferido Definitivo" if f_item.get("eh_definitivo") else "Em Tramitação"
