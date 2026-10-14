@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 from core.database import supabase, carregar_militares_supabase
-from core.permissions import usuario_eh_gestor_creds
+from core.permissions import usuario_eh_gestor_creds, usuario_eh_admin_ou_programador
 from modules.tco.database import registrar_log_supabase, atualizar_material_supabase
 from modules.tco.storage import upload_midia_supabase
 from modules.tco.modais import abrir_modal_edicao_material
@@ -38,10 +38,10 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 
     if supabase:
         try:
-            res = supabase.table("usuarios").select("unidade").execute()
+            res = supabase.table("usuarios").select("unidade, creds_acesso").execute()
             if res and res.data:
                 for row in res.data:
-                    unid_raw = str(row.get("unidade") or "").strip().upper()
+                    unid_raw = str(row.get("creds_acesso") or row.get("unidade") or "").strip().upper()
                     unid_fmt = normalizar_para_nivel_pelotao(unid_raw)
                     if unid_fmt:
                         unidades_set.add(unid_fmt)
@@ -69,11 +69,9 @@ def extrair_unidades_creds_banco(unidade_militar_atual=""):
 def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, unidade_militar_atual):
     usr_logado = st.session_state.get("usuario_dados", {})
     num_pm_logado = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
+    creds_atribuido_usr = str(usr_logado.get("creds_acesso") or usr_logado.get("unidade") or unidade_militar_atual).strip().upper()
 
-    eh_gestor_creds = usuario_eh_gestor_creds(usr_logado) or any(
-        p in str(usr_logado.get("perfil_creds", "")).upper() 
-        for p in ["GESTOR", "ADMIN", "PROGRAMADOR"]
-    )
+    eh_gestor_creds = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)
 
     if "subaba_tramitacao_ativa" not in st.session_state:
         st.session_state["subaba_tramitacao_ativa"] = "TRAMITAR"
@@ -107,6 +105,16 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         font-size: 0.84rem;
         color: #f5ebe0;
         margin: 0;
+    }
+    .badge-creds-origem {
+        background-color: #1e293b !important;
+        color: #f8fafc !important;
+        border: 1px solid #38bdf8 !important;
+        border-radius: 6px;
+        padding: 4px 10px;
+        font-size: 0.78rem;
+        font-weight: 800;
+        text-transform: uppercase;
     }
     .badge-fase-status {
         background-color: #8c7343 !important;
@@ -152,13 +160,14 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
     """, unsafe_allow_html=True)
 
     with st.container():
-        st.markdown("""
+        st.markdown(f"""
         <div class="painel-tramitacao-cabecalho">
             <div class="painel-tramitacao-titulo">
                 🎒 Custódia Física &amp; Tramitação Unificada
             </div>
             <div class="painel-tramitacao-subtitulo">
                 Gerencie os bens sob sua posse, realize remessas para policiais/órgãos e consulte o histórico imutável das movimentações.
+                <br/><b>📍 Seu Escopo de Atuação Ativo:</b> <span class="badge-creds-origem">🏢 CREDS {creds_atribuido_usr}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -190,7 +199,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         st.session_state["itens_selecionados_tramite"] = {}
 
     # =========================================================================
-    # ABA 1: TRAMITAR MATERIAIS OU REDS SEM MATERIAIS
+    # ABA 1: TRAMITAR MATERIAIS
     # =========================================================================
     if aba_atual == "TRAMITAR":
         bens_posse = []
@@ -202,17 +211,17 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             num_r = str(b.get("num_reds", "")).strip()
 
             if not b.get("destinatario_pendente") and status_tr not in ["Arquivado/Destinado", "Transferido Definitivo", "Destruído / Encerrado"]:
-                if num_pm_logado in posse_atual or nome_militar_atual.upper() in posse_atual or unidade_militar_atual in posse_atual or "CUSTÓDIA" in posse_atual:
+                if num_pm_logado in posse_atual or nome_militar_atual.upper() in posse_atual or unidade_militar_atual in posse_atual or creds_atribuido_usr in posse_atual or "CUSTÓDIA" in posse_atual:
                     bens_posse.append(b)
 
             if b.get("descricao") == "SEM MATERIAL APREENDIDO" or str(b.get("quantidade")) == "0":
                 reds_sem_materiais.add(num_r)
 
         if not bens_posse and not reds_sem_materiais and not st.session_state["fila_tramitacao_mapeada"]:
-            st.info("ℹ️ Nenhum material ativo pendente de nova tramitação na sua custódia individual no momento.")
+            st.info(f"ℹ️ Nenhum material ativo pendente de nova tramitação no escopo do **CREDS {creds_atribuido_usr}** no momento.")
         else:
             if bens_posse:
-                st.markdown(f"##### 🎒 Seus Bens em Custódia Física ({len(bens_posse)} item/ns)")
+                st.markdown(f"##### 🎒 Seus Bens em Custódia Física / Cia ({len(bens_posse)} item/ns)")
 
                 df_bens = pd.DataFrame(bens_posse)
                 grupos_reds = df_bens.groupby("num_reds")
@@ -252,6 +261,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             lacre = str(row.get("involucro_lacre", "SEM LACRE")).strip()
                             autor = str(row.get("autores", "N/I")).strip()
                             custod = str(row.get("fiel_depositario_atual") or row.get("unidade_posse_atual") or nome_militar_atual).strip()
+                            unid_posse_exata = str(row.get("unidade_posse_atual") or creds_atribuido_usr).strip().upper()
                             dest_raw = row.get("destinatario_pendente") or row.get("fase_destinacao") or "Com Fiel Depositário / Policial"
                             dest_str = str(dest_raw).strip()
                             status_b = str(row.get("status_tramite", "Em Custódia")).strip()
@@ -298,7 +308,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 <div style="background: {bg_card}; border: 1.5px solid #a3824b; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; color: #ffffff;">
                                     📄 REDS: <strong style="color: #ffffff;">{num_reds}</strong> | Material: <strong style="color: #ffe0b2;">{desc}</strong> (Qtd: {qtd} {unid}){html_midia_txt}<br/>
                                     🏷️ Lacre: <strong style="color: #ffffff;">{lacre}</strong> | Autor: <strong style="color: #ffe0b2;">{autor}</strong><br/>
-                                    📍 <b>Custodiante / Posse:</b> <strong style="color: #ffd180;">{custod}</strong><br/>
+                                    🏢 <b>CREDS / Unidade de Posse:</b> <span class="badge-creds-origem">{unid_posse_exata}</span> | 👤 <b>Fiel Depositário:</b> <strong style="color: #ffd180;">{custod}</strong><br/>
                                     <div style="margin-top: 8px;">
                                         🎯 <b>Destino:</b> <span class="tag-info-retangulo">{dest_str}</span>
                                         📊 <b>Status:</b> <span class="tag-info-retangulo">{status_b}</span>
@@ -546,6 +556,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 "destinatario_pendente": dest_p_f if not f_item.get("eh_orgao_ext") else None,
                                 "unidade_destinatario_pendente": f_item["unidade_destinatario"] if not f_item.get("eh_orgao_ext") else None,
                                 "fiel_depositario_atual": fiel_f,
+                                "unidade_posse_atual": f_item["unidade_destinatario"],
                                 "data_envio_tramite": agora_iso,
                                 "fase_destinacao": fase_f,
                                 "status_tramite": status_tr_f,
@@ -629,7 +640,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     "unidade_destinatario_pendente": None,
                                     "status_tramite": "Em Custódia",
                                     "fiel_depositario_atual": nome_militar_atual,
-                                    "unidade_posse_atual": unidade_militar_atual,
+                                    "unidade_posse_atual": creds_atribuido_usr,
                                     "fase_destinacao": "Com Fiel Depositário / Policial"
                                 }
                                 if atualizar_material_supabase(id_bem_e, payload_retorno):
@@ -642,8 +653,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                         "origem": dest_e,
                                         "unidade_origem": "Órgão Externo",
                                         "destino": nome_militar_atual,
-                                        "unidade_destino": unidade_militar_atual,
-                                        "detalhe": f"Aceite de retorno do material {desc_e} confirmado na guarda de {nome_militar_atual}."
+                                        "unidade_destino": creds_atribuido_usr,
+                                        "detalhe": f"Aceite de retorno do material {desc_e} confirmado na guarda de {nome_militar_atual} ({creds_atribuido_usr})."
                                     })
                                     st.success("✅ Retorno confirmado! O material foi reincorporado à sua custódia individual.")
                                     st.cache_data.clear()
@@ -670,7 +681,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
             dest_pendente = b.get("destinatario_pendente")
             status_t = str(b.get("status_tramite", ""))
 
-            if (num_pm_logado in remetente or nome_militar_atual.upper() in remetente or unidade_militar_atual in remetente) or dest_pendente or status_t == "Transferido Definitivo":
+            if (num_pm_logado in remetente or nome_militar_atual.upper() in remetente or unidade_militar_atual in remetente or creds_atribuido_usr in remetente) or dest_pendente or status_t == "Transferido Definitivo":
                 envios_militar.append(b)
 
         if busca_reds_hist:
@@ -716,6 +727,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         lacre_h = item_h.get("involucro_lacre", "SEM LACRE")
                         autor_h = item_h.get("autores", "N/I")
                         custod_h = str(item_h.get("fiel_depositario_atual") or item_h.get("unidade_posse_atual") or "N/I").strip()
+                        unid_posse_hist = str(item_h.get("unidade_posse_atual") or "N/I").strip().upper()
                         dest_h_raw = item_h.get("destinatario_pendente") or item_h.get("fase_destinacao") or "N/I"
                         dest_h = str(dest_h_raw).strip()
                         status_h = item_h.get("status_tramite", "Em Custódia")
@@ -754,7 +766,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             <div style="background: {bg_card_h}; border: 1.5px solid #a3824b; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; color: #ffffff;">
                                 📄 REDS: <strong style="color: #ffffff;">{num_reds_h}</strong> | Material: <strong style="color: #ffe0b2;">{desc_h}</strong> (Qtd: {qtd_h_val} {unid_med}){html_midia_txt_h}<br/>
                                 🏷️ Lacre: <strong style="color: #ffffff;">{lacre_h}</strong> | Autor: <strong style="color: #ffe0b2;">{autor_h}</strong><br/>
-                                📍 <b>Custodiante / Posse:</b> <strong style="color: #ffd180;">{custod_h}</strong><br/>
+                                🏢 <b>CREDS / Unidade da Posse:</b> <span class="badge-creds-origem">{unid_posse_hist}</span> | 👤 <b>Fiel Depositário:</b> <strong style="color: #ffd180;">{custod_h}</strong><br/>
                                 <div style="margin-top: 8px;">
                                     🎯 <b>Destino:</b> <span class="tag-info-retangulo">{dest_h}</span>
                                     📊 <b>Status:</b> <span class="tag-info-retangulo">{status_h}</span>
