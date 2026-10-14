@@ -2,7 +2,7 @@
 ==============================================================================
 Módulo Gerador de PDFs Oficiais do TCO (modules/tco/pdf_generator.py)
 Gera os PDFs dos Ofícios de Remessa de Bens com tabela de materiais,
-Assinatura Digital do Emissor e Hash de Autenticidade SHA-256.
+Assinatura Digital do Emissor, QR Code de Validação e Hash SHA-256.
 ==============================================================================
 """
 
@@ -21,11 +21,31 @@ from reportlab.platypus import (
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.barcode.qr import QrCodeWidget
 
 
 def calcular_hash_sha256(conteudo_texto: str) -> str:
     """Gera a assinatura digital SHA-256 para garantia da integridade do documento."""
     return hashlib.sha256(conteudo_texto.encode("utf-8")).hexdigest().upper()
+
+
+def gerar_qrcode_widget(conteudo: str, tamanho: float = 65) -> Drawing:
+    """Gera um elemento Drawing contendo o QR Code no ReportLab."""
+    qr_code = QrCodeWidget(conteudo)
+    bounds = qr_code.getBounds()
+    largura_orig = bounds[2] - bounds[0]
+    altura_orig = bounds[3] - bounds[1]
+    
+    d = Drawing(tamanho, tamanho)
+    d.add(qr_code)
+    # Ajusta escala para caber na dimensão desejada
+    if largura_orig > 0 and altura_orig > 0:
+        qr_code.x = 0
+        qr_code.y = 0
+        qr_code.width = tamanho
+        qr_code.height = tamanho
+    return d
 
 
 def gerar_pdf_oficio(
@@ -132,9 +152,9 @@ def gerar_pdf_oficio(
         parent=styles["Normal"],
         fontName="Courier-Bold",
         fontSize=7,
-        leading=8,
-        alignment=TA_CENTER,
-        textColor=colors.HexColor("#64748b")
+        leading=9,
+        alignment=TA_LEFT,
+        textColor=colors.HexColor("#334155")
     )
 
     story = []
@@ -200,21 +220,42 @@ def gerar_pdf_oficio(
     ]))
 
     story.append(tabela_mats)
-    story.append(Spacer(1, 25))
+    story.append(Spacer(1, 20))
 
     # 6. Campo de Assinatura
     story.append(HRFlowable(width="50%", thickness=1, color=colors.HexColor("#475569"), hAlign="CENTER", spaceAfter=6))
     story.append(Paragraph(f"<b>{emissor_nome}</b>", style_assinatura_nome))
     story.append(Paragraph(f"<font size=8 color='#475569'>{emissor_cargo} — {emissor_unidade}</font>", style_assinatura_nome))
-    story.append(Spacer(1, 20))
+    story.append(Spacer(1, 15))
 
-    # 7. Hash SHA-256 e Autenticidade
+    # 7. QR Code e Bloco de Autenticidade Digital SHA-256
     texto_para_hash = f"{num_oficio}|{destinatario_nome}|{orgao_destino}|{len(lista_materiais)}|{emissor_nome}|{dt_extenso}"
     hash_sha256 = calcular_hash_sha256(texto_para_hash)
 
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=6))
-    story.append(Paragraph(f"🔒 AUTENTICIDADE DIGITAL SHA-256: {hash_sha256}", style_rodape_hash))
-    story.append(Paragraph("Documento emitido eletronicamente via SIOP PMMG — Validação da Cadeia de Custódia (Art. 158-A CPP)", style_subcabecalho))
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=8))
+
+    # Conteúdo codificado dentro do QR Code
+    conteudo_qr = f"SIOP-PMMG|OFICIO:{num_oficio}|HAST:{hash_sha256[:16]}|DATA:{dt_extenso}"
+    qr_drawing = gerar_qrcode_widget(conteudo_qr, tamanho=60)
+
+    p_txt_autenticidade = Paragraph(
+        f"<b>VALIDAÇÃO DE AUTENTICIDADE DIGITAL (Art. 158-A CPP):</b><br/>"
+        f"<b>Hash SHA-256:</b> <font color='#0f172a'>{hash_sha256}</font><br/>"
+        f"Documento assinado eletronicamente via SIOP/PMMG. Escaneie o QR Code ao lado para validar a integridade na Cadeia de Custódia.",
+        style_rodape_hash
+    )
+
+    tabela_rodape = Table([[qr_drawing, p_txt_autenticidade]], colWidths=[70, 470])
+    tabela_rodape.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (0, 0), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    story.append(tabela_rodape)
 
     # Construir PDF
     doc.build(story)
