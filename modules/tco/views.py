@@ -11,7 +11,7 @@ from core.database import (
     atualizar_usuario_supabase,
     registrar_audit_log
 )
-from core.permissions import usuario_eh_gestor_creds
+from core.permissions import usuario_eh_gestor_creds, usuario_eh_admin_ou_programador
 from modules.tco.parser_reds import extrair_dados_reds_pdf
 from modules.tco.storage import upload_midia_supabase
 from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase, carregar_logs_supabase
@@ -1342,15 +1342,18 @@ def renderizar_aba_logs(all_logs_banco):
 # =============================================================================
 def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21º BPM", cargo_operador="MILITAR", perfil_operador="GESTOR"):
     usr_logado = st.session_state.get("usuario_dados", {})
-    eh_autorizado = usuario_eh_gestor_creds(usr_logado)
+    eh_autorizado = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)
 
     if not eh_autorizado:
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS, Comandantes de Cia ou Administradores do SIOP podem gerenciar funções do TCO.")
         return
 
-    perfil_creds_usr = usr_logado.get("perfil_creds", "TROPA")
-    perfil_geral_usr = usr_logado.get("nivel_acesso", "TROPA")
-    eh_gestor_unidade = (perfil_creds_usr == "GESTOR_UNIDADE" or perfil_geral_usr in ["ADMIN", "PROGRAMADOR"])
+    perfil_creds_usr = str(usr_logado.get("perfil_creds", "TROPA")).upper()
+    perfil_geral_usr = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
+    
+    # Valida se possui nível avançado (Gestor Unidade / Admin / Programador) para alterar e revogar
+    pode_excluir_e_revogar = usuario_eh_admin_ou_programador(usr_logado) or perfil_creds_usr in ["GESTOR_UNIDADE", "ADMIN", "PROGRAMADOR"]
+    eh_gestor_unidade = (perfil_creds_usr == "GESTOR_UNIDADE" or pode_excluir_e_revogar)
 
     st.markdown("### 👥 Designação e Estrutura de Gestores do CREDS / TCO")
     if eh_gestor_unidade:
@@ -1385,7 +1388,7 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
 
     with col_des1:
         with st.container(border=True):
-            st.markdown("##### ➕ Alternar Função CREDS do Militar")
+            st.markdown("##### ➕ Atribuir / Incluir Função CREDS do Militar")
             
             opcoes_militar = {
                 f"{m.get('posto_grad') or m.get('graduacao', 'PM')} {m.get('nome_guerra')} (PM: {m.get('num_policia')}) - Lotação: {m.get('unidade', 'N/I')}": m
@@ -1421,7 +1424,7 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                     key="sel_novo_perfil_creds_aba7_select"
                 )
 
-                if st.button("💾 Salvar Função CREDS", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
+                if st.button("💾 Salvar Permissão", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
                     if atualizar_usuario_supabase(num_pm, {"perfil_creds": novo_perfil_creds}):
                         registrar_audit_log(
                             operador_pm=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
@@ -1467,16 +1470,19 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                                     st.markdown(f"**👤 {grad_correta} {g.get('nome_guerra', 'OPERADOR')}**")
                                     st.caption(f"Nº Polícia: **{pm_key}** | Função: `{g.get('perfil_creds')}`")
                                 with c_g2:
-                                    if st.button("🔻 Retornar a Tropa", key=f"btn_revogar_creds_{pm_key}_{idx_g}", use_container_width=True):
-                                        if atualizar_usuario_supabase(pm_key, {"perfil_creds": "TROPA"}):
-                                            registrar_audit_log(
-                                                operador_pm=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
-                                                alvo_pm=pm_key,
-                                                tipo_acao="REVOGAÇÃO_FUNÇÃO_CREDS",
-                                                descricao=f"Função CREDS do militar {pm_key} retornada para TROPA."
-                                            )
-                                            st.success("Função alterada para TROPA!")
-                                            st.rerun()
+                                    if pode_excluir_e_revogar:
+                                        if st.button("🗑️ Revogar", key=f"btn_revogar_creds_{pm_key}_{idx_g}", use_container_width=True):
+                                            if atualizar_usuario_supabase(pm_key, {"perfil_creds": "TROPA"}):
+                                                registrar_audit_log(
+                                                    operador_pm=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
+                                                    alvo_pm=pm_key,
+                                                    tipo_acao="REVOGAÇÃO_FUNÇÃO_CREDS",
+                                                    descricao=f"Função CREDS do militar {pm_key} retornada para TROPA."
+                                                )
+                                                st.success("Função alterada para TROPA!")
+                                                st.rerun()
+                                    else:
+                                        st.caption("🔒 *Revogação Restrita ao Cmt/Gestor Unidade*")
             else:
                 st.info("Nenhum gestor ou operador elevado cadastrado nesta lotação.")
 
@@ -1488,5 +1494,5 @@ renderizar_aba_importar_reds = renderizar_aba_importacao
 
 def renderizar_aba_painel_creds(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     usr_logado = st.session_state.get("usuario_dados", {})
-    eh_gestor = usuario_eh_gestor_creds(usr_logado)
+    eh_gestor = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)
     return renderizar_aba_creds(all_bens_banco, eh_gestor, nome_militar_atual, unidade_militar_atual)
