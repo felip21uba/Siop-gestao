@@ -78,6 +78,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
     aba_atual = st.session_state["subaba_tramitacao_ativa"]
 
+    # Estilos táticos incluindo a correção da badge de alerta de prazo
     st.markdown("""
     <style>
     div[data-testid="stVerticalBlock"]:has(> div > .painel-tramitacao-cabecalho) {
@@ -115,6 +116,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         font-size: 0.78rem;
         font-weight: 800;
         text-transform: uppercase;
+        display: inline-block;
     }
     .badge-fase-status {
         background-color: #8c7343 !important;
@@ -125,6 +127,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         font-size: 0.76rem;
         font-weight: 800;
         text-transform: uppercase;
+        display: inline-block;
     }
     .badge-prazo-alerta {
         background-color: #7f1d1d !important;
@@ -134,6 +137,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         padding: 3px 8px;
         font-size: 0.74rem;
         font-weight: 800;
+        display: inline-block;
+        white-space: nowrap;
     }
     .badge-midia-anexa {
         background-color: #1e3a8a !important;
@@ -143,6 +148,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         padding: 3px 8px;
         font-size: 0.74rem;
         font-weight: 800;
+        display: inline-block;
     }
     .tag-info-retangulo {
         background-color: #2b2118;
@@ -319,7 +325,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 st.markdown(html_card_mat, unsafe_allow_html=True)
 
                             with c_card_btn:
-                                badge_dias_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado} dias parado</span>' if dias_parado >= 1 else ''
+                                # Ajuste do badge de prazo com icone correto de relogio
+                                badge_dias_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado} dia(s) parado</span>' if dias_parado >= 1 else ''
                                 badge_foto_html = f'<span class="badge-midia-anexa">📷 {qtd_midias} FOTO(S)</span>' if qtd_midias > 0 else ''
                                 st.markdown(f"""
                                 <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
@@ -777,7 +784,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             st.markdown(html_card_mat, unsafe_allow_html=True)
 
                         with col_card_lateral:
-                            badge_dias_hist_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado_h} dias parado</span>' if dias_parado_h >= 1 else ''
+                            badge_dias_hist_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado_h} dia(s) parado</span>' if dias_parado_h >= 1 else ''
                             badge_foto_hist_html = f'<span class="badge-midia-anexa">📷 {qtd_midias_h} FOTO(S)</span>' if qtd_midias_h > 0 else ''
                             st.markdown(f"""
                             <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
