@@ -24,7 +24,8 @@ def formatar_matricula_pm(mat: str) -> str:
 
 def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao="35ª CIA PM", titulo_modulo="Gestão de Escalas & Planejamento Operacional"):
     """
-    Renderiza o cabeçalho tático corporativo em HTML/CSS com relógio vivo em tempo real.
+    Renderiza o cabeçalho tático corporativo em HTML/CSS com relógio vivo em tempo real
+    exibindo a função tática e administrativa real do militar na PMMG.
     """
     usr_dados = st.session_state.get("usuario_dados", {})
     if isinstance(usr_dados, str):
@@ -49,26 +50,34 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
     unidade_atual = str(st.session_state.get("cfg_unidade") or unidade_lotacao or "21º BPM").strip().upper()
     subunidade_atual = str(st.session_state.get("cfg_subunidade") or subunidade_lotacao or "35ª CIA PM").strip().upper()
 
-    # Mapeamento dinâmico da função/perfil do militar (removendo o "PLANTÃO" fixo)
-    funcao_militar = str(
-        usr_dados.get("funcao")
+    # Mapeamento dinâmico e flexível da Função Tática/Administrativa PMMG
+    funcao_raw = str(
+        usr_dados.get("funcao_pm")
+        or usr_dados.get("funcao")
         or usr_dados.get("cargo_funcao")
-        or usr_dados.get("perfil_creds")
+        or usr_dados.get("perfil_escalas")
         or usr_dados.get("perfil")
-        or usr_dados.get("nivel_acesso")
-        or "OPERADOR DE ESCALAS"
+        or "MILITAR"
     ).strip().upper()
 
-    # Legendas legíveis para o cabeçalho
-    mapa_funcoes_legiveis = {
-        "GESTOR_UNIDADE": "GESTOR DE ESCALAS UNIDADE",
-        "GESTOR_CIA": "GESTOR DE ESCALAS CIA",
-        "ADMIN": "ADMINISTRADOR DO SIOP",
-        "PROGRAMADOR": "PROGRAMADOR / DESENVOLVEDOR",
+    # Tabela de tradução e padronização de funções operacionais da PMMG
+    mapa_funcoes_pmmg = {
+        "CMT_CIA": "COMANDANTE DE CIA",
+        "CMT_PEL": "COMANDANTE DE PELOTÃO",
+        "SARGENTEACAO": "SARGENTEAÇÃO",
+        "SARGENTEANTE": "SARGENTEAÇÃO",
+        "AUX_P3": "AUXILIAR DA P/3",
+        "CHEFE_P3": "CHEFE DA P/3",
+        "CPU": "COMANDANTE DE POLICIAMENTO URBANO (CPU)",
+        "OFICIAL_DIA": "OFICIAL DE DIA",
+        "GESTOR_UNIDADE": "COMANDANTE / GESTOR DA UNIDADE",
+        "GESTOR_CIA": "COMANDANTE DE CIA",
         "OPERADOR": "OPERADOR DE ESCALAS",
-        "TROPA": "POLICIAL MILITAR"
+        "PROGRAMADOR": "PROGRAMADOR / SISTEMAS",
+        "ADMIN": "ADMINISTRADOR SIOP"
     }
-    funcao_exibicao = mapa_funcoes_legiveis.get(funcao_militar, funcao_militar)
+
+    funcao_exibicao = mapa_funcoes_pmmg.get(funcao_raw, funcao_raw)
 
     if "21" in unidade_atual and "UBÁ" not in unidade_atual and "UBA" not in unidade_atual:
         tag_local = f"{subunidade_atual} / P3/EM/{unidade_atual}/4 RPM (Ubá-MG)"
