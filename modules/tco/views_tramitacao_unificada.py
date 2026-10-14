@@ -78,7 +78,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
     aba_atual = st.session_state["subaba_tramitacao_ativa"]
 
-    # Estilos táticos incluindo a badge de alerta de prazo
+    # Estilos táticos atualizados com a classe de alerta de prazo
     st.markdown("""
     <style>
     div[data-testid="stVerticalBlock"]:has(> div > .painel-tramitacao-cabecalho) {
@@ -325,15 +325,15 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 st.markdown(html_card_mat, unsafe_allow_html=True)
 
                             with c_card_btn:
-                                # Badges renderizadas em bloco HTML único para interpretar corretamente as classes CSS
+                                # Construção segura das badges HTML integradas no mesmo container interpretável
                                 html_badges = f'<span class="badge-fase-status">{tag_local_fase}</span>'
                                 if qtd_midias > 0:
-                                    html_badges += f'<br/><span class="badge-midia-anexa">📷 {qtd_midias} FOTO(S)</span>'
+                                    html_badges += f'<div style="margin-top: 3px;"><span class="badge-midia-anexa">📷 {qtd_midias} FOTO(S)</span></div>'
                                 if dias_parado >= 1:
-                                    html_badges += f'<br/><span class="badge-prazo-alerta">⏱️ {dias_parado} dia(s) parado</span>'
+                                    html_badges += f'<div style="margin-top: 3px;"><span class="badge-prazo-alerta">⏱️ {dias_parado} dia(s) parado</span></div>'
 
                                 st.markdown(f"""
-                                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
+                                <div style="display: flex; flex-direction: column; align-items: flex-end; justify-content: flex-start; margin-bottom: 6px;">
                                     {html_badges}
                                 </div>
                                 """, unsafe_allow_html=True)
