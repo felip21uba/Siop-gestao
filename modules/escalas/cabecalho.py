@@ -13,12 +13,14 @@ import streamlit.components.v1 as components
 
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
+
 def formatar_matricula_pm(mat: str) -> str:
     """Formata a matrícula funcional de 7 dígitos para o padrão PM (Ex: 1337468 -> 133.746-8)."""
     mat_limpa = "".join(filter(str.isalnum, str(mat)))
     if len(mat_limpa) == 7:
         return f"{mat_limpa[:3]}.{mat_limpa[3:6]}-{mat_limpa[6]}"
     return str(mat)
+
 
 def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao="35ª CIA PM", titulo_modulo="Gestão de Escalas & Planejamento Operacional"):
     """
@@ -46,6 +48,27 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
 
     unidade_atual = str(st.session_state.get("cfg_unidade") or unidade_lotacao or "21º BPM").strip().upper()
     subunidade_atual = str(st.session_state.get("cfg_subunidade") or subunidade_lotacao or "35ª CIA PM").strip().upper()
+
+    # Mapeamento dinâmico da função/perfil do militar (removendo o "PLANTÃO" fixo)
+    funcao_militar = str(
+        usr_dados.get("funcao")
+        or usr_dados.get("cargo_funcao")
+        or usr_dados.get("perfil_creds")
+        or usr_dados.get("perfil")
+        or usr_dados.get("nivel_acesso")
+        or "OPERADOR DE ESCALAS"
+    ).strip().upper()
+
+    # Legendas legíveis para o cabeçalho
+    mapa_funcoes_legiveis = {
+        "GESTOR_UNIDADE": "GESTOR DE ESCALAS UNIDADE",
+        "GESTOR_CIA": "GESTOR DE ESCALAS CIA",
+        "ADMIN": "ADMINISTRADOR DO SIOP",
+        "PROGRAMADOR": "PROGRAMADOR / DESENVOLVEDOR",
+        "OPERADOR": "OPERADOR DE ESCALAS",
+        "TROPA": "POLICIAL MILITAR"
+    }
+    funcao_exibicao = mapa_funcoes_legiveis.get(funcao_militar, funcao_militar)
 
     if "21" in unidade_atual and "UBÁ" not in unidade_atual and "UBA" not in unidade_atual:
         tag_local = f"{subunidade_atual} / P3/EM/{unidade_atual}/4 RPM (Ubá-MG)"
@@ -182,7 +205,7 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
                         👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.80rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
                     </div>
                     <div class="user-sub">
-                        🏛️ {subunidade_atual} — PLANTÃO
+                        🏛️ {subunidade_atual} — {funcao_exibicao}
                     </div>
                 </div>
             </div>
