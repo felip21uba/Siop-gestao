@@ -1,92 +1,77 @@
-import os
-import io
-import re
-from PIL import Image
-import pandas as pd
+"""
+==============================================================================
+Módulo de Validação e Sanitização de Arquivos (utils/file_validator.py)
+Valida extensões, limites de tamanho e sanitiza nomes de arquivos para o Supabase Storage.
+==============================================================================
+"""
 
-# Limites de tamanho de arquivo (Bytes)
-LIMITE_PLANILHA_BYTES = 5 * 1024 * 1024   # 5 MB
-LIMITE_PDF_BYTES = 15 * 1024 * 1024       # 15 MB
-LIMITE_IMAGEM_BYTES = 10 * 1024 * 1024    # 10 MB
+import re
+import unicodedata
+
+TAMANHO_MAXIMO_MB = 15
+EXTENSOES_PERMITIDAS_IMAGEM = ["jpg", "jpeg", "png", "webp"]
+EXTENSOES_PERMITIDAS_PDF = ["pdf"]
+EXTENSOES_PERMITIDAS_DOCX = ["docx"]
+
 
 def sanitizar_nome_arquivo(nome_original: str) -> str:
-    """Evita ataques de Directory Traversal removendo rotas e caracteres especiais."""
-    nome_limpo = os.path.basename(nome_original)
-    nome_limpo = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', nome_limpo)
-    return nome_limpo
-
-def desarmar_csv_injection(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Desarma Formulas Injections no Excel/CSV (ex: células começando com =, +, -, @, \t que executam comandos no SO).
+    Remove acentos, espaços e caracteres especiais do nome do arquivo,
+    garantindo compatibilidade total com as URLs do Supabase Storage.
     """
-    def neutralizar(val):
-        if isinstance(val, str) and val.startswith(('=', '+', '-', '@', '\t', '\r')):
-            return "'" + val  # Adiciona aspas simples para desarmar a fórmula
-        return val
+    if not nome_original:
+        return "arquivo_anexo"
 
-    return df.map(neutralizar) if hasattr(df, 'map') else df.applymap(neutralizar)
+    # Separar nome e extensão
+    partes = nome_original.rsplit(".", 1)
+    nome_base = partes[0]
+    extensao = partes[1].lower() if len(partes) > 1 else ""
 
-def validar_planilha_upload(arquivo) -> tuple[bool, str]:
-    """Valida tamanho, extensão e assinatura binária (Magic Bytes) de planilhas."""
-    if not arquivo:
+    # Normalizar Unicode para remover acentos (NFKD)
+    nome_nfkd = unicodedata.normalize("NFKD", nome_base)
+    nome_sem_acento = "".join([c for c in nome_nfkd if not unicodedata.combining(c)])
+
+    # Substituir espaços por underline e remover caracteres não alfanuméricos
+    nome_limpo = re.sub(r"[^\w\s-]", "", nome_sem_acento).strip()
+    nome_limpo = re.sub(r"[-\s]+", "_", nome_limpo)
+
+    if not nome_limpo:
+        nome_limpo = "arquivo_anexo"
+
+    return f"{nome_limpo}.{extensao}" if extensao else nome_limpo
+
+
+def validar_imagem_upload(file_obj) -> tuple[bool, str]:
+    """Valida o tipo e o tamanho máximo de um arquivo de imagem."""
+    if file_obj is None:
         return False, "Nenhum arquivo enviado."
 
-    if arquivo.size > LIMITE_PLANILHA_BYTES:
-        return False, "❌ A planilha excede o limite máximo de 5 MB."
+    nome = file_obj.name.lower()
+    ext = nome.split(".")[-1] if "." in nome else ""
 
-    extensao = os.path.splitext(arquivo.name)[1].lower()
-    if extensao not in ['.xlsx', '.xls', '.csv']:
-        return False, "❌ Extensão não permitida. Envie apenas arquivos .XLSX, .XLS ou .CSV."
+    if ext not in EXTENSOES_PERMITIDAS_IMAGEM:
+        return False, f"Formato inválido (.{ext}). Permitidos: {', '.join(EXTENSOES_PERMITIDAS_IMAGEM).upper()}."
 
-    # Validação dos Magic Bytes (cabeçalho binário real do arquivo)
-    header = arquivo.read(8)
-    arquivo.seek(0)
+    tamanho_mb = file_obj.size / (1024 * 1024)
+    if tamanho_mb > TAMANHO_MAXIMO_MB:
+        return False, f"Arquivo excede o limite de {TAMANHO_MAXIMO_MB} MB (Tamanho: {tamanho_mb:.1f} MB)."
 
-    if extensao == '.xlsx' and not header.startswith(b'PK\x03\x04'):
-        return False, "🚨 Arquivo .XLSX inválido ou com conteúdo mascarado."
-    elif extensao == '.xls' and not header.startswith(b'\xd0\xcf\x11\xe0'):
-        return False, "🚨 Arquivo .XLS inválido ou com conteúdo mascarado."
+    return True, "Arquivo válido."
 
-    return True, "Planilha válida."
 
-def validar_pdf_upload(arquivo) -> tuple[bool, str]:
-    """Valida tamanho e Magic Bytes (%PDF-) de arquivos PDF."""
-    if not arquivo:
+def validar_pdf_upload(file_obj) -> tuple[bool, str]:
+    """Valida o tipo e o tamanho máximo de um arquivo PDF."""
+    if file_obj is None:
         return False, "Nenhum arquivo enviado."
 
-    if arquivo.size > LIMITE_PDF_BYTES:
-        return False, "❌ O PDF excede o limite máximo de 15 MB."
+    nome = file_obj.name.lower()
+    ext = nome.split(".")[-1] if "." in nome else ""
 
-    extensao = os.path.splitext(arquivo.name)[1].lower()
-    if extensao != '.pdf':
-        return False, "❌ Extensão não permitida. Envie apenas documentos .PDF."
+    if ext not in EXTENSOES_PERMITIDAS_PDF:
+        return False, f"Formato inválido (.{ext}). Somente arquivos PDF são permitidos."
 
-    header = arquivo.read(5)
-    arquivo.seek(0)
+    tamanho_mb = file_obj.size / (1024 * 1024)
+    if tamanho_mb > TAMANHO_MAXIMO_MB:
+        return False, f"Arquivo excede o limite de {TAMANHO_MAXIMO_MB} MB (Tamanho: {tamanho_mb:.1f} MB)."
 
-    if not header.startswith(b'%PDF-'):
-        return False, "🚨 O arquivo enviado não é um PDF válido."
-
-    return True, "PDF válido."
-
-def validar_imagem_upload(arquivo) -> tuple[bool, str]:
-    """Valida imagens decodificando a estrutura via Pillow (evita scripts maliciosos embutidos)."""
-    if not arquivo:
-        return False, "Nenhum arquivo enviado."
-
-    if arquivo.size > LIMITE_IMAGEM_BYTES:
-        return False, "❌ A imagem excede o limite máximo de 10 MB."
-
-    extensao = os.path.splitext(arquivo.name)[1].lower()
-    if extensao not in ['.jpg', '.jpeg', '.png']:
-        return False, "❌ Extensão não permitida. Use apenas JPG, JPEG ou PNG."
-
-    try:
-        bytes_img = arquivo.read()
-        arquivo.seek(0)
-        img = Image.open(io.BytesIO(bytes_img))
-        img.verify()  # Tenta decodificar a imagem de ponta a ponta
-    except Exception:
-        return False, "🚨 O arquivo de imagem está corrompido ou contém payload malicioso."
-
-    return True, "Imagem válida."
+    return True, "Arquivo válido."
