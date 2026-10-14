@@ -7,6 +7,7 @@ Arquivo: modules/tco/main_tco.py (Roteamento Direcionado por Sub-Aba)
 """
 
 import streamlit as st
+from core.permissions import usuario_eh_gestor_creds
 from modules.tco.database import carregar_materiais_supabase, carregar_logs_supabase
 from modules.tco.views import (
     renderizar_aba_importacao,
@@ -21,6 +22,7 @@ from modules.tco.compliance import (
     exibir_modal_termo_compliance,
     aplicar_estilo_tco
 )
+
 
 def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
     """Ponto de entrada do Módulo TCO com direcionamento específico de sub-abas."""
@@ -53,7 +55,7 @@ def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
     # =========================================================================
     renderizar_cabecalho_tatico_tco(usr_logado)
 
-    eh_gestor_creds = (
+    eh_gestor_creds = usuario_eh_gestor_creds(usr_logado) or (
         "PROGRAMADOR" in cargo_str or 
         "DESENVOLVEDOR" in cargo_str or 
         "ADMIN" in perfil_usuario or 
@@ -65,7 +67,7 @@ def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
         "GESTOR" in perfil_usuario
     )
 
-    all_bens_banco = carregar_materiais_supabase() or []
+    all_bens_banco = carregar_materiais_supabase(usr_logado) or []
     all_logs_banco = carregar_logs_supabase() or []
 
     # =========================================================================
@@ -91,10 +93,16 @@ def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
         renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual)
 
     elif "Auditoria" in opcao_menu:
-        renderizar_aba_logs(all_logs_banco)
+        if eh_gestor_creds:
+            renderizar_aba_logs(all_logs_banco)
+        else:
+            st.warning("⚠️ Acesso restrito aos Gestores de CREDS e Administradores.")
 
     elif "Gestores" in opcao_menu:
-        renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)
+        if eh_gestor_creds:
+            renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)
+        else:
+            st.warning("⚠️ Acesso restrito aos Gestores de CREDS e Administradores.")
 
     else:
         renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
