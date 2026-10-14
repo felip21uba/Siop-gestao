@@ -1,3 +1,10 @@
+"""
+==============================================================================
+Módulo de Gerador Oficial de Ofícios e Repositório Digital (modules/tco/views_oficios.py)
+Gerencia emissão de PDFs/DOCX com tag {REDS} dinâmica e repositório de expedientes.
+==============================================================================
+"""
+
 import streamlit as st
 import pandas as pd
 import datetime
@@ -7,10 +14,10 @@ from modules.tco.storage import upload_oficio_pdf_supabase, deletar_arquivo_stor
 from modules.tco.pdf_generator import gerar_pdf_oficio
 from modules.tco.docx_generator import gerar_docx_oficio
 
+
 def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     """Renderiza o módulo de Ofícios com substituição dinâmica de REDS e salvamento sem erros de coluna."""
     
-    # 🎨 INJEÇÃO DE CSS PARA BORDAS E DESTAQUES
     st.markdown("""
     <style>
         div[data-testid="stVerticalBlock"] > div[data-testid="stBlock"] > div[data-testid="element-container"] + div[data-testid="stVerticalBlock"] {
@@ -25,7 +32,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
     """, unsafe_allow_html=True)
 
     st.markdown("#### 📄 Gerador Oficial de Ofícios de Encaminhamento & Repositório Digital")
-
     st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
     
     modo_selecionado = st.radio(
@@ -132,11 +138,9 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                 with c_of2:
                     pa_oficio = st.text_input("Referência:", placeholder="Ex: P.A. 104/2026, Processo nº 00123/2026...", key="txt_pa_oficio_gen").strip().upper()
 
-                # Extração e formatação dinâmica dos números de REDS selecionados no Item 1
                 lista_reds_unicos = sorted(list(set([str(m['num_reds']) for m in materiais_selecionados if m.get('num_reds')])))
                 reds_listados_str = ", ".join(lista_reds_unicos) if lista_reds_unicos else "[SELECIONE O REDS NO ITEM 1]"
 
-                # Modelo Padrão Institucional com a Tag {REDS}
                 modelo_base_texto = (
                     "Cumprimentando-o(a) cordialmente, encaminho a Vossa Excelência/Senhoria o(s) material(is) apreendido(s) "
                     "vinculado(s) ao(s) REDS Nº {REDS}, conforme discriminado na tabela acima, para as providências "
@@ -145,7 +149,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                     "e registrado(s), garantindo a preservação da Cadeia de Custódia nos termos do Artigo 158-A e seguintes do Código de Processo Penal."
                 )
 
-                # Substitui a tag {REDS} dinamicamente pelo número selecionado
                 texto_dinamico_atual = modelo_base_texto.replace("{REDS}", reds_listados_str)
 
                 corpo_texto = st.text_area(
@@ -200,7 +203,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                         res_storage = upload_oficio_pdf_supabase(pdf_bytes, num_oficio, first_reds)
                         url_pdf = res_storage.get("url_publica") if res_storage else None
 
-                        # Atualiza fase de destinação e registra na auditoria (sem tentar colunas inexistentes)
                         for m_item in materiais_selecionados:
                             atualizar_material_supabase(m_item["id_bem"], {
                                 "fase_destinacao": f"Encaminhado ({orgao_destino})"
@@ -210,7 +212,6 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                                 "data_hora": now_iso,
                                 "num_reds": m_item["num_reds"],
                                 "bem_id": m_item["id_bem"],
-                                "web_origem": "SIOP_TCO",
                                 "acao": "EMISSÃO DE OFÍCIO DE ENCAMINHAMENTO (PDF)",
                                 "origem": nome_militar_atual,
                                 "unidade_origem": unidade_militar_atual,
