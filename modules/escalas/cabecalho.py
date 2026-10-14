@@ -1,9 +1,8 @@
 """
 ==============================================================================
 Módulo de Cabeçalho Institucional PMMG - Escalas (modules/escalas/cabecalho.py)
-Design tático idêntico ao padrão oficial do TCO (gradiente caqui/dourado)
-com relógio dinâmico em tempo real rodando segundo a segundo e mapeamento
-de funções operacionais/administrativas da PMMG.
+Design tático idêntico ao padrão oficial com relógio dinâmico e leitura
+direta do Nível Geral de Acesso da Gestão de Acessos do sistema.
 ==============================================================================
 """
 
@@ -25,8 +24,7 @@ def formatar_matricula_pm(mat: str) -> str:
 
 def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao="35ª CIA PM", titulo_modulo="Gestão de Escalas & Planejamento Operacional"):
     """
-    Renderiza o cabeçalho tático corporativo em HTML/CSS com relógio vivo em tempo real
-    exibindo a função tática e administrativa real do militar na PMMG.
+    Renderiza o cabeçalho tático corporativo extraindo a função do Nível Geral da Gestão de Acessos.
     """
     usr_dados = st.session_state.get("usuario_dados", {})
     if isinstance(usr_dados, str):
@@ -51,34 +49,39 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
     unidade_atual = str(st.session_state.get("cfg_unidade") or unidade_lotacao or "21º BPM").strip().upper()
     subunidade_atual = str(st.session_state.get("cfg_subunidade") or subunidade_lotacao or "35ª CIA PM").strip().upper()
 
-    # Mapeamento dinâmico da Função Tática/Administrativa PMMG para Escalas
-    funcao_raw = str(
-        usr_dados.get("funcao_pm")
-        or usr_dados.get("funcao")
-        or usr_dados.get("cargo_funcao")
-        or usr_dados.get("perfil_escalas")
+    # Prioridade de leitura: Nível Geral de Acesso definido na Gestão de Acessos do Sistema
+    nivel_geral = str(
+        usr_dados.get("nivel_acesso")
         or usr_dados.get("perfil")
-        or "MILITAR"
+        or usr_dados.get("funcao_pm")
+        or usr_dados.get("cargo_funcao")
+        or "TROPA"
     ).strip().upper()
 
-    # Tabela completa de tradução de funções administrativas e operacionais da PMMG
-    mapa_funcoes_pmmg = {
+    # Mapeamento do Nível Geral para a Função Institucional da PMMG no módulo de Escalas
+    mapa_nivel_para_funcao = {
         "CMT_CIA": "COMANDANTE DE CIA",
+        "COMANDANTE_CIA": "COMANDANTE DE CIA",
+        "GESTOR_CIA": "COMANDANTE DE CIA",
         "CMT_PEL": "COMANDANTE DE PELOTÃO",
+        "COMANDANTE_PELOTAO": "COMANDANTE DE PELOTÃO",
+        "SARGENTEAÇÃO": "SARGENTEAÇÃO",
         "SARGENTEACAO": "SARGENTEAÇÃO",
         "SARGENTEANTE": "SARGENTEAÇÃO",
         "AUX_P3": "AUXILIAR DA P/3",
+        "P3": "AUXILIAR DA P/3",
         "CHEFE_P3": "CHEFE DA P/3",
         "CPU": "COMANDANTE DE POLICIAMENTO URBANO (CPU)",
         "OFICIAL_DIA": "OFICIAL DE DIA",
         "GESTOR_UNIDADE": "COMANDANTE / GESTOR DA UNIDADE",
-        "GESTOR_CIA": "COMANDANTE DE CIA",
-        "OPERADOR": "OPERADOR DE ESCALAS",
+        "CMT_BATALHAO": "COMANDANTE DE BATALHÃO",
         "PROGRAMADOR": "PROGRAMADOR / DESENVOLVEDOR",
-        "ADMIN": "ADMINISTRADOR SIOP"
+        "ADMIN": "ADMINISTRADOR DO SIOP",
+        "OPERADOR": "OPERADOR DE ESCALAS",
+        "TROPA": "POLICIAL EM CAMPO / TROPA"
     }
 
-    funcao_exibicao = mapa_funcoes_pmmg.get(funcao_raw, funcao_raw)
+    funcao_exibicao = mapa_nivel_para_funcao.get(nivel_geral, nivel_geral)
 
     if "21" in unidade_atual and "UBÁ" not in unidade_atual and "UBA" not in unidade_atual:
         tag_local = f"{subunidade_atual} / P3/EM/{unidade_atual}/4 RPM (Ubá-MG)"
