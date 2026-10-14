@@ -127,6 +127,15 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         font-size: 0.74rem;
         font-weight: 800;
     }
+    .badge-midia-anexa {
+        background-color: #1e3a8a !important;
+        color: #93c5fd !important;
+        border: 1px solid #3b82f6 !important;
+        border-radius: 6px;
+        padding: 3px 8px;
+        font-size: 0.74rem;
+        font-weight: 800;
+    }
     .tag-info-retangulo {
         background-color: #2b2118;
         border: 1px solid #7d6339;
@@ -248,6 +257,9 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             status_b = str(row.get("status_tramite", "Em Custódia")).strip()
                             dt_raw = row.get("data_envio_tramite") or row.get("data_posse_atual") or row.get("data_ingestao")
                             
+                            midias_list = row.get("midias_anexas") or []
+                            qtd_midias = len(midias_list) if isinstance(midias_list, list) else 0
+
                             dt_fmt = "N/I"
                             dias_parado = 0
                             if dt_raw:
@@ -258,7 +270,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 except Exception:
                                     dt_fmt = str(dt_raw)[:16]
 
-                            # Identificador de Localização
                             fase_u = str(dest_str).upper()
                             if "PERÍCIA" in fase_u:
                                 tag_local_fase = "🔬 PERÍCIA"
@@ -269,7 +280,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             else:
                                 tag_local_fase = f"📦 {custod[:22]}"
 
-                            # Alternância de cores: Marrom Claro e Marrom um pouco mais Escuro
                             bg_card = "linear-gradient(135deg, #574431 0%, #423324 100%)" if (idx_card_global % 2 == 0) else "linear-gradient(135deg, #3b2e23 0%, #291f17 100%)"
 
                             c_chk, c_card_info, c_card_btn = st.columns([0.5, 6.8, 2.7])
@@ -283,9 +293,10 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 )
 
                             with c_card_info:
+                                html_midia_txt = f" | 🖼️ <b>{qtd_midias} foto(s) anexa(s)</b>" if qtd_midias > 0 else ""
                                 html_card_mat = f"""
                                 <div style="background: {bg_card}; border: 1.5px solid #a3824b; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; color: #ffffff;">
-                                    📄 REDS: <strong style="color: #ffffff;">{num_reds}</strong> | Material: <strong style="color: #ffe0b2;">{desc}</strong> (Qtd: {qtd} {unid})<br/>
+                                    📄 REDS: <strong style="color: #ffffff;">{num_reds}</strong> | Material: <strong style="color: #ffe0b2;">{desc}</strong> (Qtd: {qtd} {unid}){html_midia_txt}<br/>
                                     🏷️ Lacre: <strong style="color: #ffffff;">{lacre}</strong> | Autor: <strong style="color: #ffe0b2;">{autor}</strong><br/>
                                     📍 <b>Custodiante / Posse:</b> <strong style="color: #ffd180;">{custod}</strong><br/>
                                     <div style="margin-top: 8px;">
@@ -299,9 +310,11 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
                             with c_card_btn:
                                 badge_dias_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado} dias parado</span>' if dias_parado >= 1 else ''
+                                badge_foto_html = f'<span class="badge-midia-anexa">📷 {qtd_midias} FOTO(S)</span>' if qtd_midias > 0 else ''
                                 st.markdown(f"""
                                 <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
                                     <span class="badge-fase-status">{tag_local_fase}</span>
+                                    {badge_foto_html}
                                     {badge_dias_html}
                                 </div>
                                 """, unsafe_allow_html=True)
@@ -314,7 +327,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                     if st.button("🖨️ Guia", key=f"btn_guia_tr_{id_bem}_{idx_card_global}", use_container_width=True):
                                         modal_guia_termo_oficial(row.to_dict(), nome_militar_atual, num_pm_logado, unidade_militar_atual)
                                 with c_b3:
-                                    if st.button("📷 Mídias", key=f"btn_midia_tr_{id_bem}_{idx_card_global}", use_container_width=True):
+                                    lbl_midia = f"📷 Mídias ({qtd_midias})" if qtd_midias > 0 else "📷 Mídias"
+                                    if st.button(lbl_midia, key=f"btn_midia_tr_{id_bem}_{idx_card_global}", use_container_width=True):
                                         abrir_modal_edicao_material(row.to_dict(), nome_militar_atual, unidade_militar_atual)
 
                             if is_selected:
@@ -707,6 +721,9 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         status_h = item_h.get("status_tramite", "Em Custódia")
                         dt_env_str = item_h.get("data_envio_tramite") or item_h.get("data_posse_atual") or item_h.get("data_ingestao")
 
+                        midias_list_h = item_h.get("midias_anexas") or []
+                        qtd_midias_h = len(midias_list_h) if isinstance(midias_list_h, list) else 0
+
                         dt_fmt_exata = "Data N/I"
                         dias_parado_h = 0
                         if dt_env_str:
@@ -732,9 +749,10 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                         col_card_info, col_card_lateral = st.columns([7.3, 2.7])
                         
                         with col_card_info:
+                            html_midia_txt_h = f" | 🖼️ <b>{qtd_midias_h} foto(s) anexa(s)</b>" if qtd_midias_h > 0 else ""
                             html_card_mat = f"""
                             <div style="background: {bg_card_h}; border: 1.5px solid #a3824b; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; color: #ffffff;">
-                                📄 REDS: <strong style="color: #ffffff;">{num_reds_h}</strong> | Material: <strong style="color: #ffe0b2;">{desc_h}</strong> (Qtd: {qtd_h_val} {unid_med})<br/>
+                                📄 REDS: <strong style="color: #ffffff;">{num_reds_h}</strong> | Material: <strong style="color: #ffe0b2;">{desc_h}</strong> (Qtd: {qtd_h_val} {unid_med}){html_midia_txt_h}<br/>
                                 🏷️ Lacre: <strong style="color: #ffffff;">{lacre_h}</strong> | Autor: <strong style="color: #ffe0b2;">{autor_h}</strong><br/>
                                 📍 <b>Custodiante / Posse:</b> <strong style="color: #ffd180;">{custod_h}</strong><br/>
                                 <div style="margin-top: 8px;">
@@ -748,9 +766,11 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
                         with col_card_lateral:
                             badge_dias_hist_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado_h} dias parado</span>' if dias_parado_h >= 1 else ''
+                            badge_foto_hist_html = f'<span class="badge-midia-anexa">📷 {qtd_midias_h} FOTO(S)</span>' if qtd_midias_h > 0 else ''
                             st.markdown(f"""
                             <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
                                 <span class="badge-fase-status">{tag_local_hist}</span>
+                                {badge_foto_hist_html}
                                 {badge_dias_hist_html}
                             </div>
                             """, unsafe_allow_html=True)
@@ -763,5 +783,6 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 if st.button("🖨️ Guia", key=f"btn_guia_{id_bem_h}_{idx_h}", help="Gerar Termo de Depósito e Apreensão", use_container_width=True):
                                     modal_guia_termo_oficial(item_h.to_dict(), nome_militar_atual, num_pm_logado, unidade_militar_atual)
                             with col_b3:
-                                if st.button("📷 Mídias", key=f"btn_midia_hist_{id_bem_h}_{idx_h}", help="Anexar ou visualizar fotos/documentos do bem", use_container_width=True):
+                                lbl_midia_h = f"📷 Mídias ({qtd_midias_h})" if qtd_midias_h > 0 else "📷 Mídias"
+                                if st.button(lbl_midia_h, key=f"btn_midia_hist_{id_bem_h}_{idx_h}", help="Anexar ou visualizar fotos/documentos do bem", use_container_width=True):
                                     abrir_modal_edicao_material(item_h.to_dict(), nome_militar_atual, unidade_militar_atual)
