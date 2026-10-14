@@ -1,99 +1,103 @@
 """
-Módulo de Banco de Dados Específico do TCO / Custódia (modules/tco/database.py).
-Gerencia exclusivamente as operações na tabela de bens (tco_materiais)
-e logs de tramitação/custódia (tco_logs) no Supabase.
+==============================================================================
+Módulo de Banco de Dados do TCO (modules/tco/database.py)
+Gerencia as operações de busca, salvamento e atualização de materiais
+e logs no Supabase aplicando os filtros de escopo por militar e Cia.
+==============================================================================
 """
 
 import datetime
-import pandas as pd
-import streamlit as st
 from core.database import supabase
+from core.permissions import obter_escopo_militar_creds
 
 
-# =========================================================================
-# 1. OPERAÇÕES DE MATERIAIS NO SUPABASE (tco_materiais)
-# =========================================================================
-
-@st.cache_data(ttl=120, show_spinner=False)
-def carregar_materiais_supabase() -> list[dict]:
+def carregar_materiais_supabase(usuario_dados: dict = None) -> list:
     """
-    Carrega todos os materiais e bens registrados na custódia do TCO.
-    Mantém cache local de 2 minutos para alta performance.
+    Busca os materiais cadastrados no Supabase aplicando o isolamento de escopo:
+    - TROPA: Apenas materiais sob sua custódia ou pendentes de aceite para ele.
+    - GESTOR_CIA: Apenas materiais da sua Companhia.
+    - GESTOR_UNIDADE / ADMIN: Todos os materiais.
     """
     if not supabase:
         return []
+
     try:
-        res = supabase.table("tco_materiais").select("*").order("created_at", desc=True).execute()
-        return res.data or []
+        escopo, nome_militar, unidade_militar = obter_escopo_militar_creds(usuario_dados)
+        query = supabase.table("tco_materiais").select("*")
+
+        if escopo == "PESSOAL":
+            # Filtra materiais onde o militar é o fiel depositário ou destinatário pendente
+            res = query.or_(
+                f"fiel_depositario_atual.ilike.%{nome_militar}%,destinatario_pendente.ilike.%{nome_militar}%"
+            ).order("created_at", desc=True).execute()
+        elif escopo == "COMPANHIA":
+            # Filtra materiais pertencentes à Companhia do militar
+            res = query.ilike("unidade_posse_atual", f"%{unidade_militar}%").order("created_at", desc=True).execute()
+        else:
+            # Acesso Global
+            res = query.order("created_at", desc=True).execute()
+
+        return res.data if res and res.data else []
+
     except Exception as e:
-        print(f"Aviso ao carregar tco_materiais: {e}")
+        print(f"Erro ao carregar materiais do Supabase: {e}")
         return []
 
 
-def salvar_material_supabase(dados_bem: dict) -> bool:
-    """
-    Insere ou atualiza um material/bem na tabela 'tco_materiais' do Supabase.
-    """
-    if not supabase or not dados_bem:
+def salvar_material_supabase(dados_material: dict) -> bool:
+    """Insere um novo material na tabela tco_materiais do Supabase."""
+    if not supabase or not dados_material:
         return False
+
     try:
-        supabase.table("tco_materiais").upsert(dados_bem, on_conflict="id_bem").execute()
-        st.cache_data.clear()
-        return True
+        res = supabase.table("tco_materiais").upsert(dados_material).execute()
+        return True if res and res.data else False
     except Exception as e:
-        st.error(f"Erro ao salvar material no Supabase: {e}")
+        print(f"Erro ao salvar material no Supabase: {e}")
         return False
 
 
-def atualizar_material_supabase(id_bem: str, payload_update: dict) -> bool:
-    """
-    Atualiza as informações de um material existente na tabela 'tco_materiais'.
-    """
-    if not supabase or not id_bem:
+def atualizar_material_supabase(id_bem: str, dados_atualizacao: dict) -> bool:
+    """Atualiza as informações de um material existente no Supabase."""
+    if not supabase or not id_bem or not dados_atualizacao:
         return False
+
     try:
-        res = supabase.table("tco_materiais").update(payload_update).eq("id_bem", str(id_bem)).execute()
-        if res and res.data:
-            st.cache_data.clear()
-            return True
-        return False
+        res = supabase.table("tco_materiais").update(dados_atualizacao).eq("id_bem", id_bem).execute()
+        return True if res and res.data else False
     except Exception as e:
-        st.error(f"Erro ao atualizar material no Supabase: {e}")
+        print(f"Erro ao atualizar material no Supabase ({id_bem}): {e}")
         return False
 
 
-# =========================================================================
-# 2. OPERAÇÕES DE LOGS DE TRAMITAÇÃO (tco_logs)
-# =========================================================================
+def registrar_log_supabase(log_payload: dict) -> bool:
+    """Registra uma ação de auditoria na tabela tco_logs (sem a coluna web_origem)."""
+    if not supabase or not log_payload:
+        return False
 
-@st.cache_data(ttl=120, show_spinner=False)
-def carregar_logs_supabase() -> list[dict]:
-    """
-    Carrega o histórico de tramitações e ações do TCO na tabela 'tco_logs'.
-    """
+    try:
+        payload_limpo = log_payload.copy()
+        if "web_origem" in payload_limpo:
+            del payload_limpo["web_origem"]
+
+        if "data_hora" not in payload_limpo or not payload_limpo["data_hora"]:
+            payload_limpo["data_hora"] = datetime.datetime.now().isoformat()
+
+        res = supabase.table("tco_logs").insert(payload_limpo).execute()
+        return True if res and res.data else False
+    except Exception as e:
+        print(f"Erro ao registrar log no Supabase: {e}")
+        return False
+
+
+def carregar_logs_supabase() -> list:
+    """Busca a trilha de auditoria na tabela tco_logs."""
     if not supabase:
         return []
+
     try:
-        res = supabase.table("tco_logs").select("*").order("data_hora", desc=True).execute()
-        return res.data or []
+        res = supabase.table("tco_logs").select("*").order("data_hora", desc=True).limit(500).execute()
+        return res.data if res and res.data else []
     except Exception as e:
-        print(f"Aviso ao carregar tco_logs: {e}")
+        print(f"Erro ao carregar logs do Supabase: {e}")
         return []
-
-
-def registrar_log_supabase(dados_log: dict) -> bool:
-    """
-    Registra um novo evento de tramitação ou custódia na tabela 'tco_logs'.
-    """
-    if not supabase or not dados_log:
-        return False
-    try:
-        if "data_hora" not in dados_log:
-            dados_log["data_hora"] = datetime.datetime.now().isoformat()
-            
-        supabase.table("tco_logs").insert(dados_log).execute()
-        st.cache_data.clear()
-        return True
-    except Exception as e:
-        print(f"Erro ao registrar log do TCO: {e}")
-        return False
