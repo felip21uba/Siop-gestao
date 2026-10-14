@@ -78,7 +78,7 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
 
     aba_atual = st.session_state["subaba_tramitacao_ativa"]
 
-    # Estilos táticos incluindo a correção da badge de alerta de prazo
+    # Estilos táticos incluindo a badge de alerta de prazo
     st.markdown("""
     <style>
     div[data-testid="stVerticalBlock"]:has(> div > .painel-tramitacao-cabecalho) {
@@ -134,8 +134,8 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
         color: #fecaca !important;
         border: 1px solid #ef4444 !important;
         border-radius: 6px;
-        padding: 3px 8px;
-        font-size: 0.74rem;
+        padding: 4px 10px;
+        font-size: 0.76rem;
         font-weight: 800;
         display: inline-block;
         white-space: nowrap;
@@ -325,14 +325,16 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                                 st.markdown(html_card_mat, unsafe_allow_html=True)
 
                             with c_card_btn:
-                                # Ajuste do badge de prazo com icone correto de relogio
-                                badge_dias_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado} dia(s) parado</span>' if dias_parado >= 1 else ''
-                                badge_foto_html = f'<span class="badge-midia-anexa">📷 {qtd_midias} FOTO(S)</span>' if qtd_midias > 0 else ''
+                                # Badges renderizadas em bloco HTML único para interpretar corretamente as classes CSS
+                                html_badges = f'<span class="badge-fase-status">{tag_local_fase}</span>'
+                                if qtd_midias > 0:
+                                    html_badges += f'<br/><span class="badge-midia-anexa">📷 {qtd_midias} FOTO(S)</span>'
+                                if dias_parado >= 1:
+                                    html_badges += f'<br/><span class="badge-prazo-alerta">⏱️ {dias_parado} dia(s) parado</span>'
+
                                 st.markdown(f"""
                                 <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
-                                    <span class="badge-fase-status">{tag_local_fase}</span>
-                                    {badge_foto_html}
-                                    {badge_dias_html}
+                                    {html_badges}
                                 </div>
                                 """, unsafe_allow_html=True)
                                 
@@ -784,13 +786,15 @@ def renderizar_aba_custodia_tramitacao_unificada(all_bens, nome_militar_atual, u
                             st.markdown(html_card_mat, unsafe_allow_html=True)
 
                         with col_card_lateral:
-                            badge_dias_hist_html = f'<span class="badge-prazo-alerta">⏱️ {dias_parado_h} dia(s) parado</span>' if dias_parado_h >= 1 else ''
-                            badge_foto_hist_html = f'<span class="badge-midia-anexa">📷 {qtd_midias_h} FOTO(S)</span>' if qtd_midias_h > 0 else ''
+                            html_badges_h = f'<span class="badge-fase-status">{tag_local_hist}</span>'
+                            if qtd_midias_h > 0:
+                                html_badges_h += f'<br/><span class="badge-midia-anexa">📷 {qtd_midias_h} FOTO(S)</span>'
+                            if dias_parado_h >= 1:
+                                html_badges_h += f'<br/><span class="badge-prazo-alerta">⏱️ {dias_parado_h} dia(s) parado</span>'
+
                             st.markdown(f"""
                             <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
-                                <span class="badge-fase-status">{tag_local_hist}</span>
-                                {badge_foto_hist_html}
-                                {badge_dias_hist_html}
+                                {html_badges_h}
                             </div>
                             """, unsafe_allow_html=True)
 
