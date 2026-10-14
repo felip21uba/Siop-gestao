@@ -1,15 +1,12 @@
 import re
-import io
 import pypdf
 import hashlib
-
 
 def gerar_hash_sha256(file_bytes):
     """Gera a assinatura digital SHA-256 do arquivo para a Cadeia de Custódia (Art. 158-A do CPP)."""
     if not file_bytes:
         return None
     return hashlib.sha256(file_bytes).hexdigest()
-
 
 def extrair_cabecalho_reds(texto_completo):
     # N° REDS
@@ -57,7 +54,7 @@ def extrair_cabecalho_reds(texto_completo):
     
     local_str = f"{r_str} {n_str}, Bairro {b_str}, {m_str}".replace("  ", " ").strip()
 
-    # NATUREZA PRINCIPAL
+    # NATUREZA PRINCIPAL (LEITURA PRECISA DO CAMPO 'PROVÁVEL DESCRIÇÃO DA OCORRÊNCIA PRINCIPAL')
     raw_nat = None
 
     # 1. Padrão direto pelo código de natureza PMMG (ex: I04033 - TRAFICO ILICITO DE DROGAS)
@@ -102,7 +99,6 @@ def extrair_cabecalho_reds(texto_completo):
         "local": local_str
     }
 
-
 def extrair_mapa_envolvidos(texto_busca):
     mapa = {}
     blocos = re.split(r'ENVOLVIDO\s+(\d+)', texto_busca, flags=re.IGNORECASE)
@@ -127,7 +123,6 @@ def extrair_mapa_envolvidos(texto_busca):
             }
             
     return mapa
-
 
 def extrair_relator_completo(texto_completo):
     m_rel = re.search(
@@ -162,7 +157,6 @@ def extrair_relator_completo(texto_completo):
     
     return "RELATOR NÃO IDENTIFICADO"
 
-
 def extrair_recibo_jecrim(texto_completo):
     m_recibo = re.search(
         r'PODER JUDICIARIO[\s\S]*?UNIDADE\s*\n\s*([^\n]+)[\s\S]*?ITENS ENTREGUES A ESTE DESTINATÁRIO([\s\S]*?)(?=RECIBO|FIM DO AUTO|FIM DOS ANEXOS|HISTÓRICO|$)', 
@@ -179,7 +173,6 @@ def extrair_recibo_jecrim(texto_completo):
         mat_ids = re.findall(r'MATERIAIS\s+(\d+)', bloco_itens, re.IGNORECASE)
         
     return unidade_jecrim, mat_ids
-
 
 def extrair_materiais_transcritos(texto_busca, mat_ids, mapa_envolvidos):
     materiais = []
@@ -287,10 +280,8 @@ def extrair_materiais_transcritos(texto_busca, mat_ids, mapa_envolvidos):
         
     return materiais
 
-
 def extrair_dados_reds_pdf(pdf_file_bytes):
-    conteudo_bytes = pdf_file_bytes.getvalue() if hasattr(pdf_file_bytes, "getvalue") else pdf_file_bytes
-    reader = pypdf.PdfReader(io.BytesIO(conteudo_bytes))
+    reader = pypdf.PdfReader(pdf_file_bytes)
     texto_completo = ""
     for page in reader.pages:
         texto_completo += (page.extract_text() or "") + "\n"
@@ -309,7 +300,7 @@ def extrair_dados_reds_pdf(pdf_file_bytes):
     autores_encontrados = list(set([m["autor"] for m in materiais])) if materiais else ["AUTOR NÃO IDENTIFICADO"]
     resumo_fato = texto_historico.strip().replace("\n", " ")[:250] + "..." if texto_historico else "Resumo indisponível."
 
-    hash_pdf_original = gerar_hash_sha256(conteudo_bytes)
+    hash_pdf_original = gerar_hash_sha256(pdf_file_bytes.getvalue() if hasattr(pdf_file_bytes, "getvalue") else pdf_file_bytes)
 
     return {
         "num_reds": cabecalho["num_reds"],
