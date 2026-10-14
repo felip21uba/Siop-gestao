@@ -1,25 +1,17 @@
-"""
-==============================================================================
-Módulo Parser Avançado do PDF do REDS / BO (modules/tco/parser_reds.py)
-Extrai informações estruturadas (REDS, Autores, Materiais, Lacres, Datas,
-Relator e Recibo do JECRIM) de PDFs da Polícia Militar de Minas Gerais.
-==============================================================================
-"""
-
 import re
+import io
 import pypdf
 import hashlib
 
 
-def gerar_hash_sha256(file_bytes) -> str:
+def gerar_hash_sha256(file_bytes):
     """Gera a assinatura digital SHA-256 do arquivo para a Cadeia de Custódia (Art. 158-A do CPP)."""
     if not file_bytes:
         return None
     return hashlib.sha256(file_bytes).hexdigest()
 
 
-def extrair_cabecalho_reds(texto_completo: str) -> dict:
-    """Extrai os dados gerais de cabeçalho da ocorrência (REDS, Datas, Local e Natureza)."""
+def extrair_cabecalho_reds(texto_completo):
     # N° REDS
     m_reds = re.search(r'N[°º]\s*(\d{4}-\d{9}-\d{3})', texto_completo)
     num_reds = m_reds.group(1).strip() if (m_reds and m_reds.group(1)) else "N/A"
@@ -111,8 +103,7 @@ def extrair_cabecalho_reds(texto_completo: str) -> dict:
     }
 
 
-def extrair_mapa_envolvidos(texto_busca: str) -> dict:
-    """Mapeia o número do envolvido com seu nome completo e qualificação."""
+def extrair_mapa_envolvidos(texto_busca):
     mapa = {}
     blocos = re.split(r'ENVOLVIDO\s+(\d+)', texto_busca, flags=re.IGNORECASE)
     
@@ -138,8 +129,7 @@ def extrair_mapa_envolvidos(texto_busca: str) -> dict:
     return mapa
 
 
-def extrair_relator_completo(texto_completo: str) -> str:
-    """Mapeia os dados do relator/digitador da ocorrência."""
+def extrair_relator_completo(texto_completo):
     m_rel = re.search(
         r'DADOS PARA CONTROLE INTERNO/RELATOR DA OCORRÊNCIA[\s\S]*?MATRÍCULA\s*\n\s*(\d+)[\s\S]*?CARGO\s*\n\s*([^\n]+)[\s\S]*?NOME COMPLETO\s*\n\s*([^\n]+)',
         texto_completo,
@@ -173,8 +163,7 @@ def extrair_relator_completo(texto_completo: str) -> str:
     return "RELATOR NÃO IDENTIFICADO"
 
 
-def extrair_recibo_jecrim(texto_completo: str) -> tuple[str, list]:
-    """Mapeia a entrega e os itens destinados especificamente ao JECRIM no PDF."""
+def extrair_recibo_jecrim(texto_completo):
     m_recibo = re.search(
         r'PODER JUDICIARIO[\s\S]*?UNIDADE\s*\n\s*([^\n]+)[\s\S]*?ITENS ENTREGUES A ESTE DESTINATÁRIO([\s\S]*?)(?=RECIBO|FIM DO AUTO|FIM DOS ANEXOS|HISTÓRICO|$)', 
         texto_completo, 
@@ -192,8 +181,7 @@ def extrair_recibo_jecrim(texto_completo: str) -> tuple[str, list]:
     return unidade_jecrim, mat_ids
 
 
-def extrair_materiais_transcritos(texto_busca: str, mat_ids: list, mapa_envolvidos: dict) -> list:
-    """Varre todos os blocos 'MATERIAL X' e vincula quantidade, lacre, descrição e o autor correspondente."""
+def extrair_materiais_transcritos(texto_busca, mat_ids, mapa_envolvidos):
     materiais = []
     itens_processados = set()
     
@@ -300,11 +288,9 @@ def extrair_materiais_transcritos(texto_busca: str, mat_ids: list, mapa_envolvid
     return materiais
 
 
-def extrair_dados_reds_pdf(pdf_file_bytes) -> dict:
-    """Função principal que lê os bytes do PDF e constrói o dicionário estruturado do REDS."""
+def extrair_dados_reds_pdf(pdf_file_bytes):
     conteudo_bytes = pdf_file_bytes.getvalue() if hasattr(pdf_file_bytes, "getvalue") else pdf_file_bytes
     reader = pypdf.PdfReader(io.BytesIO(conteudo_bytes))
-    
     texto_completo = ""
     for page in reader.pages:
         texto_completo += (page.extract_text() or "") + "\n"
