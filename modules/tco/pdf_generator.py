@@ -30,21 +30,21 @@ def calcular_hash_sha256(conteudo_texto: str) -> str:
     return hashlib.sha256(conteudo_texto.encode("utf-8")).hexdigest().upper()
 
 
-def gerar_qrcode_widget(conteudo: str, tamanho: float = 65) -> Drawing:
-    """Gera um elemento Drawing contendo o QR Code no ReportLab."""
+def gerar_qrcode_widget(conteudo: str, tamanho: float = 60.0) -> Drawing:
+    """Gera um elemento Drawing contendo o QR Code no ReportLab ajustado corretamente."""
     qr_code = QrCodeWidget(conteudo)
     bounds = qr_code.getBounds()
     largura_orig = bounds[2] - bounds[0]
     altura_orig = bounds[3] - bounds[1]
     
+    # Ajusta o tamanho das barras do QR Code proporcionalmente
+    if largura_orig > 0 and altura_orig > 0:
+        fator_escala = tamanho / largura_orig
+        qr_code.barWidth = fator_escala
+        qr_code.barHeight = fator_escala
+
     d = Drawing(tamanho, tamanho)
     d.add(qr_code)
-    # Ajusta escala para caber na dimensão desejada
-    if largura_orig > 0 and altura_orig > 0:
-        qr_code.x = 0
-        qr_code.y = 0
-        qr_code.width = tamanho
-        qr_code.height = tamanho
     return d
 
 
@@ -234,9 +234,8 @@ def gerar_pdf_oficio(
 
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=8))
 
-    # Conteúdo codificado dentro do QR Code
-    conteudo_qr = f"SIOP-PMMG|OFICIO:{num_oficio}|HAST:{hash_sha256[:16]}|DATA:{dt_extenso}"
-    qr_drawing = gerar_qrcode_widget(conteudo_qr, tamanho=60)
+    conteudo_qr = f"SIOP-PMMG|OFICIO:{num_oficio}|HASH:{hash_sha256[:16]}|DATA:{dt_extenso}"
+    qr_drawing = gerar_qrcode_widget(conteudo_qr, tamanho=60.0)
 
     p_txt_autenticidade = Paragraph(
         f"<b>VALIDAÇÃO DE AUTENTICIDADE DIGITAL (Art. 158-A CPP):</b><br/>"
