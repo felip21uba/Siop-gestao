@@ -1,82 +1,100 @@
+from modules.tco.estilo_tco import renderizar_cabecalho_tatico_tco
 """
 ==============================================================================
-Módulo Principal do TCO (modules/tco/main_tco.py)
-Renderiza a barra de navegação superior do módulo TCO e direciona para as abas
-de acordo com o perfil de permissão do usuário logado.
+🛡️ SIOP PMMG - Módulo TCO / Cadeia de Custódia
+Arquivo: modules/tco/main_tco.py (Roteamento Direcionado por Sub-Aba)
 ==============================================================================
 """
 
 import streamlit as st
-from core.permissions import usuario_eh_gestor_creds
+from modules.tco.database import carregar_materiais_supabase, carregar_logs_supabase
 from modules.tco.views import (
     renderizar_aba_importacao,
+    renderizar_aba_creds,
     renderizar_aba_logs,
-    renderizar_aba_gestores_creds,
-    renderizar_aba_painel_creds
+    renderizar_aba_gestores_creds
 )
+from modules.tco.views_tramitacao_unificada import renderizar_aba_custodia_tramitacao_unificada
 from modules.tco.views_oficios import renderizar_aba_gerador_oficios
-from modules.tco.database import carregar_materiais_supabase, carregar_logs_supabase
+from modules.tco.compliance import (
+    verificar_aceite_compliance_supabase,
+    exibir_modal_termo_compliance,
+    aplicar_estilo_tco
+)
 
+def renderizar_modulo_tco(subnav_ativo=None, *args, **kwargs):
+    """Ponto de entrada do Módulo TCO com direcionamento específico de sub-abas."""
+    aplicar_estilo_tco()
 
-def renderizar_modulo_tco(subnav_ativo: str = "importacao"):
-    """
-    Controla a exibição das abas do TCO limitando a visualização
-    conforme as permissões do usuário logado.
-    """
     usr_logado = st.session_state.get("usuario_dados", {})
-    eh_gestor = usuario_eh_gestor_creds(usr_logado)
+    if isinstance(usr_logado, str):
+        usr_logado = {"nome_guerra": usr_logado}
 
-    nome_militar = str(usr_logado.get("nome_guerra") or usr_logado.get("nome") or "MILITAR").upper().strip()
-    unidade_militar = str(usr_logado.get("unidade") or "21º BPM").strip()
-
-    # Define as abas permitidas estritamente por perfil
-    if eh_gestor:
-        abas_disponiveis = {
-            "importacao": "📄 1. Importação REDS",
-            "meus_materiais": "📦 2. Meus Materiais & Custódia",
-            "oficios": "📝 3. Gerador de Ofícios",
-            "painel_creds": "📊 4. Painel CREDS",
-            "auditoria": "📜 5. Trilha de Auditoria",
-            "gestores": "👥 6. Gestão de Permissões"
-        }
-    else:
-        # Tropa: visualiza estritamente as abas operacionais
-        abas_disponiveis = {
-            "importacao": "📄 1. Importação REDS",
-            "meus_materiais": "📦 2. Meus Materiais & Custódia",
-            "oficios": "📝 3. Gerador de Ofícios"
-        }
-
-    st.markdown("## 🛡️ Gestão de Termo Circunstanciado de Ocorrência (TCO / CREDS)")
+    usr_login = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
     
-    # Barra de navegação horizontal
-    opcao_selecionada = st.radio(
-        label="Navegação do Módulo TCO",
-        options=list(abas_disponiveis.keys()),
-        format_func=lambda x: abas_disponiveis[x],
-        horizontal=True,
-        label_visibility="collapsed",
-        key="subnav_tco_radio"
+    nome_militar_atual = f"{usr_logado.get('cargo_funcao', 'CB PM')} {usr_logado.get('nome_guerra', 'OPERADOR')}".strip()
+    unidade_militar_atual = str(usr_logado.get("unidade", "35ª CIA PM")).strip().upper()
+    perfil_usuario = str(usr_logado.get("nivel_acesso") or usr_logado.get("perfil") or "TROPA").upper()
+    cargo_str = str(usr_logado.get("cargo_funcao", "POLICIAL MILITAR")).upper()
+
+    # =========================================================================
+    # 🔒 BLOQUEIO ABSOLUTO NO 1º ACESSO (TERMO DE COMPLIANCE)
+    # =========================================================================
+    termo_ja_aceito = st.session_state.get("termo_compliance_aceito", False)
+    if not termo_ja_aceito:
+        if verificar_aceite_compliance_supabase(usr_login):
+            st.session_state["termo_compliance_aceito"] = True
+        else:
+            exibir_modal_termo_compliance(usr_login, nome_militar_atual, cargo_str, unidade_militar_atual)
+            return
+
+    # =========================================================================
+    # 📦 CABEÇALHO OPERACIONAL TÁTICO UNIFICADO (FOTO 2)
+    # =========================================================================
+    renderizar_cabecalho_tatico_tco(usr_logado)
+
+    eh_gestor_creds = (
+        "PROGRAMADOR" in cargo_str or 
+        "DESENVOLVEDOR" in cargo_str or 
+        "ADMIN" in perfil_usuario or 
+        "PROGRAMADOR" in perfil_usuario or 
+        "DESENVOLVEDOR" in perfil_usuario or 
+        "P1" in perfil_usuario or 
+        "COMANDANTE" in cargo_str or 
+        "CREDS" in perfil_usuario or
+        "GESTOR" in perfil_usuario
     )
 
-    st.divider()
+    all_bens_banco = carregar_materiais_supabase() or []
+    all_logs_banco = carregar_logs_supabase() or []
 
-    # Carrega apenas os materiais permitidos pelo escopo do usuário
-    all_bens_banco = carregar_materiais_supabase(usr_logado)
+    # =========================================================================
+    # 🚀 ROTEAMENTO CONDICIONAL
+    # =========================================================================
+    opcao_menu = subnav_ativo or st.session_state.get("subnav_tco", "📥 Importar REDS")
 
-    # Roteamento seguro das views
-    if opcao_selecionada == "importacao":
-        renderizar_aba_importacao(nome_militar, unidade_militar)
-    elif opcao_selecionada == "meus_materiais":
-        renderizar_aba_painel_creds(all_bens_banco, nome_militar, unidade_militar)
-    elif opcao_selecionada == "oficios":
-        renderizar_aba_gerador_oficios(all_bens_banco, nome_militar, unidade_militar)
-    elif opcao_selecionada == "painel_creds" and eh_gestor:
-        renderizar_aba_painel_creds(all_bens_banco, nome_militar, unidade_militar)
-    elif opcao_selecionada == "auditoria" and eh_gestor:
-        all_logs = carregar_logs_supabase()
-        renderizar_aba_logs(all_logs)
-    elif opcao_selecionada == "gestores" and eh_gestor:
-        renderizar_aba_gestores_creds(nome_militar, unidade_militar)
+    if "Importar" in opcao_menu:
+        renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
+
+    elif "Materiais" in opcao_menu:
+        # Foco nos Materiais em Custódia e Histórico Permanente (Abas 1 e 3)
+        renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual)
+
+    elif "Tramitação" in opcao_menu:
+        # Foco na confirmação e retorno de Órgão Externo (2ª Aba)
+        renderizar_aba_custodia_tramitacao_unificada(all_bens_banco, nome_militar_atual, unidade_militar_atual)
+
+    elif "Ofícios" in opcao_menu:
+        renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_militar_atual)
+
+    elif "CREDS" in opcao_menu:
+        renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, unidade_militar_atual)
+
+    elif "Auditoria" in opcao_menu:
+        renderizar_aba_logs(all_logs_banco)
+
+    elif "Gestores" in opcao_menu:
+        renderizar_aba_gestores_creds(nome_militar_atual, unidade_militar_atual, cargo_str, perfil_usuario)
+
     else:
-        renderizar_aba_importacao(nome_militar, unidade_militar)
+        renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual)
