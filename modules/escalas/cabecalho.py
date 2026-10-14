@@ -2,7 +2,8 @@
 ==============================================================================
 Módulo de Cabeçalho Institucional PMMG - Escalas (modules/escalas/cabecalho.py)
 Design tático idêntico ao padrão oficial do TCO (gradiente caqui/dourado)
-com relógio dinâmico em tempo real rodando segundo a segundo.
+com relógio dinâmico em tempo real rodando segundo a segundo e mapeamento
+de funções operacionais/administrativas da PMMG.
 ==============================================================================
 """
 
@@ -50,7 +51,7 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
     unidade_atual = str(st.session_state.get("cfg_unidade") or unidade_lotacao or "21º BPM").strip().upper()
     subunidade_atual = str(st.session_state.get("cfg_subunidade") or subunidade_lotacao or "35ª CIA PM").strip().upper()
 
-    # Mapeamento dinâmico e flexível da Função Tática/Administrativa PMMG
+    # Mapeamento dinâmico da Função Tática/Administrativa PMMG para Escalas
     funcao_raw = str(
         usr_dados.get("funcao_pm")
         or usr_dados.get("funcao")
@@ -60,7 +61,7 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
         or "MILITAR"
     ).strip().upper()
 
-    # Tabela de tradução e padronização de funções operacionais da PMMG
+    # Tabela completa de tradução de funções administrativas e operacionais da PMMG
     mapa_funcoes_pmmg = {
         "CMT_CIA": "COMANDANTE DE CIA",
         "CMT_PEL": "COMANDANTE DE PELOTÃO",
@@ -73,7 +74,7 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
         "GESTOR_UNIDADE": "COMANDANTE / GESTOR DA UNIDADE",
         "GESTOR_CIA": "COMANDANTE DE CIA",
         "OPERADOR": "OPERADOR DE ESCALAS",
-        "PROGRAMADOR": "PROGRAMADOR / SISTEMAS",
+        "PROGRAMADOR": "PROGRAMADOR / DESENVOLVEDOR",
         "ADMIN": "ADMINISTRADOR SIOP"
     }
 
