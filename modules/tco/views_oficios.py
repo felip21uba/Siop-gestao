@@ -201,7 +201,8 @@ def renderizar_aba_gerador_oficios(all_bens_banco, nome_militar_atual, unidade_m
                         first_reds = materiais_selecionados[0]["num_reds"] if materiais_selecionados else "N/I"
                         
                         res_storage = upload_oficio_pdf_supabase(pdf_bytes, num_oficio, first_reds)
-                        url_pdf = res_storage.get("url_publica") if res_storage else None
+                        # Ajustado: res_storage já é a própria string da URL pública
+                        url_pdf = res_storage if isinstance(res_storage, str) else (res_storage.get("url_publica") if isinstance(res_storage, dict) else None)
 
                         for m_item in materiais_selecionados:
                             atualizar_material_supabase(m_item["id_bem"], {
