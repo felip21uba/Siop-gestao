@@ -1,147 +1,224 @@
+"""
+==============================================================================
+Módulo Gerador de PDFs Oficiais do TCO (modules/tco/pdf_generator.py)
+Gera os PDFs dos Ofícios de Remessa de Bens com tabela de materiais,
+Assinatura Digital do Emissor e Hash de Autenticidade SHA-256.
+==============================================================================
+"""
+
 import io
-import datetime
 import hashlib
-from zoneinfo import ZoneInfo
-import streamlit as st
-import pandas as pd
+import datetime
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from reportlab.graphics.barcode import qr
-from reportlab.graphics.shapes import Drawing
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    HRFlowable
+)
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 
-FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
-def obter_agora_br():
-    """Retorna data/hora no fuso horário oficial de Brasília (UTC-3)."""
-    return datetime.datetime.now(FUSO_BR)
+def calcular_hash_sha256(conteudo_texto: str) -> str:
+    """Gera a assinatura digital SHA-256 para garantia da integridade do documento."""
+    return hashlib.sha256(conteudo_texto.encode("utf-8")).hexdigest().upper()
 
-def gerar_hash_oficio(conteudo_str):
-    """Gera assinatura SHA-256 para o documento oficial."""
-    return hashlib.sha256(str(conteudo_str).encode('utf-8')).hexdigest()
 
-def criar_draw_qrcode(texto_qr):
-    """Gera um elemento Drawing com QR Code para inserção no ReportLab."""
-    try:
-        qr_code = qr.QrCodeWidget(str(texto_qr))
-        bounds = qr_code.getBounds()
-        w = bounds[2] - bounds[0]
-        h = bounds[3] - bounds[1]
-        d = Drawing(55, 55, transform=[55/w, 0, 0, 55/h, 0, 0])
-        d.add(qr_code)
-        return d
-    except Exception:
-        return None
-
-def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_destino, lista_materiais, pa_oficio, corpo_texto, emissor_nome, emissor_cargo, emissor_unidade):
-    """Gera o arquivo PDF do Ofício de Encaminhamento ajustado ao fuso de Brasília."""
+def gerar_pdf_oficio(
+    num_oficio: str,
+    destinatario_nome: str,
+    destinatario_cargo: str,
+    orgao_destino: str,
+    lista_materiais: list,
+    pa_oficio: str = "",
+    corpo_texto: str = "",
+    emissor_nome: str = "POLICIAL MILITAR",
+    emissor_cargo: str = "FIEL DEPOSITÁRIO / CREDS",
+    emissor_unidade: str = "21º BPM"
+) -> tuple[bytes, str]:
+    """
+    Gera o PDF oficial do Ofício de Remessa no padrão PMMG / TCO.
+    Retorna uma tupla (pdf_bytes, hash_sha256).
+    """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer, pagesize=letter,
-        rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36
+        buffer,
+        pagesize=letter,
+        rightMargin=36,
+        leftMargin=36,
+        topMargin=36,
+        bottomMargin=36
     )
-
-    agora_br = obter_agora_br()
 
     styles = getSampleStyleSheet()
-    style_header = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1, textColor=colors.HexColor('#1E293B'))
-    style_title = ParagraphStyle('TitleStyle', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=11, leading=13, alignment=0, textColor=colors.HexColor('#0F172A'))
-    style_body = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=9, leading=13, alignment=4, textColor=colors.HexColor('#334155'))
-    style_meta = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=9, leading=12, textColor=colors.HexColor('#1E293B'))
-    style_table_hdr = ParagraphStyle('TableHdrStyle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.HexColor('#0F172A'))
-    style_table_cell = ParagraphStyle('TableCellStyle', parent=styles['Normal'], fontName='Helvetica', fontSize=8, leading=11, textColor=colors.HexColor('#334155'))
 
-    elements = []
-
-    header_text = "<b>POLÍCIA MILITAR DE MINAS GERAIS</b><br/>" \
-                  f"<b>{emissor_unidade.upper()}</b><br/>" \
-                  "SEÇÃO DE CUSTÓDIA DE MATERIAIS E TCO - CREDS"
-    elements.append(Paragraph(header_text, style_header))
-    elements.append(Spacer(1, 8))
-    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=12))
-
-    meta_text = f"<b>OFÍCIO Nº:</b> {num_oficio}<br/>" \
-                f"<b>REFERÊNCIA:</b> {pa_oficio if pa_oficio else 'N/A'}<br/>" \
-                f"<b>DATA DE EMISSÃO:</b> {agora_br.strftime('%d/%m/%Y %H:%M')}"
-    elements.append(Paragraph(meta_text, style_meta))
-    elements.append(Spacer(1, 12))
-
-    dest_text = f"<b>Ao(À) Excelentíssimo(a) Senhor(a):</b><br/>" \
-                f"<b>{destinatario_nome.upper()}</b><br/>" \
-                f"{destinatario_cargo.upper()}<br/>" \
-                f"<b>{orgao_destino.upper()}</b>"
-    elements.append(Paragraph(dest_text, style_body))
-    elements.append(Spacer(1, 12))
-
-    elements.append(Paragraph("<b>RELAÇÃO DE MATERIAIS ENCAMINHADOS (CADEIA DE CUSTÓDIA)</b>", style_title))
-    elements.append(Spacer(1, 6))
-
-    dados_tabela = [
-        [
-            Paragraph("<b>Nº REDS</b>", style_table_hdr), 
-            Paragraph("<b>DESCRIÇÃO DO MATERIAL / LACRE</b>", style_table_hdr), 
-            Paragraph("<b>NOME DO AUTOR</b>", style_table_hdr)
-        ]
-    ]
-
-    for item in lista_materiais:
-        reds_str = str(item.get("num_reds", "N/I"))
-        desc_mat = f"{item.get('descricao', 'N/I')} (Qtd: {item.get('quantidade', '1.0')} {item.get('unidade_medida', 'UN')}) | Lacre: {item.get('involucro_lacre', 'N/I')}"
-        autor_str = str(item.get("autores", "AUTOR NÃO INFORMADO"))
-
-        dados_tabela.append([
-            Paragraph(reds_str, style_table_cell),
-            Paragraph(desc_mat, style_table_cell),
-            Paragraph(autor_str, style_table_cell)
-        ])
-
-    tabela = Table(dados_tabela, colWidths=[120, 260, 160])
-    tabela.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E2E8F0')),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#0F172A')),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-    ]))
-    elements.append(tabela)
-    elements.append(Spacer(1, 14))
-
-    elements.append(Paragraph("<b>TEOR DA SOLICITAÇÃO / HISTÓRICO:</b>", style_title))
-    elements.append(Spacer(1, 4))
-    corpo_formatado = str(corpo_texto or "").replace('\n', '<br/>')
-    elements.append(Paragraph(corpo_formatado, style_body))
-    elements.append(Spacer(1, 20))
-
-    ass_text = f"____________________________________________________<br/>" \
-               f"<b>{emissor_nome.upper()}</b><br/>" \
-               f"{emissor_cargo} - {emissor_unidade}"
-    elements.append(Paragraph(ass_text, ParagraphStyle('AssStyle', parent=style_header, alignment=1)))
-    elements.append(Spacer(1, 15))
-
-    concat_materiais = "".join([f"{m.get('id_bem')}{m.get('num_reds')}" for m in lista_materiais])
-    hash_doc = gerar_hash_oficio(f"{num_oficio}{concat_materiais}{corpo_texto}")
-    
-    qr_drawing = criar_draw_qrcode(f"SIOP-PMMG | OFICIO: {num_oficio} | SHA-256: {hash_doc}")
-
-    rodape_p1 = Paragraph(
-        f"<b>CHANCELA ELETRÔNICA DE AUTENTICIDADE (ART. 158-A CPP):</b><br/>"
-        f"<font size=7 color='#64748B'>SHA-256: {hash_doc}</font><br/>"
-        f"<font size=7 color='#64748B'>Documento gerado pelo Sistema SIOP em {agora_br.strftime('%d/%m/%Y às %H:%M:%S')}.</font>",
-        ParagraphStyle('RodapeStyle', parent=styles['Normal'], alignment=0)
+    # Estilos Customizados
+    style_cabecalho_top = ParagraphStyle(
+        "CabecalhoTop",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=10,
+        leading=12,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#1e293b")
     )
 
-    if qr_drawing:
-        tabela_rodape = Table([[rodape_p1, qr_drawing]], colWidths=[475, 65])
-        tabela_rodape.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('ALIGN', (1, 0), (1, 0), 'RIGHT')]))
-        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=8, spaceAfter=6))
-        elements.append(tabela_rodape)
-    else:
-        elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=8, spaceAfter=6))
-        elements.append(rodape_p1)
+    style_subcabecalho = ParagraphStyle(
+        "SubCabecalho",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#475569")
+    )
 
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer.getvalue(), hash_doc
+    style_titulo_oficio = ParagraphStyle(
+        "TituloOficio",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=12,
+        leading=14,
+        alignment=TA_LEFT,
+        textColor=colors.HexColor("#0f172a")
+    )
+
+    style_corpo = ParagraphStyle(
+        "CorpoOficio",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=14,
+        alignment=TA_JUSTIFY,
+        textColor=colors.HexColor("#1e293b")
+    )
+
+    style_tabela_hdr = ParagraphStyle(
+        "TabelaHdr",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        alignment=TA_CENTER,
+        textColor=colors.white
+    )
+
+    style_tabela_cell = ParagraphStyle(
+        "TabelaCell",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10,
+        alignment=TA_LEFT,
+        textColor=colors.HexColor("#1e293b")
+    )
+
+    style_assinatura_nome = ParagraphStyle(
+        "AssinaturaNome",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=9,
+        leading=11,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#0f172a")
+    )
+
+    style_rodape_hash = ParagraphStyle(
+        "RodapeHash",
+        parent=styles["Normal"],
+        fontName="Courier-Bold",
+        fontSize=7,
+        leading=8,
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#64748b")
+    )
+
+    story = []
+
+    # 1. Cabeçalho Institucional PMMG
+    story.append(Paragraph("POLÍCIA MILITAR DE MINAS GERAIS", style_cabecalho_top))
+    story.append(Paragraph(f"{emissor_unidade.upper()} — SEÇÃO DE CUSTÓDIA DE MATERIAIS (CREDS-TCO)", style_subcabecalho))
+    story.append(Spacer(1, 10))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#c5a059"), spaceAfter=12))
+
+    # 2. Número do Ofício e Referência
+    dt_extenso = datetime.datetime.now().strftime("%d de %B de %Y")
+    story.append(Paragraph(f"<b>{num_oficio}</b>", style_titulo_oficio))
+    if pa_oficio:
+        story.append(Paragraph(f"<font size=9 color='#475569'><b>Ref. Procedimento / P.A.:</b> {pa_oficio}</font>", style_corpo))
+    story.append(Paragraph(f"<font size=9 color='#475569'><b>Data da Emissão:</b> {dt_extenso}</font>", style_corpo))
+    story.append(Spacer(1, 12))
+
+    # 3. Destinatário
+    story.append(Paragraph(f"<b>Ao(À):</b> {destinatario_cargo}", style_corpo))
+    story.append(Paragraph(f"<b>A/C:</b> {destinatario_nome}", style_corpo))
+    story.append(Paragraph(f"<b>Órgão Destino:</b> {orgao_destino}", style_corpo))
+    story.append(Spacer(1, 12))
+
+    # 4. Corpo do Texto
+    for paragrafo in corpo_texto.split("\n"):
+        if paragrafo.strip():
+            story.append(Paragraph(paragrafo.strip(), style_corpo))
+            story.append(Spacer(1, 6))
+
+    story.append(Spacer(1, 10))
+
+    # 5. Tabela de Materiais Apreendidos
+    story.append(Paragraph("<b>RELAÇÃO DOS BENS APREENDIDOS E ENCAMINHADOS:</b>", style_corpo))
+    story.append(Spacer(1, 6))
+
+    dados_tabela = [[
+        Paragraph("Nº REDS", style_tabela_hdr),
+        Paragraph("Descrição do Material", style_tabela_hdr),
+        Paragraph("Qtd / Unid", style_tabela_hdr),
+        Paragraph("Nº Lacre / Invólucro", style_tabela_hdr),
+        Paragraph("Autor / Envolvido", style_tabela_hdr)
+    ]]
+
+    for m in lista_materiais:
+        dados_tabela.append([
+            Paragraph(str(m.get("num_reds", "N/I")), style_tabela_cell),
+            Paragraph(str(m.get("descricao", "N/I")), style_tabela_cell),
+            Paragraph(f"{m.get('quantidade', 1)} {m.get('unidade_medida', 'UN')}", style_tabela_cell),
+            Paragraph(str(m.get("involucro_lacre", "SEM LACRE")), style_tabela_cell),
+            Paragraph(str(m.get("autores", "N/I")), style_tabela_cell)
+        ])
+
+    tabela_mats = Table(dados_tabela, colWidths=[110, 180, 60, 95, 95])
+    tabela_mats.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#63502c")),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+
+    story.append(tabela_mats)
+    story.append(Spacer(1, 25))
+
+    # 6. Campo de Assinatura
+    story.append(HRFlowable(width="50%", thickness=1, color=colors.HexColor("#475569"), hAlign="CENTER", spaceAfter=6))
+    story.append(Paragraph(f"<b>{emissor_nome}</b>", style_assinatura_nome))
+    story.append(Paragraph(f"<font size=8 color='#475569'>{emissor_cargo} — {emissor_unidade}</font>", style_assinatura_nome))
+    story.append(Spacer(1, 20))
+
+    # 7. Hash SHA-256 e Autenticidade
+    texto_para_hash = f"{num_oficio}|{destinatario_nome}|{orgao_destino}|{len(lista_materiais)}|{emissor_nome}|{dt_extenso}"
+    hash_sha256 = calcular_hash_sha256(texto_para_hash)
+
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=6))
+    story.append(Paragraph(f"🔒 AUTENTICIDADE DIGITAL SHA-256: {hash_sha256}", style_rodape_hash))
+    story.append(Paragraph("Documento emitido eletronicamente via SIOP PMMG — Validação da Cadeia de Custódia (Art. 158-A CPP)", style_subcabecalho))
+
+    # Construir PDF
+    doc.build(story)
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+
+    return pdf_bytes, hash_sha256
