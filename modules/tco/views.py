@@ -21,6 +21,7 @@ from modules.tco.estilo_tco import (
     modal_cadeia_custodia_timeline,
     modal_guia_termo_oficial
 )
+from modules.tco.modais import abrir_modal_edicao_material
 from utils.file_validator import validar_pdf_upload, validar_imagem_upload, sanitizar_nome_arquivo
 
 # ==============================================================================
@@ -266,7 +267,6 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     if "exibir_modal_duplicidade" not in st.session_state:
         st.session_state["exibir_modal_duplicidade"] = False
 
-    # VERIFICAÇÃO E RENDERIZAÇÃO DO MODAL NO TOPO DA ABA
     if st.session_state.get("exibir_modal_duplicidade", False):
         n_r, d_c, o_c = st.session_state.get("dados_duplicidade_temp", ("N/I", "N/I", "N/I"))
         modal_alerta_reds_duplicado(n_r, d_c, o_c)
@@ -686,47 +686,49 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             lacre_b = bem.get("involucro_lacre", "SEM LACRE")
                             autor_b = bem.get("autores", "N/I")
                             custod_b = bem.get("fiel_depositario_atual", "CREDS TCO")
-                            resp_b = bem.get("ultimo_gestor_movimentou") or f"{nome_militar_atual} - MAT. {formatar_matricula_pm(mat_op)}"
 
-                            logs_item = [
-                                l for l in todos_logs_banco
-                                if str(l.get("num_reds", "")).strip() == num_reds_c
-                                or id_bem in str(l.get("bem_id", ""))
-                            ]
-                            qtd_etapas = len(logs_item) if logs_item else 1
+                            midias_list = bem.get("midias_anexas") or []
+                            qtd_midias = len(midias_list) if isinstance(midias_list, list) else 0
 
-                            classe_card = "card-par" if (idx_global_card % 2 == 0) else "card-impar"
+                            bg_card = "linear-gradient(135deg, #574431 0%, #423324 100%)" if (idx_global_card % 2 == 0) else "linear-gradient(135deg, #3b2e23 0%, #291f17 100%)"
 
-                            col_chk_b, col_card_b = st.columns([0.5, 9.5])
+                            col_chk_b, col_card_b, col_btn_b = st.columns([0.5, 6.8, 2.7])
+                            
                             with col_chk_b:
                                 is_sel_creds = st.checkbox("Selecionar", key=f"chk_creds_card_{id_bem}_{idx_global_card}", label_visibility="collapsed")
 
                             with col_card_b:
+                                html_midia_txt = f" | 🖼️ <b>{qtd_midias} foto(s) anexa(s)</b>" if qtd_midias > 0 else ""
                                 html_item = f"""
-                                <div class="card-material-item {classe_card}">
-                                    📄 REDS: <b>{num_reds_c}</b> | Material: <b>{desc_b}</b> (Qtd: {qtd_b} {unid_b})<br/>
+                                <div style="background: {bg_card}; border: 1.5px solid #a3824b; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; color: #ffffff;">
+                                    📄 REDS: <b>{num_reds_c}</b> | Material: <b>{desc_b}</b> (Qtd: {qtd_b} {unid_b}){html_midia_txt}<br/>
                                     🏷️ Lacre: <b style="font-family: monospace;">{lacre_b}</b> | Autor: <b>{autor_b}</b><br/>
                                     📍 Custodiante: <b>{custod_b}</b><br/>
-                                    ⏱️ Data/Hora do Trâmite: <span class="caixa-data-destaque">{dt_mov_exata}</span>
-                                    <div class="linha-auditoria-div">
-                                        <div>🛡️ <b>Responsável:</b> {resp_b}</div>
-                                        <div>🗺️ <b>Etapas na Cadeia:</b> {qtd_etapas} evento(s)</div>
-                                    </div>
+                                    ⏱️ Data/Hora: <span class="tag-info-retangulo">{dt_mov_exata}</span>
                                 </div>
                                 """
                                 st.markdown(html_item, unsafe_allow_html=True)
 
-                                c_sp, c_btn_cad, c_btn_guia, c_btn_mov = st.columns([4.6, 1.8, 1.8, 1.8])
-                                with c_btn_cad:
-                                    if st.button("🔗 FAV (Cadeia)", key=f"btn_cad_r1_{id_bem}_{idx_global_card}", use_container_width=True):
+                            with col_btn_b:
+                                badge_foto_html = f'<span class="badge-midia-anexa">📷 {qtd_midias} FOTO(S)</span>' if qtd_midias > 0 else ''
+                                st.markdown(f"""
+                                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; margin-bottom: 6px;">
+                                    <span class="badge-fase-status">📦 CUSTÓDIA CREDS</span>
+                                    {badge_foto_html}
+                                </div>
+                                """, unsafe_allow_html=True)
+
+                                c_b1, c_b2, c_b3 = st.columns(3)
+                                with c_b1:
+                                    if st.button("🔗 Cadeia", key=f"btn_cad_r1_{id_bem}_{idx_global_card}", use_container_width=True):
                                         modal_cadeia_custodia_timeline(bem.to_dict())
-                                with c_btn_guia:
-                                    if st.button("🖨️ Guia / Termo", key=f"btn_guia_r1_{id_bem}_{idx_global_card}", use_container_width=True):
+                                with c_b2:
+                                    if st.button("🖨️ Guia", key=f"btn_guia_r1_{id_bem}_{idx_global_card}", use_container_width=True):
                                         modal_guia_termo_oficial(dict(bem), nome_militar_atual, mat_op, unidade_militar_atual)
-                                with c_btn_mov:
-                                    if st.button("🛒 Movimentar", key=f"btn_mov_r1_{id_bem}_{idx_global_card}", type="primary", use_container_width=True):
-                                        st.session_state["material_selecionado_mov"] = bem.to_dict()
-                                        st.toast(f"Material '{desc_b}' selecionado para trâmite!", icon="📦")
+                                with c_b3:
+                                    lbl_m_b = f"📷 Mídias ({qtd_midias})" if qtd_midias > 0 else "📷 Mídias"
+                                    if st.button(lbl_m_b, key=f"btn_mov_r1_{id_bem}_{idx_global_card}", use_container_width=True):
+                                        abrir_modal_edicao_material(bem.to_dict(), nome_militar_atual, unidade_militar_atual)
 
                             if is_sel_creds:
                                 st.session_state["itens_selecionados_creds_painel"][id_bem] = bem.to_dict()
@@ -838,7 +840,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                         "data_hora": agora_iso,
                                         "num_reds": dados_c.get("num_reds", "N/I"),
                                         "bem_id": f"{dados_c.get('descricao')} (Lacre: {dados_c.get('involucro_lacre')})",
-                                        "web_origem": "SIOP_TCO",
                                         "acao": "MOVIMENTACAO_GESTOR_CREDS",
                                         "origem": f"CREDS TCO - {unidade_militar_atual}",
                                         "unidade_origem": unidade_militar_atual,
@@ -988,7 +989,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                     "data_hora": datetime.datetime.now().isoformat(),
                                                     "num_reds": num_reds_d,
                                                     "bem_id": f"{desc_d} (Lacre: {lacre_d})",
-                                                    "web_origem": "SIOP_TCO",
                                                     "acao": "BAIXA_DESTRUICAO_DEFINITIVA",
                                                     "origem": f"CREDS TCO - {unidade_militar_atual}",
                                                     "unidade_origem": unidade_militar_atual,
@@ -1064,7 +1064,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                 "data_hora": datetime.datetime.now().isoformat(),
                                                 "num_reds": num_reds_p,
                                                 "bem_id": f"{desc_p} (Lacre: {lacre_p})",
-                                                "web_origem": "SIOP_TCO",
                                                 "acao": "ACEITE_CUSTODIA_CREDS",
                                                 "origem": remetente_p,
                                                 "unidade_origem": item_p.get("unidade_remetente", "N/I"),
@@ -1176,7 +1175,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                 "data_hora": agora_iso_r,
                                                 "num_reds": item_e.get("num_reds", "N/I"),
                                                 "bem_id": f"{desc_e} (Lacre: {lacre_e})",
-                                                "web_origem": "SIOP_TCO",
                                                 "acao": "RETORNO_ORGAO_EXTERNO_PARA_CREDS",
                                                 "origem": dest_e,
                                                 "unidade_origem": dest_e,
@@ -1227,7 +1225,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                         "data_hora": now_iso_c,
                                                         "num_reds": item_e.get("num_reds", "N/I"),
                                                         "bem_id": f"{desc_e} (Lacre: {lacre_e})",
-                                                        "web_origem": "SIOP_TCO",
                                                         "acao": "CONFIRMACAO_ENTREGA_ORGAO_EXTERNO",
                                                         "origem": nome_militar_atual,
                                                         "unidade_origem": unidade_militar_atual,
