@@ -1,62 +1,66 @@
-def pode_acessar_modulo(usuario: dict, modulo: str) -> bool:
-    """Valida permissão específica para o módulo solicitado via duplo papel."""
-    if not usuario:
+"""
+==============================================================================
+Módulo de Verificação de Permissões e Perfis do Sistema (core/permissions.py)
+Gerencia os níveis de acesso globais e específicos do módulo CREDS / TCO.
+==============================================================================
+"""
+
+
+def usuario_eh_admin_ou_programador(usuario_dados: dict) -> bool:
+    """
+    Verifica se o usuário possui nível de acesso de Administrador ou Programador no sistema geral.
+    """
+    if not usuario_dados or not isinstance(usuario_dados, dict):
         return False
 
-    perfil_geral = str(usuario.get("nivel_acesso") or usuario.get("perfil_geral") or usuario.get("perfil") or "").upper()
-    cargo_geral = str(usuario.get("cargo_funcao") or "").upper()
-    login_usr = str(usuario.get("usuario_login") or usuario.get("num_policia") or "").strip()
-
-    # 🔓 BYPASS TOTAL: Programadores, Admins e o Login Soberano 1337468
-    if "1337468" in login_usr or \
-       any(p in perfil_geral for p in ["ADMIN", "PROGRAMADOR", "DESENVOLVEDOR"]) or \
-       any(p in cargo_geral for p in ["ADMIN", "PROGRAMADOR", "DESENVOLVEDOR"]):
-        return True
-
-    if modulo == "creds":
-        perfil = usuario.get("perfil_creds", "TROPA")
-        return perfil in ["GESTOR_UNIDADE", "GESTOR_CIA", "OPERADOR"]
-
-    elif modulo == "escalas":
-        perfil = usuario.get("perfil_escala", "TROPA")
-        return perfil in ["CMT_CIA", "SARGENTIACAO", "AUXILIAR_CIA"]
-
-    return False
+    nivel_geral = str(usuario_dados.get("nivel_acesso", "")).upper().strip()
+    return nivel_geral in ["ADMIN", "PROGRAMADOR", "GESTOR_SISTEMA"]
 
 
-def usuario_eh_gestor_creds(usr_dados: dict) -> bool:
-    """Verifica se o usuário possui acesso de gestor/programador irrestrito ao TCO/CREDS."""
-    if not usr_dados or not isinstance(usr_dados, dict):
+def usuario_eh_gestor_creds(usuario_dados: dict) -> bool:
+    """
+    Verifica se o usuário é Gestor do CREDS (Gestor de Unidade ou Gestor de Cia)
+    ou Administrador do Sistema para liberar acesso às abas gerenciais.
+    """
+    if not usuario_dados or not isinstance(usuario_dados, dict):
         return False
 
-    login_usr = str(usr_dados.get("usuario_login") or usr_dados.get("num_policia") or "").strip()
-    perfil = str(usr_dados.get("nivel_acesso") or usr_dados.get("perfil") or "").upper()
-    cargo = str(usr_dados.get("cargo_funcao") or "").upper()
-    perfil_creds = str(usr_dados.get("perfil_creds") or "").upper()
-
-    # 🔓 TRAVA SOBERANA DE PROGRAMADOR E LOGIN 1337468
-    if "1337468" in login_usr:
+    if usuario_eh_admin_ou_programador(usuario_dados):
         return True
 
-    PERFIS_SUPERIORES = ["PROGRAMADOR", "DESENVOLVEDOR", "ADMIN", "TESTADOR", "GESTOR_UNIDADE"]
-    if any(p in perfil for p in PERFIS_SUPERIORES) or any(p in cargo for p in PERFIS_SUPERIORES):
-        return True
-
-    return perfil_creds in ["GESTOR_UNIDADE", "GESTOR_CIA", "OPERADOR"] or "CREDS" in perfil or "P1" in perfil or "COMANDANTE" in cargo
+    perfil_creds = str(usuario_dados.get("perfil_creds", "")).upper().strip()
+    return perfil_creds in ["GESTOR_UNIDADE", "GESTOR_CIA"]
 
 
-def validar_promocao_programador(operador_dados: dict, perfil_desejado: str) -> tuple[bool, str]:
+def obter_escopo_militar_creds(usuario_dados: dict) -> tuple[str, str, str]:
     """
-    🔒 TRAVA SOBERANA E ABSOLUTA:
-    Apenas o usuário com o login exato '1337468' pode criar ou atribuir
-    os perfis PROGRAMADOR ou DESENVOLVEDOR.
+    Determina o escopo de visualização dos materiais com base no perfil e na Cia/CREDS atribuído.
+
+    Retorna:
+        tuple[str, str, str]: (escopo, nome_militar, creds_atribuido)
+
+    Escopos possíveis:
+        - 'TODOS': Visualiza todos os materiais do Batalhão (Admin / Gestor Unidade).
+        - 'COMPANHIA': Visualiza todos os materiais do CREDS/Cia atribuído (Gestor Cia).
+        - 'PESSOAL': Visualiza apenas os materiais sob sua posse direta (Tropa).
     """
-    perfil_upper = str(perfil_desejado).upper()
-    is_perfil_restrito = any(p in perfil_upper for p in ["PROGRAMADOR", "DESENVOLVEDOR"])
+    if not usuario_dados or not isinstance(usuario_dados, dict):
+        return "PESSOAL", "MILITAR", "21º BPM"
 
-    if is_perfil_restrito:
-        login_operador = str(operador_dados.get("usuario_login") or operador_dados.get("num_policia") or "").strip()
-        if "1337468" not in login_operador:
-            return False, "🚨 ACESSO NEGADO: Apenas o Administrador Soberano do SIOP (Login 1337468) pode atribuir a função PROGRAMADOR ou DESENVOLVEDOR."
+    nome_militar = str(
+        usuario_dados.get("nome_guerra") or usuario_dados.get("nome") or "MILITAR"
+    ).upper().strip()
 
-    return True, "OK"
+    # Obtém a Cia/CREDS atribuída ao usuário (ex: '35ª CIA PM', '111ª CIA PM', etc.)
+    creds_atribuido = str(
+        usuario_dados.get("creds_acesso") or usuario_dados.get("unidade") or "21º BPM"
+    ).strip()
+
+    perfil_creds = str(usuario_dados.get("perfil_creds", "TROPA")).upper().strip()
+
+    if usuario_eh_admin_ou_programador(usuario_dados) or perfil_creds == "GESTOR_UNIDADE":
+        return "TODOS", nome_militar, creds_atribuido
+    elif perfil_creds == "GESTOR_CIA":
+        return "COMPANHIA", nome_militar, creds_atribuido
+    else:
+        return "PESSOAL", nome_militar, creds_atribuido
