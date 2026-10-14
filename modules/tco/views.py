@@ -1388,10 +1388,10 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
 
     with col_des1:
         with st.container(border=True):
-            st.markdown("##### ➕ Atribuir / Incluir Função CREDS do Militar")
+            st.markdown("##### ➕ Atribuir / Direcionar Função & CREDS do Militar")
             
             opcoes_militar = {
-                f"{m.get('posto_grad') or m.get('graduacao', 'PM')} {m.get('nome_guerra')} (PM: {m.get('num_policia')}) - Lotação: {m.get('unidade', 'N/I')}": m
+                f"{m.get('posto_grad') or m.get('graduacao', 'PM')} {m.get('nome_guerra')} (PM: {m.get('num_policia')}) - Unidade: {m.get('unidade', 'N/I')}": m
                 for m in all_milit
             }
 
@@ -1402,6 +1402,7 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
 
                 u_cadastrado = next((u for u in usuarios_banco if str(u.get("usuario_login") or u.get("usuario")).upper() == num_pm.upper()), {})
                 perfil_creds_atual = u_cadastrado.get("perfil_creds", "TROPA")
+                creds_acesso_atual = u_cadastrado.get("creds_acesso") or u_cadastrado.get("unidade") or militar_obj.get("unidade", "35ª CIA PM")
 
                 opcoes_perfis = {
                     "GESTOR_UNIDADE": "Gestor CREDS Unidade (Acesso Global 21º BPM)",
@@ -1424,22 +1425,37 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                     key="sel_novo_perfil_creds_aba7_select"
                 )
 
-                if st.button("💾 Salvar Permissão", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
-                    if atualizar_usuario_supabase(num_pm, {"perfil_creds": novo_perfil_creds}):
+                # Direcionamento explícito para qual CREDS o militar vai operar
+                lista_creds_direcionamento = [u.replace("CREDS TCO - ", "").strip() for u in obter_lista_creds_dinamica()]
+                index_creds_def = lista_creds_direcionamento.index(creds_acesso_atual) if creds_acesso_atual in lista_creds_direcionamento else 0
+
+                novo_creds_atribuido = st.selectbox(
+                    "Direcionar para qual CREDS / Cia Especificamente:",
+                    options=lista_creds_direcionamento,
+                    index=index_creds_def,
+                    key="sel_novo_creds_atribuido_aba7"
+                )
+
+                if st.button("💾 Salvar Permissão e Direcionamento CREDS", type="primary", use_container_width=True, key="btn_add_creds_aba7"):
+                    payload_perm = {
+                        "perfil_creds": novo_perfil_creds,
+                        "creds_acesso": novo_creds_atribuido
+                    }
+                    if atualizar_usuario_supabase(num_pm, payload_perm):
                         registrar_audit_log(
                             operador_pm=str(usr_logado.get("usuario_login") or usr_logado.get("num_policia")),
                             alvo_pm=num_pm,
-                            tipo_acao="ALTERAÇÃO_FUNÇÃO_CREDS",
-                            descricao=f"Função CREDS do militar {militar_obj.get('nome_guerra')} ({num_pm}) alterada para {novo_perfil_creds}."
+                            tipo_acao="ALTERAÇÃO_FUNÇÃO_E_CREDS",
+                            descricao=f"Militar {militar_obj.get('nome_guerra')} ({num_pm}) direcionado para {novo_creds_atribuido} com perfil {novo_perfil_creds}."
                         )
-                        st.success(f"Função CREDS de **{militar_obj.get('nome_guerra')}** atualizada para **{opcoes_perfis[novo_perfil_creds]}**!")
+                        st.success(f"Permissão de **{militar_obj.get('nome_guerra')}** salva! Direcionado para **CREDS {novo_creds_atribuido}** ({opcoes_perfis[novo_perfil_creds]}).")
                         st.rerun()
             else:
                 st.info("Nenhum militar localizado no seu escopo de lotação.")
 
     with col_des2:
         with st.container(border=True):
-            st.markdown("##### 🏛️ Gestores e Operadores CREDS Ativos")
+            st.markdown("##### 🏛️ Gestores e Operadores CREDS Ativos & Direcionamento")
             
             gestores_creds = []
             if not df_u.empty and "perfil_creds" in df_u.columns:
@@ -1448,7 +1464,7 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
             if gestores_creds:
                 grupos_creds = {}
                 for g in gestores_creds:
-                    unid_g = str(g.get("unidade", "35ª CIA PM")).strip().upper()
+                    unid_g = str(g.get("creds_acesso") or g.get("unidade") or "35ª CIA PM").strip().upper()
                     if unid_g not in grupos_creds:
                         grupos_creds[unid_g] = []
                     grupos_creds[unid_g].append(g)
@@ -1464,11 +1480,14 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                                 g.get("cargo_funcao") or 
                                 "PM"
                             )
+                            creds_vinculado_txt = str(g.get("creds_acesso") or g.get("unidade") or "N/I").upper()
+
                             with st.container(border=True):
                                 c_g1, c_g2 = st.columns([3, 1.5])
                                 with c_g1:
                                     st.markdown(f"**👤 {grad_correta} {g.get('nome_guerra', 'OPERADOR')}**")
                                     st.caption(f"Nº Polícia: **{pm_key}** | Função: `{g.get('perfil_creds')}`")
+                                    st.markdown(f"🏢 **CREDS Operando:** <code style='color: #38bdf8;'>CREDS {creds_vinculado_txt}</code>", unsafe_allow_html=True)
                                 with c_g2:
                                     if pode_excluir_e_revogar:
                                         if st.button("🗑️ Revogar", key=f"btn_revogar_creds_{pm_key}_{idx_g}", use_container_width=True):
