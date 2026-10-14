@@ -1,14 +1,25 @@
+"""
+==============================================================================
+Módulo Parser Avançado do PDF do REDS / BO (modules/tco/parser_reds.py)
+Extrai informações estruturadas (REDS, Autores, Materiais, Lacres, Datas,
+Relator e Recibo do JECRIM) de PDFs da Polícia Militar de Minas Gerais.
+==============================================================================
+"""
+
 import re
 import pypdf
 import hashlib
 
-def gerar_hash_sha256(file_bytes):
+
+def gerar_hash_sha256(file_bytes) -> str:
     """Gera a assinatura digital SHA-256 do arquivo para a Cadeia de Custódia (Art. 158-A do CPP)."""
     if not file_bytes:
         return None
     return hashlib.sha256(file_bytes).hexdigest()
 
-def extrair_cabecalho_reds(texto_completo):
+
+def extrair_cabecalho_reds(texto_completo: str) -> dict:
+    """Extrai os dados gerais de cabeçalho da ocorrência (REDS, Datas, Local e Natureza)."""
     # N° REDS
     m_reds = re.search(r'N[°º]\s*(\d{4}-\d{9}-\d{3})', texto_completo)
     num_reds = m_reds.group(1).strip() if (m_reds and m_reds.group(1)) else "N/A"
@@ -54,7 +65,7 @@ def extrair_cabecalho_reds(texto_completo):
     
     local_str = f"{r_str} {n_str}, Bairro {b_str}, {m_str}".replace("  ", " ").strip()
 
-    # NATUREZA PRINCIPAL (LEITURA PRECISA DO CAMPO 'PROVÁVEL DESCRIÇÃO DA OCORRÊNCIA PRINCIPAL')
+    # NATUREZA PRINCIPAL
     raw_nat = None
 
     # 1. Padrão direto pelo código de natureza PMMG (ex: I04033 - TRAFICO ILICITO DE DROGAS)
@@ -99,7 +110,9 @@ def extrair_cabecalho_reds(texto_completo):
         "local": local_str
     }
 
-def extrair_mapa_envolvidos(texto_busca):
+
+def extrair_mapa_envolvidos(texto_busca: str) -> dict:
+    """Mapeia o número do envolvido com seu nome completo e qualificação."""
     mapa = {}
     blocos = re.split(r'ENVOLVIDO\s+(\d+)', texto_busca, flags=re.IGNORECASE)
     
@@ -124,7 +137,9 @@ def extrair_mapa_envolvidos(texto_busca):
             
     return mapa
 
-def extrair_relator_completo(texto_completo):
+
+def extrair_relator_completo(texto_completo: str) -> str:
+    """Mapeia os dados do relator/digitador da ocorrência."""
     m_rel = re.search(
         r'DADOS PARA CONTROLE INTERNO/RELATOR DA OCORRÊNCIA[\s\S]*?MATRÍCULA\s*\n\s*(\d+)[\s\S]*?CARGO\s*\n\s*([^\n]+)[\s\S]*?NOME COMPLETO\s*\n\s*([^\n]+)',
         texto_completo,
@@ -157,7 +172,9 @@ def extrair_relator_completo(texto_completo):
     
     return "RELATOR NÃO IDENTIFICADO"
 
-def extrair_recibo_jecrim(texto_completo):
+
+def extrair_recibo_jecrim(texto_completo: str) -> tuple[str, list]:
+    """Mapeia a entrega e os itens destinados especificamente ao JECRIM no PDF."""
     m_recibo = re.search(
         r'PODER JUDICIARIO[\s\S]*?UNIDADE\s*\n\s*([^\n]+)[\s\S]*?ITENS ENTREGUES A ESTE DESTINATÁRIO([\s\S]*?)(?=RECIBO|FIM DO AUTO|FIM DOS ANEXOS|HISTÓRICO|$)', 
         texto_completo, 
@@ -174,7 +191,9 @@ def extrair_recibo_jecrim(texto_completo):
         
     return unidade_jecrim, mat_ids
 
-def extrair_materiais_transcritos(texto_busca, mat_ids, mapa_envolvidos):
+
+def extrair_materiais_transcritos(texto_busca: str, mat_ids: list, mapa_envolvidos: dict) -> list:
+    """Varre todos os blocos 'MATERIAL X' e vincula quantidade, lacre, descrição e o autor correspondente."""
     materiais = []
     itens_processados = set()
     
@@ -280,8 +299,12 @@ def extrair_materiais_transcritos(texto_busca, mat_ids, mapa_envolvidos):
         
     return materiais
 
-def extrair_dados_reds_pdf(pdf_file_bytes):
-    reader = pypdf.PdfReader(pdf_file_bytes)
+
+def extrair_dados_reds_pdf(pdf_file_bytes) -> dict:
+    """Função principal que lê os bytes do PDF e constrói o dicionário estruturado do REDS."""
+    conteudo_bytes = pdf_file_bytes.getvalue() if hasattr(pdf_file_bytes, "getvalue") else pdf_file_bytes
+    reader = pypdf.PdfReader(io.BytesIO(conteudo_bytes))
+    
     texto_completo = ""
     for page in reader.pages:
         texto_completo += (page.extract_text() or "") + "\n"
@@ -300,7 +323,7 @@ def extrair_dados_reds_pdf(pdf_file_bytes):
     autores_encontrados = list(set([m["autor"] for m in materiais])) if materiais else ["AUTOR NÃO IDENTIFICADO"]
     resumo_fato = texto_historico.strip().replace("\n", " ")[:250] + "..." if texto_historico else "Resumo indisponível."
 
-    hash_pdf_original = gerar_hash_sha256(pdf_file_bytes.getvalue() if hasattr(pdf_file_bytes, "getvalue") else pdf_file_bytes)
+    hash_pdf_original = gerar_hash_sha256(conteudo_bytes)
 
     return {
         "num_reds": cabecalho["num_reds"],
