@@ -2,7 +2,7 @@
 ==============================================================================
 Módulo de Cabeçalho Institucional PMMG - Escalas (modules/escalas/cabecalho.py)
 Design tático idêntico ao padrão oficial com relógio dinâmico e leitura
-direta do Nível Geral de Acesso da Gestão de Acessos do sistema.
+direta e fiel da Lotação Real do militar logado.
 ==============================================================================
 """
 
@@ -22,9 +22,9 @@ def formatar_matricula_pm(mat: str) -> str:
     return str(mat)
 
 
-def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao="35ª CIA PM", titulo_modulo="Gestão de Escalas & Planejamento Operacional"):
+def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao="", titulo_modulo="Gestão de Escalas & Planejamento Operacional"):
     """
-    Renderiza o cabeçalho tático corporativo extraindo a função do Nível Geral da Gestão de Acessos.
+    Renderiza o cabeçalho tático corporativo extraindo a lotação REAL do militar logado.
     """
     usr_dados = st.session_state.get("usuario_dados", {})
     if isinstance(usr_dados, str):
@@ -46,28 +46,37 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
     ).strip()
     matricula_fmt = formatar_matricula_pm(mat_raw)
 
-    unidade_atual = str(st.session_state.get("cfg_unidade") or unidade_lotacao or "21º BPM").strip().upper()
-    subunidade_atual = str(st.session_state.get("cfg_subunidade") or subunidade_lotacao or "35ª CIA PM").strip().upper()
+    # LEITURA REAL DA LOTAÇÃO/UNIDADE DO MILITAR (Mesma lógica usada no TCO e na Governança)
+    lotacao_real = str(
+        usr_dados.get("unidade")
+        or usr_dados.get("lotacao")
+        or usr_dados.get("subunidade")
+        or st.session_state.get("cfg_subunidade")
+        or unidade_lotacao
+    ).strip().upper()
 
-    # Prioridade de leitura: Nível Geral de Acesso definido na Gestão de Acessos do Sistema
+    # LEITURA REAL DO NÍVEL GERAL DE ACESSO
     nivel_geral = str(
         usr_dados.get("nivel_acesso")
+        or usr_dados.get("perfil_escala")
         or usr_dados.get("perfil")
-        or usr_dados.get("funcao_pm")
         or usr_dados.get("cargo_funcao")
         or "TROPA"
     ).strip().upper()
 
-    # Mapeamento do Nível Geral para a Função Institucional da PMMG no módulo de Escalas
+    # Mapeamento do Nível Geral para a Função Institucional da PMMG
     mapa_nivel_para_funcao = {
         "CMT_CIA": "COMANDANTE DE CIA",
         "COMANDANTE_CIA": "COMANDANTE DE CIA",
         "GESTOR_CIA": "COMANDANTE DE CIA",
         "CMT_PEL": "COMANDANTE DE PELOTÃO",
+        "CMT_PELOTAO": "COMANDANTE DE PELOTÃO",
         "COMANDANTE_PELOTAO": "COMANDANTE DE PELOTÃO",
+        "SARGENTIACAO": "SARGENTEAÇÃO",
         "SARGENTEAÇÃO": "SARGENTEAÇÃO",
         "SARGENTEACAO": "SARGENTEAÇÃO",
         "SARGENTEANTE": "SARGENTEAÇÃO",
+        "AUXILIAR_CIA": "SARGENTEAÇÃO / AUX. CIA",
         "AUX_P3": "AUXILIAR DA P/3",
         "P3": "AUXILIAR DA P/3",
         "CHEFE_P3": "CHEFE DA P/3",
@@ -83,10 +92,11 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
 
     funcao_exibicao = mapa_nivel_para_funcao.get(nivel_geral, nivel_geral)
 
-    if "21" in unidade_atual and "UBÁ" not in unidade_atual and "UBA" not in unidade_atual:
-        tag_local = f"{subunidade_atual} / P3/EM/{unidade_atual}/4 RPM (Ubá-MG)"
+    # Identificação tática do local
+    if "21" in lotacao_real and "UBÁ" not in lotacao_real and "UBA" not in lotacao_real:
+        tag_local = f"{lotacao_real} (Ubá-MG)"
     else:
-        tag_local = f"{subunidade_atual} / P3/EM/{unidade_atual}/4 RPM"
+        tag_local = lotacao_real
 
     html_cabecalho_escalas = f"""
     <!DOCTYPE html>
@@ -218,7 +228,7 @@ def renderizar_cabecalho_escalas(unidade_lotacao="21º BPM", subunidade_lotacao=
                         👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.80rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
                     </div>
                     <div class="user-sub">
-                        🏛️ {subunidade_atual} — {funcao_exibicao}
+                        🏛️ {lotacao_real} — {funcao_exibicao}
                     </div>
                 </div>
             </div>
