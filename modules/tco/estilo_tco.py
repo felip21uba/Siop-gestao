@@ -86,12 +86,30 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
         or "21º BPM"
     ).strip().upper()
 
+    # Mapeamento dinâmico da função/perfil do militar
+    funcao_militar = str(
+        usr_dados.get("perfil_creds")
+        or usr_dados.get("funcao")
+        or usr_dados.get("cargo_funcao")
+        or usr_dados.get("perfil")
+        or "OPERADOR TCO"
+    ).strip().upper()
+
+    # Formata legendas legíveis se vier código de perfil interno
+    mapa_funcoes_legiveis = {
+        "GESTOR_UNIDADE": "GESTOR CREDS UNIDADE",
+        "GESTOR_CIA": "GESTOR CREDS CIA",
+        "OPERADOR": "OPERADOR CREDS",
+        "TROPA": "POLICIAL EM CAMPO / TROPA"
+    }
+    funcao_exibicao = mapa_funcoes_legiveis.get(funcao_militar, funcao_militar)
+
     if "21" in unidade_atual and "UBÁ" not in unidade_atual and "UBA" not in unidade_atual:
         tag_local = f"CREDS TCO / {unidade_atual} (Ubá-MG)"
     else:
         tag_local = f"CREDS TCO / {unidade_atual}"
 
-    # Renderização HTML + JS do Cabeçalho e Relógio num iframe isolado de altura exata
+    # Renderização HTML + JS do Cabeçalho e Relógio num iframe isolado
     html_cabecalho = f"""
     <!DOCTYPE html>
     <html>
@@ -222,7 +240,7 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
                         👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.80rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
                     </div>
                     <div class="user-sub">
-                        🏛️ {unidade_atual} — PLANTÃO
+                        🏛️ {unidade_atual} — {funcao_exibicao}
                     </div>
                 </div>
             </div>
