@@ -1,8 +1,7 @@
 """
 ==============================================================================
 Módulo de Armazenamento e Gestão de Mídias/Documentos TCO (modules/tco/storage.py)
-Gerencia uploads, remoções e links públicos no Supabase Storage (bucket 'midias_tco'),
-garantindo a preservação estrita da extensão do arquivo para abertura direta no navegador.
+Gerencia uploads, remoções e links públicos no Supabase Storage (bucket 'midias_tco').
 ==============================================================================
 """
 
@@ -38,8 +37,8 @@ def extrair_extensao_arquivo(file_name: str, file_type: str = "") -> str:
 
 def upload_midia_supabase(file_bytes: bytes, file_name: str, file_type: str, num_reds: str, id_bem: str = None) -> dict:
     """
-    Realiza o upload do arquivo para o Supabase Storage preservando a extensão original.
-    Registra os metadados na tabela 'tco_midias'.
+    Realiza o upload direto para o Supabase Storage no bucket 'midias_tco'
+    e vincula os metadados no array JSONB 'midias_anexas' do material em 'tco_materiais'.
     """
     if not supabase:
         st.error("❌ Conexão com o Supabase não disponível.")
@@ -58,20 +57,17 @@ def upload_midia_supabase(file_bytes: bytes, file_name: str, file_type: str, num
         else:
             caminho_storage = f"{reds_sanitizado}/doc_{timestamp_str}{extensao}"
 
-        # Upload do arquivo físico para o bucket no Supabase Storage
-        res_upload = supabase.storage.from_(BUCKET_NAME).upload(
+        # 1. Upload do arquivo binário para o bucket 'midias_tco'
+        supabase.storage.from_(BUCKET_NAME).upload(
             path=caminho_storage,
             file=file_bytes,
             file_options={"content-type": file_type or "application/octet-stream", "upsert": "true"}
         )
 
-        # Obtenção da URL pública
+        # 2. Obtenção da URL pública
         url_publica = supabase.storage.from_(BUCKET_NAME).get_public_url(caminho_storage)
 
-        # Gravação do registro na tabela 'tco_midias'
-        payload_midia = {
-            "num_reds": num_reds,
-            "id_bem": id_bem,
+        novo_anexo = {
             "nome_arquivo": nome_limpo,
             "caminho_storage": caminho_storage,
             "url_publica": url_publica,
@@ -80,11 +76,20 @@ def upload_midia_supabase(file_bytes: bytes, file_name: str, file_type: str, num
             "data_upload": datetime.datetime.now().isoformat()
         }
 
-        res_db = supabase.table("tco_midias").insert(payload_midia).execute()
+        # 3. Atualização na coluna jsonb 'midias_anexas' do material se id_bem informado
+        if id_bem:
+            res_bem = supabase.table("tco_materiais").select("midias_anexas").eq("id_bem", str(id_bem)).execute()
+            midias_existentes = []
+            if res_bem and res_bem.data:
+                midias_existentes = res_bem.data[0].get("midias_anexas") or []
+                if not isinstance(midias_existentes, list):
+                    midias_existentes = []
 
-        if res_db and res_db.data:
-            return res_db.data[0]
-        return payload_midia
+            midias_existentes.append(novo_anexo)
+
+            supabase.table("tco_materiais").update({"midias_anexas": midias_existentes}).eq("id_bem", str(id_bem)).execute()
+
+        return novo_anexo
 
     except Exception as e:
         st.error(f"Erro ao realizar upload da mídia no Supabase Storage: {e}")
@@ -137,31 +142,42 @@ def deletar_arquivo_storage_supabase(caminho_storage: str) -> bool:
 
 def listar_midias_reds_supabase(num_reds: str) -> list:
     """
-    Lista todas as mídias e documentos vinculados a um determinado REDS.
+    Lista todas as mídias vinculadas aos materiais de um determinado REDS.
     """
     if not supabase or not num_reds:
         return []
 
     try:
-        res = supabase.table("tco_midias").select("*").eq("num_reds", str(num_reds)).order("data_upload", desc=True).execute()
-        return res.data or []
+        res = supabase.table("tco_materiais").select("midias_anexas").eq("num_reds", str(num_reds)).execute()
+        todas_midias = []
+        if res and res.data:
+            for item in res.data:
+                anexos = item.get("midias_anexas") or []
+                if isinstance(anexos, list):
+                    todas_midias.extend(anexos)
+        return todas_midias
     except Exception as e:
         print(f"Aviso ao consultar mídias do REDS {num_reds}: {e}")
         return []
 
 
-def excluir_midia_supabase(id_midia: str, caminho_storage: str) -> bool:
+def excluir_midia_supabase(id_bem: str, caminho_storage: str) -> bool:
     """
-    Exclui a mídia física do bucket e remove o registro da tabela 'tco_midias'.
+    Exclui a mídia física do bucket e atualiza o JSONB na tabela 'tco_materiais'.
     """
-    if not supabase:
+    if not supabase or not id_bem:
         return False
 
     try:
         if caminho_storage:
             supabase.storage.from_(BUCKET_NAME).remove([caminho_storage])
 
-        supabase.table("tco_midias").delete().eq("id", id_midia).execute()
+        res_bem = supabase.table("tco_materiais").select("midias_anexas").eq("id_bem", str(id_bem)).execute()
+        if res_bem and res_bem.data:
+            anexos = res_bem.data[0].get("midias_anexas") or []
+            if isinstance(anexos, list):
+                novos_anexos = [a for a in anexos if a.get("caminho_storage") != caminho_storage]
+                supabase.table("tco_materiais").update({"midias_anexas": novos_anexos}).eq("id_bem", str(id_bem)).execute()
         return True
     except Exception as e:
         st.error(f"Erro ao excluir mídia: {e}")
