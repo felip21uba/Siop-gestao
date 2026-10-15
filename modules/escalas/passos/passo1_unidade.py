@@ -31,7 +31,6 @@ def obter_cias_disponiveis_unidade():
 
     cias_banco = set()
 
-    # Busca Cias direto na tabela unidades_config via Supabase (Sem depender do core.database)
     if supabase:
         try:
             res_u = supabase.table("unidades_config").select("*").execute()
@@ -94,7 +93,6 @@ def carregar_escala_selecionada_passo1():
             st.toast(f"📖 Rascunho existente da {sub_ativa} ({m_mes:02d}/{m_ano}) carregado do banco!", icon="✅")
             return True
         else:
-            # Novo arquivo zerado para a fração selecionada
             st.session_state["grade_escala_lancamentos"] = {}
             st.session_state["militares_no_quadro_chaves"] = []
             st.session_state["ordem_customizada_map"] = {}
@@ -136,7 +134,7 @@ def renderizar_passo1():
                     idx_default = cias_disponiveis.index(st.session_state["cfg_subunidade"])
 
                 cia_selecionada = st.selectbox(
-                    "🏢 Cia/Fração a Produzir Escala:",
+                    "🏢 Cia/Fração para Produzir a Escala:",
                     options=cias_disponiveis,
                     index=idx_default,
                     key="sb_selecionar_cia_escala_passo1"
@@ -144,7 +142,7 @@ def renderizar_passo1():
                 st.session_state["cfg_subunidade"] = cia_selecionada
             else:
                 st.text_input(
-                    "🏢 Cia/Fração (Sua Lotação):",
+                    "🏢 Cia/Fração da Escala (Sua Lotação):",
                     value=lotacao_militar_real,
                     disabled=True
                 )
@@ -181,37 +179,4 @@ def renderizar_passo1():
         m_num = st.session_state.get("mes_escala", datetime.date.today().month)
         a_num = st.session_state.get("ano_escala", datetime.date.today().year)
 
-        st.info(f"🎯 **Escala Selecionada para Produção:** `{sub_nome}` | **Período:** `{m_num:02d}/{a_num}`")
-
-        st.divider()
-
-        # GESTÃO DAS EQUIPES / EMPREGOS OPERACIONAIS DA UNIDADE
-        st.markdown("##### 👥 **Equipes e Empregos Operacionais da Fração:**")
-
-        if "lista_equipes_unidade" not in st.session_state:
-            st.session_state["lista_equipes_unidade"] = ["CPU", "RP", "SUPERVISÃO", "ADMINISTRAÇÃO", "TM ALPHA", "GEPAR"]
-
-        if "equipe_ativa" not in st.session_state:
-            st.session_state["equipe_ativa"] = "ADMINISTRAÇÃO"
-
-        c_eq1, c_eq2 = st.columns([3, 1.5])
-
-        with c_eq1:
-            eq_sel = st.selectbox(
-                "Equipe / Emprego Operacional em Edição:",
-                options=st.session_state["lista_equipes_unidade"],
-                index=0 if st.session_state["equipe_ativa"] not in st.session_state["lista_equipes_unidade"] else st.session_state["lista_equipes_unidade"].index(st.session_state["equipe_ativa"]),
-                key="sb_equipe_ativa_passo1"
-            )
-            st.session_state["equipe_ativa"] = eq_sel
-
-        with c_eq2:
-            nova_eq_nome = st.text_input("➕ Criar Nova Equipe:", placeholder="Ex: TÁTICO MÓVEL", key="txt_nova_eq_passo1").strip().upper()
-            if st.button("➕ Adicionar Equipe", use_container_width=True, key="btn_add_eq_passo1"):
-                if nova_eq_nome and nova_eq_nome not in st.session_state["lista_equipes_unidade"]:
-                    st.session_state["lista_equipes_unidade"].append(nova_eq_nome)
-                    st.session_state["equipe_ativa"] = nova_eq_nome
-                    st.success(f"✅ Equipe '{nova_eq_nome}' adicionada!")
-                    st.rerun()
-
-        st.markdown(f"🟢 **Equipe Selecionada para Lançamento:** `{st.session_state['equipe_ativa']}`")
+        st.info(f"🎯 **Escala Ativa para Produção:** `{sub_nome}` | **Período:** `{m_num:02d}/{a_num}`")
