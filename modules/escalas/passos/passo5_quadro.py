@@ -1,6 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 5 - Quadro Mensal de Escalas, Homologação Dinâmica e Perfis
+Garante a independência de alocação de equipes mês a mês e isolamento por Cia.
 ==============================================================================
 """
 
@@ -229,7 +230,16 @@ def carregar_escala_salva_banco():
             
             st.session_state["chave_escala_carregada"] = f"{m_ano}_{m_mes:02d}"
             return True
-        return False
+        else:
+            # Se não existir escala gravada para este ano/mês, reinicia o quadro limpo (Sem amarras com o mês anterior)
+            st.session_state["grade_escala_lancamentos"] = {}
+            st.session_state["militares_no_quadro_chaves"] = []
+            st.session_state["ordem_customizada_map"] = {}
+            st.session_state["status_escala_ativo"] = "RASCUNHO"
+            st.session_state["toggle_trava_quadro"] = False
+            st.session_state["escala_fechada_auditoria"] = False
+            st.session_state["chave_escala_carregada"] = f"{m_ano}_{m_mes:02d}"
+            return False
     except Exception as ex:
         print(f"Aviso ao carregar do banco: {ex}")
         return False
@@ -545,7 +555,7 @@ def renderizar_passo5():
     
     pode_homologar = any(p in perfil_usr or p in cargo_usr for p in ["ADMIN", "CMT_CIA", "COMANDANTE", "CAP", "TEN", "MAJ", "TEN CEL", "CEL", "PROGRAMADOR"])
 
-    # 🌐 LISTA COMPLETA E LIVRE DE TODOS OS MILITARES DO BANCO PARA SELEÇÃO
+    # LISTA COMPLETA DE MILITARES DO BANCO PARA SELEÇÃO DE HOMOLOGAÇÃO
     opcoes_militares_todas = sorted(
         [
             f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra', 'MILITAR').upper()} ({m.get('num_policia', '')})"
@@ -572,9 +582,7 @@ def renderizar_passo5():
             unsafe_allow_html=True
         )
 
-        # =========================================================================
-        # 🔐 PAINEL DE HOMOLOGAÇÃO COM SELEÇÃO TOTALMENTE LIVRE
-        # =========================================================================
+        # PAINEL DE HOMOLOGAÇÃO COM SELEÇÃO LIVRE
         with st.container(border=True):
             col_h1, col_h2, col_h3, col_h4 = st.columns([2.5, 2.5, 1.2, 1.3], vertical_alignment="bottom")
             
@@ -617,7 +625,7 @@ def renderizar_passo5():
                     btn_homol_disabled = not pode_homologar
                     if st.button("🔒 Homologar", type="primary", use_container_width=True, disabled=btn_homol_disabled, help="Aprova a escala e trava a edição do Quadro para dias passados. Requer perfil de Comandante/Oficial."):
                         st.session_state["status_escala_ativo"] = "HOMOLOGADA"
-                        st.session_state["toggle_trava_quadro"] = False  # Mantém o quadro e painel interativos para hoje/futuro
+                        st.session_state["toggle_trava_quadro"] = False
                         st.session_state["escala_fechada_auditoria"] = True
                         executar_auto_save_banco(status_escala="HOMOLOGADA")
                         st.success("🎉 Escala homologada com sucesso! Dias passados travados para alteração.")
@@ -705,7 +713,7 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
-        # PAINEL DE AJUSTE RÁPIDO COM CALENDÁRIO NATIVO E SELEÇÃO AVULSA
+        # PAINEL DE AJUSTE RÁPIDO NO QUADRO
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote / Remoção)", expanded=False):
             if mils_ord:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
@@ -741,7 +749,6 @@ def renderizar_passo5():
                     c_f2.caption("📅 *Ação aplicada automaticamente a todos os dias do mês.*")
                     dias_finais_alvo = list(range(1, num_dias + 1))
                 else:
-                    # RENDERIZAÇÃO DO CALENDÁRIO POP-UP NATIVO (FIGURA DA FOTO)
                     col_cal, col_avulsos = c_f2.columns([1.8, 2.2])
                     
                     with col_cal:
@@ -755,7 +762,6 @@ def renderizar_passo5():
                             key="p5_picker_popup_foto"
                         )
 
-                    # Permite acrescentar dias avulsos adicionais diretamente na lista
                     dias_do_mes_nums = list(range(1, num_dias + 1))
                     
                     with col_avulsos:
@@ -766,7 +772,6 @@ def renderizar_passo5():
                             key="p5_ms_dias_avulsos"
                         )
 
-                    # CONSOLIDAÇÃO MATEMÁTICA DAS DATAS ESCOLHIDAS
                     dias_finais_alvo = set(dias_avulsos_extra)
                     
                     if isinstance(datas_picker, (tuple, list)):
@@ -803,7 +808,6 @@ def renderizar_passo5():
                     else:
                         dias_alvo = dias_finais_alvo
 
-                        # TRAVA DE DIAS PASSADOS: Bloqueia alterações apenas se o dia for ESTRITAMENTE menor que HOJE em escala homologada
                         dias_passados_tentados = [
                             d_a for d_a in dias_alvo 
                             if datetime.date(m_ano, m_mes, d_a) < dt_hoje
@@ -918,7 +922,7 @@ def renderizar_passo5():
                 use_container_width=True,
                 hide_index=True,
                 height=450,
-                disabled=False,  # Editor interativo liberado para edição direta
+                disabled=False,
                 key="editor_escala_principal"
             )
 
@@ -945,7 +949,6 @@ def renderizar_passo5():
                     if grade.get(ck, "") != val_editado:
                         dt_celula = datetime.date(m_ano, m_mes, d)
                         
-                        # Trava direta na célula caso a escala seja homologada e a data seja um dia do passado
                         if status_escala == "HOMOLOGADA" and dt_celula < dt_hoje_ed:
                             st.error(f"🔒 A célula do Dia {d:02d}/{m_mes:02d} ({it['nome_guerra']}) está travada por ser uma data do passado em escala homologada.")
                         else:
