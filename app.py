@@ -229,26 +229,34 @@ if "tema_visual" not in st.session_state:
     st.session_state["tema_visual"] = "DARK"
 
 # ==============================================================================
-# 🌐 CARREGAMENTO DINÂMICO DE ASSETS COM CACHE-BUSTING AUTOMÁTICO
+# 🌐 CARREGAMENTO DIRETO E EXCLUSIVO DE ASSETS DA PASTA LOCAL (assets/)
 # ==============================================================================
-URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
-
 def obter_imagem_brasao():
     """
-    Busca a logo/brasão atualizada na pasta assets/ testando múltiplos formatos.
-    Aplica timestamp de modificação do arquivo para invalidar o cache do navegador.
+    Carrega o brasão diretamente da pasta local 'assets/'.
+    Testa os nomes e extensões comuns no disco local e aplica o mtime para invalidar o cache.
     """
+    pasta_assets = os.path.join(DIRETORIO_RAIZ, "assets")
     extensoes = ["png", "jpg", "jpeg", "svg", "webp"]
-    candidatos = ["brasao", "logo", "brasao_pmmg"]
+    nomes = ["brasao", "logo", "brasao_pmmg", "brasao_oficial"]
     
-    for nome in candidatos:
-        for ext in extensoes:
-            caminho = os.path.join(DIRETORIO_RAIZ, "assets", f"{nome}.{ext}")
-            if os.path.exists(caminho):
-                mtime = os.path.getmtime(caminho)
-                return f"{caminho}?v={int(mtime)}"
-                
-    return URL_BRASAO_PADRAO
+    if os.path.exists(pasta_assets):
+        for nome in nomes:
+            for ext in extensoes:
+                caminho_completo = os.path.join(pasta_assets, f"{nome}.{ext}")
+                if os.path.isfile(caminho_completo):
+                    mtime = os.path.getmtime(caminho_completo)
+                    return f"{caminho_completo}?v={int(mtime)}"
+        
+        # Caso o arquivo tenha outro nome na pasta, pega a primeira imagem que encontrar em assets/
+        for arquivo in os.listdir(pasta_assets):
+            ext = arquivo.split(".")[-1].lower()
+            if ext in extensoes:
+                caminho_completo = os.path.join(pasta_assets, arquivo)
+                mtime = os.path.getmtime(caminho_completo)
+                return f"{caminho_completo}?v={int(mtime)}"
+
+    return "assets/brasao.png"
 
 # ==============================================================================
 # 🔄 RESTAURAÇÃO DE SESSÃO VIA TOKEN
