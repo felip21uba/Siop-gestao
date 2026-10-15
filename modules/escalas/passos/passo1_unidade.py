@@ -10,8 +10,7 @@ import streamlit as st
 import datetime
 from core.database import (
     supabase, 
-    carregar_militares_supabase, 
-    obter_unidades_config_supabase
+    carregar_militares_supabase
 )
 
 
@@ -30,12 +29,19 @@ def obter_cias_disponiveis_unidade():
 
     cias_padrao = ["111ª CIA PM", "35ª CIA PM", "285ª CIA PM", "P3 / COPOM / EM"]
 
-    unidades_db = obter_unidades_config_supabase()
     cias_banco = set()
-    for u in unidades_db:
-        sub = str(u.get("subunidade") or u.get("nome") or "").strip().upper()
-        if sub and sub not in ["NONE", "N/I", ""]:
-            cias_banco.add(sub)
+
+    # Busca Cias direto na tabela unidades_config via Supabase (Sem depender do core.database)
+    if supabase:
+        try:
+            res_u = supabase.table("unidades_config").select("*").execute()
+            unidades_db = res_u.data or []
+            for u in unidades_db:
+                sub = str(u.get("subunidade") or u.get("companhia") or u.get("nome") or "").strip().upper()
+                if sub and sub not in ["NONE", "N/I", ""]:
+                    cias_banco.add(sub)
+        except Exception:
+            pass
 
     militares = carregar_militares_supabase() or []
     for m in militares:
