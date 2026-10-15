@@ -1,3 +1,11 @@
+"""
+==============================================================================
+Módulo do Passo 7 - Banco de Horas Consolidado e Gestão de Carga
+Garante a continuidade dos saldos de horas acumulados mês a mês,
+independentemente de trocas de equipe no Passo 5, com auditoria imutável.
+==============================================================================
+"""
+
 import streamlit as st
 import pandas as pd
 import datetime
@@ -13,9 +21,9 @@ MESES_MAP = {
 
 SIGLAS_DIAS_NEUTROS = [
     "FER", "FERIAS", "FÉRIAS", "FE",
-    "LTSP", "LM",
+    "LTSP", "LM", "LMM",
     "ATEST", "ATESTADO", "ATE",
-    "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT"
+    "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT", "RH"
 ]
 
 def registrar_log_auditoria_local(acao, detalhe):
@@ -59,7 +67,7 @@ def executar_auto_save_banco_local():
 
 def renderizar_passo7():
     if st.session_state.get("exibir_toast_autosave", False):
-        st.toast("☁️️ Banco de Horas salvo na nuvem!", icon="✅")
+        st.toast("☁ Banco de Horas salvo na nuvem!", icon="✅")
         st.session_state["exibir_toast_autosave"] = False
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -102,6 +110,7 @@ def renderizar_passo7():
             x.get("nome_guerra", "")
         ))
         
+        # Mapeia todas as equipes às quais o militar esteve associado no quadro
         equipes_por_militar = {}
         for pair in chaves_quadro:
             if isinstance(pair, (tuple, list)) and len(pair) == 2:
@@ -144,7 +153,7 @@ def renderizar_passo7():
                         })
                         registrar_log_auditoria_local("Banco de Horas", f"Lançamento Avulso: {horas_av}h adicionadas para {mil_label_sel} no dia {data_av.strftime('%d/%m/%Y')}.")
                         executar_auto_save_banco_local()
-                        st.success("Adicionado!")
+                        st.success("Adicionado com sucesso!")
                         st.rerun()
 
             if st.session_state["bh_lancamentos_avulsos"]:
@@ -179,7 +188,7 @@ def renderizar_passo7():
                         if df_edit_av.iloc[i]["Excluir"]:
                             try: 
                                 data_l = datetime.datetime.strptime(st.session_state["bh_lancamentos_avulsos"][i]["data"], "%d/%m/%Y").date()
-                            except: 
+                            except Exception: 
                                 data_l = hoje
                                 
                             if escala_fechada and not eh_admin and data_l < hoje:
@@ -296,7 +305,7 @@ def renderizar_passo7():
                                 mes_lanc = int(l["data"].split("/")[1])
                                 if mes_lanc in meses_selecionados_num:
                                     horas_avulsas_totais += l["horas"]
-                            except:
+                            except Exception:
                                 pass
                                 
                     total_trabalhado_escala = 0.0
@@ -314,7 +323,9 @@ def renderizar_passo7():
                             dia_neutro = False
                             horas_no_dia = 0.0
                             
-                            for eq in equipes_por_militar.get(m_id, []):
+                            # Soma de horas ideais independentemente de qual equipe o militar esteve alocado
+                            eqs_militar = equipes_por_militar.get(m_id, ["ADMINISTRAÇÃO"])
+                            for eq in eqs_militar:
                                 val = grade.get(f"{m_id}_{eq}_{m_ano}_{mes_calc:02d}_{d:02d}", "F")
                                 val_str = str(val).upper().strip() if val else ""
                                 tokens_dia = set(val_str.replace("/", " ").split())
@@ -334,6 +345,7 @@ def renderizar_passo7():
                         dias_neutros_total += dias_neutros_mes
                     
                     saldo_periodo = (total_trabalhado_escala + horas_avulsas_totais) - meta_efetiva_acumulada
+                    saldo_geral_final = saldo_ant + saldo_periodo
                     
                     extrato_dados.append({
                         "Nº PM": m.get("num_policia", ""), 
@@ -344,21 +356,21 @@ def renderizar_passo7():
                         "AVULSAS": f"{horas_avulsas_totais:.1f}h", 
                         "SALDO PERÍODO": f"{saldo_periodo:+.1f}h", 
                         "SALDO ANTERIOR": f"{saldo_ant:+.1f}h", 
-                        "SALDO GERAL FINAL": f"{saldo_ant + saldo_periodo:+.1f}h"
+                        "SALDO GERAL FINAL": f"{saldo_geral_final:+.1f}h"
                     })
 
                 df_extrato = pd.DataFrame(extrato_dados)
                 
                 def colorir_saldo(val):
                     try: 
-                        num_val = float(val.replace("h", "").replace("+", ""))
+                        num_val = float(str(val).replace("h", "").replace("+", ""))
                         if num_val > 0:
                             return 'color: #059669; font-weight: bold;'
                         elif num_val < 0:
                             return 'color: #dc2626; font-weight: bold;'
                         else:
                             return 'color: #475569;'
-                    except: 
+                    except Exception: 
                         return ''
                         
                 if not df_extrato.empty: 
