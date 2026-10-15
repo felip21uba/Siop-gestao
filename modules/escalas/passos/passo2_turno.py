@@ -1,7 +1,7 @@
 """
 ==============================================================================
-Módulo do Passo 2 - Gestão de Equipes (Cards) & Modalidade do Turno / Ciclo
-Consome o Mês, Ano, Fração e Pré-Turno configurados exclusivamente no Passo 1.
+Módulo do Passo 2 - Gestão de Equipes (Cards Clicáveis) & Modalidades de Turno
+Lógica visual restaurada para exibição estrita dos Cards de Seleção.
 ==============================================================================
 """
 
@@ -16,27 +16,16 @@ MODALIDADES_TURNOS = [
     "Dobradinha (14D)"
 ]
 
-CORES_PADRAO_EQUIPES = {
-    "CPU": "#a16207",
-    "RP": "#1e293b",
-    "SUPERVISÃO": "#b91c1c",
-    "ADMINISTRAÇÃO": "#0f766e",
-    "TM ALPHA": "#0369a1",
-    "GEPAR": "#047857",
-    "TÁTICO MÓVEL": "#1e1b4b"
-}
-
 
 def renderizar_passo2():
     sub_ativa = st.session_state.get("cfg_subunidade", "111ª CIA PM")
-    esc_ativa = st.session_state.get("nome_escala_ativa", "ESCALA ORDINÁRIA")
 
-    with st.expander("📌 PASSO 2: Gestão de Equipes, Modalidade do Turno & Ciclos", expanded=True):
+    with st.expander("📌 PASSO 2: Gestão de Equipes, Turnos & Horários Operacionais", expanded=True):
         
         # ----------------------------------------------------------------------
-        # 1. CARDS E SELEÇÃO DAS EQUIPES OPERACIONAIS
+        # 1. CARDS CLICÁVEIS DE SELEÇÃO E CRIAÇÃO DE EQUIPES
         # ----------------------------------------------------------------------
-        st.markdown(f"##### 👥 **Gestão de Equipes e Empregos Operacionais ({sub_ativa} — {esc_ativa}):**")
+        st.markdown(f"##### 👥 **Gestão de Equipes e Empregos Operacionais ({sub_ativa}):**")
         st.caption("Clique no card da equipe desejada para alternar a edição e vincular a modalidade de turno.")
 
         if "lista_equipes_unidade" not in st.session_state:
@@ -45,7 +34,7 @@ def renderizar_passo2():
         if "equipe_ativa" not in st.session_state:
             st.session_state["equipe_ativa"] = "ADMINISTRAÇÃO"
 
-        # GRID DE CARDS DAS EQUIPES
+        # BARRA DE CARDS VISUAIS DAS EQUIPES
         lista_eqs = st.session_state["lista_equipes_unidade"]
         cols_cards = st.columns(min(len(lista_eqs), 6))
 
@@ -63,18 +52,12 @@ def renderizar_passo2():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        c_eq1, c_eq2 = st.columns([3, 1.5])
-        with c_eq1:
-            eq_sel = st.selectbox(
-                "Equipe / Emprego Operacional em Edição:",
-                options=st.session_state["lista_equipes_unidade"],
-                index=0 if st.session_state["equipe_ativa"] not in st.session_state["lista_equipes_unidade"] else st.session_state["lista_equipes_unidade"].index(st.session_state["equipe_ativa"]),
-                key="sb_equipe_ativa_passo2"
-            )
-            st.session_state["equipe_ativa"] = eq_sel
-
-        with c_eq2:
+        # ÁREA DE CRIAÇÃO DE NOVA EQUIPE
+        c_add1, c_add2 = st.columns([3, 1.5])
+        with c_add1:
             nova_eq_nome = st.text_input("➕ Criar Nova Equipe:", placeholder="Ex: TÁTICO MÓVEL", key="txt_nova_eq_passo2").strip().upper()
+        with c_add2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             if st.button("➕ Adicionar Equipe", use_container_width=True, key="btn_add_eq_passo2"):
                 if nova_eq_nome and nova_eq_nome not in st.session_state["lista_equipes_unidade"]:
                     st.session_state["lista_equipes_unidade"].append(nova_eq_nome)
