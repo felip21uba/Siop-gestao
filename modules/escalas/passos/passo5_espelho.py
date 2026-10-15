@@ -3,6 +3,7 @@ import datetime
 import calendar
 import pandas as pd
 import re
+import urllib.parse
 import streamlit.components.v1 as components
 
 from core.database import supabase, carregar_militares_supabase
@@ -23,15 +24,20 @@ def padronizar_entrada_espelho(valor):
         return "X"
     return str(valor).strip()
 
-def carregar_escala_direto_supabase(m_ano, m_mes):
+def carregar_escala_direto_supabase(subunidade, m_ano, m_mes):
+    """
+    Carrega a escala exata do Supabase filtrando por Cia/Fração, Ano e Mês,
+    sincronizando 100% com o Quadro 5 da tela principal.
+    """
     if not supabase:
         return {}, [], {}, {}
     try:
         mes_int = int(m_mes)
         ano_int = int(m_ano)
+        sub_str = str(subunidade).strip().upper()
         
-        # Pega rigorosamente a ÚLTIMA LINHA alterada ou gravada no banco para este mes/ano
-        res = supabase.table("escalas_mensais").select("matriz_dados").eq("ano", ano_int).eq("mes", mes_int).order("id", desc=True).limit(1).execute()
+        # Pega a linha exata gravada para a Cia/Fração, Mês e Ano ativos
+        res = supabase.table("escalas_mensais").select("matriz_dados").eq("equipe_nome", sub_str).eq("ano", ano_int).eq("mes", mes_int).order("id", desc=True).limit(1).execute()
         
         if res and res.data and len(res.data) > 0:
             md = res.data[0].get("matriz_dados", {})
@@ -71,13 +77,18 @@ def renderizar_modo_segunda_tela():
 
     params = st.query_params
     
+    raw_sub = params.get("subunidade", st.session_state.get("cfg_subunidade", "111ª CIA PM"))
     raw_mes = params.get("mes", datetime.date.today().month)
     raw_ano = params.get("ano", datetime.date.today().year)
 
+    if isinstance(raw_sub, list):
+        raw_sub = raw_sub[0]
     if isinstance(raw_mes, list):
         raw_mes = raw_mes[0]
     if isinstance(raw_ano, list):
         raw_ano = raw_ano[0]
+
+    subunidade = urllib.parse.unquote(str(raw_sub)).strip().upper()
 
     try:
         m_mes = int(raw_mes)
@@ -89,9 +100,9 @@ def renderizar_modo_segunda_tela():
     except (ValueError, TypeError):
         m_ano = datetime.date.today().year
 
-    st.markdown(f"### 🖥️ ESPELHO DA ESCALA - QUADRO 5 ({m_mes:02d}/{m_ano})")
+    st.markdown(f"### 🖥️ ESPELHO DA ESCALA - {subunidade} ({m_mes:02d}/{m_ano})")
 
-    grade, chaves_existentes, bh_configs, ordem_map = carregar_escala_direto_supabase(m_ano, m_mes)
+    grade, chaves_existentes, bh_configs, ordem_map = carregar_escala_direto_supabase(subunidade, m_ano, m_mes)
     militares = carregar_militares_supabase() or []
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
 
@@ -151,7 +162,7 @@ def renderizar_modo_segunda_tela():
             height=800
         )
     else:
-        st.info("💡 Nenhuma escala localizada no Supabase para este período.")
+        st.info(f"💡 Nenhuma escala localizada no Supabase para {subunidade} ({m_mes:02d}/{m_ano}).")
 
     # Listener do BroadcastChannel do navegador (Atualiza na hora em que o botão Aplicar é clicado)
     components.html(
