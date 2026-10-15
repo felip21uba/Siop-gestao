@@ -1,3 +1,11 @@
+"""
+==============================================================================
+Módulo do Passo 8 - Mapeamento Anual de Férias & Indisponibilidade
+Lê relatórios SIRH, grava no Supabase e aplica sobrescrição automática
+no Passo 5 sem amarras com cadastros de equipes do passado.
+==============================================================================
+"""
+
 import streamlit as st
 import datetime
 import calendar
@@ -348,11 +356,9 @@ def aplicar_sobrescricao_ferias_no_quadro(grade_escala, ano_escala, mes_escala):
 # ==============================================================================
 
 def renderizar_modulo_ferias_anual():
-    # 🟢 EXPANDER ÚNICO DO PASSO 8
     with st.expander("📌 PASSO 8: Mapeamento Anual de Férias & Indisponibilidade", expanded=True):
         st.caption("Cadastre ou consulte o plano anual de férias. O sistema verifica estes dados e sobrescreve na escala mensal (Passo 5).")
 
-        # 🟢 NAVEGAÇÃO INTERNA POR ABAS (TABS)
         tab_consulta, tab_importacao = st.tabs([
             "🔍 Consulta e Gestão de Férias", 
             "📥 Importar Arquivo (SIRH TXT / PDF)"
