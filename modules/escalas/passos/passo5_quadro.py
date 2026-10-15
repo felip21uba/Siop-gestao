@@ -1,7 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 5 - Quadro Mensal de Escalas, Homologação Dinâmica e Perfis
-Garante a independência de alocação de equipes mês a mês e isolamento por Cia.
+Garante a independência de alocação por Cia/Fração e sincronização total com o Passo 1.
 ==============================================================================
 """
 
@@ -157,6 +157,7 @@ def executar_desfazer_undo():
 
 def executar_auto_save_banco(status_escala="RASCUNHO"):
     try:
+        sub_ativa = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
         m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
         m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
 
@@ -181,7 +182,7 @@ def executar_auto_save_banco(status_escala="RASCUNHO"):
         salvar_escala_mensal_supabase(
             ano=m_ano,
             mes=m_mes,
-            equipe_nome="GERAL",
+            equipe_nome=sub_ativa,
             modalidade=st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso"),
             matriz_dados=matriz_dados,
             elaborado_por=elaborador_nome,
@@ -196,14 +197,17 @@ def executar_auto_save_banco(status_escala="RASCUNHO"):
         return False
 
 def carregar_escala_salva_banco():
+    """Busca no Supabase a escala específica da Cia/Subunidade, Mês e Ano configurados no Passo 1."""
     if not supabase:
         return False
 
-    m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
-    m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
+    sub_ativa = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
+    m_ano = int(st.session_state.get("ano_escala", datetime.date.today().year))
+    m_mes = int(st.session_state.get("mes_escala", datetime.date.today().month))
 
     try:
-        res = supabase.table("escalas_mensais").select("*").eq("ano", int(m_ano)).eq("mes", int(m_mes)).execute()
+        res = supabase.table("escalas_mensais").select("*").eq("ano", m_ano).eq("mes", m_mes).eq("equipe_nome", sub_ativa).execute()
+        
         if res and res.data and len(res.data) > 0:
             row_escala = res.data[0]
             md = row_escala.get("matriz_dados", {})
@@ -228,20 +232,20 @@ def carregar_escala_salva_banco():
             st.session_state["p5_elaborador_sel"] = row_escala.get("elaborado_por")
             st.session_state["p5_homologador_sel"] = row_escala.get("homologado_por")
             
-            st.session_state["chave_escala_carregada"] = f"{m_ano}_{m_mes:02d}"
+            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
             return True
         else:
-            # Se não existir escala gravada para este ano/mês, reinicia o quadro limpo (Sem amarras com o mês anterior)
+            # Se a escala não existir no banco para essa Cia/Fração, INICIA TOTALMENTE DO ZERO (ZERADA)
             st.session_state["grade_escala_lancamentos"] = {}
             st.session_state["militares_no_quadro_chaves"] = []
             st.session_state["ordem_customizada_map"] = {}
             st.session_state["status_escala_ativo"] = "RASCUNHO"
             st.session_state["toggle_trava_quadro"] = False
             st.session_state["escala_fechada_auditoria"] = False
-            st.session_state["chave_escala_carregada"] = f"{m_ano}_{m_mes:02d}"
+            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
             return False
     except Exception as ex:
-        print(f"Aviso ao carregar do banco: {ex}")
+        print(f"Aviso ao carregar escala do banco: {ex}")
         return False
 
 # ============================================================
@@ -502,10 +506,14 @@ def abrir_segunda_janela_popup(m_mes, m_ano):
     )
 
 def renderizar_passo5():
+    sub_ativa = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
 
-    chave_periodo = f"{m_ano}_{m_mes:02d}"
+    # Chave única concatenando a Cia, Ano e Mês selecionados no Passo 1
+    chave_periodo = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
+    
+    # Se a chave mudou ou ainda não foi carregada nesta sessão do Quadro, busca no Supabase
     if st.session_state.get("chave_escala_carregada") != chave_periodo:
         carregar_escala_salva_banco()
         st.session_state["chave_escala_carregada"] = chave_periodo
@@ -555,7 +563,6 @@ def renderizar_passo5():
     
     pode_homologar = any(p in perfil_usr or p in cargo_usr for p in ["ADMIN", "CMT_CIA", "COMANDANTE", "CAP", "TEN", "MAJ", "TEN CEL", "CEL", "PROGRAMADOR"])
 
-    # LISTA COMPLETA DE MILITARES DO BANCO PARA SELEÇÃO DE HOMOLOGAÇÃO
     opcoes_militares_todas = sorted(
         [
             f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra', 'MILITAR').upper()} ({m.get('num_policia', '')})"
@@ -570,7 +577,7 @@ def renderizar_passo5():
     if not opcoes_militares_todas:
         opcoes_militares_todas = ["GESTOR DA ESCALA", "COMANDANTE DA CIA"]
 
-    with st.expander("📌 PASSO 5: Quadro Mensal de Escalas e Carga Horária", expanded=True):
+    with st.expander(f"📌 PASSO 5: Quadro Mensal de Escalas ({sub_ativa} — {m_mes:02d}/{m_ano})", expanded=True):
         st.markdown(
             """
             <style>
@@ -646,7 +653,7 @@ def renderizar_passo5():
 
         with col_esq:
             cnt_linhas = len(st.session_state.get("militares_no_quadro_chaves", []))
-            st.markdown(f"👮‍♂️ **Linhas Ativas:** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legendas `FE` / `RH` (Reposição de Horas) = Dias Neutros.*")
+            st.markdown(f"👮‍♂️ **Linhas Ativas no Quadro ({sub_ativa}):** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legendas `FE` / `RH` = Dias Neutros.*")
 
         with col_btn1:
             if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True, disabled=quadro_travado):
@@ -970,7 +977,7 @@ def renderizar_passo5():
                     st.session_state["grade_escala_lancamentos"] = grade
                     executar_auto_save_banco(status_escala=status_escala)
         else:
-            st.info("💡 Clique em '⚡ Aplicar Lançamentos' para montar a escala com os militares selecionados.")
+            st.info("💡 Selecione a Cia no Passo 1, os militares no Passo 3 e clique em '⚡ Aplicar Lançamentos' para iniciar a montagem do Quadro.")
 
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         c_act1, c_act2 = st.columns(2)
@@ -990,4 +997,4 @@ def renderizar_passo5():
         with c_act2:
             if st.button("💾 Salvar Rascunho no Banco", type="primary", use_container_width=True):
                 if executar_auto_save_banco(status_escala=status_escala):
-                    st.success("✅ Rascunho da escala salvo no Supabase com sucesso!")
+                    st.success(f"✅ Rascunho da escala ({sub_ativa}) salvo no Supabase com sucesso!")
