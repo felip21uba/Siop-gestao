@@ -1,6 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
+Garante formatação oficial da PMMG, leitura local do brasão e exportação limpa.
 ==============================================================================
 """
 
@@ -42,14 +43,23 @@ CORES_EQUIPES = {
 }
 
 def obter_brasao_base64(url_padrao):
-    caminho_local = "assets/brasao.png"
-    if os.path.exists(caminho_local):
-        try:
-            with open(caminho_local, "rb") as image_file:
-                encoded = base64.b64encode(image_file.read()).decode("utf-8")
-                return f"data:image/png;base64,{encoded}"
-        except Exception:
-            pass
+    """Busca o brasão diretamente na pasta assets/ e converte em Base64 para PDF/HTML."""
+    pasta_assets = "assets"
+    extensoes = ["png", "jpg", "jpeg", "svg", "webp"]
+    nomes = ["brasao", "logo", "brasao_pmmg"]
+
+    if os.path.exists(pasta_assets):
+        for nome in nomes:
+            for ext in extensoes:
+                caminho = os.path.join(pasta_assets, f"{nome}.{ext}")
+                if os.path.isfile(caminho):
+                    try:
+                        with open(caminho, "rb") as image_file:
+                            encoded = base64.b64encode(image_file.read()).decode("utf-8")
+                            mime_type = "svg+xml" if ext == "svg" else ext
+                            return f"data:image/{mime_type};base64,{encoded}"
+                    except Exception:
+                        pass
     return url_padrao
 
 def obter_cor_equipe(eq): 
@@ -174,8 +184,12 @@ def renderizar_passo6():
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     num_dias_mes = calendar.monthrange(m_ano, m_mes)[1]
     
-    unidade = st.session_state.get("cfg_unidade", "UNIDADE OPERACIONAL")
-    subunidade = st.session_state.get("cfg_subunidade", "PEL/COMPANHIA")
+    usr_dados = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_dados, str):
+        usr_dados = {}
+
+    unidade = str(st.session_state.get("cfg_unidade") or usr_dados.get("unidade") or "21º BPM").strip().upper()
+    subunidade = str(usr_dados.get("subunidade") or usr_dados.get("lotacao") or st.session_state.get("cfg_subunidade") or "35ª CIA PM").strip().upper()
     
     img_brasao_cfg = st.session_state.get("cfg_brasao_url", URL_BRASAO_PADRAO)
     img_brasao = obter_brasao_base64(img_brasao_cfg)
