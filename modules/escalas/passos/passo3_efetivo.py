@@ -166,14 +166,12 @@ def obter_efetivo_filtrado_por_unidade_isolada():
 
     eh_programador_ou_p3 = any(p in cargo_usr or p in nivel_usr for p in ["PROGRAMADOR", "ADMIN", "DESENVOLVEDOR", "P3", "CHEFE_P3"])
 
-    # Se for modo programador ou visão global selecionada, permite visão completa
     unidade_vis_ativa = st.session_state.get("unidade_visualizacao_ativa", "")
     if eh_programador_ou_p3 and (not unidade_vis_ativa or "GLOBAL" in unidade_vis_ativa):
         return todos_militares
 
     unidade_ativa = obter_unidade_operacao_atual()
     
-    # Extrai o número da Cia (ex: 111 de "111ª CIA PM" ou "1 PEL/111 CIA PM")
     m_cia = re.search(r'(\d+)\s*ª?\s*CIA', unidade_ativa.upper())
     num_cia_alvo = m_cia.group(1) if m_cia else None
 
@@ -184,7 +182,6 @@ def obter_efetivo_filtrado_por_unidade_isolada():
     for m in todos_militares:
         lotacao_m = str(m.get("lotacao") or m.get("unidade") or "").upper()
         
-        # Se houver número da Cia identificado, realiza o isolamento estrito pela Cia e suas Frações
         if num_cia_alvo:
             if f"{num_cia_alvo} CIA" in lotacao_m or f"{num_cia_alvo}ª CIA" in lotacao_m or f"{num_cia_alvo}CIA" in lotacao_m:
                 filtrados.append(m)
@@ -329,9 +326,6 @@ def renderizar_passo3():
 
     exp3 = st.expander("📌 PASSO 3: Gestão do Efetivo, Inserção e Seleção de Militares", expanded=True)
     with exp3:
-        unid_atual = obter_unidade_operacao_atual()
-        st.info(f"🏛️ **Unidade em Operação (Ambiente Isolado):** `{unid_atual}`")
-
         with st.expander("➕ Ferramentas de Gestão do Efetivo (Importar, Editar, Salvar)", expanded=False):
             c_b1, c_b2, c_b3, c_b4, c_b5 = st.columns([1.1, 1.2, 1.2, 1.2, 0.9])
             with c_b1:
