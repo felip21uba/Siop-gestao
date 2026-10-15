@@ -1,8 +1,7 @@
 """
 ==============================================================================
-Módulo do Passo 1 - Unidade Operacional, Mês/Ano & Seleção da Escala
-Fonte Única de Verdade para definição da Cia/Fração, Mês e Ano de Operação.
-Salva/Carrega o rascunho no Supabase mantendo isolamento rígido entre Companhias.
+Módulo do Passo 1 - Unidade Operacional, Escolha da Escala, Mês/Ano & Pré-Turno
+Fonte Única de Verdade para definição da Cia/Fração, Escala, Período e Pré-Turno.
 ==============================================================================
 """
 
@@ -28,7 +27,6 @@ def obter_cias_disponiveis_unidade():
     ).strip().upper()
 
     cias_padrao = ["111ª CIA PM", "35ª CIA PM", "285ª CIA PM", "P3 / COPOM / EM"]
-
     cias_banco = set()
 
     if supabase:
@@ -49,7 +47,6 @@ def obter_cias_disponiveis_unidade():
             cias_banco.add(lot)
 
     lista_completa = sorted(list(set(cias_padrao + list(cias_banco))))
-
     return lotacao_militar, lista_completa
 
 
@@ -59,6 +56,7 @@ def carregar_escala_selecionada_passo1():
         return False
 
     sub_ativa = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
+    escala_nome = str(st.session_state.get("nome_escala_ativa") or "ESCALA ORDINÁRIA").strip().upper()
     m_ano = int(st.session_state.get("ano_escala", datetime.date.today().year))
     m_mes = int(st.session_state.get("mes_escala", datetime.date.today().month))
 
@@ -89,8 +87,8 @@ def carregar_escala_selecionada_passo1():
             st.session_state["p5_elaborador_sel"] = row_escala.get("elaborado_por")
             st.session_state["p5_homologador_sel"] = row_escala.get("homologado_por")
 
-            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
-            st.toast(f"📖 Rascunho existente da {sub_ativa} ({m_mes:02d}/{m_ano}) carregado do banco!", icon="✅")
+            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{escala_nome}_{m_ano}_{m_mes:02d}"
+            st.toast(f"📖 Rascunho da {sub_ativa} - {escala_nome} ({m_mes:02d}/{m_ano}) carregado!", icon="✅")
             return True
         else:
             st.session_state["grade_escala_lancamentos"] = {}
@@ -99,8 +97,8 @@ def carregar_escala_selecionada_passo1():
             st.session_state["status_escala_ativo"] = "RASCUNHO"
             st.session_state["toggle_trava_quadro"] = False
             st.session_state["escala_fechada_auditoria"] = False
-            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
-            st.toast(f"✨ Nova escala inicializada (zerada) para {sub_ativa} ({m_mes:02d}/{m_ano})!", icon="🆕")
+            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{escala_nome}_{m_ano}_{m_mes:02d}"
+            st.toast(f"✨ Nova escala inicializada para {sub_ativa} - {escala_nome} ({m_mes:02d}/{m_ano})!", icon="🆕")
             return False
     except Exception as ex:
         st.error(f"Erro ao consultar banco de dados: {ex}")
@@ -122,10 +120,18 @@ def renderizar_passo1():
     if "cfg_subunidade" not in st.session_state or not st.session_state["cfg_subunidade"]:
         st.session_state["cfg_subunidade"] = lotacao_militar_real
 
+    opcoes_escalas = [
+        "ESCALA ORDINÁRIA (OP/ADM)",
+        "ESCALA TÁTICO MÓVEL / GEPAR",
+        "ESCALA SUPERVISÃO / CPU",
+        "ESCALA EXTRAORDINÁRIA / EVENTOS",
+        "ESCALA DE SÉRVIO / EXPEDIENTE"
+    ]
+
     with st.expander("📌 PASSO 1: Unidade Operacional, Mês/Ano & Seleção da Escala", expanded=True):
         st.markdown("##### 🏛️ **Definição da Unidade Operacional & Período da Escala:**")
 
-        col_u1, col_u2, col_u3, col_u4 = st.columns([2.2, 1.2, 1.0, 1.6], vertical_alignment="bottom")
+        col_u1, col_u2, col_u3, col_u4, col_u5, col_u6 = st.columns([2.0, 1.8, 1.1, 0.9, 1.6, 1.4], vertical_alignment="bottom")
 
         with col_u1:
             if eh_programador_p3:
@@ -134,7 +140,7 @@ def renderizar_passo1():
                     idx_default = cias_disponiveis.index(st.session_state["cfg_subunidade"])
 
                 cia_selecionada = st.selectbox(
-                    "🏢 Cia/Fração para Produzir a Escala:",
+                    "🏢 Cia/Fração (Lotação):",
                     options=cias_disponiveis,
                     index=idx_default,
                     key="sb_selecionar_cia_escala_passo1"
@@ -149,6 +155,14 @@ def renderizar_passo1():
                 st.session_state["cfg_subunidade"] = lotacao_militar_real
 
         with col_u2:
+            st.session_state["nome_escala_ativa"] = st.selectbox(
+                "📋 Escala a Produzir:",
+                options=opcoes_escalas,
+                index=0,
+                key="sb_escolher_nome_escala_passo1"
+            )
+
+        with col_u3:
             m_meses_nomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
             mes_atual = st.session_state.get("mes_escala", datetime.date.today().month)
 
@@ -160,7 +174,7 @@ def renderizar_passo1():
             )
             st.session_state["mes_escala"] = m_meses_nomes.index(sel_mes_nome) + 1
 
-        with col_u3:
+        with col_u4:
             ano_atual = st.session_state.get("ano_escala", datetime.date.today().year)
             st.session_state["ano_escala"] = st.number_input(
                 "📆 Ano:",
@@ -170,13 +184,28 @@ def renderizar_passo1():
                 key="num_passo1_ano_escala"
             )
 
-        with col_u4:
+        with col_u5:
+            st.session_state["pre_turno_opcao"] = st.selectbox(
+                "⏰ Pré-Turno:",
+                options=[
+                    "Sem Pré-Turno (0 min)",
+                    "Pré-Turno 15 min (+0.25h)",
+                    "Pré-Turno 30 min (+0.5h)",
+                    "Pré-Turno 45 min (+0.75h)"
+                ],
+                index=2,
+                key="sb_passo1_pre_turno"
+            )
+
+        with col_u6:
             if st.button("💾 Criar / Carregar Escala", type="primary", use_container_width=True, key="btn_criar_carregar_escala_p1"):
                 carregar_escala_selecionada_passo1()
                 st.rerun()
 
         sub_nome = st.session_state.get("cfg_subunidade", "111ª CIA PM")
+        esc_nome = st.session_state.get("nome_escala_ativa", "ESCALA ORDINÁRIA")
         m_num = st.session_state.get("mes_escala", datetime.date.today().month)
         a_num = st.session_state.get("ano_escala", datetime.date.today().year)
+        pt_nome = st.session_state.get("pre_turno_opcao", "Pré-Turno 30 min (+0.5h)")
 
-        st.info(f"🎯 **Escala Ativa para Produção:** `{sub_nome}` | **Período:** `{m_num:02d}/{a_num}`")
+        st.info(f"🎯 **Escala Ativa:** `{sub_nome}` — `{esc_nome}` | **Período:** `{m_num:02d}/{a_num}` | **Pré-Turno:** `{pt_nome}`")
