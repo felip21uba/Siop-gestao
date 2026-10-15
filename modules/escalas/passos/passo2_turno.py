@@ -1,170 +1,193 @@
 """
 ==============================================================================
-Módulo do Passo 2 - Gestão de Equipes (Cards Clicáveis, Adição e Exclusão)
-Consome o Mês, Ano, Fração e Pré-Turno configurados exclusivamente no Passo 1.
+Módulo do Passo 1 - Unidade Operacional, Escolha da Fração, Mês/Ano & Pré-Turno
+Exibe a Lotação Real do operador e permite selecionar qual Fração/Escala produzir.
 ==============================================================================
 """
 
 import streamlit as st
 import datetime
-
-MODALIDADES_TURNOS = [
-    "Turno Único / Avulso",
-    "ADM (Seg-Sex)",
-    "Ciclo 12x36",
-    "Ciclo 12x72 (5D)",
-    "Dobradinha (14D)"
-]
+from core.database import (
+    supabase, 
+    carregar_militares_supabase
+)
 
 
-def renderizar_passo2():
-    sub_ativa = st.session_state.get("cfg_subunidade", "111ª CIA PM")
+def obter_cias_disponiveis_unidade():
+    """Retorna a lotação do militar logado e a lista de Cias/Frações disponíveis no Batalhão."""
+    usr_dados = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_dados, str):
+        usr_dados = {}
 
-    with st.expander("📌 PASSO 2: Gestão de Equipes, Turnos & Horários Operacionais", expanded=True):
-        
-        # ----------------------------------------------------------------------
-        # 1. CARDS CLICÁVEIS DE SELEÇÃO, CRIAÇÃO E EXCLUSÃO DE EQUIPES
-        # ----------------------------------------------------------------------
-        st.markdown(f"##### 👥 **Gestão de Equipes e Empregos Operacionais ({sub_ativa}):**")
-        st.caption("Clique no card da equipe desejada para alternar a edição e vincular a modalidade de turno.")
+    lotacao_militar = str(
+        usr_dados.get("unidade")
+        or usr_dados.get("lotacao")
+        or usr_dados.get("subunidade")
+        or "1 PEL/111 CIA PM/21 BPM/4 RPM"
+    ).strip().upper()
 
-        if "lista_equipes_unidade" not in st.session_state:
-            st.session_state["lista_equipes_unidade"] = ["CPU", "RP", "SUPERVISÃO", "ADMINISTRAÇÃO", "TM ALPHA", "GEPAR"]
+    cias_padrao = ["111ª CIA PM", "35ª CIA PM", "285ª CIA PM", "P3 / COPOM / EM"]
+    cias_banco = set()
 
-        if "equipe_ativa" not in st.session_state:
-            st.session_state["equipe_ativa"] = "ADMINISTRAÇÃO"
+    if supabase:
+        try:
+            res_u = supabase.table("unidades_config").select("*").execute()
+            unidades_db = res_u.data or []
+            for u in unidades_db:
+                sub = str(u.get("subunidade") or u.get("companhia") or u.get("nome") or "").strip().upper()
+                if sub and sub not in ["NONE", "N/I", ""]:
+                    cias_banco.add(sub)
+        except Exception:
+            pass
 
-        # BARRA DE CARDS VISUAIS DAS EQUIPES
-        lista_eqs = st.session_state["lista_equipes_unidade"]
-        cols_cards = st.columns(min(max(len(lista_eqs), 1), 6))
+    militares = carregar_militares_supabase() or []
+    for m in militares:
+        lot = str(m.get("lotacao") or m.get("unidade") or "").strip().upper()
+        if "CIA" in lot:
+            cias_banco.add(lot)
 
-        for idx, eq_item in enumerate(lista_eqs):
-            col_target = cols_cards[idx % len(cols_cards)]
-            is_ativa = (st.session_state["equipe_ativa"] == eq_item)
-            
-            tipo_btn = "primary" if is_ativa else "secondary"
-            
-            with col_target:
-                label_card = f"{'🟢 ' if is_ativa else ''}{eq_item}"
-                if st.button(label_card, key=f"btn_card_eq_p2_{eq_item}", type=tipo_btn, use_container_width=True):
-                    st.session_state["equipe_ativa"] = eq_item
-                    st.rerun()
+    lista_completa = sorted(list(set(cias_padrao + list(cias_banco))))
+    return lotacao_militar, lista_completa
 
-        st.markdown("<br>", unsafe_allow_html=True)
 
-        # ÁREA DE ADIÇÃO E EXCLUSÃO DE EQUIPES
-        c_add1, c_add2, c_del1, c_del2 = st.columns([2.5, 1.2, 2.5, 1.2])
+def carregar_escala_selecionada_passo1():
+    """Busca no Supabase se existe rascunho/escala gravada para a Fração, Ano e Mês ativos."""
+    if not supabase:
+        return False
 
-        with c_add1:
-            nova_eq_nome = st.text_input("➕ Criar Nova Equipe:", placeholder="Ex: TÁTICO MÓVEL", key="txt_nova_eq_passo2").strip().upper()
-        with c_add2:
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("➕ Adicionar", use_container_width=True, key="btn_add_eq_passo2"):
-                if nova_eq_nome and nova_eq_nome not in st.session_state["lista_equipes_unidade"]:
-                    st.session_state["lista_equipes_unidade"].append(nova_eq_nome)
-                    st.session_state["equipe_ativa"] = nova_eq_nome
-                    st.success(f"✅ Equipe '{nova_eq_nome}' adicionada!")
-                    st.rerun()
+    sub_ativa = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
+    m_ano = int(st.session_state.get("ano_escala", datetime.date.today().year))
+    m_mes = int(st.session_state.get("mes_escala", datetime.date.today().month))
 
-        with c_del1:
-            eq_para_excluir = st.selectbox(
-                "🗑️ Remover Equipe Existente:",
-                options=st.session_state["lista_equipes_unidade"],
-                key="sb_excluir_equipe_p2"
+    try:
+        res = supabase.table("escalas_mensais").select("*").eq("ano", m_ano).eq("mes", m_mes).eq("equipe_nome", sub_ativa).execute()
+
+        if res and res.data and len(res.data) > 0:
+            row_escala = res.data[0]
+            md = row_escala.get("matriz_dados", {})
+
+            st.session_state["grade_escala_lancamentos"] = md.get("grade_escala_lancamentos", {})
+            chaves_raw = md.get("militares_no_quadro_chaves", [])
+            st.session_state["militares_no_quadro_chaves"] = [
+                (str(p[0]), str(p[1]))
+                for p in chaves_raw
+                if isinstance(p, (tuple, list)) and len(p) == 2
+            ]
+            st.session_state["ordem_customizada_map"] = md.get("ordem_customizada_map", {})
+            st.session_state["bh_configs"] = md.get("bh_configs", {})
+            st.session_state["ajuste_saldo_map"] = md.get("ajuste_saldo_map", {})
+            st.session_state["dias_selecionados_passo4"] = md.get("dias_selecionados_passo4", [])
+
+            status_banco = str(row_escala.get("status", "RASCUNHO")).upper()
+            st.session_state["status_escala_ativo"] = status_banco
+            st.session_state["toggle_trava_quadro"] = (status_banco == "HOMOLOGADA")
+            st.session_state["escala_fechada_auditoria"] = (status_banco == "HOMOLOGADA")
+
+            st.session_state["p5_elaborador_sel"] = row_escala.get("elaborado_por")
+            st.session_state["p5_homologador_sel"] = row_escala.get("homologado_por")
+
+            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
+            st.toast(f"📖 Rascunho da {sub_ativa} ({m_mes:02d}/{m_ano}) carregado!", icon="✅")
+            return True
+        else:
+            st.session_state["grade_escala_lancamentos"] = {}
+            st.session_state["militares_no_quadro_chaves"] = []
+            st.session_state["ordem_customizada_map"] = {}
+            st.session_state["status_escala_ativo"] = "RASCUNHO"
+            st.session_state["toggle_trava_quadro"] = False
+            st.session_state["escala_fechada_auditoria"] = False
+            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
+            st.toast(f"✨ Nova escala inicializada para {sub_ativa} ({m_mes:02d}/{m_ano})!", icon="🆕")
+            return False
+    except Exception as ex:
+        st.error(f"Erro ao consultar banco de dados: {ex}")
+        return False
+
+
+def renderizar_passo1():
+    usr_dados = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_dados, str):
+        usr_dados = {}
+
+    lotacao_militar_real, cias_disponiveis = obter_cias_disponiveis_unidade()
+
+    if "cfg_subunidade" not in st.session_state or not st.session_state["cfg_subunidade"]:
+        st.session_state["cfg_subunidade"] = cias_disponiveis[0] if cias_disponiveis else "111ª CIA PM"
+
+    with st.expander("📌 PASSO 1: Unidade Operacional, Mês/Ano & Seleção da Escala", expanded=True):
+        st.markdown("##### 🏛️ **Definição da Unidade Operacional & Período da Escala:**")
+
+        col_u1, col_u2, col_u3, col_u4, col_u5, col_u6 = st.columns([2.2, 2.0, 1.2, 1.0, 1.8, 1.5], vertical_alignment="bottom")
+
+        # 1. LOTAÇÃO REAL DO OPERADOR (FIXA)
+        with col_u1:
+            st.text_input(
+                "🏢 Cia/Fração (Sua Lotação):",
+                value=lotacao_militar_real,
+                disabled=True
             )
-        with c_del2:
-            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("🗑️ Excluir", use_container_width=True, type="secondary", key="btn_del_eq_passo2"):
-                if len(st.session_state["lista_equipes_unidade"]) > 1:
-                    st.session_state["lista_equipes_unidade"].remove(eq_para_excluir)
-                    if st.session_state["equipe_ativa"] == eq_para_excluir:
-                        st.session_state["equipe_ativa"] = st.session_state["lista_equipes_unidade"][0]
-                    st.warning(f"🗑️ Equipe '{eq_para_excluir}' removida!")
-                    st.rerun()
-                else:
-                    st.error("⚠️ A lista precisa conter pelo menos uma equipe.")
 
-        st.info(f"🎯 **Equipe Ativa para Lançamento:** `{st.session_state['equipe_ativa']}`")
+        # 2. FRAÇÃO ALVO / ESCALA A PRODUZIR (SELETOR)
+        with col_u2:
+            idx_default = 0
+            if st.session_state["cfg_subunidade"] in cias_disponiveis:
+                idx_default = cias_disponiveis.index(st.session_state["cfg_subunidade"])
 
-        st.divider()
+            cia_selecionada = st.selectbox(
+                "📋 Escala / Fração a Produzir:",
+                options=cias_disponiveis,
+                index=idx_default,
+                key="sb_selecionar_cia_escala_passo1"
+            )
+            st.session_state["cfg_subunidade"] = cia_selecionada
 
-        # ----------------------------------------------------------------------
-        # 2. SELEÇÃO DA MODALIDADE DO TURNO / CICLO
-        # ----------------------------------------------------------------------
-        st.markdown(f"##### ⏰ **Seleção da Modalidade do Turno / Ciclo ({st.session_state['equipe_ativa']}):**")
+        # 3. MÊS
+        with col_u3:
+            m_meses_nomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+            mes_atual = st.session_state.get("mes_escala", datetime.date.today().month)
 
-        if "modalidade_turno_ativa" not in st.session_state:
-            st.session_state["modalidade_turno_ativa"] = "Turno Único / Avulso"
+            sel_mes_nome = st.selectbox(
+                "📅 Mês:",
+                options=m_meses_nomes,
+                index=mes_atual - 1,
+                key="sb_passo1_mes_escala"
+            )
+            st.session_state["mes_escala"] = m_meses_nomes.index(sel_mes_nome) + 1
 
-        c_mod1, c_mod2 = st.columns([2.5, 2])
-
-        with c_mod1:
-            st.session_state["modalidade_turno_ativa"] = st.selectbox(
-                "Escolha a Modalidade do Turno:",
-                options=MODALIDADES_TURNOS,
-                index=MODALIDADES_TURNOS.index(st.session_state["modalidade_turno_ativa"]),
-                key="sb_passo2_modalidade_turno"
+        # 4. ANO
+        with col_u4:
+            ano_atual = st.session_state.get("ano_escala", datetime.date.today().year)
+            st.session_state["ano_escala"] = st.number_input(
+                "📆 Ano:",
+                min_value=2024,
+                max_value=2035,
+                value=ano_atual,
+                key="num_passo1_ano_escala"
             )
 
-        mod = st.session_state["modalidade_turno_ativa"]
-        st.divider()
+        # 5. PRÉ-TURNO DE APRESENTAÇÃO
+        with col_u5:
+            st.session_state["pre_turno_opcao"] = st.selectbox(
+                "⏰ Pré-Turno de Apresentação:",
+                options=[
+                    "Sem Pré-Turno (0 min)",
+                    "Pré-Turno 15 min (+0.25h)",
+                    "Pré-Turno 30 min (+0.5h)",
+                    "Pré-Turno 45 min (+0.75h)"
+                ],
+                index=2,
+                key="sb_passo1_pre_turno"
+            )
 
-        # CONFIGURAÇÃO DE HORÁRIOS DA MODALIDADE SELECIONADA
-        if mod == "Turno Único / Avulso":
-            st.markdown("###### 🕒 **Configuração de Turno Único / Avulso:**")
-            col_a1, col_a2 = st.columns(2)
-            with col_a1:
-                h_i = st.time_input("Horário de Início:", datetime.time(7, 0), key="p2_av_h_ini")
-            with col_a2:
-                h_f = st.time_input("Horário de Término:", datetime.time(19, 0), key="p2_av_h_fim")
-            st.session_state["horario_avulso_p2"] = f"{h_i.strftime('%H:%M')} às {h_f.strftime('%H:%M')}"
+        # 6. BOTÃO DE CRIAR / CARREGAR
+        with col_u6:
+            if st.button("💾 Criar / Carregar Escala", type="primary", use_container_width=True, key="btn_criar_carregar_escala_p1"):
+                carregar_escala_selecionada_passo1()
+                st.rerun()
 
-        elif mod == "ADM (Seg-Sex)":
-            st.markdown("###### 🏛️ **Horários do Expediente Administrativo:**")
-            c_adm1, c_adm2 = st.columns(2)
-            with c_adm1:
-                st.session_state["adm_h_norm"] = st.text_area("Horário Padrão (Seg, Ter, Qui, Sex):", value="08:00 às 12:00\n13:30 às 17:00", height=68, key="p2_adm_norm")
-            with c_adm2:
-                st.session_state["adm_h_qua"] = st.text_input("Horário Quarta-feira (Especial):", value="08:30 às 13:00", key="p2_adm_qua")
+        sub_nome = st.session_state.get("cfg_subunidade", "111ª CIA PM")
+        m_num = st.session_state.get("mes_escala", datetime.date.today().month)
+        a_num = st.session_state.get("ano_escala", datetime.date.today().year)
+        pt_nome = st.session_state.get("pre_turno_opcao", "Pré-Turno 30 min (+0.5h)")
 
-        elif mod == "Ciclo 12x36":
-            st.markdown("###### 🔄 **Turnos da Escala 12x36:**")
-            c_36_1, c_36_2, c_36_3 = st.columns([2, 2, 2])
-            with c_36_1:
-                st.session_state["c36_h_dia"] = st.text_input("Turno Diurno:", value="07:00 às 19:00", key="p2_36_dia")
-            with c_36_2:
-                st.session_state["c36_h_noite"] = st.text_input("Turno Noturno:", value="19:00 às 07:00", key="p2_36_noite")
-            with c_36_3:
-                st.session_state["c36_fase_ini"] = st.selectbox(
-                    "Fase Inicial (Dia 1):",
-                    ["Dia (Trabalho)", "Descanso Pós-Dia", "Noite (Trabalho)", "Descanso Pós-Noite", "Folga"],
-                    key="p2_36_fase"
-                )
-
-        elif mod == "Ciclo 12x72 (5D)":
-            st.markdown("###### 🔄 **Turnos da Escala 12x72:**")
-            c_72_1, c_72_2, c_72_3 = st.columns([2, 2, 2])
-            with c_72_1:
-                st.session_state["c72_h_dia"] = st.text_input("Turno Fase 1:", value="06:00 às 18:00", key="p2_72_dia")
-            with c_72_2:
-                st.session_state["c72_h_noite"] = st.text_input("Turno Fase 2:", value="18:00 às 06:00", key="p2_72_noite")
-            with c_72_3:
-                st.session_state["c72_fase_ini"] = st.selectbox(
-                    "Fase Inicial (Dia 1):",
-                    ["Fase 1 (Dia)", "Fase 2 (Noite)", "Descanso 1", "Descanso 2", "Folga"],
-                    key="p2_72_fase"
-                )
-
-        elif mod == "Dobradinha (14D)":
-            st.markdown("###### 🔄 **Horários da Escala Dobradinha:**")
-            c_dob1, c_dob2, c_dob3, c_dob4 = st.columns([1.5, 1.5, 1.5, 1.5])
-            with c_dob1:
-                st.session_state["dob_h_sq"] = st.text_input("Seg a Qui:", value="14:00 às 00:00", key="p2_dob_sq")
-            with c_dob2:
-                st.session_state["dob_h_ss"] = st.text_input("Sexta e Sáb:", value="18:00 às 04:00", key="p2_dob_ss")
-            with c_dob3:
-                st.session_state["dob_h_dom"] = st.text_input("Domingo:", value="18:00 às 02:00", key="p2_dob_dom")
-            with c_dob4:
-                st.session_state["dob_sem_ini"] = st.selectbox("Semana Inicial:", ["SEMANA A", "SEMANA B"], key="p2_dob_sem")
-
-        st.success(f"✅ Configuração do turno `{mod}` da equipe `{st.session_state['equipe_ativa']}` pronta para o Quadro (Passo 5).")
+        st.info(f"🎯 **Escala Ativa para Produção:** `{sub_nome}` | **Período:** `{m_num:02d}/{a_num}` | **Pré-Turno:** `{pt_nome}`")
