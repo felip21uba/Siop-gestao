@@ -835,14 +835,14 @@ with st.sidebar:
                     "Submenu Escalas:",
                     [
                         "VISUALIZAR TODOS",
-                        "PASSO 1: Unidade & Equipes",
-                        "PASSO 2: Turno & Horários",
-                        "PASSO 3: Efetivo & Ausências",
-                        "PASSO 4: Matriz Mensal",
-                        "PASSO 5: Quadro Geral",
-                        "PASSO 6: Exportação & Auditoria",
-                        "PASSO 7: Banco de Horas",
-                        "PASSO 8: Férias Anuais"
+                        "PASSO 1: Unidade Operacional & Mês/Ano",
+                        "PASSO 2: Gestão de Equipes, Turnos & Horários",
+                        "PASSO 3: Efetivo, Ausências & Dias Neutros",
+                        "PASSO 4: Calendário de Dias da Escala",
+                        "PASSO 5: Quadro Mensal de Escalas",
+                        "PASSO 6: Visualização, Importação & Exportação",
+                        "PASSO 7: Banco de Horas Consolidado",
+                        "PASSO 8: Mapeamento Anual de Férias"
                     ],
                     key="subnav_escalas_unique_nav",
                     label_visibility="collapsed"
