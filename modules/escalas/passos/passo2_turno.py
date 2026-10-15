@@ -1,7 +1,7 @@
 """
 ==============================================================================
-Módulo do Passo 2 - Gestão de Equipes (Cards Clicáveis) & Modalidades de Turno
-Lógica visual restaurada para exibição estrita dos Cards de Seleção.
+Módulo do Passo 2 - Gestão de Equipes (Cards Clicáveis, Adição e Exclusão)
+Consome o Mês, Ano, Fração e Pré-Turno configurados exclusivamente no Passo 1.
 ==============================================================================
 """
 
@@ -23,7 +23,7 @@ def renderizar_passo2():
     with st.expander("📌 PASSO 2: Gestão de Equipes, Turnos & Horários Operacionais", expanded=True):
         
         # ----------------------------------------------------------------------
-        # 1. CARDS CLICÁVEIS DE SELEÇÃO E CRIAÇÃO DE EQUIPES
+        # 1. CARDS CLICÁVEIS DE SELEÇÃO, CRIAÇÃO E EXCLUSÃO DE EQUIPES
         # ----------------------------------------------------------------------
         st.markdown(f"##### 👥 **Gestão de Equipes e Empregos Operacionais ({sub_ativa}):**")
         st.caption("Clique no card da equipe desejada para alternar a edição e vincular a modalidade de turno.")
@@ -36,7 +36,7 @@ def renderizar_passo2():
 
         # BARRA DE CARDS VISUAIS DAS EQUIPES
         lista_eqs = st.session_state["lista_equipes_unidade"]
-        cols_cards = st.columns(min(len(lista_eqs), 6))
+        cols_cards = st.columns(min(max(len(lista_eqs), 1), 6))
 
         for idx, eq_item in enumerate(lista_eqs):
             col_target = cols_cards[idx % len(cols_cards)]
@@ -52,18 +52,37 @@ def renderizar_passo2():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ÁREA DE CRIAÇÃO DE NOVA EQUIPE
-        c_add1, c_add2 = st.columns([3, 1.5])
+        # ÁREA DE ADIÇÃO E EXCLUSÃO DE EQUIPES
+        c_add1, c_add2, c_del1, c_del2 = st.columns([2.5, 1.2, 2.5, 1.2])
+
         with c_add1:
             nova_eq_nome = st.text_input("➕ Criar Nova Equipe:", placeholder="Ex: TÁTICO MÓVEL", key="txt_nova_eq_passo2").strip().upper()
         with c_add2:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-            if st.button("➕ Adicionar Equipe", use_container_width=True, key="btn_add_eq_passo2"):
+            if st.button("➕ Adicionar", use_container_width=True, key="btn_add_eq_passo2"):
                 if nova_eq_nome and nova_eq_nome not in st.session_state["lista_equipes_unidade"]:
                     st.session_state["lista_equipes_unidade"].append(nova_eq_nome)
                     st.session_state["equipe_ativa"] = nova_eq_nome
-                    st.success(f"✅ Equipe '{nova_eq_nome}' adicionada com sucesso!")
+                    st.success(f"✅ Equipe '{nova_eq_nome}' adicionada!")
                     st.rerun()
+
+        with c_del1:
+            eq_para_excluir = st.selectbox(
+                "🗑️ Remover Equipe Existente:",
+                options=st.session_state["lista_equipes_unidade"],
+                key="sb_excluir_equipe_p2"
+            )
+        with c_del2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            if st.button("🗑️ Excluir", use_container_width=True, type="secondary", key="btn_del_eq_passo2"):
+                if len(st.session_state["lista_equipes_unidade"]) > 1:
+                    st.session_state["lista_equipes_unidade"].remove(eq_para_excluir)
+                    if st.session_state["equipe_ativa"] == eq_para_excluir:
+                        st.session_state["equipe_ativa"] = st.session_state["lista_equipes_unidade"][0]
+                    st.warning(f"🗑️ Equipe '{eq_para_excluir}' removida!")
+                    st.rerun()
+                else:
+                    st.error("⚠️ A lista precisa conter pelo menos uma equipe.")
 
         st.info(f"🎯 **Equipe Ativa para Lançamento:** `{st.session_state['equipe_ativa']}`")
 
