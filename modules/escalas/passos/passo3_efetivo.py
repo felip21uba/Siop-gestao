@@ -1,7 +1,8 @@
 """
 ==============================================================================
 Módulo do Passo 3 - Gestão do Efetivo
-Aplica filtragem e isolamento estrito Multi-Tenant por Batalhão Mãe (BPM).
+Aplica filtragem e isolamento estrito Multi-Tenant por Cia/Fração e Batalhão (BPM).
+Permite gestão nominal flexível mês a mês sem amarras com equipes passadas.
 ==============================================================================
 """
 
@@ -151,22 +152,46 @@ def tratar_num_policia_unificado(row):
     return num_clean
 
 def obter_efetivo_filtrado_por_unidade_isolada():
+    """
+    Filtra o efetivo garantindo o isolamento rigoroso por Cia e suas Frações subordinadas.
+    Programador/P3/Admin possuem visão global ou conforme seletor ativo.
+    """
     todos_militares = st.session_state.get("lista_militares", [])
-    unidade_ativa = obter_unidade_operacao_atual()
+    usr_dados = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_dados, str):
+        usr_dados = {}
 
-    if not unidade_ativa or unidade_ativa == "🌐 TODAS AS UNIDADES":
+    cargo_usr = str(usr_dados.get("cargo_funcao") or usr_dados.get("posto_grad") or "").upper()
+    nivel_usr = str(usr_dados.get("nivel_acesso") or usr_dados.get("perfil_escala") or usr_dados.get("perfil") or "").upper()
+
+    eh_programador_ou_p3 = any(p in cargo_usr or p in nivel_usr for p in ["PROGRAMADOR", "ADMIN", "DESENVOLVEDOR", "P3", "CHEFE_P3"])
+
+    # Se for modo programador ou visão global selecionada, permite visão completa
+    unidade_vis_ativa = st.session_state.get("unidade_visualizacao_ativa", "")
+    if eh_programador_ou_p3 and (not unidade_vis_ativa or "GLOBAL" in unidade_vis_ativa):
         return todos_militares
+
+    unidade_ativa = obter_unidade_operacao_atual()
+    
+    # Extrai o número da Cia (ex: 111 de "111ª CIA PM" ou "1 PEL/111 CIA PM")
+    m_cia = re.search(r'(\d+)\s*ª?\s*CIA', unidade_ativa.upper())
+    num_cia_alvo = m_cia.group(1) if m_cia else None
 
     num_bpm_alvo = re.search(r'\d+', unidade_ativa)
-    if not num_bpm_alvo:
-        return todos_militares
-
-    digits_bpm = num_bpm_alvo.group(0)
+    digits_bpm = num_bpm_alvo.group(0) if num_bpm_alvo else None
 
     filtrados = []
     for m in todos_militares:
         lotacao_m = str(m.get("lotacao") or m.get("unidade") or "").upper()
-        if re.search(r'\b' + digits_bpm + r'\s*º?\s*BPM\b', lotacao_m) or f"{digits_bpm} BPM" in lotacao_m or f"{digits_bpm}º BPM" in lotacao_m:
+        
+        # Se houver número da Cia identificado, realiza o isolamento estrito pela Cia e suas Frações
+        if num_cia_alvo:
+            if f"{num_cia_alvo} CIA" in lotacao_m or f"{num_cia_alvo}ª CIA" in lotacao_m or f"{num_cia_alvo}CIA" in lotacao_m:
+                filtrados.append(m)
+        elif digits_bpm:
+            if re.search(r'\b' + digits_bpm + r'\s*º?\s*BPM\b', lotacao_m) or f"{digits_bpm} BPM" in lotacao_m or f"{digits_bpm}º BPM" in lotacao_m:
+                filtrados.append(m)
+        else:
             filtrados.append(m)
 
     return filtrados
@@ -210,7 +235,7 @@ def renderizar_fragmento_passo3():
 
     if not militares_isolados:
         unid_atual = obter_unidade_operacao_atual()
-        st.info(f"💡 Nenhum militar cadastrado para a unidade **{unid_atual}** no momento.")
+        st.info(f"💡 Nenhum militar cadastrado para a subunidade/fração **{unid_atual}** no momento.")
         return
 
     graduacoes_unicas = sorted(list(set([padronizar_graduacao(m.get("posto_grad", "SD")) for m in militares_isolados])), key=lambda x: PESOS_HIERARQUIA.get(x, 99))
@@ -277,7 +302,7 @@ def renderizar_fragmento_passo3():
     with col_quadro_dir:
         c_head1, c_head2, c_head3 = st.columns([2.2, 1.8, 1.2])
         with c_head1:
-            st.markdown(f"##### 🟢 Selecionados ({len(selecionados_ord)}):")
+            st.markdown(f"##### 🟢 Selecionados para a Escala Atual ({len(selecionados_ord)}):")
         with c_head2:
             modo_exclusao = st.toggle("🔓 Exclusão" if st.session_state.get("toggle_modo_exclusao_frag", False) else "🔒 Trava Ativa", value=False, key="toggle_modo_exclusao_frag")
         with c_head3:
