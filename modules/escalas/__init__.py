@@ -6,16 +6,16 @@ Arquivo: modules/escalas/__init__.py
 """
 
 import streamlit as st
-from modules.escalas.cabecalho import renderizar_cabecalho_escalas
+from .cabecalho import renderizar_cabecalho_escalas
 
-from modules.escalas.passos.passo1_unidade import renderizar_passo1
-from modules.escalas.passos.passo2_turno import renderizar_passo2
-from modules.escalas.passos.passo3_efetivo import renderizar_passo3
-from modules.escalas.passos.passo4_calendario import renderizar_passo4
-from modules.escalas.passos.passo5_quadro import renderizar_passo5
-from modules.escalas.passos.passo6_exportar import renderizar_passo6
-from modules.escalas.passos.passo7_banco_horas import renderizar_passo7
-from modules.escalas.passos.passo8_ferias import renderizar_modulo_ferias_anual
+from .passos.passo1_unidade import renderizar_passo1
+from .passos.passo2_turno import renderizar_passo2
+from .passos.passo3_efetivo import renderizar_passo3
+from .passos.passo4_calendario import renderizar_passo4
+from .passos.passo5_quadro import renderizar_passo5
+from .passos.passo6_exportar import renderizar_passo6
+from .passos.passo7_banco_horas import renderizar_passo7
+from .passos.passo8_ferias import renderizar_modulo_ferias_anual
 
 
 def exibir_modulo_escalas():
