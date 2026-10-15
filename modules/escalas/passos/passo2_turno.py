@@ -1,7 +1,7 @@
 """
 ==============================================================================
-Módulo do Passo 2 - Gestão de Equipes (Cards Clicáveis) & Modalidades do Turno
-Lógica visual baseada estritamente nos Cards no topo para seleção de equipes.
+Módulo do Passo 2 - Gestão de Equipes (Cards) & Modalidades de Turno (Cards)
+Lógica visual 100% baseada em Cards Clicáveis para Equipes e Turnos/Ciclos.
 ==============================================================================
 """
 
@@ -23,7 +23,7 @@ def renderizar_passo2():
     with st.expander("📌 PASSO 2: Gestão de Equipes, Modalidade do Turno & Horários Operacionais", expanded=True):
         
         # ----------------------------------------------------------------------
-        # 1. BARRA EXCLUSIVA DE CARDS CLICÁVEIS DE EQUIPES
+        # 1. CARDS CLICÁVEIS DE GESTÃO DE EQUIPES
         # ----------------------------------------------------------------------
         st.markdown(f"##### 👥 **Gestão de Equipes e Empregos Operacionais ({sub_ativa}):**")
         st.caption("Clique no card da equipe desejada para alternar a edição e vincular a modalidade de turno.")
@@ -34,12 +34,12 @@ def renderizar_passo2():
         if "equipe_ativa" not in st.session_state:
             st.session_state["equipe_ativa"] = "ADMINISTRAÇÃO"
 
-        # EXIBIÇÃO DOS CARDS EM LINHA
+        # EXIBIÇÃO DOS CARDS DE EQUIPES
         lista_eqs = st.session_state["lista_equipes_unidade"]
-        cols_cards = st.columns(min(max(len(lista_eqs), 1), 6))
+        cols_cards_eq = st.columns(min(max(len(lista_eqs), 1), 6))
 
         for idx, eq_item in enumerate(lista_eqs):
-            col_target = cols_cards[idx % len(cols_cards)]
+            col_target = cols_cards_eq[idx % len(cols_cards_eq)]
             is_ativa = (st.session_state["equipe_ativa"] == eq_item)
             
             tipo_btn = "primary" if is_ativa else "secondary"
@@ -52,7 +52,7 @@ def renderizar_passo2():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ÁREA DE ADIÇÃO E EXCLUSÃO DE EQUIPES
+        # ADIÇÃO E EXCLUSÃO DE EQUIPES
         c_add1, c_add2, c_del1, c_del2 = st.columns([2.5, 1.2, 2.5, 1.2])
 
         with c_add1:
@@ -89,25 +89,31 @@ def renderizar_passo2():
         st.divider()
 
         # ----------------------------------------------------------------------
-        # 2. SELEÇÃO DA MODALIDADE DO TURNO / CICLO
+        # 2. CARDS CLICÁVEIS DA MODALIDADE DO TURNO / CICLO
         # ----------------------------------------------------------------------
         st.markdown(f"##### ⏰ **Seleção da Modalidade do Turno / Ciclo ({st.session_state['equipe_ativa']}):**")
+        st.caption("Clique no card da modalidade desejada para configurar os horários da equipe ativa.")
 
         if "modalidade_turno_ativa" not in st.session_state:
             st.session_state["modalidade_turno_ativa"] = "Turno Único / Avulso"
 
-        c_mod1, c_mod2 = st.columns([2.5, 2])
+        # EXIBIÇÃO DOS CARDS DAS MODALIDADES DE TURNO
+        cols_cards_mod = st.columns(len(MODALIDADES_TURNOS))
 
-        with c_mod1:
-            st.session_state["modalidade_turno_ativa"] = st.selectbox(
-                "Escolha a Modalidade do Turno:",
-                options=MODALIDADES_TURNOS,
-                index=MODALIDADES_TURNOS.index(st.session_state["modalidade_turno_ativa"]),
-                key="sb_passo2_modalidade_turno"
-            )
+        for idx_m, mod_item in enumerate(MODALIDADES_TURNOS):
+            col_target_m = cols_cards_mod[idx_m]
+            is_mod_ativa = (st.session_state["modalidade_turno_ativa"] == mod_item)
+            
+            tipo_btn_m = "primary" if is_mod_ativa else "secondary"
+            
+            with col_target_m:
+                label_card_m = f"{'⏰ ' if is_mod_ativa else ''}{mod_item}"
+                if st.button(label_card_m, key=f"btn_card_mod_p2_{mod_item}", type=tipo_btn_m, use_container_width=True):
+                    st.session_state["modalidade_turno_ativa"] = mod_item
+                    st.rerun()
 
         mod = st.session_state["modalidade_turno_ativa"]
-        st.divider()
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # CONFIGURAÇÃO DE HORÁRIOS DA MODALIDADE SELECIONADA
         if mod == "Turno Único / Avulso":
@@ -167,4 +173,4 @@ def renderizar_passo2():
             with c_dob4:
                 st.session_state["dob_sem_ini"] = st.selectbox("Semana Inicial:", ["SEMANA A", "SEMANA B"], key="p2_dob_sem")
 
-        st.success(f"✅ Configuração do turno `{mod}` da equipe `{st.session_state['equipe_ativa']}` pronta para o Quadro (Passo 5).")
+        st.success(f"✅ Configuração do turno **{mod}** da equipe **{st.session_state['equipe_ativa']}** pronta para o Quadro (Passo 5).")
