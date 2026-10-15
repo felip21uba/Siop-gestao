@@ -73,7 +73,7 @@ def renderizar_rodape_corporativo():
         st.caption(f"⏱️ **Acesso:** {obter_agora().strftime('%H:%M:%S')}")
 
 # ==============================================================================
-# 🛠️️ IMPORTAÇÃO DA CAMADA CORE E SESSÃO
+# 🛠 IMPORTAÇÃO DA CAMADA CORE E SESSÃO
 # ==============================================================================
 from core.database import init_db, obter_ip_cliente_real
 init_db()
@@ -229,6 +229,28 @@ if "tema_visual" not in st.session_state:
     st.session_state["tema_visual"] = "DARK"
 
 # ==============================================================================
+# 🌐 CARREGAMENTO DINÂMICO DE ASSETS COM CACHE-BUSTING AUTOMÁTICO
+# ==============================================================================
+URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
+
+def obter_imagem_brasao():
+    """
+    Busca a logo/brasão atualizada na pasta assets/ testando múltiplos formatos.
+    Aplica timestamp de modificação do arquivo para invalidar o cache do navegador.
+    """
+    extensoes = ["png", "jpg", "jpeg", "svg", "webp"]
+    candidatos = ["brasao", "logo", "brasao_pmmg"]
+    
+    for nome in candidatos:
+        for ext in extensoes:
+            caminho = os.path.join(DIRETORIO_RAIZ, "assets", f"{nome}.{ext}")
+            if os.path.exists(caminho):
+                mtime = os.path.getmtime(caminho)
+                return f"{caminho}?v={int(mtime)}"
+                
+    return URL_BRASAO_PADRAO
+
+# ==============================================================================
 # 🔄 RESTAURAÇÃO DE SESSÃO VIA TOKEN
 # ==============================================================================
 token_url = query_params.get("session_token")
@@ -247,14 +269,6 @@ if not st.session_state.get("autenticado", False) and token_url:
                     st.session_state["ultima_atividade_time"] = datetime.datetime.now()
         except Exception as ex:
             print(f"Erro ao restaurar sessão: {ex}")
-
-URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
-CAMINHO_BRASAO_LOCAL = "assets/brasao.png"
-
-def obter_imagem_brasao():
-    if os.path.exists(CAMINHO_BRASAO_LOCAL):
-        return CAMINHO_BRASAO_LOCAL
-    return URL_BRASAO_PADRAO
 
 # ==============================================================================
 # ⏱ GERENCIAMENTO DE TIMEOUT E SESSÃO ÚNICA CONCORRENTE
