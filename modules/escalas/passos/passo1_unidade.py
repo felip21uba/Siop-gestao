@@ -1,193 +1,211 @@
-import json
+"""
+==============================================================================
+Módulo do Passo 1 - Unidade Operacional, Mês/Ano & Seleção da Escala
+Fonte Única de Verdade para definição da Cia/Fração, Mês e Ano de Operação.
+Salva/Carrega o rascunho no Supabase mantendo isolamento rígido entre Companhias.
+==============================================================================
+"""
+
 import streamlit as st
-from core.database import supabase
+import datetime
+from core.database import (
+    supabase, 
+    carregar_militares_supabase, 
+    obter_unidades_config_supabase
+)
 
-def carregar_equipes_persistidas():
-    """Carrega as equipes salvas do Supabase ou usa o padrão inicial."""
-    if "lista_equipes" not in st.session_state:
-        equipes_padrao = ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP", "TM ALPHA", "GEPAR"]
-        if supabase:
-            try:
-                res = supabase.table("configuracoes_sistema").select("valor").eq("chave", "lista_equipes_escala").execute()
-                if res.data and len(res.data) > 0:
-                    st.session_state["lista_equipes"] = json.loads(res.data[0]["valor"])
-                else:
-                    st.session_state["lista_equipes"] = equipes_padrao
-            except Exception:
-                st.session_state["lista_equipes"] = equipes_padrao
-        else:
-            st.session_state["lista_equipes"] = equipes_padrao
 
-def salvar_equipes_persistidas(lista):
-    """Persiste a lista de equipes no session_state e no banco de dados Supabase."""
-    st.session_state["lista_equipes"] = lista
-    if supabase:
-        try:
-            supabase.table("configuracoes_sistema").upsert({
-                "chave": "lista_equipes_escala",
-                "valor": json.dumps(lista)
-            }).execute()
-        except Exception:
-            pass
-
-def sincronizar_efetivo_equipe_ativa(eq_nome):
-    """Carrega no Passo 3 apenas os militares que pertencem à equipe selecionada no Passo 5."""
-    st.session_state["equipe_ativa"] = str(eq_nome)
-    chaves = st.session_state.get("militares_no_quadro_chaves", [])
-    mils_da_equipe = [
-        str(pair[0]) for pair in chaves 
-        if isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[1]) == str(eq_nome)
-    ]
-    st.session_state["militares_selecionados_ids"] = mils_da_equipe
-
-def expurgar_equipe_em_cascata(eq_alvo):
-    """Exclui a equipe e expurga seus lançamentos sem reatribuir militares automaticamente."""
-    eq_alvo_str = str(eq_alvo).strip()
-
-    if "lista_equipes" in st.session_state and eq_alvo_str in st.session_state["lista_equipes"]:
-        st.session_state["lista_equipes"].remove(eq_alvo_str)
-        salvar_equipes_persistidas(st.session_state["lista_equipes"])
-
-    if st.session_state.get("equipe_ativa") == eq_alvo_str:
-        if st.session_state.get("lista_equipes"):
-            st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
-
-    chaves_atuais = st.session_state.get("militares_no_quadro_chaves", [])
-    novas_chaves = [
-        (str(pair[0]), str(pair[1])) for pair in chaves_atuais 
-        if isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[1]) != eq_alvo_str
-    ]
-    st.session_state["militares_no_quadro_chaves"] = novas_chaves
-
-    grade = st.session_state.get("grade_escala_lancamentos", {})
-    chaves_remover = [k for k in list(grade.keys()) if f"_{eq_alvo_str}_" in k]
-    for k in chaves_remover:
-        grade.pop(k, None)
-    st.session_state["grade_escala_lancamentos"] = grade
-
-    sincronizar_efetivo_equipe_ativa(st.session_state.get("equipe_ativa", "ADMINISTRAÇÃO"))
-
-    try:
-        from modules.escalas.passos.passo5_quadro import executar_auto_save_banco
-        executar_auto_save_banco()
-    except Exception as ex:
-        print(f"Aviso ao salvar auto save no expurgo: {ex}")
-
-@st.dialog("➕ Cadastrar Nova Equipe", width="medium")
-def abrir_modal_nova_equipe():
-    with st.form("form_inserir_equipe_p1_modal", clear_on_submit=True):
-        nova_equipe_input = st.text_input("Nome da Nova Equipe:", placeholder="Ex: TM ALPHA, GEPAR, CPU...").strip().upper()
-        btn_salvar_eq = st.form_submit_button("💾 Inserir Equipe", type="primary", use_container_width=True)
-        if btn_salvar_eq and nova_equipe_input:
-            if nova_equipe_input not in st.session_state["lista_equipes"]:
-                st.session_state["lista_equipes"].append(nova_equipe_input)
-                salvar_equipes_persistidas(st.session_state["lista_equipes"])
-                sincronizar_efetivo_equipe_ativa(nova_equipe_input)
-                st.success(f"✅ Equipe '{nova_equipe_input}' cadastrada e salva no banco!")
-                st.rerun()
-            else:
-                st.warning("⚠️ Esta equipe já está cadastrada.")
-
-@st.dialog("🗑️ Gerenciar e Excluir Equipes", width="medium")
-def abrir_modal_excluir_equipes():
-    st.markdown("##### ⚠️ Clique na lixeira ao lado da equipe para removê-la:")
-    st.warning("⚠️ **Atenção:** Ao remover uma equipe, todos os seus turnos serão expurgados da escala.")
-    
-    carregar_equipes_persistidas()
-    equipes = st.session_state["lista_equipes"]
-    
-    if len(equipes) <= 1:
-        st.info("ℹ️️ É necessário manter pelo menos 1 equipe cadastrada no sistema.")
-        return
-
-    for eq in list(equipes):
-        c_nome, c_btn = st.columns([3, 1])
-        with c_nome:
-            st.markdown(f"🛡️ **{eq}**")
-        with c_btn:
-            if st.button("🗑️ Excluir", key=f"btn_del_eq_modal_{eq}", use_container_width=True):
-                expurgar_equipe_em_cascata(eq)
-                st.success(f"Equipe '{eq}' e seus lançamentos foram totalmente removidos!")
-                st.rerun()
-
-def renderizar_passo1():
-    carregar_equipes_persistidas()
-    if "equipe_ativa" not in st.session_state or st.session_state["equipe_ativa"] not in st.session_state["lista_equipes"]:
-        st.session_state["equipe_ativa"] = st.session_state["lista_equipes"][0]
-
+def obter_cias_disponiveis_unidade():
+    """Retorna a lotação do militar logado e a lista de Cias permitidas no Batalhão."""
     usr_dados = st.session_state.get("usuario_dados", {})
     if isinstance(usr_dados, str):
         usr_dados = {}
 
-    unidade_lotacao = (
-        st.session_state.get("cfg_unidade") 
-        or usr_dados.get("unidade") 
-        or usr_dados.get("unidade_nome") 
-        or "21º BPM"
-    )
-    
-    subunidade_lotacao = (
-        st.session_state.get("cfg_subunidade") 
-        or usr_dados.get("subunidade") 
-        or usr_dados.get("subunidade_nome") 
-        or "35ª CIA PM"
-    )
+    lotacao_militar = str(
+        usr_dados.get("unidade")
+        or usr_dados.get("lotacao")
+        or usr_dados.get("subunidade")
+        or "111ª CIA PM"
+    ).strip().upper()
 
-    with st.expander("📌 PASSO 1: Configuração da Unidade, Brasão e Gestão de Equipes", expanded=True):
-        with st.expander("➕ 🏛️ Dados da Unidade Operacional & Brasão", expanded=False):
-            col_u1, col_u2, col_u3 = st.columns([2, 2, 1.2])
-            with col_u1:
-                st.session_state["cfg_unidade"] = st.text_input(
-                    "Unidade Operacional (Lotação):", 
-                    value=unidade_lotacao, 
-                    key="txt_p1_unidade_usr"
-                ).strip().upper()
-                
-                st.session_state["cfg_subunidade"] = st.text_input(
-                    "Subunidade / Cia:", 
-                    value=subunidade_lotacao, 
-                    key="txt_p1_subunidade_usr"
-                ).strip().upper()
-                
-            with col_u2:
-                st.session_state["cfg_brasao_url"] = st.text_input(
-                    "URL do Brasão / Logo:", 
-                    value=st.session_state.get("cfg_brasao_url", "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"),
-                    key="txt_p1_brasao_usr"
-                ).strip()
-                
-            with col_u3:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("💾 Salvar Dados", use_container_width=True, type="primary", key="btn_salvar_dados_p1"):
-                    st.success("✅ Configurações salvas!")
+    cias_padrao = ["111ª CIA PM", "35ª CIA PM", "285ª CIA PM", "P3 / COPOM / EM"]
+
+    unidades_db = obter_unidades_config_supabase()
+    cias_banco = set()
+    for u in unidades_db:
+        sub = str(u.get("subunidade") or u.get("nome") or "").strip().upper()
+        if sub and sub not in ["NONE", "N/I", ""]:
+            cias_banco.add(sub)
+
+    militares = carregar_militares_supabase() or []
+    for m in militares:
+        lot = str(m.get("lotacao") or m.get("unidade") or "").strip().upper()
+        if "CIA" in lot:
+            cias_banco.add(lot)
+
+    lista_completa = sorted(list(set(cias_padrao + list(cias_banco))))
+
+    return lotacao_militar, lista_completa
+
+
+def carregar_escala_selecionada_passo1():
+    """Busca no Supabase se existe rascunho/escala gravada para a Cia, Ano e Mês ativos."""
+    if not supabase:
+        return False
+
+    sub_ativa = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
+    m_ano = int(st.session_state.get("ano_escala", datetime.date.today().year))
+    m_mes = int(st.session_state.get("mes_escala", datetime.date.today().month))
+
+    try:
+        res = supabase.table("escalas_mensais").select("*").eq("ano", m_ano).eq("mes", m_mes).eq("equipe_nome", sub_ativa).execute()
+
+        if res and res.data and len(res.data) > 0:
+            row_escala = res.data[0]
+            md = row_escala.get("matriz_dados", {})
+
+            st.session_state["grade_escala_lancamentos"] = md.get("grade_escala_lancamentos", {})
+            chaves_raw = md.get("militares_no_quadro_chaves", [])
+            st.session_state["militares_no_quadro_chaves"] = [
+                (str(p[0]), str(p[1]))
+                for p in chaves_raw
+                if isinstance(p, (tuple, list)) and len(p) == 2
+            ]
+            st.session_state["ordem_customizada_map"] = md.get("ordem_customizada_map", {})
+            st.session_state["bh_configs"] = md.get("bh_configs", {})
+            st.session_state["ajuste_saldo_map"] = md.get("ajuste_saldo_map", {})
+            st.session_state["dias_selecionados_passo4"] = md.get("dias_selecionados_passo4", [])
+
+            status_banco = str(row_escala.get("status", "RASCUNHO")).upper()
+            st.session_state["status_escala_ativo"] = status_banco
+            st.session_state["toggle_trava_quadro"] = (status_banco == "HOMOLOGADA")
+            st.session_state["escala_fechada_auditoria"] = (status_banco == "HOMOLOGADA")
+
+            st.session_state["p5_elaborador_sel"] = row_escala.get("elaborado_por")
+            st.session_state["p5_homologador_sel"] = row_escala.get("homologado_por")
+
+            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
+            st.toast(f"📖 Rascunho existente da {sub_ativa} ({m_mes:02d}/{m_ano}) carregado do banco!", icon="✅")
+            return True
+        else:
+            # Novo arquivo zerado para a fração selecionada
+            st.session_state["grade_escala_lancamentos"] = {}
+            st.session_state["militares_no_quadro_chaves"] = []
+            st.session_state["ordem_customizada_map"] = {}
+            st.session_state["status_escala_ativo"] = "RASCUNHO"
+            st.session_state["toggle_trava_quadro"] = False
+            st.session_state["escala_fechada_auditoria"] = False
+            st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
+            st.toast(f"✨ Nova escala inicializada (zerada) para {sub_ativa} ({m_mes:02d}/{m_ano})!", icon="🆕")
+            return False
+    except Exception as ex:
+        st.error(f"Erro ao consultar banco de dados: {ex}")
+        return False
+
+
+def renderizar_passo1():
+    usr_dados = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_dados, str):
+        usr_dados = {}
+
+    perfil_usr = str(usr_dados.get("nivel_acesso") or usr_dados.get("perfil_escala") or usr_dados.get("perfil") or "TROPA").upper()
+    cargo_usr = str(usr_dados.get("cargo_funcao") or "").upper()
+
+    eh_programador_p3 = any(p in perfil_usr or p in cargo_usr for p in ["PROGRAMADOR", "ADMIN", "DESENVOLVEDOR", "P3", "CHEFE_P3"])
+
+    lotacao_militar_real, cias_disponiveis = obter_cias_disponiveis_unidade()
+
+    if "cfg_subunidade" not in st.session_state or not st.session_state["cfg_subunidade"]:
+        st.session_state["cfg_subunidade"] = lotacao_militar_real
+
+    with st.expander("📌 PASSO 1: Unidade Operacional, Mês/Ano & Seleção da Escala", expanded=True):
+        st.markdown("##### 🏛️ **Definição da Unidade Operacional & Período da Escala:**")
+
+        col_u1, col_u2, col_u3, col_u4 = st.columns([2.2, 1.2, 1.0, 1.6], vertical_alignment="bottom")
+
+        with col_u1:
+            if eh_programador_p3:
+                idx_default = 0
+                if st.session_state["cfg_subunidade"] in cias_disponiveis:
+                    idx_default = cias_disponiveis.index(st.session_state["cfg_subunidade"])
+
+                cia_selecionada = st.selectbox(
+                    "🏢 Cia/Fração a Produzir Escala:",
+                    options=cias_disponiveis,
+                    index=idx_default,
+                    key="sb_selecionar_cia_escala_passo1"
+                )
+                st.session_state["cfg_subunidade"] = cia_selecionada
+            else:
+                st.text_input(
+                    "🏢 Cia/Fração (Sua Lotação):",
+                    value=lotacao_militar_real,
+                    disabled=True
+                )
+                st.session_state["cfg_subunidade"] = lotacao_militar_real
+
+        with col_u2:
+            m_meses_nomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+            mes_atual = st.session_state.get("mes_escala", datetime.date.today().month)
+
+            sel_mes_nome = st.selectbox(
+                "📅 Mês:",
+                options=m_meses_nomes,
+                index=mes_atual - 1,
+                key="sb_passo1_mes_escala"
+            )
+            st.session_state["mes_escala"] = m_meses_nomes.index(sel_mes_nome) + 1
+
+        with col_u3:
+            ano_atual = st.session_state.get("ano_escala", datetime.date.today().year)
+            st.session_state["ano_escala"] = st.number_input(
+                "📆 Ano:",
+                min_value=2024,
+                max_value=2035,
+                value=ano_atual,
+                key="num_passo1_ano_escala"
+            )
+
+        with col_u4:
+            if st.button("💾 Criar / Carregar Escala", type="primary", use_container_width=True, key="btn_criar_carregar_escala_p1"):
+                carregar_escala_selecionada_passo1()
+                st.rerun()
+
+        sub_nome = st.session_state.get("cfg_subunidade", "111ª CIA PM")
+        m_num = st.session_state.get("mes_escala", datetime.date.today().month)
+        a_num = st.session_state.get("ano_escala", datetime.date.today().year)
+
+        st.info(f"🎯 **Escala Selecionada para Produção:** `{sub_nome}` | **Período:** `{m_num:02d}/{a_num}`")
 
         st.divider()
 
-        st.markdown("#### 🛡️️ Gestão de Equipes e Portfólios")
-        col_equipes_disp, col_gestao = st.columns([3.5, 1.2], gap="large")
-        
-        with col_equipes_disp:
-            st.markdown("**Selecione a equipe ativa para os lançamentos:**")
-            equipes = st.session_state.get("lista_equipes", ["ADMINISTRAÇÃO", "SUPERVISÃO", "CPU", "RP"])
-            
-            max_colunas = 5
-            for i in range(0, len(equipes), max_colunas):
-                grupo_equipes = equipes[i:i + max_colunas]
-                cols = st.columns(max_colunas)
-                for idx, eq_nome in enumerate(grupo_equipes):
-                    eh_ativa = (eq_nome == st.session_state.get("equipe_ativa"))
-                    with cols[idx]:
-                        if st.button(f"🛡️ {eq_nome}", key=f"btn_eq_p1_{eq_nome}", type="primary" if eh_ativa else "secondary", use_container_width=True):
-                            sincronizar_efetivo_equipe_ativa(eq_nome)
-                            st.rerun()
+        # GESTÃO DAS EQUIPES / EMPREGOS OPERACIONAIS DA UNIDADE
+        st.markdown("##### 👥 **Equipes e Empregos Operacionais da Fração:**")
 
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.success(f"📍 Equipe Ativa no Momento: **{st.session_state.get('equipe_ativa')}**")
+        if "lista_equipes_unidade" not in st.session_state:
+            st.session_state["lista_equipes_unidade"] = ["CPU", "RP", "SUPERVISÃO", "ADMINISTRAÇÃO", "TM ALPHA", "GEPAR"]
 
-        with col_gestao:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("➕ Cadastrar Nova Equipe", use_container_width=True, type="primary", key="btn_abrir_modal_add_eq"):
-                abrir_modal_nova_equipe()
+        if "equipe_ativa" not in st.session_state:
+            st.session_state["equipe_ativa"] = "ADMINISTRAÇÃO"
 
-            if st.button("🗑️ Excluir Equipes", use_container_width=True, key="btn_abrir_modal_del_eq"):
-                abrir_modal_excluir_equipes()
+        c_eq1, c_eq2 = st.columns([3, 1.5])
+
+        with c_eq1:
+            eq_sel = st.selectbox(
+                "Equipe / Emprego Operacional em Edição:",
+                options=st.session_state["lista_equipes_unidade"],
+                index=0 if st.session_state["equipe_ativa"] not in st.session_state["lista_equipes_unidade"] else st.session_state["lista_equipes_unidade"].index(st.session_state["equipe_ativa"]),
+                key="sb_equipe_ativa_passo1"
+            )
+            st.session_state["equipe_ativa"] = eq_sel
+
+        with c_eq2:
+            nova_eq_nome = st.text_input("➕ Criar Nova Equipe:", placeholder="Ex: TÁTICO MÓVEL", key="txt_nova_eq_passo1").strip().upper()
+            if st.button("➕ Adicionar Equipe", use_container_width=True, key="btn_add_eq_passo1"):
+                if nova_eq_nome and nova_eq_nome not in st.session_state["lista_equipes_unidade"]:
+                    st.session_state["lista_equipes_unidade"].append(nova_eq_nome)
+                    st.session_state["equipe_ativa"] = nova_eq_nome
+                    st.success(f"✅ Equipe '{nova_eq_nome}' adicionada!")
+                    st.rerun()
+
+        st.markdown(f"🟢 **Equipe Selecionada para Lançamento:** `{st.session_state['equipe_ativa']}`")
