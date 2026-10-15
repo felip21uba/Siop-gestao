@@ -233,8 +233,8 @@ if "tema_visual" not in st.session_state:
 # ==============================================================================
 def obter_imagem_brasao():
     """
-    Carrega o brasão diretamente da pasta local 'assets/'.
-    Testa os nomes e extensões comuns no disco local e aplica o mtime para invalidar o cache.
+    Carrega os bytes do brasão diretamente do arquivo no disco na pasta assets/,
+    evitando erros de FileNotFoundError causados por query strings no st.image.
     """
     pasta_assets = os.path.join(DIRETORIO_RAIZ, "assets")
     extensoes = ["png", "jpg", "jpeg", "svg", "webp"]
@@ -243,20 +243,28 @@ def obter_imagem_brasao():
     if os.path.exists(pasta_assets):
         for nome in nomes:
             for ext in extensoes:
-                caminho_completo = os.path.join(pasta_assets, f"{nome}.{ext}")
-                if os.path.isfile(caminho_completo):
-                    mtime = os.path.getmtime(caminho_completo)
-                    return f"{caminho_completo}?v={int(mtime)}"
+                caminho = os.path.join(pasta_assets, f"{nome}.{ext}")
+                if os.path.isfile(caminho):
+                    try:
+                        with open(caminho, "rb") as f:
+                            return f.read()
+                    except Exception:
+                        pass
         
-        # Caso o arquivo tenha outro nome na pasta, pega a primeira imagem que encontrar em assets/
+        # Caso tenha outro nome na pasta, lê os bytes da primeira imagem encontrada
         for arquivo in os.listdir(pasta_assets):
             ext = arquivo.split(".")[-1].lower()
             if ext in extensoes:
-                caminho_completo = os.path.join(pasta_assets, arquivo)
-                mtime = os.path.getmtime(caminho_completo)
-                return f"{caminho_completo}?v={int(mtime)}"
+                caminho = os.path.join(pasta_assets, arquivo)
+                if os.path.isfile(caminho):
+                    try:
+                        with open(caminho, "rb") as f:
+                            return f.read()
+                    except Exception:
+                        pass
 
-    return "assets/brasao.png"
+    # Fallback seguro caso a pasta ou arquivo esteja limpo
+    return "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 
 # ==============================================================================
 # 🔄 RESTAURAÇÃO DE SESSÃO VIA TOKEN
