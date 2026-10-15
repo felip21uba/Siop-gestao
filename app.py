@@ -372,9 +372,10 @@ if not st.session_state.get("autenticado", False):
 
     with col_centro:
         st.markdown("<br>", unsafe_allow_html=True)
-        c_logo, c_tit = st.columns([1, 3])
+        c_logo, c_tit = st.columns([1.2, 2.8], vertical_alignment="center")
         with c_logo:
-            st.image(obter_imagem_brasao(), width=100)
+            # TAMANHO DO LOGO NA TELA DE LOGIN AMPLIADO (140px)
+            st.image(obter_imagem_brasao(), width=140)
         with c_tit:
             st.markdown("## 🛡️ **SIOP PMMG**")
             st.markdown("##### Sistema Integrado de Operações")
@@ -752,10 +753,11 @@ modulo_ativo = st.session_state["modulo_ativo"]
 # 🏗️ SIDEBAR: SELETOR AGRUPADO POR UNIDADE MÃE (BPM)
 # =========================================================================
 with st.sidebar:
-    c_l, c_mid, c_r = st.columns([1, 1.5, 1])
+    c_l, c_mid, c_r = st.columns([0.2, 2.6, 0.2])
     with c_mid:
         try:
-            st.image(obter_imagem_brasao(), use_container_width=True)
+            # TAMANHO DO LOGO NA SIDEBAR DESTACADO
+            st.image(obter_imagem_brasao(), width=160)
         except Exception:
             st.markdown("🛡️")
 
