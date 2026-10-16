@@ -1,8 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 5 - Espelho da Escala (2ª Tela em Tempo Real)
-Busca a escala ativa no Supabase ou reconstrói o espelho com base nas
-chaves e militares cadastrados na subunidade/fração informada na URL.
+Sincronizado diretamente com a Cia/Fração e o período ativo selecionado.
 ==============================================================================
 """
 
@@ -35,7 +34,7 @@ def padronizar_entrada_espelho(valor):
 
 def carregar_dados_espelho_supabase(subunidade, m_ano, m_mes):
     """
-    Consulta o Supabase garantindo isolamento rigoroso por subunidade/fração, ano e mês.
+    Consulta o Supabase garantindo isolamento por subunidade/fração, ano e mês.
     """
     if not supabase:
         return {}, [], {}, {}
@@ -45,7 +44,6 @@ def carregar_dados_espelho_supabase(subunidade, m_ano, m_mes):
     ano_int = int(m_ano)
 
     try:
-        # Busca a escala gravada para a subunidade/fração exata
         res = supabase.table("escalas_mensais").select("*").eq("ano", ano_int).eq("mes", mes_int).order("id", desc=True).execute()
         
         row_alvo = None
@@ -83,8 +81,8 @@ def carregar_dados_espelho_supabase(subunidade, m_ano, m_mes):
 
 def renderizar_modo_segunda_tela():
     """
-    Renderiza a 2ª Tela (Espelho) de forma independente lendo os parâmetros da URL
-    e sincronizando dinamicamente com as gravações e broadcasts do Quadro 5.
+    Renderiza a 2ª Tela (Espelho) de forma autônoma lendo os parâmetros da URL
+    e atualizando automaticamente a cada sincronização.
     """
     st.markdown(
         """
@@ -101,9 +99,9 @@ def renderizar_modo_segunda_tela():
 
     params = st.query_params
 
-    raw_sub = params.get("subunidade", "111ª CIA PM")
-    raw_mes = params.get("mes", datetime.date.today().month)
-    raw_ano = params.get("ano", datetime.date.today().year)
+    raw_sub = params.get("subunidade", st.session_state.get("cfg_subunidade", "111ª CIA PM"))
+    raw_mes = params.get("mes", st.session_state.get("mes_escala", datetime.date.today().month))
+    raw_ano = params.get("ano", st.session_state.get("ano_escala", datetime.date.today().year))
 
     if isinstance(raw_sub, list):
         raw_sub = raw_sub[0]
@@ -126,18 +124,16 @@ def renderizar_modo_segunda_tela():
 
     st.markdown(f"### 🖥️ ESPELHO DA ESCALA — {subunidade} ({m_mes:02d}/{m_ano})")
 
-    grade, chaves_existentes, bh_configs, ordem_map = carregar_dados_espelho_supabase(subunidade, m_ano, m_mes)
-    militares = carregar_militares_supabase() or []
-    num_dias = calendar.monthrange(m_ano, m_mes)[1]
+    # Lê primeiro da memória viva se existir no mesmo processo ou busca do Supabase
+    grade = st.session_state.get("grade_escala_lancamentos")
+    chaves_existentes = st.session_state.get("militares_no_quadro_chaves")
+    ordem_map = st.session_state.get("ordem_customizada_map", {})
 
-    # Caso ainda não haja chaves salvas na escala mensal, gera chaves temporárias para os militares da Cia/Fração
-    if not chaves_existentes and militares:
-        num_cia = "".join(filter(str.isdigit, subunidade))
-        mils_cia = [
-            m for m in militares 
-            if not num_cia or num_cia in str(m.get("lotacao", m.get("unidade", "")))
-        ]
-        chaves_existentes = [(str(m.get("id")), "ADMINISTRAÇÃO") for m in mils_cia]
+    if not grade or not chaves_existentes:
+        grade, chaves_existentes, _, ordem_map = carregar_dados_espelho_supabase(subunidade, m_ano, m_mes)
+
+    militares = st.session_state.get("lista_militares") or carregar_militares_supabase() or []
+    num_dias = calendar.monthrange(m_ano, m_mes)[1]
 
     mils_linhas = []
     mats_vistas = set()
@@ -201,7 +197,7 @@ def renderizar_modo_segunda_tela():
     else:
         st.info(f"💡 Nenhuma linha ativa no Quadro 5 para {subunidade} ({m_mes:02d}/{m_ano}).")
 
-    # Listener do BroadcastChannel para recarregar a janela popup instantaneamente ao aplicar alterações no Quadro 5
+    # Listener do BroadcastChannel do navegador (Atualiza na hora em que o botão Aplicar é clicado)
     components.html(
         """
         <script>

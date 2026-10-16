@@ -2,6 +2,7 @@
 ==============================================================================
 Módulo do Passo 5 - Quadro Mensal de Escalas, Homologação Dinâmica e Perfis
 Garante a independência de alocação por Cia/Fração e sincronização total com a 2ª Tela.
+Botão da 2ª Tela perfeitamente alinhado e sem bloqueio de pop-up via link nativo.
 ==============================================================================
 """
 
@@ -485,29 +486,6 @@ def recalcular_escala_matriz():
     st.session_state["limpar_avisos_manual"] = False
     verificar_trava_sobreposicao()
 
-def abrir_segunda_janela_popup(subunidade, m_mes, m_ano):
-    """Garante que os lançamentos atuais sejam salvos no banco e abre a popup da 2ª Tela."""
-    executar_auto_save_banco(status_escala=st.session_state.get("status_escala_ativo", "RASCUNHO"))
-    sub_enc = urllib.parse.quote(subunidade)
-    url_espelho = f".?modo_monitor=segunda_tela&subunidade={sub_enc}&mes={m_mes}&ano={m_ano}"
-    components.html(
-        f"""
-        <script>
-        const url = "{url_espelho}";
-        const largura = Math.min(screen.availWidth, 1800);
-        const altura = Math.min(screen.availHeight, 1000);
-        const esquerda = Math.max(0, screen.availWidth - largura) / 2;
-        const topo = Math.max(0, screen.availHeight - altura) / 2;
-        window.open(
-            url,
-            "SIOP_ESPELHO_WINDOW",
-            "width=" + largura + ",height=" + altura + ",left=" + esquerda + ",top=" + topo + ",resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no,status=no"
-        );
-        </script>
-        """,
-        height=0
-    )
-
 def renderizar_passo5():
     sub_ativa = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
@@ -585,6 +563,25 @@ def renderizar_passo5():
             div[data-testid="stExpander"] div[data-testid="stVerticalBlock"] > div {
                 gap: 0.3rem !important;
             }
+            .btn-espelho-link {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                width: 100%;
+                height: 38px;
+                background-color: #334155;
+                color: #ffffff !important;
+                border: 1px solid #475569;
+                border-radius: 8px;
+                text-decoration: none !important;
+                font-weight: 600;
+                font-size: 14px;
+                transition: background-color 0.2s;
+            }
+            .btn-espelho-link:hover {
+                background-color: #475569;
+                color: #ffffff !important;
+            }
             </style>
             """,
             unsafe_allow_html=True
@@ -650,7 +647,8 @@ def renderizar_passo5():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        col_esq, col_btn1, col_btn2, col_btn3 = st.columns([1.5, 1.0, 0.8, 0.7], vertical_alignment="center")
+        # LINHA DE BOTOES ALINHADOS NA PARTE INFERIOR
+        col_esq, col_btn1, col_btn2, col_btn3 = st.columns([1.5, 1.0, 0.8, 0.7], vertical_alignment="bottom")
 
         with col_esq:
             cnt_linhas = len(st.session_state.get("militares_no_quadro_chaves", []))
@@ -671,8 +669,12 @@ def renderizar_passo5():
                 st.rerun()
 
         with col_btn3:
-            if st.button("🖥 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
-                abrir_segunda_janela_popup(sub_ativa, m_mes, m_ano)
+            sub_enc = urllib.parse.quote(sub_ativa)
+            link_espelho = f".?modo_monitor=segunda_tela&subunidade={sub_enc}&mes={m_mes}&ano={m_ano}"
+            st.markdown(
+                f'<a href="{link_espelho}" target="_blank" class="btn-espelho-link" title="Abre a 2ª Tela em uma nova janela sem bloqueio do navegador">🖥️ 2ª Tela</a>',
+                unsafe_allow_html=True
+            )
 
         if (bloqueios or avisos_descanso) and not st.session_state.get("limpar_avisos_manual", False):
             st.markdown("---")
