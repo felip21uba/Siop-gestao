@@ -1,7 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 5 - Quadro Mensal de Escalas, Homologação Dinâmica e Perfis
-Garante a independência de alocação por Cia/Fração e sincronização total com o Passo 1.
+Garante a independência de alocação por Cia/Fração e sincronização total com a 2ª Tela.
 ==============================================================================
 """
 
@@ -11,6 +11,7 @@ import calendar
 import pandas as pd
 import copy
 import re
+import urllib.parse
 import streamlit.components.v1 as components
 
 from core.database import (
@@ -235,7 +236,6 @@ def carregar_escala_salva_banco():
             st.session_state["chave_escala_carregada"] = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
             return True
         else:
-            # Se a escala não existir no banco para essa Cia/Fração, INICIA TOTALMENTE DO ZERO (ZERADA)
             st.session_state["grade_escala_lancamentos"] = {}
             st.session_state["militares_no_quadro_chaves"] = []
             st.session_state["ordem_customizada_map"] = {}
@@ -485,8 +485,11 @@ def recalcular_escala_matriz():
     st.session_state["limpar_avisos_manual"] = False
     verificar_trava_sobreposicao()
 
-def abrir_segunda_janela_popup(m_mes, m_ano):
-    url_espelho = f".?modo_monitor=segunda_tela&mes={m_mes}&ano={m_ano}"
+def abrir_segunda_janela_popup(subunidade, m_mes, m_ano):
+    """Garante que os lançamentos atuais sejam salvos no banco e abre a popup da 2ª Tela."""
+    executar_auto_save_banco(status_escala=st.session_state.get("status_escala_ativo", "RASCUNHO"))
+    sub_enc = urllib.parse.quote(subunidade)
+    url_espelho = f".?modo_monitor=segunda_tela&subunidade={sub_enc}&mes={m_mes}&ano={m_ano}"
     components.html(
         f"""
         <script>
@@ -510,10 +513,8 @@ def renderizar_passo5():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
 
-    # Chave única concatenando a Cia, Ano e Mês selecionados no Passo 1
     chave_periodo = f"{sub_ativa}_{m_ano}_{m_mes:02d}"
     
-    # Se a chave mudou ou ainda não foi carregada nesta sessão do Quadro, busca no Supabase
     if st.session_state.get("chave_escala_carregada") != chave_periodo:
         carregar_escala_salva_banco()
         st.session_state["chave_escala_carregada"] = chave_periodo
@@ -671,7 +672,7 @@ def renderizar_passo5():
 
         with col_btn3:
             if st.button("🖥 2ª Tela", type="secondary", use_container_width=True, help="Abre o Quadro 5 em uma janela separada em pop-up."):
-                abrir_segunda_janela_popup(m_mes, m_ano)
+                abrir_segunda_janela_popup(sub_ativa, m_mes, m_ano)
 
         if (bloqueios or avisos_descanso) and not st.session_state.get("limpar_avisos_manual", False):
             st.markdown("---")

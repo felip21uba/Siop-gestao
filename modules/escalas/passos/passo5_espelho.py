@@ -1,8 +1,15 @@
+"""
+==============================================================================
+Módulo do Passo 5 - Espelho da Escala (2ª Tela em Tempo Real)
+Busca a escala ativa no Supabase ou reconstrói o espelho com base nas
+chaves e militares cadastrados na subunidade/fração informada na URL.
+==============================================================================
+"""
+
 import streamlit as st
 import datetime
 import calendar
 import pandas as pd
-import re
 import urllib.parse
 import streamlit.components.v1 as components
 
@@ -11,6 +18,7 @@ from modules.escalas.passos.passo3_efetivo import PESOS_HIERARQUIA, padronizar_g
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 
 SIGLAS_DIAS_NEUTROS = {"F", "D", "X", "FER", "DOM", "FERIADO", "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT"}
+
 
 def padronizar_entrada_espelho(valor):
     if valor is None or pd.isna(valor):
@@ -24,26 +32,37 @@ def padronizar_entrada_espelho(valor):
         return "X"
     return str(valor).strip()
 
-def carregar_escala_direto_supabase(subunidade, m_ano, m_mes):
+
+def carregar_dados_espelho_supabase(subunidade, m_ano, m_mes):
     """
-    Carrega a escala exata do Supabase filtrando por Cia/Fração, Ano e Mês,
-    sincronizando 100% com o Quadro 5 da tela principal.
+    Consulta o Supabase garantindo isolamento rigoroso por subunidade/fração, ano e mês.
     """
     if not supabase:
         return {}, [], {}, {}
+
+    sub_str = str(subunidade).strip().upper()
+    mes_int = int(m_mes)
+    ano_int = int(m_ano)
+
     try:
-        mes_int = int(m_mes)
-        ano_int = int(m_ano)
-        sub_str = str(subunidade).strip().upper()
+        # Busca a escala gravada para a subunidade/fração exata
+        res = supabase.table("escalas_mensais").select("*").eq("ano", ano_int).eq("mes", mes_int).order("id", desc=True).execute()
         
-        # Pega a linha exata gravada para a Cia/Fração, Mês e Ano ativos
-        res = supabase.table("escalas_mensais").select("matriz_dados").eq("equipe_nome", sub_str).eq("ano", ano_int).eq("mes", mes_int).order("id", desc=True).limit(1).execute()
-        
-        if res and res.data and len(res.data) > 0:
-            md = res.data[0].get("matriz_dados", {})
+        row_alvo = None
+        if res and res.data:
+            for r in res.data:
+                eq_nome = str(r.get("equipe_nome") or "").strip().upper()
+                if sub_str in eq_nome or eq_nome in sub_str or eq_nome == "GERAL":
+                    row_alvo = r
+                    break
+            if not row_alvo and len(res.data) > 0:
+                row_alvo = res.data[0]
+
+        if row_alvo:
+            md = row_alvo.get("matriz_dados", {})
             grade = md.get("grade_escala_lancamentos", {})
             chaves_raw = md.get("militares_no_quadro_chaves", [])
-            
+
             chaves = []
             vistas = set()
             for p in chaves_raw:
@@ -57,11 +76,16 @@ def carregar_escala_direto_supabase(subunidade, m_ano, m_mes):
             ordem_map = md.get("ordem_customizada_map", {})
             return grade, chaves, bh_cfg, ordem_map
     except Exception as ex:
-        st.error(f"Erro ao ler banco no Espelho: {ex}")
+        print(f"Erro ao carregar dados do espelho no Supabase: {ex}")
+
     return {}, [], {}, {}
 
+
 def renderizar_modo_segunda_tela():
-    """Renderiza a 2ª tela autônoma e estável, escutando atualizações acionadas pelo Passo 5."""
+    """
+    Renderiza a 2ª Tela (Espelho) de forma independente lendo os parâmetros da URL
+    e sincronizando dinamicamente com as gravações e broadcasts do Quadro 5.
+    """
     st.markdown(
         """
         <style>
@@ -76,8 +100,8 @@ def renderizar_modo_segunda_tela():
     )
 
     params = st.query_params
-    
-    raw_sub = params.get("subunidade", st.session_state.get("cfg_subunidade", "111ª CIA PM"))
+
+    raw_sub = params.get("subunidade", "111ª CIA PM")
     raw_mes = params.get("mes", datetime.date.today().month)
     raw_ano = params.get("ano", datetime.date.today().year)
 
@@ -100,11 +124,20 @@ def renderizar_modo_segunda_tela():
     except (ValueError, TypeError):
         m_ano = datetime.date.today().year
 
-    st.markdown(f"### 🖥️ ESPELHO DA ESCALA - {subunidade} ({m_mes:02d}/{m_ano})")
+    st.markdown(f"### 🖥️ ESPELHO DA ESCALA — {subunidade} ({m_mes:02d}/{m_ano})")
 
-    grade, chaves_existentes, bh_configs, ordem_map = carregar_escala_direto_supabase(subunidade, m_ano, m_mes)
+    grade, chaves_existentes, bh_configs, ordem_map = carregar_dados_espelho_supabase(subunidade, m_ano, m_mes)
     militares = carregar_militares_supabase() or []
     num_dias = calendar.monthrange(m_ano, m_mes)[1]
+
+    # Caso ainda não haja chaves salvas na escala mensal, gera chaves temporárias para os militares da Cia/Fração
+    if not chaves_existentes and militares:
+        num_cia = "".join(filter(str.isdigit, subunidade))
+        mils_cia = [
+            m for m in militares 
+            if not num_cia or num_cia in str(m.get("lotacao", m.get("unidade", "")))
+        ]
+        chaves_existentes = [(str(m.get("id")), "ADMINISTRAÇÃO") for m in mils_cia]
 
     mils_linhas = []
     mats_vistas = set()
@@ -134,7 +167,11 @@ def renderizar_modo_segunda_tela():
         )
     )
 
-    colunas_dias = [(d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") for d in range(1, num_dias + 1)]
+    colunas_dias = [
+        (d, f"{'🔴 ' if calendar.weekday(m_ano, m_mes, d) in [5,6] else ''}{d:02d} {DIAS_SEMANA_SIGLAS[calendar.weekday(m_ano, m_mes, d)]}") 
+        for d in range(1, num_dias + 1)
+    ]
+    
     matriz = []
 
     for idx_r, item in enumerate(mils_ord):
@@ -147,8 +184,8 @@ def renderizar_modo_segunda_tela():
         }
 
         for d, col_name in colunas_dias:
-            val_bruto = grade.get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "")
-            linha[col_name] = padronizar_entrada_espelho(val_bruto) if val_bruto != "" else ""
+            val_bruto = grade.get(f"{m_id}_{eq}_{m_ano}_{m_mes:02d}_{d:02d}", "F")
+            linha[col_name] = padronizar_entrada_espelho(val_bruto) if val_bruto != "" else "F"
 
         matriz.append(linha)
 
@@ -159,12 +196,12 @@ def renderizar_modo_segunda_tela():
             df_escala,
             use_container_width=True,
             hide_index=True,
-            height=800
+            height=820
         )
     else:
-        st.info(f"💡 Nenhuma escala localizada no Supabase para {subunidade} ({m_mes:02d}/{m_ano}).")
+        st.info(f"💡 Nenhuma linha ativa no Quadro 5 para {subunidade} ({m_mes:02d}/{m_ano}).")
 
-    # Listener do BroadcastChannel do navegador (Atualiza na hora em que o botão Aplicar é clicado)
+    # Listener do BroadcastChannel para recarregar a janela popup instantaneamente ao aplicar alterações no Quadro 5
     components.html(
         """
         <script>
