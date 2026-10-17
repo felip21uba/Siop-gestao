@@ -1,7 +1,8 @@
 """
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
-Garante formatação oficial da PMMG, leitura local do brasão e exportação limpa.
+Garante o cabeçalho estrito da escala em produção, leitura em Base64 de qualquer
+imagem na pasta assets/ e acionamento direto da janela de impressão sem iFrames na tela.
 ==============================================================================
 """
 
@@ -28,7 +29,14 @@ SIGLAS_DIAS_NEUTROS = [
     "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT", "RH"
 ]
 
-URL_BRASAO_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
+# SVG Fallback reserva caso a pasta assets/ esteja totalmente vazia
+BRASAO_SVG_FALLBACK = (
+    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='90' viewBox='0 0 100 120'>"
+    "<path d='M50 5 L90 25 L90 70 C90 95 50 115 50 115 C50 115 10 95 10 70 L10 25 Z' fill='%23b91c1c' stroke='%23f59e0b' stroke-width='4'/>"
+    "<path d='M50 20 L80 35 L80 68 C80 88 50 102 50 102 C50 102 20 88 20 68 L20 35 Z' fill='%231e3a8a'/>"
+    "<polygon points='50,30 56,45 72,45 59,55 64,70 50,60 36,70 41,55 28,45 44,45' fill='%23f59e0b'/>"
+    "<text x='50' y='90' font-size='10' font-weight='bold' fill='%23ffffff' text-anchor='middle'>PMMG</text></svg>"
+)
 
 CORES_EQUIPES = {
     "CPU": "#a16207", 
@@ -42,34 +50,43 @@ CORES_EQUIPES = {
     "C": "#9a3412"
 }
 
-def obter_brasao_base64(url_padrao):
-    """Busca o brasão diretamente na pasta assets/ e converte em Base64 para PDF/HTML."""
+
+def obter_brasao_base64():
+    """
+    Varre a pasta assets/ e carrega qualquer imagem (ex: 'Brasao 21 BPM.PNG'),
+    convertendo-a diretamente em Base64 para inclusão no HTML de impressão.
+    """
     pasta_assets = "assets"
-    extensoes = ["png", "jpg", "jpeg", "svg", "webp"]
-    nomes = ["brasao", "logo", "brasao_pmmg"]
+    extensoes_validas = ('.png', '.jpg', '.jpeg', '.svg', '.webp')
 
     if os.path.exists(pasta_assets):
-        for nome in nomes:
-            for ext in extensoes:
-                caminho = os.path.join(pasta_assets, f"{nome}.{ext}")
-                if os.path.isfile(caminho):
-                    try:
-                        with open(caminho, "rb") as image_file:
-                            encoded = base64.b64encode(image_file.read()).decode("utf-8")
-                            mime_type = "svg+xml" if ext == "svg" else ext
-                            return f"data:image/{mime_type};base64,{encoded}"
-                    except Exception:
-                        pass
-    return url_padrao
+        arquivos = sorted(os.listdir(pasta_assets))
+        for arq in arquivos:
+            caminho_completo = os.path.join(pasta_assets, arq)
+            if os.path.isfile(caminho_completo) and arq.lower().endswith(extensoes_validas):
+                try:
+                    ext = arq.split('.')[-1].lower()
+                    mime_type = "svg+xml" if ext == "svg" else ("jpeg" if ext in ["jpg", "jpeg"] else ext)
+                    
+                    with open(caminho_completo, "rb") as image_file:
+                        encoded = base64.b64encode(image_file.read()).decode("utf-8")
+                        return f"data:image/{mime_type};base64,{encoded}"
+                except Exception as ex:
+                    print(f"Erro ao converter imagem {arq} em Base64: {ex}")
+
+    return BRASAO_SVG_FALLBACK
+
 
 def obter_cor_equipe(eq): 
     return CORES_EQUIPES.get(str(eq).upper().strip(), "#475569")
+
 
 def extrair_matricula_limpa(valor):
     val_str = str(valor).strip()
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
     return re.sub(r'\D', '', val_str).lstrip('0')
+
 
 def calcular_horas_por_legenda(val_str, mapa_horarios):
     v = str(val_str).upper().strip()
@@ -115,6 +132,7 @@ def calcular_horas_por_legenda(val_str, mapa_horarios):
     except Exception:
         return 12.0
 
+
 def extrair_texto_pdf(arq_pdf):
     try:
         import pypdf
@@ -126,6 +144,7 @@ def extrair_texto_pdf(arq_pdf):
     except Exception as e:
         st.error(f"Erro ao extrair texto do PDF: {e}")
         return ""
+
 
 def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, resp_escala_str, obs_escala, texto_legenda=""):
     output = io.BytesIO()
@@ -142,7 +161,7 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
         fmt_sig_text = workbook.add_format({'align': 'center', 'font_size': 10})
         fmt_legenda = workbook.add_format({'align': 'left', 'font_size': 10, 'bold': True, 'font_color': '#B91C1C'})
         
-        worksheet.merge_range(0, 0, 0, num_cols-1, f"{unidade.upper()}", fmt_titulo)
+        worksheet.merge_range(0, 0, 0, num_cols-1, f"POLÍCIA MILITAR DE MINAS GERAIS — {unidade.upper()}", fmt_titulo)
         worksheet.merge_range(1, 0, 1, num_cols-1, f"{subunidade.upper()}", fmt_sub)
         worksheet.merge_range(2, 0, 2, num_cols-1, f"QUADRO GERAL DE ESCALA DE SERVIÇO - {mes_ano_str.upper()}", fmt_sub)
         
@@ -179,24 +198,19 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
         
     return output.getvalue()
 
+
 def renderizar_passo6():
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     num_dias_mes = calendar.monthrange(m_ano, m_mes)[1]
     
-    usr_dados = st.session_state.get("usuario_dados", {})
-    if isinstance(usr_dados, str):
-        usr_dados = {}
-
-    unidade = str(st.session_state.get("cfg_unidade") or usr_dados.get("unidade") or "21º BPM").strip().upper()
-    subunidade = str(usr_dados.get("subunidade") or usr_dados.get("lotacao") or st.session_state.get("cfg_subunidade") or "35ª CIA PM").strip().upper()
+    # LEITURA ESTRITA E EXCLUSIVA DA ESCALA SELECIONADA NO PASSO 1
+    unidade = str(st.session_state.get("cfg_unidade") or "21º BPM").strip().upper()
+    subunidade = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
     
-    img_brasao_cfg = st.session_state.get("cfg_brasao_url", URL_BRASAO_PADRAO)
-    img_brasao = obter_brasao_base64(img_brasao_cfg)
-    
+    img_brasao = obter_brasao_base64()
     mils_todos = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
 
-    # Captura diretamente do Passo 5 os nomes selecionados para o rodapé
     nome_resp_escala = str(st.session_state.get("p5_elaborador_sel") or "GESTOR P3").strip().upper()
     nome_homologador = str(st.session_state.get("p5_homologador_sel") or "COMANDANTE DA CIA").strip().upper()
 
@@ -358,6 +372,7 @@ def renderizar_passo6():
         leg_str_list = [f"{k} = {v['inicio']} às {v['fim']}" for k, v in mapa_horarios.items()]
         texto_legenda_final = "LEGENDA DE HORÁRIOS:   " + "   |   ".join(leg_str_list) if leg_str_list else ""
 
+        # ESTRUTURA HTML PREPARADA PARA A IMPRESSÃO (SEM DISPLAY FIXO NA TELA)
         html_documento = f"""
         <!DOCTYPE html>
         <html>
@@ -366,15 +381,15 @@ def renderizar_passo6():
             <style>
                 * {{ -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }}
                 @media print {{ @page {{ size: A4 landscape; margin: 4mm; }} body {{ background: #ffffff !important; padding: 0 !important; }} }}
-                body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 8px; color: #0f172a; }}
+                body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #ffffff; margin: 0; padding: 8px; color: #0f172a; }}
                 .card-container {{ background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; width: 100%; }}
                 .header-table {{ width: 100%; border-collapse: collapse; margin-bottom: 8px; border-bottom: 2px solid #cbd5e1; }}
                 .header-table td {{ border: none !important; padding: 2px; }}
                 .brasao-box {{ width: 65px; height: 65px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 2px; display: flex; align-items: center; justify-content: center; background-color: #ffffff; }}
                 .brasao-img {{ max-height: 100%; max-width: 100%; object-fit: contain; }}
                 .header-titles {{ text-align: center; }}
-                .header-titles h2 {{ margin: 0; font-size: 16px; font-weight: 900; color: #0f172a; text-transform: uppercase; }}
-                .header-titles h3 {{ margin: 1px 0; font-size: 12px; font-weight: 700; color: #475569; text-transform: uppercase; }}
+                .header-titles h2 {{ margin: 0; font-size: 15px; font-weight: 900; color: #0f172a; text-transform: uppercase; }}
+                .header-titles h3 {{ margin: 2px 0; font-size: 13px; font-weight: 800; color: #1e3a8a; text-transform: uppercase; }}
                 .header-titles h4 {{ margin: 2px 0 0 0; font-size: 11px; font-weight: 800; color: #334155; text-transform: uppercase; }}
                 table.escala-table {{ width: 100%; border-collapse: collapse; font-size: 9px; table-layout: auto; }}
                 table.escala-table th, table.escala-table td {{ border: 1px solid #94a3b8; text-align: center; vertical-align: middle; padding: 2px 0px; }}
@@ -412,7 +427,7 @@ def renderizar_passo6():
                             </div>
                         </td>
                         <td class="header-titles">
-                            <h2>{unidade}</h2>
+                            <h2>POLÍCIA MILITAR DE MINAS GERAIS — {unidade}</h2>
                             <h3>{subunidade}</h3>
                             <h4>QUADRO GERAL DE ESCALA DE SERVIÇO - {mes_ano_str}</h4>
                         </td>
@@ -456,9 +471,9 @@ def renderizar_passo6():
         </html>
         """
 
-        components.html(html_documento, height=520, scrolling=True)
         st.divider()
 
+        # BOTÕES DE AÇÃO DE EXPORTAÇÃO / IMPRESSÃO
         c_act1, c_act2, c_act3 = st.columns([1.3, 1, 1], gap="small")
         
         with c_act1:
@@ -554,11 +569,23 @@ def renderizar_passo6():
             st.download_button(
                 "📊 Baixar Escala em Excel (.xlsx)", 
                 data=bytes_xls, 
-                file_name=f"Escala_{m_mes:02d}_{m_ano}.xlsx", 
+                file_name=f"Escala_{subunidade}_{m_mes:02d}_{m_ano}.xlsx", 
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
                 use_container_width=True
             )
             
         with c_act3: 
             if st.button("🖨️ Imprimir / Salvar PDF", type="primary", use_container_width=True):
-                components.html(html_documento + "<script>window.print();</script>", height=600, scrolling=True)
+                # IMPRESSÃO VIA POP-UP SEM DESENHAR BARRAS OU QUADROS NA PÁGINA
+                components.html(
+                    f"""
+                    <script>
+                    const printWin = window.open('', '_blank');
+                    printWin.document.write(`{html_documento}`);
+                    printWin.document.close();
+                    printWin.focus();
+                    setTimeout(() => {{ printWin.print(); }}, 600);
+                    </script>
+                    """,
+                    height=0
+                )
