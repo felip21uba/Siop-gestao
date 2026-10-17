@@ -1,7 +1,8 @@
 """
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
-Garante 100% de paridade na Meta Apurada (160h base) e Carga Horária com o Passo 5.
+Funciona estritamente como uma camada de visualização estilizada do Passo 5,
+garantindo 100% de paridade na Meta Efetiva, Horas Trabalhadas e Saldos.
 ==============================================================================
 """
 
@@ -265,23 +266,23 @@ def renderizar_passo6():
 
                 linha_xls = [eq_nome, num_pol, f"{pg} {nome_g}"]
                 total_horas = 0.0
-                dias_abatidos_cnt = 0
+                neutros = 0
 
                 for d in range(1, num_dias_mes + 1):
                     val = grade_lancamentos.get(f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}", "F")
                     val_raw = str(val).strip()
                     val_str = val_raw.upper()
 
-                    # CÁLCULO DE HORAS USANDO EXATAMENTE A FUNÇÃO DO PASSO 5
+                    # CÁLCULO DE HORAS REAIS (MOTOR UNIFICADO DO PASSO 5)
                     dt_ref_dia = datetime.date(m_ano, m_mes, d)
                     eh_sup = (eq_nome == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
                     total_horas += calcular_horas_efetivas_turno(val_str, dt_ref_dia, eh_supervisao=eh_sup)
 
                     tokens_dia = set(val_str.replace("/", " ").split())
                     
-                    # APENAS SIGLAS OFICIAIS DE AFASTAMENTO ABATEM META (IGNORA FOLGA F E DESCANSO D)
+                    # APURAÇÃO DE AFASTAMENTOS (EXATAMENTE IGUAL AO PASSO 5)
                     if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
-                        dias_abatidos_cnt += 1
+                        neutros += 1
 
                     cell_content = ""
                     if val_raw not in ["F", "D", "X", "", None, "0"]:
@@ -301,13 +302,12 @@ def renderizar_passo6():
                         
                     row_html += f'<td class="td-day">{cell_content}</td>'
 
+                # CÁLCULO DE META E SALDO EXATAMENTE IGUAL AO PASSO 5
                 cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
-                eh_reduzida = cfg_bh.get("reduzida", False)
-                carga_base_mes = 80.0 if eh_reduzida else 160.0
-                
-                # CÁLCULO DA META PROPORCIONAL IDÊNTICO AO PASSO 5
+                carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
                 taxa_diaria = carga_base_mes / float(num_dias_mes)
-                dias_efetivos = num_dias_mes - dias_abatidos_cnt
+
+                dias_efetivos = num_dias_mes - neutros
                 meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
                 saldo_horas = (total_horas + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta_efetiva
                 
