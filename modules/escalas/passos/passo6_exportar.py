@@ -1,7 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
-Exibe a visualização da escala em tela e oferece botões de impressão/Excel.
+Calcula com precisão cirúrgica expedientes fracionados/ADM sem inflar a carga.
 ==============================================================================
 """
 
@@ -83,48 +83,46 @@ def extrair_matricula_limpa(valor):
 
 
 def calcular_horas_por_legenda(val_str, mapa_horarios):
+    """Calcula com precisão as horas reais do turno, inclusive expedientes divididos."""
     v = str(val_str).upper().strip()
     if not v or v in ["F", "D", "X", "NAN", "NONE", "0"] or any(sigla in v for sigla in SIGLAS_DIAS_NEUTROS):
         return 0.0
 
-    h_ini_str, h_fim_str = None, None
-
+    # Busca no mapa de legendas cadastradas se houver
     if v in mapa_horarios:
-        h_ini_str = mapa_horarios[v].get("inicio")
-        h_fim_str = mapa_horarios[v].get("fim")
+        h_i_cfg = mapa_horarios[v].get("inicio")
+        h_f_cfg = mapa_horarios[v].get("fim")
+        if h_i_cfg and h_f_cfg:
+            try:
+                hi = datetime.datetime.strptime(h_i_cfg, "%H:%M")
+                hf = datetime.datetime.strptime(h_f_cfg, "%H:%M")
+                diff = (hf - hi).total_seconds() / 3600.0
+                return diff if diff > 0 else diff + 24.0
+            except Exception:
+                pass
 
-    if not h_ini_str or not h_fim_str:
-        m = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', v)
-        if m:
-            h1, m1 = int(m[0][0]), int(m[0][1]) if m[0][1] else 0
-            h2, m2 = int(m[0][2]), int(m[0][3]) if m[0][3] else 0
-            h_ini_str = f"{h1:02d}:{m1:02d}"
-            h_fim_str = f"{h2:02d}:{m2:02d}"
+    # Extrai todos os blocos de horários contidos no texto (Ex: '08:00 AS 12:00 13:30 AS 17:00')
+    m = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', v)
+    if not m:
+        return 12.0 if v in ["1", "2", "TPB"] else 0.0
 
-    if not h_ini_str or not h_fim_str:
-        return 12.0
+    horas_acumuladas = 0.0
+    for item in m:
+        try:
+            h1, m1 = int(item[0]), int(item[1]) if item[1] else 0
+            h2, m2 = int(item[2]), int(item[3]) if item[3] else 0
 
-    try:
-        h_i = datetime.datetime.strptime(h_ini_str, "%H:%M")
-        h_f = datetime.datetime.strptime(h_fim_str, "%H:%M")
+            dt_ini = datetime.datetime(2026, 1, 1, h1, m1)
+            dt_fim = datetime.datetime(2026, 1, 1, h2, m2)
 
-        dt_curr = datetime.datetime(2026, 1, 1, h_i.hour, h_i.minute)
-        dt_fim = datetime.datetime(2026, 1, 1, h_f.hour, h_f.minute)
+            if dt_fim <= dt_ini:
+                dt_fim += datetime.timedelta(days=1)
 
-        if dt_fim <= dt_curr:
-            dt_fim += datetime.timedelta(days=1)
+            horas_acumuladas += (dt_fim - dt_ini).total_seconds() / 3600.0
+        except Exception:
+            continue
 
-        horas_efetivas = 0.0
-        while dt_curr < dt_fim:
-            hora_atual = dt_curr.hour
-            is_noturno = (hora_atual >= 23 or hora_atual < 5)
-            fator_minuto = (70.0 / 60.0) if is_noturno else 1.0
-            horas_efetivas += (1.0 / 60.0) * fator_minuto
-            dt_curr += datetime.timedelta(minutes=1)
-
-        return horas_efetivas
-    except Exception:
-        return 12.0
+    return horas_acumuladas if horas_acumuladas > 0 else 12.0
 
 
 def extrair_texto_pdf(arq_pdf):
@@ -354,19 +352,30 @@ def renderizar_passo6():
                 
                 row_html += f"""
                     <td class="td-horas">
-                        <div class="h-main">{total_horas:.0f}h / {meta_efetiva:.1f}h</div>
+                        <div class="h-main">{total_horas:.1f}h / {meta_efetiva:.1f}h</div>
                         <div class="h-sub">{saldo_horas:+.1f}h</div>
                     </td>
                 </tr>
                 """
                 tbody_html += row_html
-                linha_xls.append(f"{total_horas:.0f}h / {meta_efetiva:.1f}h\n({saldo_horas:+.1f}h)")
+                linha_xls.append(f"{total_horas:.1f}h / {meta_efetiva:.1f}h\n({saldo_horas:+.1f}h)")
                 linhas_excel_data.append(linha_xls)
 
         df_excel_export = pd.DataFrame(linhas_excel_data, columns=cols_excel_names)
         mes_ano_str = f"{m_mes:02d}/{m_ano}"
         
-        leg_str_list = [f"{k} = {v['inicio']} às {v['fim']}" for k, v in mapa_horarios.items()]
+        # MONTAGEM DA LEGENDA EXATA
+        leg_str_list = []
+        for k in legendas_lista:
+            if k in mapa_horarios:
+                leg_str_list.append(f"{k} = {mapa_horarios[k]['inicio']} às {mapa_horarios[k]['fim']}")
+            elif "08:00" in k and "17:00" in k:
+                leg_str_list.append(f"ADM = 08:00 às 12:00 | 13:30 às 17:00")
+            elif "08:30" in k:
+                leg_str_list.append(f"ADM (QUA) = 08:30 às 13:00")
+            elif k not in ["F", "D", "X"]:
+                leg_str_list.append(f"{k} = {k}")
+
         texto_legenda_final = "LEGENDA DE HORÁRIOS:   " + "   |   ".join(leg_str_list) if leg_str_list else ""
 
         # ESTRUTURA HTML DA ESCALA
@@ -468,7 +477,7 @@ def renderizar_passo6():
         </html>
         """
 
-        # VISUALIZADOR DA ESCALA DIRETAMENTE NA TELA (SISTEMA)
+        # VISUALIZADOR DA ESCALA NA TELA DO SISTEMA
         components.html(html_documento, height=520, scrolling=True)
 
         st.divider()
