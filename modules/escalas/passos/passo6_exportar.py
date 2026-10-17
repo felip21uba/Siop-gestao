@@ -1,8 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
-Atua estritamente como a camada visual/espelho estilizada do Passo 5,
-garantindo 100% de paridade nos cálculos de horas, metas e saldos.
+Garante 100% de paridade na Meta Apurada (160h base) e Carga Horária com o Passo 5.
 ==============================================================================
 """
 
@@ -280,8 +279,8 @@ def renderizar_passo6():
 
                     tokens_dia = set(val_str.replace("/", " ").split())
                     
-                    # VERIFICAÇÃO DE ABATIMENTO DA META IGUAL AO PASSO 5
-                    if any(sigla in SIGLAS_ABATEM_META for sigla in tokens_dia):
+                    # APENAS SIGLAS OFICIAIS DE AFASTAMENTO ABATEM META (IGNORA FOLGA F E DESCANSO D)
+                    if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
                         dias_abatidos_cnt += 1
 
                     cell_content = ""
@@ -291,7 +290,7 @@ def renderizar_passo6():
                     elif val_raw in ["D", "F"]:
                         cell_content = f'<div style="font-weight: bold; color: #64748b;">{val_raw}</div>'
                         linha_xls.append(val_raw)
-                    elif val_raw in SIGLAS_ABATEM_META or val_raw in SIGLAS_DIAS_NEUTROS:
+                    elif val_raw in SIGLAS_DIAS_NEUTROS:
                         cell_content = f'<div class="shift-badge" style="background-color: #fca5a5 !important; border-color: #f87171 !important;">{val_raw}</div>'
                         linha_xls.append(val_raw)
                     elif val_raw == "X":
@@ -306,7 +305,7 @@ def renderizar_passo6():
                 eh_reduzida = cfg_bh.get("reduzida", False)
                 carga_base_mes = 80.0 if eh_reduzida else 160.0
                 
-                # CÁLCULO DA META APURADA PROPORCIONAL IDÊNTICO AO PASSO 5
+                # CÁLCULO DA META PROPORCIONAL IDÊNTICO AO PASSO 5
                 taxa_diaria = carga_base_mes / float(num_dias_mes)
                 dias_efetivos = num_dias_mes - dias_abatidos_cnt
                 meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
@@ -439,7 +438,6 @@ def renderizar_passo6():
         </html>
         """
 
-        # VISUALIZAÇÃO EM TELA (ESPELHO DO PASSO 5)
         components.html(html_documento, height=520, scrolling=True)
 
         st.divider()
