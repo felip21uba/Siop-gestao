@@ -1,8 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
-Garante o cabeçalho estrito da escala em produção, leitura em Base64 de qualquer
-imagem na pasta assets/ e acionamento direto da janela de impressão sem iFrames na tela.
+Exibe a visualização da escala em tela e oferece botões de impressão/Excel.
 ==============================================================================
 """
 
@@ -29,7 +28,6 @@ SIGLAS_DIAS_NEUTROS = [
     "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT", "RH"
 ]
 
-# SVG Fallback reserva caso a pasta assets/ esteja totalmente vazia
 BRASAO_SVG_FALLBACK = (
     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='90' viewBox='0 0 100 120'>"
     "<path d='M50 5 L90 25 L90 70 C90 95 50 115 50 115 C50 115 10 95 10 70 L10 25 Z' fill='%23b91c1c' stroke='%23f59e0b' stroke-width='4'/>"
@@ -52,10 +50,6 @@ CORES_EQUIPES = {
 
 
 def obter_brasao_base64():
-    """
-    Varre a pasta assets/ e carrega qualquer imagem (ex: 'Brasao 21 BPM.PNG'),
-    convertendo-a diretamente em Base64 para inclusão no HTML de impressão.
-    """
     pasta_assets = "assets"
     extensoes_validas = ('.png', '.jpg', '.jpeg', '.svg', '.webp')
 
@@ -204,9 +198,12 @@ def renderizar_passo6():
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     num_dias_mes = calendar.monthrange(m_ano, m_mes)[1]
     
-    # LEITURA ESTRITA E EXCLUSIVA DA ESCALA SELECIONADA NO PASSO 1
-    unidade = str(st.session_state.get("cfg_unidade") or "21º BPM").strip().upper()
-    subunidade = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
+    usr_dados = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_dados, str):
+        usr_dados = {}
+
+    unidade = str(st.session_state.get("cfg_unidade") or usr_dados.get("unidade") or "21º BPM").strip().upper()
+    subunidade = str(usr_dados.get("subunidade") or usr_dados.get("lotacao") or st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
     
     img_brasao = obter_brasao_base64()
     mils_todos = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
@@ -372,7 +369,7 @@ def renderizar_passo6():
         leg_str_list = [f"{k} = {v['inicio']} às {v['fim']}" for k, v in mapa_horarios.items()]
         texto_legenda_final = "LEGENDA DE HORÁRIOS:   " + "   |   ".join(leg_str_list) if leg_str_list else ""
 
-        # ESTRUTURA HTML PREPARADA PARA A IMPRESSÃO (SEM DISPLAY FIXO NA TELA)
+        # ESTRUTURA HTML DA ESCALA
         html_documento = f"""
         <!DOCTYPE html>
         <html>
@@ -470,6 +467,9 @@ def renderizar_passo6():
         </body>
         </html>
         """
+
+        # VISUALIZADOR DA ESCALA DIRETAMENTE NA TELA (SISTEMA)
+        components.html(html_documento, height=520, scrolling=True)
 
         st.divider()
 
@@ -576,7 +576,6 @@ def renderizar_passo6():
             
         with c_act3: 
             if st.button("🖨️ Imprimir / Salvar PDF", type="primary", use_container_width=True):
-                # IMPRESSÃO VIA POP-UP SEM DESENHAR BARRAS OU QUADROS NA PÁGINA
                 components.html(
                     f"""
                     <script>
