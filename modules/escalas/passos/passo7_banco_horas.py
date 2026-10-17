@@ -1,8 +1,8 @@
 """
 ==============================================================================
 Módulo do Passo 7 - Banco de Horas Consolidado e Gestão de Carga
-Atualiza dinamicamente a apuração do mês sempre que o Passo 5 for salvo,
-preservando saldos anteriores e lançamentos avulsos de serviço extra.
+Garante a continuidade dos saldos de horas acumulados mês a mês,
+independentemente de trocas de equipe no Passo 5, com auditoria imutável.
 ==============================================================================
 """
 
@@ -10,13 +10,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 import calendar
-import re
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
-from modules.escalas.passos.passo5_quadro import (
-    calcular_horas_efetivas_turno,
-    SIGLAS_DIAS_NEUTROS,
-    executar_auto_save_banco
-)
 from core.database import registrar_audit_log
 
 MESES_MAP = {
@@ -25,6 +19,12 @@ MESES_MAP = {
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
 
+SIGLAS_DIAS_NEUTROS = [
+    "FER", "FERIAS", "FÉRIAS", "FE",
+    "LTSP", "LM", "LMM",
+    "ATEST", "ATESTADO", "ATE",
+    "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT", "RH"
+]
 
 def registrar_log_auditoria_local(acao, detalhe):
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -35,6 +35,7 @@ def registrar_log_auditoria_local(acao, detalhe):
     cargo_usuario = usr_logado.get("cargo_funcao", usr_logado.get("perfil", "GESTOR"))
     num_login = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
     
+    # 1. Registro em sessão local
     timezone_br = datetime.timezone(datetime.timedelta(hours=-3))
     dt_agora = datetime.datetime.now(timezone_br).strftime("%d/%m/%Y %H:%M:%S")
 
@@ -50,6 +51,7 @@ def registrar_log_auditoria_local(acao, detalhe):
 
     st.session_state["logs_auditoria_lista"].insert(0, log_entry)
 
+    # 2. Registro no Supabase via trilha oficial de audit log
     try:
         registrar_audit_log(
             operador_pm=num_login if num_login else nome_usuario,
@@ -60,16 +62,12 @@ def registrar_log_auditoria_local(acao, detalhe):
     except Exception as ex:
         print(f"Aviso ao registrar log do Banco de Horas no Supabase: {ex}")
 
-
 def executar_auto_save_banco_local():
-    status_escala = st.session_state.get("status_escala_ativo", "RASCUNHO")
-    executar_auto_save_banco(status_escala=status_escala)
     st.session_state["exibir_toast_autosave"] = True
-
 
 def renderizar_passo7():
     if st.session_state.get("exibir_toast_autosave", False):
-        st.toast("☁ Banco de Horas sincronizado e salvo na nuvem!", icon="✅")
+        st.toast("☁ Banco de Horas salvo na nuvem!", icon="✅")
         st.session_state["exibir_toast_autosave"] = False
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -78,7 +76,7 @@ def renderizar_passo7():
         
     cargo_str = str(usr_logado.get("cargo_funcao", "")).upper()
     perfil_str = str(usr_logado.get("perfil", usr_logado.get("nivel_acesso", ""))).upper()
-    eh_admin = any(p in cargo_str or p in perfil_str for p in ["PROGRAMADOR", "TESTADOR", "ADMIN", "CMT_CIA", "DESENVOLVEDOR"])
+    eh_admin = "PROGRAMADOR" in cargo_str or "TESTADOR" in cargo_str or "ADMIN" in perfil_str or "CMT_CIA" in perfil_str or "DESENVOLVEDOR" in cargo_str
 
     m_mes_atual = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
@@ -112,7 +110,7 @@ def renderizar_passo7():
             x.get("nome_guerra", "")
         ))
         
-        # Mapeia todas as equipes ativas dos militares
+        # Mapeia todas as equipes às quais o militar esteve associado no quadro
         equipes_por_militar = {}
         for pair in chaves_quadro:
             if isinstance(pair, (tuple, list)) and len(pair) == 2:
@@ -122,9 +120,6 @@ def renderizar_passo7():
                 if pair[1] not in equipes_por_militar[m_id_str]: 
                     equipes_por_militar[m_id_str].append(pair[1])
 
-        # ----------------------------------------------------------------------
-        # 1. REGISTRO DE SERVIÇOS EXTRA E LANÇAMENTOS AVULSOS
-        # ----------------------------------------------------------------------
         with st.expander("➕ 1. Registrar Serviço Extra / Lançamento Avulso (Fórum, Instrução)", expanded=False):
             mapa_select_mils = {f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')} ({m.get('num_policia', '')})": str(m["id"]) for m in mils_ordenados}
             
@@ -143,7 +138,7 @@ def renderizar_passo7():
                 
                 if st.form_submit_button("📥 Creditar Horas Avulsas", type="primary"):
                     if data_av.month != m_mes_atual:
-                        st.warning(f"⚠️ Atenção: Você está lançando horas no mês de {data_av.strftime('%m/%Y')}, diferente da escala atual ({m_mes_atual:02d}/{m_ano}).")
+                        st.warning(f"⚠️ Atenção: Você está lançando horas no mês de {data_av.strftime('%m/%Y')}, que é diferente da escala atual ({m_mes_atual:02d}/{m_ano}).")
 
                     if escala_fechada and not eh_admin and data_av < hoje:
                         st.error("🔒 Eventos passados não podem ser inseridos pois a escala já está homologada.")
@@ -165,7 +160,10 @@ def renderizar_passo7():
                 df_av = pd.DataFrame(st.session_state["bh_lancamentos_avulsos"])
                 df_av["Excluir"] = False
                 
-                df_visual_av = df_av.drop(columns=["id_militar"]) if "id_militar" in df_av.columns else df_av
+                if "id_militar" in df_av.columns:
+                    df_visual_av = df_av.drop(columns=["id_militar"])
+                else:
+                    df_visual_av = df_av
                 
                 df_edit_av = st.data_editor(
                     df_visual_av, 
@@ -199,7 +197,7 @@ def renderizar_passo7():
                             else:
                                 mil_removido = st.session_state["bh_lancamentos_avulsos"][i]["nome_militar"]
                                 data_removida = st.session_state["bh_lancamentos_avulsos"][i]["data"]
-                                registrar_log_auditoria_local("Banco de Horas", f"Exclusão de Lançamento Avulso de {mil_removido} no dia {data_removida}.")
+                                registrar_log_auditoria_local("Banco de Horas", f"Exclusão de Lançamento Avulso do militar {mil_removido} do dia {data_removida}.")
                         else:
                             indices_manter.append(i)
                             
@@ -210,9 +208,6 @@ def renderizar_passo7():
                     executar_auto_save_banco_local()
                     st.rerun()
 
-        # ----------------------------------------------------------------------
-        # 2. PARÂMETROS ESPECIAIS E PRESERVAÇÃO DO SALDO ANTERIOR
-        # ----------------------------------------------------------------------
         with st.expander("⚙️ 2. Parâmetros Especiais e Saldo Anterior (Carga Reduzida)", expanded=False):
             dados_input = []
             for m in mils_ordenados:
@@ -227,6 +222,7 @@ def renderizar_passo7():
                 })
             
             df_input = pd.DataFrame(dados_input)
+            
             if not df_input.empty:
                 df_input.set_index("ID", inplace=True)
             
@@ -236,7 +232,7 @@ def renderizar_passo7():
                     "Nº PM": st.column_config.TextColumn("Nº PM", disabled=True),
                     "MILITAR": st.column_config.TextColumn("MILITAR", disabled=True),
                     "Carga Reduzida (80h)": st.column_config.CheckboxColumn("Carga Reduzida (80h)", help="Altera meta base para 80h"),
-                    "Saldo Anterior (h)": st.column_config.NumberColumn("Saldo Anterior (h)", step=0.5, format="%.1f h")
+                    "Saldo Anterior (h)": st.column_config.NumberColumn("Saldo Anterior (h)", step=1.0, format="%.1f h")
                 },
                 hide_index=True,
                 use_container_width=True, 
@@ -259,9 +255,6 @@ def renderizar_passo7():
                 executar_auto_save_banco_local()
                 st.rerun()
 
-        # ----------------------------------------------------------------------
-        # 3. APURAÇÃO MENSAL REATIVA (SOBRESCREVE O MÊS ATIVO COM OS DADOS DO PASSO 5)
-        # ----------------------------------------------------------------------
         with st.expander("📊 3. Apuração e Extrato Consolidado do Banco de Horas", expanded=True):
             
             c_filtro1, c_filtro2 = st.columns([1, 1])
@@ -303,48 +296,53 @@ def renderizar_passo7():
                     m_id = str(m["id"])
                     cfg = st.session_state["bh_configs"].get(m_id, {})
                     eh_reduzida = cfg.get("reduzida", False)
-                    saldo_ant = float(cfg.get("saldo_anterior", 0.0))
+                    saldo_ant = cfg.get("saldo_anterior", 0.0)
                     
-                    # Soma lançamentos avulsos
                     horas_avulsas_totais = 0.0
                     for l in st.session_state["bh_lancamentos_avulsos"]:
                         if str(l["id_militar"]) == m_id:
                             try:
                                 mes_lanc = int(l["data"].split("/")[1])
                                 if mes_lanc in meses_selecionados_num:
-                                    horas_avulsas_totais += float(l["horas"])
+                                    horas_avulsas_totais += l["horas"]
                             except Exception:
                                 pass
                                 
                     total_trabalhado_escala = 0.0
                     meta_efetiva_acumulada = 0.0
+                    dias_neutros_total = 0
                     
-                    # Apuração reativa e instantânea diretamente da grade do Passo 5
                     for mes_calc in meses_selecionados_num:
                         dias_no_mes = calendar.monthrange(m_ano, mes_calc)[1]
                         carga_base_mes = 80.0 if eh_reduzida else 160.0
                         taxa_diaria = carga_base_mes / float(dias_no_mes)
                         
                         dias_neutros_mes = 0
-                        eqs_militar = equipes_por_militar.get(m_id, ["ADMINISTRAÇÃO"])
                         
                         for d in range(1, dias_no_mes + 1):
-                            dt_ref_dia = datetime.date(m_ano, mes_calc, d)
+                            dia_neutro = False
+                            horas_no_dia = 0.0
                             
+                            # Soma de horas ideais independentemente de qual equipe o militar esteve alocado
+                            eqs_militar = equipes_por_militar.get(m_id, ["ADMINISTRAÇÃO"])
                             for eq in eqs_militar:
                                 val = grade.get(f"{m_id}_{eq}_{m_ano}_{mes_calc:02d}_{d:02d}", "F")
                                 val_str = str(val).upper().strip() if val else ""
                                 tokens_dia = set(val_str.replace("/", " ").split())
                                 
-                                # Verifica dias neutros para abatimento da meta
-                                if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS if sigla != "TPB"):
-                                    dias_neutros_mes += 1
+                                if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
+                                    dia_neutro = True
+                                elif val_str and val_str not in ["", "F", "D", "X"]:
+                                    horas_no_dia += 12.0
+                                    
+                            if dia_neutro:
+                                dias_neutros_mes += 1
                                 
-                                eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
-                                total_trabalhado_escala += calcular_horas_efetivas_turno(val_str, dt_ref_dia, eh_supervisao=eh_sup)
+                            total_trabalhado_escala += horas_no_dia
                         
                         dias_efetivos_mes = dias_no_mes - dias_neutros_mes
-                        meta_efetiva_acumulada += max(0.0, dias_efetivos_mes * taxa_diaria)
+                        meta_efetiva_acumulada += (dias_efetivos_mes * taxa_diaria)
+                        dias_neutros_total += dias_neutros_mes
                     
                     saldo_periodo = (total_trabalhado_escala + horas_avulsas_totais) - meta_efetiva_acumulada
                     saldo_geral_final = saldo_ant + saldo_periodo
@@ -354,7 +352,7 @@ def renderizar_passo7():
                         "MILITAR": nome_formatado, 
                         "CARGA/MÊS": "80h" if eh_reduzida else "160h", 
                         "META APURADA": f"{meta_efetiva_acumulada:.1f}h", 
-                        "ESCALA (P5)": f"{total_trabalhado_escala:.1f}h", 
+                        "ESCALA (P5)": f"{total_trabalhado_escala:.0f}h", 
                         "AVULSAS": f"{horas_avulsas_totais:.1f}h", 
                         "SALDO PERÍODO": f"{saldo_periodo:+.1f}h", 
                         "SALDO ANTERIOR": f"{saldo_ant:+.1f}h", 
@@ -415,4 +413,4 @@ def renderizar_passo7():
                     if st.button("💾 Fechar Período e Salvar", type="primary", use_container_width=True): 
                         registrar_log_auditoria_local("Banco de Horas", "Gestor salvou o fechamento da apuração do banco de horas.")
                         executar_auto_save_banco_local()
-                        st.success("Salvo com sucesso no Supabase!")
+                        st.success("Salvo com sucesso!")
