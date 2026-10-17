@@ -1,8 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 5 - Quadro Mensal de Escalas, Homologação Dinâmica e Perfis
-Garante a independência de alocação por Cia/Fração e sincronização total com a 2ª Tela.
-Botão da 2ª Tela perfeitamente alinhado e sem bloqueio de pop-up via link nativo.
+Trata a sigla TPB com contagem ZERO na escala mensal regular.
 ==============================================================================
 """
 
@@ -29,24 +28,18 @@ from modules.escalas.passos.passo3_efetivo import (
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 from modules.escalas.passos.passo8_ferias import carregar_ferias_supabase
 
-# Siglas que representam dias neutros ou licenças
+# Siglas que representam dias neutros, licenças ou sem contagem (incluindo TPB)
 SIGLAS_DIAS_NEUTROS = {
     "F", "D", "X", "FER", "DOM", "FERIADO",
-    "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT", "RH"
+    "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT", "RH", "TPB"
 }
 
-# Siglas que abatem a meta mensal do militar
 SIGLAS_ABATEM_META = {
     "F", "D", "X", "FER", "DOM", "FERIADO",
     "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT", "RH"
 }
 
-# ============================================================
-# UTILITÁRIOS E MOTOR DE CÁLCULO DE HORAS
-# ============================================================
-
 def emitir_sinal_atualizacao_espelho():
-    """Dispara sinal via BroadcastChannel para atualizar a 2ª Tela instantaneamente."""
     components.html(
         """
         <script>
@@ -78,6 +71,12 @@ def extrair_intervalos_horarios(texto_celula, data_ref):
     if texto in SIGLAS_DIAS_NEUTROS:
         return []
 
+    # Se for sigla curta, converte para intervalo exato
+    if texto == "1":
+        texto = "07:00 ÀS 19:00"
+    elif texto == "2":
+        texto = "19:00 ÀS 07:00"
+
     padrao = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', texto)
     intervalos = []
 
@@ -99,11 +98,19 @@ def extrair_intervalos_horarios(texto_celula, data_ref):
     return intervalos
 
 def calcular_horas_efetivas_turno(texto_celula, data_ref, eh_supervisao=False):
+    v_raw = str(texto_celula).upper().strip()
+    
+    # TPB e siglas neutras possuem contagem ZERO de horas na escala regular
+    if v_raw in SIGLAS_DIAS_NEUTROS:
+        return 0.0
+
     intervalos = extrair_intervalos_horarios(texto_celula, data_ref)
+    
     if not intervalos:
-        v = str(texto_celula).upper().strip()
-        if v in ["1", "2", "TPB", "T1", "T2"]:
+        if v_raw == "1":
             return 12.0
+        elif v_raw == "2":
+            return 13.0  # Carga noturna reduzida
         return 0.0
 
     horas_presenciais_efetivas = 0.0
@@ -121,17 +128,13 @@ def calcular_horas_efetivas_turno(texto_celula, data_ref, eh_supervisao=False):
 
             dt_curr += datetime.timedelta(minutes=1)
 
-    if eh_supervisao or "SUPERVISÃO" in str(texto_celula).upper():
+    if eh_supervisao or "SUPERVISÃO" in v_raw:
         horas_presenciais_reais = minutos_presenciais_reais / 60.0
         horas_sobreaviso_restantes = max(0.0, 24.0 - horas_presenciais_reais)
         credito_sobreaviso = horas_sobreaviso_restantes * 0.25
         return horas_presenciais_efetivas + credito_sobreaviso
 
     return horas_presenciais_efetivas
-
-# ============================================================
-# PERSISTÊNCIA NO BANCO DE DADOS E HISTÓRICO (UNDO)
-# ============================================================
 
 def salvar_estado_undo():
     st.session_state.setdefault("pilha_undo", []).append({
@@ -199,7 +202,6 @@ def executar_auto_save_banco(status_escala="RASCUNHO"):
         return False
 
 def carregar_escala_salva_banco():
-    """Busca no Supabase a escala específica da Cia/Subunidade, Mês e Ano configurados no Passo 1."""
     if not supabase:
         return False
 
@@ -248,10 +250,6 @@ def carregar_escala_salva_banco():
     except Exception as ex:
         print(f"Aviso ao carregar escala do banco: {ex}")
         return False
-
-# ============================================================
-# AUDITORIA E TRAVAS DE SOBREPOSIÇÃO
-# ============================================================
 
 def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_submetida=None):
     if st.session_state.get("limpar_avisos_manual", False) and not dias_filtro and grade_submetida is None:
@@ -363,7 +361,6 @@ def verificar_trava_sobreposicao(dias_filtro=None, militares_filtro=None, grade_
     return len(bloqueios) > 0
 
 def recalcular_escala_matriz():
-    """Calcula a matriz do mês mantendo os lançamentos existentes e aplicando a rotação do ciclo escolhido."""
     m_mes = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
     mod_nome = st.session_state.get("modalidade_turno_ativa", "Turno Único / Avulso")
@@ -587,7 +584,6 @@ def renderizar_passo5():
             unsafe_allow_html=True
         )
 
-        # PAINEL DE HOMOLOGAÇÃO COM SELEÇÃO LIVRE
         with st.container(border=True):
             col_h1, col_h2, col_h3, col_h4 = st.columns([2.5, 2.5, 1.2, 1.3], vertical_alignment="bottom")
             
@@ -647,12 +643,11 @@ def renderizar_passo5():
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # LINHA DE BOTOES ALINHADOS NA PARTE INFERIOR
         col_esq, col_btn1, col_btn2, col_btn3 = st.columns([1.5, 1.0, 0.8, 0.7], vertical_alignment="bottom")
 
         with col_esq:
             cnt_linhas = len(st.session_state.get("militares_no_quadro_chaves", []))
-            st.markdown(f"👮‍♂️ **Linhas Ativas no Quadro ({sub_ativa}):** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legendas `FE` / `RH` = Dias Neutros.*")
+            st.markdown(f"👮‍♂️ **Linhas Ativas no Quadro ({sub_ativa}):** `{cnt_linhas}` &nbsp;|&nbsp; 💡 *Legendas `FE` / `RH` / `TPB` = Sem contagem na escala.*")
 
         with col_btn1:
             if st.button("⚡ Aplicar Lançamentos", type="primary", use_container_width=True, disabled=quadro_travado):
@@ -723,7 +718,6 @@ def renderizar_passo5():
             x["nome_guerra"]
         ))
 
-        # PAINEL DE AJUSTE RÁPIDO NO QUADRO
         with st.expander("⚡ Painel de Ajuste Rápido no Quadro (Lançamento em Lote / Remoção)", expanded=False):
             if mils_ord:
                 dict_mils = {f"[{m['equipe']}] {m['posto_grad']} {m['nome_guerra']} ({m['num_policia']})": m for m in mils_ord}
@@ -738,6 +732,7 @@ def renderizar_passo5():
                 opcoes_eventos = [
                     "Horário Normal", 
                     "RH (Reposição de Horas)",
+                    "TPB (Treinamento Policial Básico)",
                     "FE (Férias)", 
                     "LM (Licença)", 
                     "ATE (Atestado)", 
@@ -865,7 +860,7 @@ def renderizar_passo5():
                                         ck = f"{it['id']}_{it['equipe']}_{m_ano}_{m_mes:02d}_{d_a:02d}"
                                         grade_tmp[ck] = val_final_lote
                                         cnt += 1
-                                msg_sucesso = f"✅ Alteração aplicada a {cnt} célula(s) com sucesso!"
+                                msg_sucesso = f"✅ Alteração applied a {cnt} célula(s) com sucesso!"
 
                             if cnt:
                                 grade_backup = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
@@ -908,7 +903,7 @@ def renderizar_passo5():
                 if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
                     neutros += 1
 
-                if v_str not in ["", "F", "D", "X", "RH"] and (not any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]) or "DNT" in tokens_dia):
+                if v_str not in ["", "F", "D", "X", "RH", "TPB"] and (not any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]) or "DNT" in tokens_dia):
                     dt_ref_dia = datetime.date(m_ano, m_mes, d)
                     eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in v_str)
                     tot_h += calcular_horas_efetivas_turno(v_str, dt_ref_dia, eh_supervisao=eh_sup)

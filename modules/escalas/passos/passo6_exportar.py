@@ -1,7 +1,7 @@
 """
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
-Calcula com precisão cirúrgica expedientes fracionados/ADM sem inflar a carga.
+Trata a sigla TPB com contagem ZERO de horas na escala mensal regular.
 ==============================================================================
 """
 
@@ -21,12 +21,10 @@ from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HI
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
 from modules.escalas.passos.passo5_quadro import executar_auto_save_banco
 
-SIGLAS_DIAS_NEUTROS = [
-    "FER", "FERIAS", "FÉRIAS", "FE",
-    "LTSP", "LM", "LMM",
-    "ATEST", "ATESTADO", "ATE",
-    "LUTO", "NUPCIAS", "NÚPCIAS", "LUT", "NUP", "DN", "DNT", "RH"
-]
+SIGLAS_DIAS_NEUTROS = {
+    "F", "D", "X", "FER", "DOM", "FERIADO",
+    "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT", "RH", "TPB"
+}
 
 BRASAO_SVG_FALLBACK = (
     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='90' viewBox='0 0 100 120'>"
@@ -82,47 +80,77 @@ def extrair_matricula_limpa(valor):
     return re.sub(r'\D', '', val_str).lstrip('0')
 
 
-def calcular_horas_por_legenda(val_str, mapa_horarios):
-    """Calcula com precisão as horas reais do turno, inclusive expedientes divididos."""
-    v = str(val_str).upper().strip()
-    if not v or v in ["F", "D", "X", "NAN", "NONE", "0"] or any(sigla in v for sigla in SIGLAS_DIAS_NEUTROS):
-        return 0.0
+def extrair_intervalos_horarios(texto_celula, data_ref):
+    if not texto_celula:
+        return []
+    texto = str(texto_celula).strip().upper()
+    if texto in SIGLAS_DIAS_NEUTROS:
+        return []
 
-    # Busca no mapa de legendas cadastradas se houver
-    if v in mapa_horarios:
-        h_i_cfg = mapa_horarios[v].get("inicio")
-        h_f_cfg = mapa_horarios[v].get("fim")
-        if h_i_cfg and h_f_cfg:
-            try:
-                hi = datetime.datetime.strptime(h_i_cfg, "%H:%M")
-                hf = datetime.datetime.strptime(h_f_cfg, "%H:%M")
-                diff = (hf - hi).total_seconds() / 3600.0
-                return diff if diff > 0 else diff + 24.0
-            except Exception:
-                pass
+    # Se for sigla curta, converte para intervalo exato
+    if texto == "1":
+        texto = "07:00 ÀS 19:00"
+    elif texto == "2":
+        texto = "19:00 ÀS 07:00"
 
-    # Extrai todos os blocos de horários contidos no texto (Ex: '08:00 AS 12:00 13:30 AS 17:00')
-    m = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', v)
-    if not m:
-        return 12.0 if v in ["1", "2", "TPB"] else 0.0
+    padrao = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', texto)
+    intervalos = []
 
-    horas_acumuladas = 0.0
-    for item in m:
+    for item in padrao:
         try:
             h1, m1 = int(item[0]), int(item[1]) if item[1] else 0
             h2, m2 = int(item[2]), int(item[3]) if item[3] else 0
 
-            dt_ini = datetime.datetime(2026, 1, 1, h1, m1)
-            dt_fim = datetime.datetime(2026, 1, 1, h2, m2)
+            dt_ini = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h1, m1)
+            dt_fim = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h2, m2)
 
             if dt_fim <= dt_ini:
                 dt_fim += datetime.timedelta(days=1)
 
-            horas_acumuladas += (dt_fim - dt_ini).total_seconds() / 3600.0
+            intervalos.append((dt_ini, dt_fim))
         except Exception:
             continue
 
-    return horas_acumuladas if horas_acumuladas > 0 else 12.0
+    return intervalos
+
+
+def calcular_horas_efetivas_unificado(texto_celula, data_ref, eh_supervisao=False):
+    """Calcula as horas exatas da célula zerando a sigla TPB e mantendo 100% de paridade com o Passo 5."""
+    v_raw = str(texto_celula).upper().strip()
+    if v_raw in SIGLAS_DIAS_NEUTROS:
+        return 0.0
+
+    intervalos = extrair_intervalos_horarios(texto_celula, data_ref)
+    
+    if not intervalos:
+        if v_raw == "1":
+            return 12.0
+        elif v_raw == "2":
+            return 13.0  # Carga noturna reduzida
+        return 0.0
+
+    horas_presenciais_efetivas = 0.0
+    minutos_presenciais_reais = 0.0
+
+    for dt_ini, dt_fim in intervalos:
+        dt_curr = dt_ini
+        while dt_curr < dt_fim:
+            minutos_presenciais_reais += 1.0
+            hora_atual = dt_curr.hour
+
+            is_noturno = (hora_atual >= 23 or hora_atual < 5)
+            fator_minuto = (70.0 / 60.0) if is_noturno else 1.0
+            horas_presenciais_efetivas += (1.0 / 60.0) * fator_minuto
+
+            dt_curr += datetime.timedelta(minutes=1)
+
+    if eh_supervisao or "SUPERVISÃO" in v_raw:
+        horas_presenciais_reais = minutos_presenciais_reais / 60.0
+        horas_sobreaviso_restantes = max(0.0, 24.0 - horas_presenciais_reais)
+        credito_sobreaviso = horas_sobreaviso_restantes * 0.25
+        return horas_presenciais_efetivas + credito_sobreaviso
+
+    return horas_presenciais_efetivas
 
 
 def extrair_texto_pdf(arq_pdf):
@@ -317,10 +345,12 @@ def renderizar_passo6():
                     val_raw = str(val).strip()
                     val_str = val_raw.upper()
 
-                    total_horas += calcular_horas_por_legenda(val_str, mapa_horarios)
+                    dt_ref_dia = datetime.date(m_ano, m_mes, d)
+                    eh_sup = (eq_nome == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
+                    total_horas += calcular_horas_efetivas_unificado(val_str, dt_ref_dia, eh_supervisao=eh_sup)
 
                     tokens_dia = set(val_str.replace("/", " ").split())
-                    if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS):
+                    if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS if sigla != "TPB"):
                         dias_neutros_cnt += 1
 
                     cell_content = ""
@@ -348,7 +378,7 @@ def renderizar_passo6():
                 taxa_diaria = carga_base_mes / float(num_dias_mes)
                 dias_efetivos = num_dias_mes - dias_neutros_cnt
                 meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
-                saldo_horas = total_horas - meta_efetiva
+                saldo_horas = (total_horas + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta_efetiva
                 
                 row_html += f"""
                     <td class="td-horas">
@@ -364,10 +394,11 @@ def renderizar_passo6():
         df_excel_export = pd.DataFrame(linhas_excel_data, columns=cols_excel_names)
         mes_ano_str = f"{m_mes:02d}/{m_ano}"
         
-        # MONTAGEM DA LEGENDA EXATA
         leg_str_list = []
         for k in legendas_lista:
-            if k in mapa_horarios:
+            if k == "TPB":
+                leg_str_list.append(f"TPB = Treinamento Policial Básico (Contagem no Banco de Horas)")
+            elif k in mapa_horarios:
                 leg_str_list.append(f"{k} = {mapa_horarios[k]['inicio']} às {mapa_horarios[k]['fim']}")
             elif "08:00" in k and "17:00" in k:
                 leg_str_list.append(f"ADM = 08:00 às 12:00 | 13:30 às 17:00")
@@ -378,7 +409,6 @@ def renderizar_passo6():
 
         texto_legenda_final = "LEGENDA DE HORÁRIOS:   " + "   |   ".join(leg_str_list) if leg_str_list else ""
 
-        # ESTRUTURA HTML DA ESCALA
         html_documento = f"""
         <!DOCTYPE html>
         <html>
@@ -477,12 +507,10 @@ def renderizar_passo6():
         </html>
         """
 
-        # VISUALIZADOR DA ESCALA NA TELA DO SISTEMA
         components.html(html_documento, height=520, scrolling=True)
 
         st.divider()
 
-        # BOTÕES DE AÇÃO DE EXPORTAÇÃO / IMPRESSÃO
         c_act1, c_act2, c_act3 = st.columns([1.3, 1, 1], gap="small")
         
         with c_act1:
