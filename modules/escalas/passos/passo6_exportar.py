@@ -1,8 +1,8 @@
 """
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
-Funciona estritamente como uma camada de visualização estilizada do Passo 5,
-garantindo 100% de paridade na Meta Efetiva, Horas Trabalhadas e Saldos.
+Atua estritamente como a camada visual/espelho estilizada do Passo 5,
+com ícone de alerta ⚠️ no PDF quando o saldo de horas excede a meta.
 ==============================================================================
 """
 
@@ -273,14 +273,13 @@ def renderizar_passo6():
                     val_raw = str(val).strip()
                     val_str = val_raw.upper()
 
-                    # CÁLCULO DE HORAS REAIS (MOTOR UNIFICADO DO PASSO 5)
+                    # CÁLCULO DE HORAS USANDO EXATAMENTE O MOTOR DO PASSO 5
                     dt_ref_dia = datetime.date(m_ano, m_mes, d)
                     eh_sup = (eq_nome == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
                     total_horas += calcular_horas_efetivas_turno(val_str, dt_ref_dia, eh_supervisao=eh_sup)
 
                     tokens_dia = set(val_str.replace("/", " ").split())
                     
-                    # APURAÇÃO DE AFASTAMENTOS (EXATAMENTE IGUAL AO PASSO 5)
                     if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
                         neutros += 1
 
@@ -311,15 +310,19 @@ def renderizar_passo6():
                 meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
                 saldo_horas = (total_horas + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta_efetiva
                 
+                # ADICIONADO O ALERTA VISUAL ⚠️ CASO O SALDO SEJA POSITIVO NO PDF/TELA
+                prefixo_alerta = "⚠️ " if saldo_horas > 0 else ""
+                cor_saldo = "#b91c1c" if saldo_horas > 0 else "#2563eb"
+
                 row_html += f"""
                     <td class="td-horas">
-                        <div class="h-main">{total_horas:.1f}h / {meta_efetiva:.1f}h</div>
-                        <div class="h-sub">{saldo_horas:+.1f}h</div>
+                        <div class="h-main">{prefixo_alerta}{total_horas:.1f}h / {meta_efetiva:.1f}h</div>
+                        <div class="h-sub" style="color: {cor_saldo} !important;">{saldo_horas:+.1f}h</div>
                     </td>
                 </tr>
                 """
                 tbody_html += row_html
-                linha_xls.append(f"{total_horas:.1f}h / {meta_efetiva:.1f}h\n({saldo_horas:+.1f}h)")
+                linha_xls.append(f"{prefixo_alerta}{total_horas:.1f}h / {meta_efetiva:.1f}h\n({saldo_horas:+.1f}h)")
                 linhas_excel_data.append(linha_xls)
 
         df_excel_export = pd.DataFrame(linhas_excel_data, columns=cols_excel_names)
@@ -377,7 +380,7 @@ def renderizar_passo6():
                 .shift-x {{ color: #dc2626 !important; font-weight: 900; font-size: 11px; }}
                 td.td-horas {{ background: #ffffff; }}
                 .h-main {{ font-weight: 800; font-size: 8.5px; color: #0f172a; }}
-                .h-sub {{ font-weight: 800; font-size: 8.5px; color: #2563eb; margin-top: 1px; }}
+                .h-sub {{ font-weight: 800; font-size: 8.5px; margin-top: 1px; }}
                 table.signatures-table {{ width: 100%; margin-top: 25px; border-collapse: collapse; }}
                 table.signatures-table td {{ border: none !important; text-align: center; width: 50%; }}
                 .sig-title {{ font-weight: 800; font-size: 10px; color: #0f172a; margin-bottom: 2px; }}
