@@ -1,7 +1,8 @@
 """
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
-Trata a sigla TPB com contagem ZERO de horas na escala mensal regular.
+Atua estritamente como a camada visual/espelho estilizada do Passo 5,
+garantindo 100% de paridade nos cálculos de horas, metas e saldos.
 ==============================================================================
 """
 
@@ -19,12 +20,12 @@ import streamlit.components.v1 as components
 from core.database import supabase, carregar_militares_supabase
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from modules.escalas.passos.passo4_calendario import DIAS_SEMANA_SIGLAS
-from modules.escalas.passos.passo5_quadro import executar_auto_save_banco
-
-SIGLAS_DIAS_NEUTROS = {
-    "F", "D", "X", "FER", "DOM", "FERIADO",
-    "LM", "ATE", "FE", "LUT", "NUP", "DN", "DNT", "RH", "TPB"
-}
+from modules.escalas.passos.passo5_quadro import (
+    executar_auto_save_banco,
+    calcular_horas_efetivas_turno,
+    SIGLAS_DIAS_NEUTROS,
+    SIGLAS_ABATEM_META
+)
 
 BRASAO_SVG_FALLBACK = (
     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='80' height='90' viewBox='0 0 100 120'>"
@@ -78,79 +79,6 @@ def extrair_matricula_limpa(valor):
     if val_str.endswith('.0'):
         val_str = val_str[:-2]
     return re.sub(r'\D', '', val_str).lstrip('0')
-
-
-def extrair_intervalos_horarios(texto_celula, data_ref):
-    if not texto_celula:
-        return []
-    texto = str(texto_celula).strip().upper()
-    if texto in SIGLAS_DIAS_NEUTROS:
-        return []
-
-    # Se for sigla curta, converte para intervalo exato
-    if texto == "1":
-        texto = "07:00 ÀS 19:00"
-    elif texto == "2":
-        texto = "19:00 ÀS 07:00"
-
-    padrao = re.findall(r'(\d{1,2})(?::(\d{2}))?\s*(?:ÀS|AS|-|A|/)\s*(\d{1,2})(?::(\d{2}))?', texto)
-    intervalos = []
-
-    for item in padrao:
-        try:
-            h1, m1 = int(item[0]), int(item[1]) if item[1] else 0
-            h2, m2 = int(item[2]), int(item[3]) if item[3] else 0
-
-            dt_ini = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h1, m1)
-            dt_fim = datetime.datetime(data_ref.year, data_ref.month, data_ref.day, h2, m2)
-
-            if dt_fim <= dt_ini:
-                dt_fim += datetime.timedelta(days=1)
-
-            intervalos.append((dt_ini, dt_fim))
-        except Exception:
-            continue
-
-    return intervalos
-
-
-def calcular_horas_efetivas_unificado(texto_celula, data_ref, eh_supervisao=False):
-    """Calcula as horas exatas da célula zerando a sigla TPB e mantendo 100% de paridade com o Passo 5."""
-    v_raw = str(texto_celula).upper().strip()
-    if v_raw in SIGLAS_DIAS_NEUTROS:
-        return 0.0
-
-    intervalos = extrair_intervalos_horarios(texto_celula, data_ref)
-    
-    if not intervalos:
-        if v_raw == "1":
-            return 12.0
-        elif v_raw == "2":
-            return 13.0  # Carga noturna reduzida
-        return 0.0
-
-    horas_presenciais_efetivas = 0.0
-    minutos_presenciais_reais = 0.0
-
-    for dt_ini, dt_fim in intervalos:
-        dt_curr = dt_ini
-        while dt_curr < dt_fim:
-            minutos_presenciais_reais += 1.0
-            hora_atual = dt_curr.hour
-
-            is_noturno = (hora_atual >= 23 or hora_atual < 5)
-            fator_minuto = (70.0 / 60.0) if is_noturno else 1.0
-            horas_presenciais_efetivas += (1.0 / 60.0) * fator_minuto
-
-            dt_curr += datetime.timedelta(minutes=1)
-
-    if eh_supervisao or "SUPERVISÃO" in v_raw:
-        horas_presenciais_reais = minutos_presenciais_reais / 60.0
-        horas_sobreaviso_restantes = max(0.0, 24.0 - horas_presenciais_reais)
-        credito_sobreaviso = horas_sobreaviso_restantes * 0.25
-        return horas_presenciais_efetivas + credito_sobreaviso
-
-    return horas_presenciais_efetivas
 
 
 def extrair_texto_pdf(arq_pdf):
@@ -338,20 +266,23 @@ def renderizar_passo6():
 
                 linha_xls = [eq_nome, num_pol, f"{pg} {nome_g}"]
                 total_horas = 0.0
-                dias_neutros_cnt = 0
+                dias_abatidos_cnt = 0
 
                 for d in range(1, num_dias_mes + 1):
                     val = grade_lancamentos.get(f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}", "F")
                     val_raw = str(val).strip()
                     val_str = val_raw.upper()
 
+                    # CÁLCULO DE HORAS USANDO EXATAMENTE A FUNÇÃO DO PASSO 5
                     dt_ref_dia = datetime.date(m_ano, m_mes, d)
                     eh_sup = (eq_nome == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
-                    total_horas += calcular_horas_efetivas_unificado(val_str, dt_ref_dia, eh_supervisao=eh_sup)
+                    total_horas += calcular_horas_efetivas_turno(val_str, dt_ref_dia, eh_supervisao=eh_sup)
 
                     tokens_dia = set(val_str.replace("/", " ").split())
-                    if any(sigla in tokens_dia for sigla in SIGLAS_DIAS_NEUTROS if sigla != "TPB"):
-                        dias_neutros_cnt += 1
+                    
+                    # VERIFICAÇÃO DE ABATIMENTO DA META IGUAL AO PASSO 5
+                    if any(sigla in SIGLAS_ABATEM_META for sigla in tokens_dia):
+                        dias_abatidos_cnt += 1
 
                     cell_content = ""
                     if val_raw not in ["F", "D", "X", "", None, "0"]:
@@ -360,7 +291,7 @@ def renderizar_passo6():
                     elif val_raw in ["D", "F"]:
                         cell_content = f'<div style="font-weight: bold; color: #64748b;">{val_raw}</div>'
                         linha_xls.append(val_raw)
-                    elif val_raw in SIGLAS_DIAS_NEUTROS:
+                    elif val_raw in SIGLAS_ABATEM_META or val_raw in SIGLAS_DIAS_NEUTROS:
                         cell_content = f'<div class="shift-badge" style="background-color: #fca5a5 !important; border-color: #f87171 !important;">{val_raw}</div>'
                         linha_xls.append(val_raw)
                     elif val_raw == "X":
@@ -375,8 +306,9 @@ def renderizar_passo6():
                 eh_reduzida = cfg_bh.get("reduzida", False)
                 carga_base_mes = 80.0 if eh_reduzida else 160.0
                 
+                # CÁLCULO DA META APURADA PROPORCIONAL IDÊNTICO AO PASSO 5
                 taxa_diaria = carga_base_mes / float(num_dias_mes)
-                dias_efetivos = num_dias_mes - dias_neutros_cnt
+                dias_efetivos = num_dias_mes - dias_abatidos_cnt
                 meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
                 saldo_horas = (total_horas + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta_efetiva
                 
@@ -507,6 +439,7 @@ def renderizar_passo6():
         </html>
         """
 
+        # VISUALIZAÇÃO EM TELA (ESPELHO DO PASSO 5)
         components.html(html_documento, height=520, scrolling=True)
 
         st.divider()
