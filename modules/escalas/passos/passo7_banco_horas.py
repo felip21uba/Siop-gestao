@@ -1,8 +1,8 @@
 """
 ==============================================================================
 Módulo do Passo 7 - Banco de Horas Consolidado e Gestão de Carga
-Garante a apuração em tempo real com o motor exato do Passo 5,
-preservando saldos anteriores acumulados e lançamentos avulsos extras.
+Versão Reescrevida do Zero: Conecta 100% com o Passo 5 e Passo 6 e garante 
+o encadeamento automático do Saldo Acumulado de Mês a Mês.
 ==============================================================================
 """
 
@@ -11,14 +11,14 @@ import pandas as pd
 import datetime
 import calendar
 import re
+
 from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HIERARQUIA
 from modules.escalas.passos.passo5_quadro import (
     calcular_horas_efetivas_turno,
-    SIGLAS_DIAS_NEUTROS,
     SIGLAS_ABATEM_META,
     executar_auto_save_banco
 )
-from core.database import registrar_audit_log
+from core.database import supabase, registrar_audit_log
 
 MESES_MAP = {
     "Janeiro": 1, "Fevereiro": 2, "Março": 3, "Abril": 4, 
@@ -68,9 +68,60 @@ def executar_auto_save_banco_local():
     st.session_state["exibir_toast_autosave"] = True
 
 
+def apurar_dados_escala_militar_no_mes(m_id, mes_alvo, ano_alvo, subunidade_alvo, grade_dados, chaves_quadro_dados, bh_configs_dados, avulsos_dados):
+    """Retorna exatamente: Carga Trabalhada, Meta Efetiva, Horas Avulsas e Saldo do Mês."""
+    num_dias = calendar.monthrange(ano_alvo, mes_alvo)[1]
+    cfg = bh_configs_dados.get(str(m_id), {})
+    eh_reduzida = cfg.get("reduzida", False)
+    carga_base_mes = 80.0 if eh_reduzida else 160.0
+    taxa_diaria = carga_base_mes / float(num_dias)
+
+    # Identifica equipes ativas
+    eqs_militar = [
+        str(pair[1]) for pair in chaves_quadro_dados
+        if isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[0]) == str(m_id)
+    ]
+    if not eqs_militar:
+        eqs_militar = ["ADMINISTRAÇÃO"]
+
+    tot_trabalhado = 0.0
+    dias_abatidos = 0
+
+    for d in range(1, num_dias + 1):
+        dt_ref = datetime.date(ano_alvo, mes_alvo, d)
+        
+        for eq in eqs_militar:
+            val = grade_dados.get(f"{m_id}_{eq}_{ano_alvo}_{mes_alvo:02d}_{d:02d}", "F")
+            val_str = str(val).upper().strip() if val else ""
+            tokens_dia = set(val_str.replace("/", " ").split())
+            
+            if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
+                dias_abatidos += 1
+            
+            eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
+            tot_trabalhado += calcular_horas_efetivas_turno(val_str, dt_ref, eh_supervisao=eh_sup)
+
+    dias_efetivos = num_dias - dias_abatidos
+    meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
+
+    # Horas avulsas (serviço extra / fórum)
+    horas_avulsas = 0.0
+    for l in avulsos_dados:
+        if str(l.get("id_militar")) == str(m_id):
+            try:
+                dt_av = datetime.datetime.strptime(l.get("data", ""), "%d/%m/%Y")
+                if dt_av.month == mes_alvo and dt_av.year == ano_alvo:
+                    horas_avulsas += float(l.get("horas", 0.0))
+            except Exception:
+                pass
+
+    saldo_periodo = (tot_trabalhado + horas_avulsas) - meta_efetiva
+    return tot_trabalhado, meta_efetiva, horas_avulsas, saldo_periodo
+
+
 def renderizar_passo7():
     if st.session_state.get("exibir_toast_autosave", False):
-        st.toast("☁ Banco de Horas sincronizado e salvo na nuvem!", icon="✅")
+        st.toast("☁ Banco de Horas sincronizado com sucesso!", icon="✅")
         st.session_state["exibir_toast_autosave"] = False
 
     usr_logado = st.session_state.get("usuario_dados", {})
@@ -83,6 +134,7 @@ def renderizar_passo7():
 
     m_mes_atual = st.session_state.get("mes_escala", datetime.date.today().month)
     m_ano = st.session_state.get("ano_escala", datetime.date.today().year)
+    sub_ativa = str(st.session_state.get("cfg_subunidade") or "111ª CIA PM").strip().upper()
     lista_meses_nomes = list(MESES_MAP.keys())
     
     escala_fechada = st.session_state.get("escala_fechada_auditoria", False)
@@ -112,15 +164,6 @@ def renderizar_passo7():
             PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), 
             x.get("nome_guerra", "")
         ))
-        
-        equipes_por_militar = {}
-        for pair in chaves_quadro:
-            if isinstance(pair, (tuple, list)) and len(pair) == 2:
-                m_id_str = str(pair[0])
-                if m_id_str not in equipes_por_militar: 
-                    equipes_por_militar[m_id_str] = []
-                if pair[1] not in equipes_por_militar[m_id_str]: 
-                    equipes_por_militar[m_id_str].append(pair[1])
 
         # ----------------------------------------------------------------------
         # 1. REGISTRO DE SERVIÇOS EXTRA E LANÇAMENTOS AVULSOS
@@ -143,7 +186,7 @@ def renderizar_passo7():
                 
                 if st.form_submit_button("📥 Creditar Horas Avulsas", type="primary"):
                     if data_av.month != m_mes_atual:
-                        st.warning(f"⚠️ Atenção: Você está lançando horas no mês de {data_av.strftime('%m/%Y')}, diferente da escala atual ({m_mes_atual:02d}/{m_ano}).")
+                        st.warning(f"⚠️ Atenção: Você está lançando horas no mês {data_av.strftime('%m/%Y')}, diferente da escala ativa ({m_mes_atual:02d}/{m_ano}).")
 
                     if escala_fechada and not eh_admin and data_av < hoje:
                         st.error("🔒 Eventos passados não podem ser inseridos pois a escala já está homologada.")
@@ -211,9 +254,10 @@ def renderizar_passo7():
                     st.rerun()
 
         # ----------------------------------------------------------------------
-        # 2. PARÂMETROS ESPECIAIS E PRESERVAÇÃO DO SALDO ANTERIOR
+        # 2. CONFIGURAÇÃO DE SALDO INICIAL FIXO
         # ----------------------------------------------------------------------
-        with st.expander("⚙️ 2. Parâmetros Especiais e Saldo Anterior (Carga Reduzida)", expanded=False):
+        with st.expander("⚙️ 2. Saldo Inicial de Origem e Parâmetros Especiais", expanded=False):
+            st.caption("💡 Defina aqui o Saldo de Origem trazido da ficha do militar antes de iniciar as escalas no sistema.")
             dados_input = []
             for m in mils_ordenados:
                 m_id = str(m["id"])
@@ -223,7 +267,7 @@ def renderizar_passo7():
                     "Nº PM": m.get("num_policia", ""),
                     "MILITAR": f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')}",
                     "Carga Reduzida (80h)": cfg.get("reduzida", False),
-                    "Saldo Anterior (h)": float(cfg.get("saldo_anterior", 0.0))
+                    "Saldo Inicial Base (h)": float(cfg.get("saldo_anterior", 0.0))
                 })
             
             df_input = pd.DataFrame(dados_input)
@@ -236,7 +280,7 @@ def renderizar_passo7():
                     "Nº PM": st.column_config.TextColumn("Nº PM", disabled=True),
                     "MILITAR": st.column_config.TextColumn("MILITAR", disabled=True),
                     "Carga Reduzida (80h)": st.column_config.CheckboxColumn("Carga Reduzida (80h)", help="Altera meta base para 80h"),
-                    "Saldo Anterior (h)": st.column_config.NumberColumn("Saldo Anterior (h)", step=0.5, format="%.1f h")
+                    "Saldo Inicial Base (h)": st.column_config.NumberColumn("Saldo Inicial Base (h)", step=0.5, format="%.1f h")
                 },
                 hide_index=True,
                 use_container_width=True, 
@@ -248,7 +292,7 @@ def renderizar_passo7():
                 m_id_str = str(m_id)
                 nova_cfg = {
                     "reduzida": bool(row["Carga Reduzida (80h)"]), 
-                    "saldo_anterior": float(row["Saldo Anterior (h)"])
+                    "saldo_anterior": float(row["Saldo Inicial Base (h)"])
                 }
                 
                 if st.session_state["bh_configs"].get(m_id_str) != nova_cfg:
@@ -260,7 +304,7 @@ def renderizar_passo7():
                 st.rerun()
 
         # ----------------------------------------------------------------------
-        # 3. APURAÇÃO MENSAL COM MOTOR OFICIAL DO PASSO 5
+        # 3. EXTRATO MENSAL COM TRANSIÇÃO E RECONCILIAÇÃO EM TEMPO REAL
         # ----------------------------------------------------------------------
         with st.expander("📊 3. Apuração e Extrato Consolidado do Banco de Horas", expanded=True):
             
@@ -271,7 +315,7 @@ def renderizar_passo7():
                     options=lista_meses_nomes, 
                     default=[lista_meses_nomes[m_mes_atual - 1]]
                 )
-                meses_selecionados_num = [MESES_MAP[m] for m in meses_selecionados_nomes]
+                meses_selecionados_num = sorted([MESES_MAP[m] for m in meses_selecionados_nomes])
                 
             with c_filtro2:
                 mils_filtrados = st.multiselect(
@@ -291,9 +335,32 @@ def renderizar_passo7():
                 else: tipo_apuracao = f"APURAÇÃO DE {qtd_meses} MESES"
                     
                 st.markdown(f"<h4 style='text-align: center; color: #1e3a8a; margin-bottom: 2px;'>📊 {tipo_apuracao}</h4>", unsafe_allow_html=True)
-                st.markdown(f"<p style='text-align: center; font-weight: bold; color: #475569; margin-top: 0px;'>Período: {', '.join(meses_selecionados_nomes)} de {m_ano}</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='text-align: center; font-weight: bold; color: #475569; margin-top: 0px;'>Mês Ativo de Referência: {lista_meses_nomes[m_mes_atual-1]} de {m_ano}</p>", unsafe_allow_html=True)
                 
+                # BUSCA ESCALAS DOS MESES ANTERIORES GRAVADAS NO SUPABASE
+                menor_mes_sel = min(meses_selecionados_num)
+                historico_banco_meses = {}
+                
+                if menor_mes_sel > 1 and supabase:
+                    try:
+                        res_hist = supabase.table("escalas_mensais").select("*").eq("ano", m_ano).eq("equipe_nome", sub_ativa).lt("mes", menor_mes_sel).execute()
+                        if res_hist and res_hist.data:
+                            for row_h in res_hist.data:
+                                m_num = int(row_h.get("mes"))
+                                md = row_h.get("matriz_dados", {})
+                                historico_banco_meses[m_num] = {
+                                    "grade": md.get("grade_escala_lancamentos", {}),
+                                    "chaves": md.get("militares_no_quadro_chaves", []),
+                                    "bh_configs": md.get("bh_configs", {}),
+                                    "avulsos": md.get("bh_lancamentos_avulsos", [])
+                                }
+                    except Exception as ex_banco:
+                        print(f"Aviso ao buscar histórico retroativo no Supabase: {ex_banco}")
+
                 extrato_dados = []
+                avulsos_sessao = st.session_state.get("bh_lancamentos_avulsos", [])
+                bh_configs_sessao = st.session_state.get("bh_configs", {})
+
                 for m in mils_ordenados:
                     nome_formatado = f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')}"
                     
@@ -301,60 +368,56 @@ def renderizar_passo7():
                         continue
 
                     m_id = str(m["id"])
-                    cfg = st.session_state["bh_configs"].get(m_id, {})
+                    cfg = bh_configs_sessao.get(m_id, {})
                     eh_reduzida = cfg.get("reduzida", False)
-                    saldo_ant = float(cfg.get("saldo_anterior", 0.0))
+                    saldo_inicial_base = float(cfg.get("saldo_anterior", 0.0))
                     
-                    horas_avulsas_totais = 0.0
-                    for l in st.session_state["bh_lancamentos_avulsos"]:
-                        if str(l["id_militar"]) == m_id:
-                            try:
-                                mes_lanc = int(l["data"].split("/")[1])
-                                if mes_lanc in meses_selecionados_num:
-                                    horas_avulsas_totais += float(l["horas"])
-                            except Exception:
-                                pass
-                                
+                    # 1. CALCULA O SALDO ACUMULADO DOS MESES PASSADOS (TRANSIÇÃO MÊS A MÊS)
+                    saldo_acumulado_anterior = saldo_inicial_base
+                    for m_prev in range(1, menor_mes_sel):
+                        if m_prev in historico_banco_meses:
+                            m_data = historico_banco_meses[m_prev]
+                            _, _, _, s_liq = apurar_dados_escala_militar_no_mes(
+                                m_id, m_prev, m_ano, sub_ativa,
+                                m_data["grade"], m_data["chaves"], m_data["bh_configs"], m_data["avulsos"]
+                            )
+                            saldo_acumulado_anterior += s_liq
+
+                    # 2. CALCULA O MÊS ATUAL LENDO DIRETO DO PASSO 5
                     total_trabalhado_escala = 0.0
                     meta_efetiva_acumulada = 0.0
-                    
+                    horas_avulsas_totais = 0.0
+
                     for mes_calc in meses_selecionados_num:
-                        dias_no_mes = calendar.monthrange(m_ano, mes_calc)[1]
-                        carga_base_mes = 80.0 if eh_reduzida else 160.0
-                        taxa_diaria = carga_base_mes / float(dias_no_mes)
-                        
-                        dias_abatidos_mes = 0
-                        eqs_militar = equipes_por_militar.get(m_id, ["ADMINISTRAÇÃO"])
-                        
-                        for d in range(1, dias_no_mes + 1):
-                            dt_ref_dia = datetime.date(m_ano, mes_calc, d)
-                            
-                            for eq in eqs_militar:
-                                val = grade.get(f"{m_id}_{eq}_{m_ano}_{mes_calc:02d}_{d:02d}", "F")
-                                val_str = str(val).upper().strip() if val else ""
-                                tokens_dia = set(val_str.replace("/", " ").split())
-                                
-                                if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
-                                    dias_abatidos_mes += 1
-                                
-                                eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
-                                total_trabalhado_escala += calcular_horas_efetivas_turno(val_str, dt_ref_dia, eh_supervisao=eh_sup)
-                        
-                        dias_efetivos_mes = dias_no_mes - dias_abatidos_mes
-                        meta_efetiva_acumulada += max(0.0, dias_efetivos_mes * taxa_diaria)
-                    
+                        if mes_calc == m_mes_atual:
+                            # Mês ativo lê diretamente da sessão aberta no Passo 5
+                            g_usar, c_usar, b_usar, a_usar = grade, chaves_quadro, bh_configs_sessao, avulsos_sessao
+                        elif mes_calc in historico_banco_meses:
+                            m_data = historico_banco_meses[mes_calc]
+                            g_usar, c_usar, b_usar, a_usar = m_data["grade"], m_data["chaves"], m_data["bh_configs"], m_data["avulsos"]
+                        else:
+                            g_usar, c_usar, b_usar, a_usar = {}, [], bh_configs_sessao, avulsos_sessao
+
+                        tot_trab_m, meta_m, av_m, _ = apurar_dados_escala_militar_no_mes(
+                            m_id, mes_calc, m_ano, sub_ativa, g_usar, c_usar, b_usar, a_usar
+                        )
+
+                        total_trabalhado_escala += tot_trab_m
+                        meta_efetiva_acumulada += meta_m
+                        horas_avulsas_totais += av_m
+
                     saldo_periodo = (total_trabalhado_escala + horas_avulsas_totais) - meta_efetiva_acumulada
-                    saldo_geral_final = saldo_ant + saldo_periodo
+                    saldo_geral_final = saldo_acumulado_anterior + saldo_periodo
                     
                     extrato_dados.append({
                         "Nº PM": m.get("num_policia", ""), 
                         "MILITAR": nome_formatado, 
                         "CARGA/MÊS": "80h" if eh_reduzida else "160h", 
+                        "SALDO ANTERIOR": f"{saldo_acumulado_anterior:+.1f}h", 
                         "META APURADA": f"{meta_efetiva_acumulada:.1f}h", 
                         "ESCALA (P5)": f"{total_trabalhado_escala:.1f}h", 
                         "AVULSAS": f"{horas_avulsas_totais:.1f}h", 
                         "SALDO PERÍODO": f"{saldo_periodo:+.1f}h", 
-                        "SALDO ANTERIOR": f"{saldo_ant:+.1f}h", 
                         "SALDO GERAL FINAL": f"{saldo_geral_final:+.1f}h"
                     })
 
@@ -404,7 +467,7 @@ def renderizar_passo7():
 
                 c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1])
                 with c_btn1: 
-                    st.download_button("📥 Exportar Extrato (CSV)", data=df_extrato.to_csv(index=False).encode('utf-8'), file_name=f"Banco_Horas_{m_ano}.csv", mime="text/csv", use_container_width=True)
+                    st.download_button("📥 Exportar Extrato (CSV)", data=df_extrato.to_csv(index=False).encode('utf-8'), file_name=f"Banco_Horas_{sub_ativa}_{m_ano}.csv", mime="text/csv", use_container_width=True)
                 with c_btn2: 
                     if st.button("🖨️ Imprimir / PDF Oficial", use_container_width=True):
                         st.html(f"{html_extrato_pdf}<script>window.print();</script>")
