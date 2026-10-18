@@ -1,12 +1,13 @@
 """
 ==============================================================================
 Módulo do Passo 1 - Unidade Operacional, Escolha da Fração, Mês/Ano & Pré-Turno
-Exibe a Lotação Real do operador e permite selecionar qual Fração/Escala produzir.
+Aplica o filtro definitivo de acesso e permissão com trava por hierarquia e lotação.
 ==============================================================================
 """
 
 import streamlit as st
 import datetime
+import re
 from core.database import (
     supabase, 
     carregar_militares_supabase
@@ -14,7 +15,10 @@ from core.database import (
 
 
 def obter_cias_disponiveis_unidade():
-    """Retorna a lotação do militar logado e a lista de Cias/Frações disponíveis no Batalhão."""
+    """
+    Retorna a lotação do militar logado e uma lista limpa e sem duplicidades
+    das Companhias/Subunidades do Batalhão.
+    """
     usr_dados = st.session_state.get("usuario_dados", {})
     if isinstance(usr_dados, str):
         usr_dados = {}
@@ -23,31 +27,43 @@ def obter_cias_disponiveis_unidade():
         usr_dados.get("unidade")
         or usr_dados.get("lotacao")
         or usr_dados.get("subunidade")
-        or "1 PEL/111 CIA PM/21 BPM/4 RPM"
+        or "P3/EM/21 BPM/4 RPM"
     ).strip().upper()
 
-    cias_padrao = ["111ª CIA PM", "35ª CIA PM", "285ª CIA PM", "P3 / COPOM / EM"]
-    cias_banco = set()
+    cias_base_padrao = ["111ª CIA PM", "35ª CIA PM", "285ª CIA PM", "P3 / COPOM / EM"]
+    cias_extraidas = set()
 
+    # Busca subunidades cadastradas no banco
     if supabase:
         try:
             res_u = supabase.table("unidades_config").select("*").execute()
-            unidades_db = res_u.data or []
-            for u in unidades_db:
+            for u in (res_u.data or []):
                 sub = str(u.get("subunidade") or u.get("companhia") or u.get("nome") or "").strip().upper()
                 if sub and sub not in ["NONE", "N/I", ""]:
-                    cias_banco.add(sub)
+                    cias_extraidas.add(sub)
         except Exception:
             pass
 
+    # Extrai e simplifica nomes de Cia da lotação dos militares
     militares = carregar_militares_supabase() or []
     for m in militares:
         lot = str(m.get("lotacao") or m.get("unidade") or "").strip().upper()
-        if "CIA" in lot:
-            cias_banco.add(lot)
+        
+        match_cia = re.search(r'(\d+)\s*ª?\s*CIA', lot)
+        if match_cia:
+            num_cia = match_cia.group(1)
+            cias_extraidas.add(f"{num_cia}ª CIA PM")
+        elif any(k in lot for k in ["P3", "COPOM", "EM", "P2", "SADM"]):
+            cias_extraidas.add("P3 / COPOM / EM")
 
-    lista_completa = sorted(list(set(cias_padrao + list(cias_banco))))
-    return lotacao_militar, lista_completa
+    todas_cias = list(set(cias_base_padrao + list(cias_extraidas)))
+    
+    def chave_ordenacao(item):
+        m = re.search(r'\d+', item)
+        return int(m.group(0)) if m else 999
+
+    lista_limpa = sorted(todas_cias, key=chave_ordenacao)
+    return lotacao_militar, lista_limpa
 
 
 def carregar_escala_selecionada_passo1():
@@ -109,10 +125,44 @@ def renderizar_passo1():
     if isinstance(usr_dados, str):
         usr_dados = {}
 
-    lotacao_militar_real, cias_disponiveis = obter_cias_disponiveis_unidade()
+    lotacao_militar_real, cias_disponiveis_todas = obter_cias_disponiveis_unidade()
 
-    if "cfg_subunidade" not in st.session_state or not st.session_state["cfg_subunidade"]:
-        st.session_state["cfg_subunidade"] = cias_disponiveis[0] if cias_disponiveis else "111ª CIA PM"
+    perfil_usr = str(usr_dados.get("nivel_acesso") or usr_dados.get("perfil_escala") or "").strip().upper()
+    cargo_usr = str(usr_dados.get("cargo_funcao") or "").strip().upper()
+
+    # -------------------------------------------------------------------------
+    # REGRA DEFINITIVA DE PERMISSÃO E FILTRO DE SEGURANÇA
+    # -------------------------------------------------------------------------
+    SECOES_GLOBAL = ["P2", "P3", "SADM", "ADMIN", "PROGRAMADOR", "DESENVOLVEDOR", "CMT_BPM"]
+
+    eh_gestor_global = any(
+        sec in lotacao_militar_real or sec in perfil_usr or sec in cargo_usr 
+        for sec in SECOES_GLOBAL
+    )
+
+    if eh_gestor_global:
+        # P2, P3, SADM, ADMIN: Vê e seleciona TODAS as escalas
+        cias_permitidas = cias_disponiveis_todas
+        desabilitar_seletor = False
+        msg_permissao = "💡 **Acesso Gestor Global (P2/P3/SADM):** Permissão para visualizar e criar escalas de qualquer fração do Batalhão."
+        tipo_msg = "info"
+    elif "CMT" in cargo_usr or "COMANDANTE" in cargo_usr or "CMT_CIA" in perfil_usr:
+        # Cmt de Cia / Cmt de Pel: Vê sua companhia e frações subordinadas
+        cias_permitidas = [c for c in cias_disponiveis_todas if lotacao_militar_real in c or c in lotacao_militar_real]
+        if not cias_permitidas:
+            cias_permitidas = [lotacao_militar_real]
+        desabilitar_seletor = False
+        msg_permissao = f"👮‍♂️ **Acesso Comando ({lotacao_militar_real}):** Visualizando e editando frações sob seu comando."
+        tipo_msg = "info"
+    else:
+        # Demais militares / Tropa: Estritamente restrito à sua lotação exata
+        cias_permitidas = [lotacao_militar_real]
+        desabilitar_seletor = True
+        msg_permissao = f"🔒 **Acesso Restrito:** Suas permissões estão limitadas à sua lotação ({lotacao_militar_real})."
+        tipo_msg = "warning"
+
+    if "cfg_subunidade" not in st.session_state or st.session_state["cfg_subunidade"] not in cias_permitidas:
+        st.session_state["cfg_subunidade"] = cias_permitidas[0] if cias_permitidas else "111ª CIA PM"
 
     with st.expander("📌 PASSO 1: Unidade Operacional, Mês/Ano & Seleção da Escala", expanded=True):
         st.markdown("##### 🏛️ **Definição da Unidade Operacional & Período da Escala:**")
@@ -127,16 +177,17 @@ def renderizar_passo1():
                 disabled=True
             )
 
-        # 2. FRAÇÃO ALVO / ESCALA A PRODUZIR (SELETOR)
+        # 2. FRAÇÃO ALVO / ESCALA A PRODUZIR (COM TRAVA DE SEGURANÇA)
         with col_u2:
             idx_default = 0
-            if st.session_state["cfg_subunidade"] in cias_disponiveis:
-                idx_default = cias_disponiveis.index(st.session_state["cfg_subunidade"])
+            if st.session_state["cfg_subunidade"] in cias_permitidas:
+                idx_default = cias_permitidas.index(st.session_state["cfg_subunidade"])
 
             cia_selecionada = st.selectbox(
                 "📋 Escala / Fração a Produzir:",
-                options=cias_disponiveis,
+                options=cias_permitidas,
                 index=idx_default,
+                disabled=desabilitar_seletor,
                 key="sb_selecionar_cia_escala_passo1"
             )
             st.session_state["cfg_subunidade"] = cia_selecionada
@@ -190,4 +241,7 @@ def renderizar_passo1():
         a_num = st.session_state.get("ano_escala", datetime.date.today().year)
         pt_nome = st.session_state.get("pre_turno_opcao", "Pré-Turno 30 min (+0.5h)")
 
-        st.info(f"🎯 **Escala Ativa para Produção:** `{sub_nome}` | **Período:** `{m_num:02d}/{a_num}` | **Pré-Turno:** `{pt_nome}`")
+        if tipo_msg == "info":
+            st.info(f"{msg_permissao} &nbsp;|&nbsp; 🎯 **Escala Ativa:** `{sub_nome}` (`{m_num:02d}/{a_num}`)")
+        else:
+            st.warning(f"{msg_permissao} &nbsp;|&nbsp; 🎯 **Escala Ativa:** `{sub_nome}` (`{m_num:02d}/{a_num}`)")
