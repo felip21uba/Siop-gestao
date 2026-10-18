@@ -1,8 +1,8 @@
 """
 ==============================================================================
 Módulo do Passo 7 - Banco de Horas Consolidado e Gestão de Carga
-Apurado em tempo real com o motor exato do Passo 5, preservando
-saldos anteriores e lançamentos avulsos de serviço extra.
+Garante a apuração em tempo real com o motor exato do Passo 5,
+preservando saldos anteriores acumulados e lançamentos avulsos extras.
 ==============================================================================
 """
 
@@ -113,7 +113,6 @@ def renderizar_passo7():
             x.get("nome_guerra", "")
         ))
         
-        # Mapeia todas as equipes ativas dos militares no quadro
         equipes_por_militar = {}
         for pair in chaves_quadro:
             if isinstance(pair, (tuple, list)) and len(pair) == 2:
@@ -261,7 +260,7 @@ def renderizar_passo7():
                 st.rerun()
 
         # ----------------------------------------------------------------------
-        # 3. APURAÇÃO MENSAL COM O MOTOR UNIFICADO DO PASSO 5
+        # 3. APURAÇÃO MENSAL COM MOTOR OFICIAL DO PASSO 5
         # ----------------------------------------------------------------------
         with st.expander("📊 3. Apuração e Extrato Consolidado do Banco de Horas", expanded=True):
             
@@ -306,7 +305,6 @@ def renderizar_passo7():
                     eh_reduzida = cfg.get("reduzida", False)
                     saldo_ant = float(cfg.get("saldo_anterior", 0.0))
                     
-                    # Soma lançamentos avulsos
                     horas_avulsas_totais = 0.0
                     for l in st.session_state["bh_lancamentos_avulsos"]:
                         if str(l["id_militar"]) == m_id:
@@ -336,8 +334,7 @@ def renderizar_passo7():
                                 val_str = str(val).upper().strip() if val else ""
                                 tokens_dia = set(val_str.replace("/", " ").split())
                                 
-                                # Abate meta somente se tiver sigla oficial de afastamento (FE, LM, ATE, RH, DN)
-                                if any(sigla in SIGLAS_ABATEM_META for sigla in tokens_dia):
+                                if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
                                     dias_abatidos_mes += 1
                                 
                                 eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
