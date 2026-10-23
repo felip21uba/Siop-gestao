@@ -9,10 +9,18 @@ filtrando o acesso rigorosamente de acordo com o perfil/função do usuário.
 import streamlit as st
 import datetime
 import re
+import unicodedata
 from core.database import (
     supabase, 
     carregar_militares_supabase
 )
+
+
+def normalizar_str_comparacao(texto):
+    if not texto:
+        return ""
+    t_norm = unicodedata.normalize("NFKD", str(texto)).encode("ASCII", "ignore").decode("utf-8").upper().strip()
+    return re.sub(r"\s+", " ", t_norm)
 
 
 def obter_todas_fracoes_detalhadas_unidade():
@@ -142,45 +150,38 @@ def renderizar_passo1():
 
     lotacao_militar_real, lista_todas_fracoes_detalhadas = obter_todas_fracoes_detalhadas_unidade()
 
-    perfil_usr = str(usr_dados.get("nivel_acesso") or usr_dados.get("perfil_escala") or "").strip().upper()
-    cargo_usr = str(usr_dados.get("cargo_funcao") or "").strip().upper()
-    escopo_gestor = str(usr_dados.get("escopo_gestao") or "GLOBAL").strip().upper()
+    perfil_usr = normalizar_str_comparacao(usr_dados.get("nivel_acesso") or usr_dados.get("perfil_escala") or usr_dados.get("perfil"))
+    cargo_usr = normalizar_str_comparacao(usr_dados.get("cargo_funcao"))
+    escopo_gestor = normalizar_str_comparacao(usr_dados.get("escopo_gestao") or "GLOBAL")
 
-    SECOES_CHEFE_GLOBAIS = ["P1", "P2", "P3", "P4", "SADM", "NJD", "CHEFE", "SARGENTEAÇÃO", "COPOM", "EM"]
+    SECOES_CHEFE_GLOBAIS = ["P1", "P2", "P3", "P4", "SADM", "NJD", "CHEFE", "SARGENTEACAO", "SARGENTIACAO", "COPOM", "EM", "PROGRAMADOR", "ADMIN", "DESENVOLVEDOR", "GESTOR_SISTEMA"]
 
     # -------------------------------------------------------------------------
-    # FILTRO RIGOROSO DE SELEÇÃO POR FUNÇÃO / HIERARQUIA
+    # FILTRO RIGOROSO E FLEXÍVEL DE SELEÇÃO POR FUNÇÃO / HIERARQUIA
     # -------------------------------------------------------------------------
     
-    # 1. PROGRAMADOR / ADMIN: Enxerga 100% das frações e GPs cadastrados
-    if perfil_usr in ["PROGRAMADOR", "ADMIN", "DESENVOLVEDOR"]:
+    # 1. PROGRAMADOR / ADMIN / CHEFES DE SEÇÃO / SARGENTEAÇÃO (P1, P3, ETC): Permissão total
+    if any(sec in lotacao_militar_real or sec in cargo_usr or sec in perfil_usr for sec in SECOES_CHEFE_GLOBAIS):
         fracoes_permitidas = lista_todas_fracoes_detalhadas
         desabilitar_seletor = False
-        msg_permissao = "🚀 **Acesso Programador / Superuser:** Acesso irrestrito a todas as frações, Pelotões e GPs."
+        msg_permissao = "🚀 **Acesso de Gestão Geral / Sargenteação:** Permissão total para criar/editar escalas de todas as frações e GPs."
         tipo_msg = "info"
 
-    # 2. CHEFES DE SEÇÃO / ESTADO-MAIOR (P1, P2, P3, SADM): Enxerga todas as frações
-    elif any(sec in lotacao_militar_real or sec in cargo_usr or sec in perfil_usr for sec in SECOES_CHEFE_GLOBAIS):
-        fracoes_permitidas = lista_todas_fracoes_detalhadas
-        desabilitar_seletor = False
-        msg_permissao = "🏛️ **Acesso Chefe de Seção / Gestão:** Permissão para gerir todas as frações e GPs do Batalhão."
-        tipo_msg = "info"
-
-    # 3. GESTOR (Parametrizado por Escopo)
-    elif perfil_usr == "GESTOR":
-        if escopo_gestor == "GLOBAL":
+    # 2. GESTOR (Parametrizado por Escopo)
+    elif "GESTOR" in perfil_usr or "GESTOR" in cargo_usr:
+        if escopo_gestor == "GLOBAL" or "GLOBAL" in perfil_usr:
             fracoes_permitidas = lista_todas_fracoes_detalhadas
         else:
-            fracoes_permitidas = [f for f in lista_todas_fracoes_detalhadas if escopo_gestor in f or f in escopo_gestor]
+            fracoes_permitidas = [f for f in lista_todas_fracoes_detalhadas if escopo_gestor in f or f in escopo_gestor or lotacao_militar_real in f]
             if not fracoes_permitidas:
-                fracoes_permitidas = [lotacao_militar_real]
+                fracoes_permitidas = lista_todas_fracoes_detalhadas
         desabilitar_seletor = False
-        msg_permissao = f"⚙️ **Acesso Gestor (Escopo: {escopo_gestor}):** Selecionando dentro das suas frações permitidas."
+        msg_permissao = f"⚙️ **Acesso Gestor:** Selecionando dentro das frações permitidas do seu escopo."
         tipo_msg = "info"
 
-    # 4. COMANDANTE DE COMPANHIA / SARGENTEANTE
-    # Vê a Cia e TODOS os Pelotões e GPs pertencentes a ela
-    elif perfil_usr in ["CMT_CIA", "SARGENTEANTE"] or "CMT" in cargo_usr or "COMANDANTE" in cargo_usr:
+    # 3. COMANDANTE DE COMPANHIA
+    # Vê a Cia e TODOS os Pelotões e GPs subordinados a ela
+    elif any(term in perfil_usr or term in cargo_usr for term in ["CMT_CIA", "COMANDANTE DE CIA", "COMANDANTE_CIA", "CMT CIA"]):
         match_cia = re.search(r'(\d+)\s*ª?\s*CIA', lotacao_militar_real)
         cia_num = match_cia.group(1) if match_cia else lotacao_militar_real
         
@@ -188,24 +189,29 @@ def renderizar_passo1():
         if not fracoes_permitidas:
             fracoes_permitidas = [lotacao_militar_real]
         desabilitar_seletor = False
-        msg_permissao = f"👮‍♂️ **Acesso Comando de Cia ({lotacao_militar_real}):** Gerenciando sua Cia, Pelotões e GPs subordinados."
+        msg_permissao = f"👮‍♂️ **Acesso Comando de Cia ({lotacao_militar_real}):** Gerenciando sua Cia e todas as frações/GPs subordinados."
         tipo_msg = "info"
 
-    # 5. COMANDANTE DE PELOTÃO
-    # Vê o seu Pelotão e os GPs pertencentes a ele
-    elif perfil_usr == "CMT_PELOTAO" or "PEL" in cargo_usr:
-        match_pel = re.search(r'(\d+\s*º?\s*PEL)', lotacao_militar_real)
-        pel_code = match_pel.group(1) if match_pel else lotacao_militar_real
-        
-        fracoes_permitidas = [f for f in lista_todas_fracoes_detalhadas if pel_code in f or lotacao_militar_real in f]
+    # 4. COMANDANTE DE PELOTÃO / GP
+    # Vê o seu Pelotão/GP e todas as frações/GPs filhas subordinadas
+    elif any(term in perfil_usr or term in cargo_usr for term in ["PELOTAO", "PELOTÃO", "CMT_PEL", "COMANDANTE DE PELOTAO", "COMANDANTE DE PELOTÃO / GP", "GP"]):
+        match_pel = re.search(r'(\d+)\s*º?\s*PEL', lotacao_militar_real)
+        pel_num = match_pel.group(1) if match_pel else None
+
+        if pel_num:
+            # Filtra todas as frações que contêm o número do Pelotão (ex: "3 PEL", "1 GP/3 PEL", etc.)
+            fracoes_permitidas = [f for f in lista_todas_fracoes_detalhadas if f"{pel_num} PEL" in f or f"{pel_num}PEL" in f or lotacao_militar_real in f]
+        else:
+            fracoes_permitidas = [f for f in lista_todas_fracoes_detalhadas if lotacao_militar_real in f]
+
         if not fracoes_permitidas:
             fracoes_permitidas = [lotacao_militar_real]
+
         desabilitar_seletor = False
-        msg_permissao = f"👮‍♂️ **Acesso Comando de Pelotão ({pel_code}):** Gerenciando seu Pelotão e GPs subordinados."
+        msg_permissao = f"👮‍♂️ **Acesso Comando de Pelotão / GP ({lotacao_militar_real}):** Gerenciando seu Pelotão e todas as frações/GPs subordinados."
         tipo_msg = "info"
 
-    # 6. CMT DE GP / TROPA
-    # Estritamente restrito à sua fração exata de cadastro
+    # 5. TROPA (SEM FUNÇÃO DE COMANDO OU GESTÃO)
     else:
         fracoes_permitidas = [lotacao_militar_real]
         desabilitar_seletor = True
@@ -228,7 +234,7 @@ def renderizar_passo1():
                 disabled=True
             )
 
-        # 2. FRAÇÃO ALVO / ESCALA A PRODUZIR (LISTA DETALHADA PONTO A PONTO)
+        # 2. FRAÇÃO ALVO / ESCALA A PRODUZIR
         with col_u2:
             idx_default = 0
             if st.session_state["cfg_subunidade"] in fracoes_permitidas:
@@ -271,28 +277,3 @@ def renderizar_passo1():
         with col_u5:
             st.session_state["pre_turno_opcao"] = st.selectbox(
                 "⏰ Pré-Turno de Apresentação:",
-                options=[
-                    "Sem Pré-Turno (0 min)",
-                    "Pré-Turno 15 min (+0.25h)",
-                    "Pré-Turno 30 min (+0.5h)",
-                    "Pré-Turno 45 min (+0.75h)"
-                ],
-                index=2,
-                key="sb_passo1_pre_turno"
-            )
-
-        # 6. BOTÃO DE CRIAR / CARREGAR
-        with col_u6:
-            if st.button("💾 Criar / Carregar Escala", type="primary", use_container_width=True, key="btn_criar_carregar_escala_p1"):
-                carregar_escala_selecionada_passo1()
-                st.rerun()
-
-        sub_nome = st.session_state.get("cfg_subunidade", lotacao_militar_real)
-        m_num = st.session_state.get("mes_escala", datetime.date.today().month)
-        a_num = st.session_state.get("ano_escala", datetime.date.today().year)
-        pt_nome = st.session_state.get("pre_turno_opcao", "Pré-Turno 30 min (+0.5h)")
-
-        if tipo_msg == "info":
-            st.info(f"{msg_permissao} &nbsp;|&nbsp; 🎯 **Escala Ativa para Seleção:** `{sub_nome}` (`{m_num:02d}/{a_num}`)")
-        else:
-            st.warning(f"{msg_permissao} &nbsp;|&nbsp; 🎯 **Escala Ativa para Seleção:** `{sub_nome}` (`{m_num:02d}/{a_num}`)")
