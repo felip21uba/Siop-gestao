@@ -277,3 +277,27 @@ def renderizar_passo1():
         with col_u5:
             st.session_state["pre_turno_opcao"] = st.selectbox(
                 "⏰ Pré-Turno de Apresentação:",
+                options=[
+                    "Sem Pré-Turno (0 min)",
+                    "Pré-Turno 15 min (+0.25h)",
+                    "Pré-Turno 30 min (+0.5h)",
+                    "Pré-Turno 45 min (+0.75h)"
+                ],
+                index=2,
+                key="sb_passo1_pre_turno"
+            )
+
+        # 6. BOTÃO DE CRIAR / CARREGAR
+        with col_u6:
+            if st.button("💾 Criar / Carregar Escala", type="primary", use_container_width=True, key="btn_criar_carregar_escala_p1"):
+                carregar_escala_selecionada_passo1()
+                st.rerun()
+
+        sub_nome = st.session_state.get("cfg_subunidade", lotacao_militar_real)
+        m_num = st.session_state.get("mes_escala", datetime.date.today().month)
+        a_num = st.session_state.get("ano_escala", datetime.date.today().year)
+
+        if tipo_msg == "info":
+            st.info(f"{msg_permissao} &nbsp;|&nbsp; 🎯 **Escala Ativa para Seleção:** `{sub_nome}` (`{m_num:02d}/{a_num}`)")
+        else:
+            st.warning(f"{msg_permissao} &nbsp;|&nbsp; 🎯 **Escala Ativa para Seleção:** `{sub_nome}` (`{m_num:02d}/{a_num}`)")
