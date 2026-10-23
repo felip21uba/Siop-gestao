@@ -61,7 +61,7 @@ def injetar_estilo_passo3_tco():
 
 
 def renderizar_cabecalho_tatico_tco(usr_dados: dict):
-    """Renderiza o cabeçalho tático operacional oficial do TCO com relógio dinâmico segundo a segundo."""
+    """Renderiza o cabeçalho tático operacional oficial do TCO sem sobreposição visual e com relógio dinâmico."""
     injetar_estilo_passo3_tco()
 
     posto_grad = str(usr_dados.get("cargo_funcao") or usr_dados.get("posto_grad") or "").strip().upper()
@@ -95,7 +95,6 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
         or "OPERADOR TCO"
     ).strip().upper()
 
-    # Formata legendas legíveis se vier código de perfil interno
     mapa_funcoes_legiveis = {
         "GESTOR_UNIDADE": "GESTOR CREDS UNIDADE",
         "GESTOR_CIA": "GESTOR CREDS CIA",
@@ -109,109 +108,128 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     else:
         tag_local = f"CREDS TCO / {unidade_atual}"
 
-    # Renderização HTML + JS do Cabeçalho e Relógio num iframe isolado
     html_cabecalho = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
         <style>
+            * {{
+                box-sizing: border-box;
+            }}
             body {{
                 margin: 0;
                 padding: 0;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                 background-color: transparent;
+                overflow: hidden;
             }}
             .banner-container {{
                 background: linear-gradient(135deg, #7d6539 0%, #63502c 100%);
                 border: 2px solid #c5a059;
-                border-radius: 12px;
-                padding: 14px 20px;
+                border-radius: 10px;
+                padding: 8px 14px;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                gap: 16px;
-                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.45);
-                box-sizing: border-box;
+                gap: 10px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+                width: 100%;
+                height: 82px;
             }}
             .left-box {{
                 display: flex;
                 align-items: center;
-                gap: 16px;
+                gap: 10px;
+                min-width: 0;
+                flex: 1 1 auto;
             }}
             .icon-box {{
                 background: linear-gradient(135deg, #8f7442 0%, #5e4b29 100%);
                 border: 1.5px solid #e0c283;
-                border-radius: 10px;
-                width: 50px;
-                height: 50px;
+                border-radius: 8px;
+                width: 40px;
+                height: 40px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 24px;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                font-size: 18px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.3);
                 flex-shrink: 0;
             }}
+            .info-titles {{
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                min-width: 0;
+            }}
             .title-txt {{
-                font-size: 1.30rem;
+                font-size: 1.0rem;
                 font-weight: 800;
                 color: #ffffff;
-                margin: 0 0 3px 0;
+                margin: 0;
                 padding: 0;
-                display: flex;
-                align-items: center;
-                gap: 8px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
                 text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+                line-height: 1.25;
             }}
             .subtitle-txt {{
-                font-size: 0.84rem;
+                font-size: 0.75rem;
                 color: #f5ebe0;
-                margin: 0;
+                margin-top: 2px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                line-height: 1.2;
             }}
             .right-box {{
                 display: flex;
                 align-items: center;
-                gap: 12px;
+                gap: 8px;
+                flex-shrink: 0;
             }}
             .clock-box {{
-                background: rgba(20, 15, 13, 0.65);
+                background: rgba(20, 15, 13, 0.75);
                 border: 1px solid #c5a059;
-                border-radius: 8px;
-                padding: 8px 12px;
+                border-radius: 6px;
+                padding: 5px 8px;
                 color: #ffe0b2;
                 font-family: 'Consolas', 'Courier New', monospace;
-                font-size: 0.86rem;
+                font-size: 0.78rem;
                 font-weight: 700;
                 display: flex;
                 align-items: center;
-                gap: 8px;
+                gap: 5px;
                 white-space: nowrap;
             }}
             .green-dot {{
-                width: 8px;
-                height: 8px;
+                width: 6px;
+                height: 6px;
                 background-color: #22c55e;
                 border-radius: 50%;
                 display: inline-block;
-                box-shadow: 0 0 6px #22c55e;
+                box-shadow: 0 0 4px #22c55e;
+                flex-shrink: 0;
             }}
             .user-box {{
-                background: rgba(20, 15, 13, 0.65);
+                background: rgba(20, 15, 13, 0.75);
                 border: 1px solid #c5a059;
-                border-radius: 8px;
-                padding: 7px 14px;
+                border-radius: 6px;
+                padding: 4px 10px;
                 text-align: left;
-                line-height: 1.35;
+                line-height: 1.2;
                 white-space: nowrap;
             }}
             .user-name {{
                 color: #ffffff;
-                font-size: 0.86rem;
+                font-size: 0.78rem;
                 font-weight: 800;
             }}
             .user-sub {{
                 color: #ffe0b2;
-                font-size: 0.76rem;
+                font-size: 0.70rem;
                 font-weight: 700;
             }}
         </style>
@@ -219,10 +237,10 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     <body>
         <div class="banner-container">
             <div class="left-box">
-                <div class="icon-box">🛡️</div>
-                <div>
+                <div class="icon-box">📦</div>
+                <div class="info-titles">
                     <div class="title-txt">
-                        📦 Custódia de Materiais TCO &amp; Cadeia de Custódia
+                        Custódia de Materiais TCO &amp; Cadeia de Custódia
                     </div>
                     <div class="subtitle-txt">
                         SIOP PMMG — Gestão Operacional e Rastreabilidade Imutável • 
@@ -237,7 +255,7 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
                 </div>
                 <div class="user-box">
                     <div class="user-name">
-                        👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.80rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
+                        👤 {militar_completo} <span style="color: #f5ebe0; font-size: 0.72rem; font-weight: normal;">(Mat. {matricula_fmt})</span>
                     </div>
                     <div class="user-sub">
                         🏛️ {unidade_atual} — {funcao_exibicao}
@@ -267,7 +285,7 @@ def renderizar_cabecalho_tatico_tco(usr_dados: dict):
     </html>
     """
 
-    components.html(html_cabecalho, height=95)
+    components.html(html_cabecalho, height=98)
 
 
 @st.dialog("🔗 Cadeia de Custódia Imutável (Art. 158-B do CPP)", width="large")
@@ -301,9 +319,10 @@ def modal_cadeia_custodia_timeline(item_dados: dict):
             except Exception:
                 dt_fmt = str(dt_raw)
 
+            ip_origem_str = f" | 🌐 IP: {l.get('ip_origem')}" if l.get('ip_origem') else ""
             st.markdown(f"""
             <div class="timeline-item-box">
-                <strong style="color: #ffe0b2;">#{idx+1} — {l.get('acao', 'EVENTO')}</strong> ({dt_fmt})<br/>
+                <strong style="color: #ffe0b2;">#{idx+1} — {l.get('acao', 'EVENTO')}</strong> ({dt_fmt}{ip_origem_str})<br/>
                 👤 <strong>Origem:</strong> {l.get('origem', 'N/I')} ({l.get('unidade_origem', 'N/I')}) ➔ 
                 🎯 <strong>Destino:</strong> {l.get('destino', 'N/I')} ({l.get('unidade_destino', 'N/I')})<br/>
                 📝 <em>{l.get('detalhe', '')}</em>
