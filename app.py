@@ -232,10 +232,6 @@ if "tema_visual" not in st.session_state:
 # 🌐 CARREGAMENTO DIRETO E EXCLUSIVO DE ASSETS DA PASTA LOCAL (assets/)
 # ==============================================================================
 def obter_imagem_brasao():
-    """
-    Carrega os bytes do brasão diretamente do arquivo no disco na pasta assets/,
-    evitando erros de FileNotFoundError causados por query strings no st.image.
-    """
     pasta_assets = os.path.join(DIRETORIO_RAIZ, "assets")
     extensoes = ["png", "jpg", "jpeg", "svg", "webp"]
     nomes = ["brasao", "logo", "brasao_pmmg", "brasao_oficial"]
@@ -251,7 +247,6 @@ def obter_imagem_brasao():
                     except Exception:
                         pass
         
-        # Caso tenha outro nome na pasta, lê os bytes da primeira imagem encontrada
         for arquivo in os.listdir(pasta_assets):
             ext = arquivo.split(".")[-1].lower()
             if ext in extensoes:
@@ -263,7 +258,6 @@ def obter_imagem_brasao():
                     except Exception:
                         pass
 
-    # Fallback seguro caso a pasta ou arquivo esteja limpo
     return "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Bras%C3%A3o_PMMG.svg/500px-Bras%C3%A3o_PMMG.svg.png"
 
 # ==============================================================================
@@ -374,7 +368,6 @@ if not st.session_state.get("autenticado", False):
         st.markdown("<br>", unsafe_allow_html=True)
         c_logo, c_tit = st.columns([1.2, 2.8], vertical_alignment="center")
         with c_logo:
-            # TAMANHO DO LOGO NA TELA DE LOGIN AMPLIADO (140px)
             st.image(obter_imagem_brasao(), width=140)
         with c_tit:
             st.markdown("## 🛡️ **SIOP PMMG**")
@@ -731,9 +724,17 @@ if isinstance(usr, str):
 
 nome_op = usr.get("nome_guerra") or usr.get("nome_completo") or "OPERADOR"
 cargo_op = usr.get("cargo_funcao", "MILITAR")
-perfil_op = str(usr.get("nivel_acesso") or usr.get("perfil") or "TROPA").upper()
+perfil_op = str(usr.get("nivel_acesso") or usr.get("perfil") or usr.get("perfil_escala") or "TROPA").upper()
 
-LISTA_GESTORES = ["PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", "COMANDANTE_CIA", "P1", "P3", "SARGENTEANTE", "GESTOR"]
+# LISTA AMPLIADA DE PERFIS/FUNÇÕES COM PERMISSÃO DE GESTOR (INCLUINDO COMANDANTE DE CIA COM ESPAÇOS E P1)
+LISTA_GESTORES = [
+    "PROGRAMADOR", "DESENVOLVEDOR", "TESTADOR", "ADMIN", 
+    "COMANDANTE_CIA", "COMANDANTE DE CIA", "CMT_CIA", "CMT DE CIA",
+    "COMANDANTE DE PELOTÃO", "COMANDANTE_PELOTAO", "CMT_PELOTAO",
+    "SARGENTEAÇÃO", "SARGENTEANTE", "SARGENTEAÇÃO / P1",
+    "P1", "P3", "GESTOR", "GESTOR_SISTEMA"
+]
+
 eh_gestor_real = any(p in perfil_op for p in LISTA_GESTORES)
 
 if eh_gestor_real:
@@ -756,7 +757,6 @@ with st.sidebar:
     c_l, c_mid, c_r = st.columns([0.2, 2.6, 0.2])
     with c_mid:
         try:
-            # TAMANHO DO LOGO NA SIDEBAR DESTACADO
             st.image(obter_imagem_brasao(), width=160)
         except Exception:
             st.markdown("🛡️")
@@ -797,7 +797,6 @@ with st.sidebar:
 
             opcoes_bpm = ["🌐 TODAS AS UNIDADES"] + sorted(list(bpms_encontrados))
 
-            # Garante opções padrão para primeira utilização
             for bpm_padr in ["21º BPM", "2º BPM", "27º BPM"]:
                 if bpm_padr not in opcoes_bpm:
                     opcoes_bpm.append(bpm_padr)
@@ -878,7 +877,7 @@ with st.sidebar:
             st.session_state["modulo_ativo"] = "PROCEDIMENTOS"
             st.rerun()
 
-        if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR"]):
+        if any(p in perfil_ativo for p in ["PROGRAMADOR", "ADMIN", "COMANDANTE DE CIA", "COMANDANTE_CIA", "P1", "DESENVOLVEDOR", "GESTOR"]):
             if st.button("⚙️ Gestão de Acessos", key="k_btn_mod_gestao_acessos_nav", use_container_width=True, type="primary" if modulo_ativo == "GESTOES_USUARIOS" else "secondary"):
                 st.session_state["modulo_ativo"] = "GESTOES_USUARIOS"
                 st.rerun()
