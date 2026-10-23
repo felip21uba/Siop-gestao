@@ -1,8 +1,8 @@
 """
 ==============================================================================
 Módulo do Passo 1 - Unidade Operacional, Escolha da Fração, Mês/Ano & Pré-Turno
-Exibe todas as frações detalhadas (Cia, Pelotão, GP) ponto a ponto no seletor,
-filtrando o acesso de forma abrangente e insensível a variações de texto.
+Exibe as frações no seletor estritamente limitadas ao escopo da Companhia,
+Pelotão ou GP do militar logado, sem vazamento de acessos entre unidades.
 ==============================================================================
 """
 
@@ -73,6 +73,8 @@ def obter_todas_fracoes_detalhadas_unidade():
             "35ª CIA PM",
             "1 PEL / 35ª CIA PM",
             "1 GP / 1 PEL / 35ª CIA PM",
+            "3 PEL / 35ª CIA PM",
+            "1 GP / 3 PEL / 35ª CIA PM",
             "285ª CIA TM",
             "P3 / EM / 21º BPM"
         }
@@ -147,7 +149,7 @@ def renderizar_passo1():
 
     lotacao_militar_real, lista_todas_fracoes_detalhadas = obter_todas_fracoes_detalhadas_unidade()
 
-    # Normalização ampla de todas as variáveis de perfil/função do usuário
+    # Normalização ampla das variáveis de perfil/função do usuário
     p_acesso = normalizar_str_comparacao(usr_dados.get("nivel_acesso"))
     p_escala = normalizar_str_comparacao(usr_dados.get("perfil_escala"))
     p_perfil = normalizar_str_comparacao(usr_dados.get("perfil"))
@@ -156,58 +158,51 @@ def renderizar_passo1():
 
     texto_funcoes_unificado = f"{p_acesso} {p_escala} {p_perfil} {c_funcao} {p_creds}"
 
-    # 1. CHECAGEM DE ACESSO GERAL / SARGENTEAÇÃO / P1 / ADMIN / CHEFE DE SEÇÃO
-    eh_gestor_geral_ou_sargenteacao = any(
+    # 1. CHECAGEM DE ADMIN / PROGRAMADOR / P3 / P1 / GESTOR BATALHÃO
+    eh_admin_ou_p3 = any(
         k in texto_funcoes_unificado for k in [
-            "SARGENT", "SARGENTIACAO", "P1", "P2", "P3", "P4", "SADM", "NJD", 
-            "CHEFE", "COPOM", "EM", "PROGRAMADOR", "ADMIN", "DESENVOLVEDOR", "GESTOR_SISTEMA"
+            "P3", "P2", "P4", "SADM", "NJD", "CHEFE_P3", 
+            "PROGRAMADOR", "ADMIN", "DESENVOLVEDOR", "GESTOR_SISTEMA"
         ]
     )
 
-    # 2. CHECAGEM DE COMANDANTE DE CIA
-    eh_comandante_cia = any(
+    # 2. CHECAGEM DE COMANDANTE DE CIA OU SARGENTEAÇÃO DA CIA
+    eh_comandante_ou_sargenteacao_cia = any(
         k in texto_funcoes_unificado for k in [
-            "CMT_CIA", "CMT CIA", "COMANDANTE DE CIA", "COMANDANTE_CIA", "GESTOR_CIA"
+            "CMT_CIA", "CMT CIA", "COMANDANTE DE CIA", "COMANDANTE_CIA", 
+            "SARGENT", "SARGENTIACAO", "SARGENTEAÇÃO"
         ]
     )
 
-    # 3. CHECAGEM DE COMANDANTE DE PELOTÃO / GP
+    # 3. CHECAGEM DE COMANDANTE DE PELOTÃO OU GP
     eh_comandante_pelotao_ou_gp = any(
         k in texto_funcoes_unificado for k in [
-            "PELOTAO", "PELOTAO / GP", "CMT_PEL", "CMT PEL", "PELOTÃO"
+            "PELOTAO", "PELOTÃO", "CMT_PEL", "COMANDANTE DE PELOTAO", "COMANDANTE DE PELOTÃO / GP"
         ]
     )
 
     # -------------------------------------------------------------------------
-    # DEFINIÇÃO DO ESCOPO DE FRAÇÕES LIBERADAS
+    # DEFINIÇÃO RÍGIDA E ISOLADA DO ESCOPO DE FRAÇÕES PERMITIDAS
     # -------------------------------------------------------------------------
 
-    # A) SARGENTEAÇÃO / P1 / ADMIN / CHEFES: Acesso 100% livre a todas as frações
-    if eh_gestor_geral_ou_sargenteacao:
+    # CASO A: ADMIN / PROGRAMADOR / P3 -> Vê 100% das frações do Batalhão
+    if eh_admin_ou_p3:
         fracoes_permitidas = lista_todas_fracoes_detalhadas
         desabilitar_seletor = False
-        msg_permissao = "🚀 **Acesso de Gestão Geral / Sargenteação:** Permissão para gerenciar todas as Cias, Pelotões e GPs."
+        msg_permissao = "🚀 **Acesso de Gestão Geral (Batalhão/P3):** Permissão para gerenciar todas as Companhias e Pelotões."
         tipo_msg = "info"
 
-    # B) COMANDANTE DE CIA: Acesso à Cia e todas as suas frações/GPs subordinados
-    elif eh_comandante_cia:
+    # CASO B: COMANDANTE DE CIA OU SARGENTEAÇÃO -> Vê a sua Cia e APENAS os Pelotões/GPs da sua Cia
+    elif eh_comandante_ou_sargenteacao_cia:
         match_cia = re.search(r'(\d+)\s*ª?\s*CIA', lotacao_militar_real)
-        cia_num = match_cia.group(1) if match_cia else lotacao_militar_real
+        cia_num = match_cia.group(1) if match_cia else None
 
-        fracoes_permitidas = [f for f in lista_todas_fracoes_detalhadas if cia_num in f or lotacao_militar_real in f]
-        if not fracoes_permitidas:
-            fracoes_permitidas = lista_todas_fracoes_detalhadas
-        desabilitar_seletor = False
-        msg_permissao = f"👮‍♂️ **Acesso Comando de Cia ({lotacao_militar_real}):** Gerenciando sua Cia e frações subordinadas."
-        tipo_msg = "info"
-
-    # C) COMANDANTE DE PELOTÃO / GP: Acesso ao seu Pelotão e todos os GPs subordinados
-    elif eh_comandante_pelotao_ou_gp:
-        match_pel = re.search(r'(\d+)\s*º?\s*PEL', lotacao_militar_real)
-        pel_num = match_pel.group(1) if match_pel else None
-
-        if pel_num:
-            fracoes_permitidas = [f for f in lista_todas_fracoes_detalhadas if f"{pel_num} PEL" in f or f"{pel_num}PEL" in f or lotacao_militar_real in f]
+        if cia_num:
+            # Filtra apenas frações que pertençam àquela Cia exata (ex: "35 CIA" ou "35ª CIA")
+            fracoes_permitidas = [
+                f for f in lista_todas_fracoes_detalhadas 
+                if f"{cia_num} CIA" in f or f"{cia_num}ª CIA" in f or f"{cia_num}CIA" in f
+            ]
         else:
             fracoes_permitidas = [f for f in lista_todas_fracoes_detalhadas if lotacao_militar_real in f]
 
@@ -215,10 +210,34 @@ def renderizar_passo1():
             fracoes_permitidas = [lotacao_militar_real]
 
         desabilitar_seletor = False
-        msg_permissao = f"👮‍♂️ **Acesso Comando de Pelotão / GP ({lotacao_militar_real}):** Gerenciando seu Pelotão e GPs subordinados."
+        msg_permissao = f"👮‍♂️ **Acesso da Companhia ({lotacao_militar_real}):** Gerenciando a sua Cia e frações subordinadas."
         tipo_msg = "info"
 
-    # D) TROPA
+    # CASO C: COMANDANTE DE PELOTÃO OU GP -> Vê APENAS o seu Pelotão e os GPs do seu Pelotão
+    elif eh_comandante_pelotao_ou_gp:
+        match_pel = re.search(r'(\d+)\s*º?\s*PEL', lotacao_militar_real)
+        pel_num = match_pel.group(1) if match_pel else None
+
+        match_cia = re.search(r'(\d+)\s*ª?\s*CIA', lotacao_militar_real)
+        cia_num = match_cia.group(1) if match_cia else ""
+
+        if pel_num:
+            # Filtra apenas frações do mesmo Pelotão e mesma Cia
+            fracoes_permitidas = [
+                f for f in lista_todas_fracoes_detalhadas 
+                if (f"{pel_num} PEL" in f or f"{pel_num}PEL" in f) and (not cia_num or cia_num in f)
+            ]
+        else:
+            fracoes_permitidas = [f for f in lista_todas_fracoes_detalhadas if lotacao_militar_real in f]
+
+        if not fracoes_permitidas:
+            fracoes_permitidas = [lotacao_militar_real]
+
+        desabilitar_seletor = False
+        msg_permissao = f"👮‍♂️ **Acesso do Pelotão ({lotacao_militar_real}):** Gerenciando o seu Pelotão e GPs subordinados."
+        tipo_msg = "info"
+
+    # CASO D: TROPA / OUTROS -> Restrito à fração exata
     else:
         fracoes_permitidas = [lotacao_militar_real]
         desabilitar_seletor = True
