@@ -3,7 +3,7 @@
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
 Atua estritamente como a camada visual/espelho estilizada do Passo 5,
 com leitor universal de planilhas e Painel Interativo de Mapeamento de Horas
-para que o operador confirme os valores das siglas detectadas na importação.
+filtrando rigorosamente apenas legendas de turnos reais (sem dias da semana ou afastamentos).
 ==============================================================================
 """
 
@@ -52,6 +52,15 @@ CORES_EQUIPES = {
     "D": "#854d0e",
     "E": "#4c1d95",
     "F": "#0f766e"
+}
+
+SIGLAS_NAO_TURNO = {
+    # Folgas e dias neutros
+    "F", "D", "X", "FE", "LM", "ATE", "LUT", "NUP", "DIS", "LI", "LP", "DN", "DNT", "DES", "TPB",
+    "NAN", "NONE", "NULL", "", "0",
+    # Dias da semana (para nunca entrarem como legendas)
+    "DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB", "SÁB",
+    "DOMINGO", "SEGUNDA", "TERÇA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SÁBADO", "SABADO"
 }
 
 
@@ -176,7 +185,10 @@ def extrair_texto_pdf(arq_pdf):
 
 
 def escanear_siglas_da_planilha(df_raw, num_dias_mes):
-    """Varre a planilha procurando o cabeçalho e descobre todas as siglas de turnos lançadas."""
+    """
+    Varre a planilha procurando estritamente linhas onde haja militares com matrícula,
+    ignorando linhas de cabeçalho de dias da semana (DOM, SEG, etc.) e afastamentos regulamentares.
+    """
     header_idx = None
     for idx_r, r_vals in df_raw.iterrows():
         linha_str = " ".join([str(v).strip().upper() for v in r_vals.values if pd.notna(v)])
@@ -190,6 +202,9 @@ def escanear_siglas_da_planilha(df_raw, num_dias_mes):
     col_names = [str(c).strip().upper() for c in df_raw.iloc[header_idx].values]
     df_imp = df_raw.iloc[header_idx + 1:].copy()
     df_imp.columns = col_names
+
+    col_matricula = next((c for c in df_imp.columns if any(k in str(c) for k in ["POLICIA", "POLÍCIA", "NUMERO", "Nº", "MATRICULA", "MATRÍCULA"])), None)
+    col_militar = next((c for c in df_imp.columns if any(k in str(c) for k in ["MILITAR", "NOME", "SERVIDOR"])), None)
 
     mapa_colunas_dias = {}
     termos_ignorar = ["EQUIPE", "MILITAR", "POLICIA", "POLÍCIA", "Nº", "NOME", "HORAS", "META", "CIA", "BPM", "PEL", "SALDO", "AUX", "TPB"]
@@ -205,18 +220,39 @@ def escanear_siglas_da_planilha(df_raw, num_dias_mes):
                 mapa_colunas_dias[dia_num] = c
 
     siglas_encontradas = set()
+
     for _, row in df_imp.iterrows():
+        val_mat = str(row.get(col_matricula, "")).strip() if col_matricula else ""
+        val_mil = str(row.get(col_militar, "")).strip() if col_militar else ""
+
+        # Descarta linhas de cabeçalho secundário (dias da semana como DOM, SEG) ou sem militar
+        digs_mat = extrair_apenas_digitos(val_mat)
+        if not digs_mat and val_mil:
+            cand = re.findall(r'\b\d{6,7}\b', re.sub(r'[\.\-]', '', val_mil))
+            if cand:
+                digs_mat = extrair_apenas_digitos(cand[0])
+
+        if not digs_mat or len(digs_mat) < 5:
+            continue
+
         texto_linha = " ".join([str(v).strip().upper() for v in row.values if pd.notna(v)])
         if any(k in texto_linha for k in ["LEGENDA", "RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE", "QTDE DE MILITARES"]):
             break
+
         for col_d in mapa_colunas_dias.values():
             val = str(row.get(col_d, "")).strip().upper()
             if val.endswith(".0"):
                 val = val[:-2]
-            if val and val not in ["F", "D", "X", "FE", "LM", "ATE", "LUT", "NUP", "DIS", "NAN", "NONE", "NULL", ""]:
+            if val and val not in SIGLAS_NAO_TURNO:
                 siglas_encontradas.add(val)
 
-    return sorted(list(siglas_encontradas))
+    # Ordenação lógica: números primeiro (1, 2, 3...) e depois letras (S, EE...)
+    def ordem_siglas(item):
+        nums = re.findall(r'\d+', item)
+        val_n = int(nums[0]) if nums else 999
+        return (val_n, item)
+
+    return sorted(list(siglas_encontradas), key=ordem_siglas)
 
 
 def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, resp_escala_str, obs_escala, texto_legenda=""):
@@ -275,7 +311,7 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
 def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_horas_informadas, substituir_quadro=True):
     """
     Executa a importação linha a linha da planilha carregada.
-    Aplica os valores exatos de horas informados/confirmados pelo operador no painel de legendas.
+    Aplica os valores exatos de horas informados pelo operador para cada sigla de turno.
     """
     try:
         header_idx = None
@@ -391,7 +427,6 @@ def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_ho
                             val_u = val_celula.upper()
                             grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_u
 
-                            # Computa a hora da célula de acordo com o painel informado pelo operador
                             h_turno = float(mapa_horas_informadas.get(val_u, 0.0))
                             total_horas_linha += h_turno
 
@@ -455,7 +490,7 @@ def renderizar_passo6():
     with st.expander("📌 PASSO 6: Visualização da Escala, Importação e Exportação Oficial", expanded=True):
 
         # ----------------------------------------------------------------------
-        # SEÇÃO DE UPLOAD COM PAINEL DE CONFIRMAÇÃO DE LEGENDAS / VALORES
+        # SEÇÃO DE UPLOAD COM PAINEL LIMPO DE CONFIRMAÇÃO DE LEGENDAS
         # ----------------------------------------------------------------------
         st.markdown("##### 📥 **Importar Escala Mensal (.xlsx / .csv / .pdf):**")
         arq_escala_up = st.file_uploader(
@@ -473,12 +508,11 @@ def renderizar_passo6():
                 siglas_detectadas = escanear_siglas_da_planilha(df_temp, num_dias_mes)
 
                 if siglas_detectadas:
-                    st.info(f"📋 **Legendas identificadas na planilha ({len(siglas_detectadas)} siglas):** Confirme ou ajuste a quantidade de horas de cada turno:")
+                    st.info(f"📋 **Legendas de turnos identificadas ({len(siglas_detectadas)} siglas):** Confirme a quantidade de horas de cada turno:")
                     
-                    # Sugestões inteligentes padrão PMMG
                     sugestoes_padrao = {
                         "1": 12.5, "2": 13.5, "3": 10.5, "4": 10.5, 
-                        "7": 3.0, "S": 6.0, "EE": 6.0, "TPB": 0.0
+                        "7": 3.0, "S": 6.0, "EE": 6.0
                     }
 
                     mapa_valores_confirmados = {}
