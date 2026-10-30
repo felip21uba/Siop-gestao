@@ -259,12 +259,36 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_estilo_passo3_tco()
     st.markdown("### 📄 Importação e Registro Individual de Ocorrência")
     
-    # CARD TÁTICO: Substituição da tag em verde pelo componente oficial
+    # Leitura dinâmica da sessão do operador
+    usr_sessao = st.session_state.get("usuario_dados", {})
+    if isinstance(usr_sessao, str):
+        usr_sessao = {}
+
+    posto_op = str(usr_sessao.get("cargo_funcao") or usr_sessao.get("posto_grad") or "").strip().upper()
+    nome_op = str(usr_sessao.get("nome_guerra") or usr_sessao.get("nome_completo") or nome_militar_atual).strip().upper()
+    
+    if posto_op and not nome_op.startswith(posto_op):
+        militar_identificado = f"{posto_op} {nome_op}"
+    else:
+        militar_identificado = nome_op if nome_op else nome_militar_atual
+
+    # Captura a lotação real ou creds atribuído
+    lotacao_dinamica = str(
+        usr_sessao.get("creds_acesso")
+        or usr_sessao.get("unidade")
+        or usr_sessao.get("lotacao")
+        or usr_sessao.get("subunidade")
+        or unidade_militar_atual
+    ).strip().upper()
+
+    texto_creds_badge = lotacao_dinamica if lotacao_dinamica.startswith("CREDS") else f"CREDS {lotacao_dinamica}"
+
+    # CARD TÁTICO: Renderização com dados dinâmicos reais da sessão
     st.markdown(f"""
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; font-size: 0.90rem;">
-        <span>👤 <b>Fiel Depositário Inicial:</b> {nome_militar_atual}</span>
+        <span style="color: #cbd5e1;">👤 <b>Fiel Depositário Inicial:</b> {militar_identificado}</span>
         <span style="background-color: #1e293b; color: #f8fafc; border: 1.5px solid #38bdf8; border-radius: 6px; padding: 3px 10px; font-size: 0.82rem; font-weight: 800; display: inline-flex; align-items: center; gap: 5px;">
-            🏢 CREDS {unidade_militar_atual}
+            🏢 {texto_creds_badge}
         </span>
     </div>
     """, unsafe_allow_html=True)
@@ -333,8 +357,8 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                                     "data_fato": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                                     "natureza": "INSERÇÃO MANUAL / TCO",
                                     "local": "N/I",
-                                    "redator": nome_militar_atual,
-                                    "unidade_jecrim": unidade_militar_atual,
+                                    "redator": militar_identificado,
+                                    "unidade_jecrim": lotacao_dinamica,
                                     "autores": [man_autor] if man_autor else ["AUTOR NÃO INFORMADO"],
                                     "resumo_fato": "Material incluído manualmente pelo operador.",
                                     "materiais": [],
@@ -440,9 +464,9 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
                         "unidade_medida": str(row["unidade"]).strip(),
                         "involucro_lacre": lacre_clean,
                         "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
-                        "fiel_depositario_atual": nome_militar_atual,
-                        "unidade_posse_atual": unidade_militar_atual,
-                        "ultimo_gestor_movimentou": nome_militar_atual,
+                        "fiel_depositario_atual": militar_identificado,
+                        "unidade_posse_atual": lotacao_dinamica,
+                        "ultimo_gestor_movimentou": militar_identificado,
                         "data_posse_atual": now_iso,
                         "status_tramite": "Em Custódia",
                         "data_ingestao": now_iso
@@ -864,7 +888,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                     "data_envio_tramite": agora_iso,
                                     "fase_destinacao": fase_final,
                                     "status_tramite": status_final,
-                                    "ultimo_gestor_movimentou": nome_militar_atual
+                                    "ultimo_gestor_movimentou": militar_identificado
                                 }
 
                                 if atualizar_material_supabase(id_bem_c, payload):
@@ -878,7 +902,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                         "unidade_origem": unidade_militar_atual,
                                         "destino": destinatario_final,
                                         "unidade_destino": unidade_militar_atual,
-                                        "detalhe": f"Despachado por: {nome_militar_atual} | Fase: {fase_final} | Recebido por: {obs_creds}"
+                                        "detalhe": f"Despachado por: {militar_identificado} | Fase: {fase_final} | Recebido por: {obs_creds}"
                                     })
 
                             if sucessos > 0:
@@ -947,7 +971,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                         "fase_destinacao": destino_final_indiv,
                         "fiel_depositario_atual": destino_final_indiv if eh_definitivo_indiv else f"CREDS TCO - {unidade_militar_atual}",
                         "status_tramite": status_novo_indiv,
-                        "ultimo_gestor_movimentou": nome_militar_atual,
+                        "ultimo_gestor_movimentou": militar_identificado,
                         "data_posse_atual": agora_iso,
                         "data_envio_tramite": agora_iso
                     }
@@ -964,7 +988,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             "unidade_origem": unidade_militar_atual,
                             "destino": destino_final_indiv,
                             "unidade_destino": destino_final_indiv,
-                            "detalhe": f"Destino atualizado para '{destino_final_indiv}'. Recebido por: {recebedor_indiv_txt} | Gestor: {nome_militar_atual}"
+                            "detalhe": f"Destino atualizado para '{destino_final_indiv}'. Recebido por: {recebedor_indiv_txt} | Gestor: {militar_identificado}"
                         })
                         st.session_state["material_selecionado_mov"] = None
                         st.success("✅ Movimentação confirmada e registrada com sucesso!")
@@ -1015,7 +1039,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                 "destinatario_pendente": None,
                                                 "fase_destinacao": "DESTRUÍDO / ENCERRADO (Baixa Definitiva por Incineração)",
                                                 "status_tramite": "Destruído / Encerrado",
-                                                "ultimo_gestor_movimentou": nome_militar_atual
+                                                "ultimo_gestor_movimentou": militar_identificado
                                             }
                                             if atualizar_material_supabase(id_bem_d, payload_baixa):
                                                 registrar_log_supabase({
@@ -1027,7 +1051,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                     "unidade_origem": unidade_militar_atual,
                                                     "destino": "DESTRUIÇÃO / INCINERAÇÃO",
                                                     "unidade_destino": unidade_militar_atual,
-                                                    "detalhe": f"Incineração confirmada por {nome_militar_atual}. Auto/BOS: {bos_ordem}"
+                                                    "detalhe": f"Incineração confirmada por {militar_identificado}. Auto/BOS: {bos_ordem}"
                                                 })
                                                 st.success("✅ Material destruído definitivamente!")
                                                 st.cache_data.clear()
@@ -1037,7 +1061,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                     payload_canc_d = {
                                         "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
                                         "status_tramite": "Em Custódia",
-                                        "ultimo_gestor_movimentou": nome_militar_atual
+                                        "ultimo_gestor_movimentou": militar_identificado
                                     }
                                     if atualizar_material_supabase(id_bem_d, payload_canc_d):
                                         st.warning("Material retornado para o acervo ativo do CREDS.")
@@ -1080,7 +1104,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                         id_transferencia=id_transf_lote,
                                         remetente_nome=remetente_lote,
                                         remetente_unidade=remetente_unid_lote,
-                                        recebedor_nome=nome_militar_atual,
+                                        recebedor_nome=militar_identificado,
                                         recebedor_unidade=f"CREDS TCO - {unidade_militar_atual}",
                                         lista_materiais=lista_mats_lote,
                                         ip_origem=ip_cliente,
@@ -1098,7 +1122,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                             "unidade_posse_atual": unidade_militar_atual,
                                             "status_tramite": "Em Custódia",
                                             "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
-                                            "ultimo_gestor_movimentou": nome_militar_atual,
+                                            "ultimo_gestor_movimentou": militar_identificado,
                                             "data_posse_atual": agora_iso_lote
                                         }
                                         atualizar_material_supabase(id_bem_l, payload_lote)
@@ -1112,14 +1136,14 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                         "unidade_origem": remetente_unid_lote,
                                         "destino": f"CREDS TCO - {unidade_militar_atual}",
                                         "unidade_destino": unidade_militar_atual,
-                                        "detalhe": f"Aceite em lote por {nome_militar_atual}. Recibo: {id_transf_lote} | SHA-256: {hash_sha} | URL: {url_recibo or 'N/I'}"
+                                        "detalhe": f"Aceite em lote por {militar_identificado}. Recibo: {id_transf_lote} | SHA-256: {hash_sha} | URL: {url_recibo or 'N/I'}"
                                     })
 
                                     st.session_state["ultimo_recibo_transferencia"] = {
                                         "id_transferencia": id_transf_lote,
                                         "pdf_bytes": pdf_bytes,
                                         "hash_sha": hash_sha,
-                                        "recebedor": nome_militar_atual,
+                                        "recebedor": militar_identificado,
                                         "url": url_recibo
                                     }
                                     st.cache_data.clear()
@@ -1155,7 +1179,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                             id_transferencia=id_transf_item,
                                             remetente_nome=str(remetente_p),
                                             remetente_unidade=str(item_p.get("unidade_posse_atual") or item_p.get("unidade_remetente") or "N/I"),
-                                            recebedor_nome=nome_militar_atual,
+                                            recebedor_nome=militar_identificado,
                                             recebedor_unidade=f"CREDS TCO - {unidade_militar_atual}",
                                             lista_materiais=[item_p.to_dict()],
                                             ip_origem=ip_cliente,
@@ -1171,7 +1195,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                             "unidade_posse_atual": unidade_militar_atual,
                                             "status_tramite": "Em Custódia",
                                             "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
-                                            "ultimo_gestor_movimentou": nome_militar_atual,
+                                            "ultimo_gestor_movimentou": militar_identificado,
                                             "data_posse_atual": agora_iso_item
                                         }
 
@@ -1185,14 +1209,14 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                 "unidade_origem": item_p.get("unidade_remetente", "N/I"),
                                                 "destino": f"CREDS TCO - {unidade_militar_atual}",
                                                 "unidade_destino": unidade_militar_atual,
-                                                "detalhe": f"Aceite confirmado por {nome_militar_atual}. Recibo: {id_transf_item} | SHA-256: {hash_sha} | URL: {url_recibo or 'N/I'}"
+                                                "detalhe": f"Aceite confirmado por {militar_identificado}. Recibo: {id_transf_item} | SHA-256: {hash_sha} | URL: {url_recibo or 'N/I'}"
                                             })
 
                                             st.session_state["ultimo_recibo_transferencia"] = {
                                                 "id_transferencia": id_transf_item,
                                                 "pdf_bytes": pdf_bytes,
                                                 "hash_sha": hash_sha,
-                                                "recebedor": nome_militar_atual,
+                                                "recebedor": militar_identificado,
                                                 "url": url_recibo
                                             }
                                             st.cache_data.clear()
@@ -1209,7 +1233,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                     "destinatario_pendente": None,
                                                     "unidade_destinatario_pendente": None,
                                                     "status_tramite": "Em Custódia",
-                                                    "ultimo_gestor_movimentou": nome_militar_atual
+                                                    "ultimo_gestor_movimentou": militar_identificado
                                                 }
                                                 if atualizar_material_supabase(id_bem_p, payload_recusa):
                                                     st.warning("Material recusado e retornado ao remetente.")
@@ -1277,7 +1301,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                         modal_cadeia_custodia_timeline(item_e.to_dict())
                                 with c_guia_e:
                                     if st.button("🖨️ Guia", key=f"btn_guia_ext_{id_bem_e}_{idx_e}", use_container_width=True):
-                                        modal_guia_termo_oficial(item_e.to_dict(), nome_militar_atual, mat_op, unidade_militar_atual)
+                                        modal_guia_termo_oficial(item_e.to_dict(), militar_identificado, mat_op, unidade_militar_atual)
 
                             with col_e2:
                                 if not e_destruido and not e_confirmado_orgao:
@@ -1290,7 +1314,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                             "unidade_posse_atual": unidade_militar_atual,
                                             "status_tramite": "Em Custódia",
                                             "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
-                                            "ultimo_gestor_movimentou": nome_militar_atual,
+                                            "ultimo_gestor_movimentou": militar_identificado,
                                             "data_posse_atual": agora_iso_r
                                         }
                                         if atualizar_material_supabase(id_bem_e, payload_ret):
@@ -1303,7 +1327,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                 "unidade_origem": dest_e,
                                                 "destino": f"CREDS TCO - {unidade_militar_atual}",
                                                 "unidade_destino": unidade_militar_atual,
-                                                "detalhe": f"Devolução confirmada por {nome_militar_atual}. Material reincorporado ao acervo."
+                                                "detalhe": f"Devolução confirmada por {militar_identificado}. Material reincorporado ao acervo."
                                             })
                                             st.success("✅ Material devolvido ao Acervo do CREDS!")
                                             st.cache_data.clear()
@@ -1336,11 +1360,11 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                     "fiel_depositario_atual": dest_e,
                                                     "status_tramite": "Transferido Definitivo",
                                                     "fase_destinacao": f"Entregue ao {dest_e} (Ofício: {num_oficio_rec})",
-                                                    "ultimo_gestor_movimentou": nome_militar_atual
+                                                    "ultimo_gestor_movimentou": militar_identificado
                                                 }
                                                 
                                                 if atualizar_material_supabase(id_bem_e, payload_conf_ext):
-                                                    detalhe_audit = f"Entrega definitiva confirmada por {nome_militar_atual}. Ofício/Protocolo: {num_oficio_rec}"
+                                                    detalhe_audit = f"Entrega definitiva confirmada por {militar_identificado}. Ofício/Protocolo: {num_oficio_rec}"
                                                     if midia_recibo_obj:
                                                         detalhe_audit += " | Recibo/Laudo digitalizado anexado"
 
@@ -1349,7 +1373,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                         "num_reds": item_e.get("num_reds", "N/I"),
                                                         "bem_id": f"{desc_e} (Lacre: {lacre_e})",
                                                         "acao": "CONFIRMACAO_ENTREGA_ORGAO_EXTERNO",
-                                                        "origem": nome_militar_atual,
+                                                        "origem": militar_identificado,
                                                         "unidade_origem": unidade_militar_atual,
                                                         "destino": dest_e,
                                                         "unidade_destino": dest_e,
@@ -1365,7 +1389,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                             "status_tramite": "Em Custódia",
                                             "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
                                             "fiel_depositario_atual": f"CREDS TCO - {unidade_militar_atual}",
-                                            "ultimo_gestor_movimentou": nome_militar_atual
+                                            "ultimo_gestor_movimentou": militar_identificado
                                         }
                                         if atualizar_material_supabase(id_bem_e, payload_canc_ext):
                                             st.warning("Envio cancelado! Material retornado para o acervo ativo do CREDS.")
