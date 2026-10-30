@@ -1,8 +1,10 @@
 """
 ==============================================================================
 Módulo do Passo 7 - Banco de Horas Consolidado e Gestão de Carga
-Recebe as horas apuradas do mês do Passo 6. Mantém os saldos cadastrados no SIOP
-sem sobrescrevê-los por importação, permitindo ajuste manual e transição contínua.
+Versão Conectada ao Passo 5 e Passo 6:
+- Tabela de horas creditadas/avulsas filtrada estritamente pelo mês da escala ativa.
+- Alternância automática de exibição conforme a seleção do mês.
+- Cálculos fiéis às horas do mês e preservação dos saldos cadastrados no SIOP.
 ==============================================================================
 """
 
@@ -54,9 +56,6 @@ def registrar_log_auditoria_local(acao, detalhe):
     nome_usuario = usr_logado.get("nome_guerra", usr_logado.get("nome", "OPERADOR"))
     cargo_usuario = usr_logado.get("cargo_funcao", usr_logado.get("perfil", "GESTOR"))
     num_login = str(usr_logado.get("usuario_login") or usr_logado.get("usuario") or "").strip().upper()
-    
-    timezone_br = datetime.timezone(datetime.timedelta(hours=-3))
-    dt_agora = datetime.datetime.now(timezone_br).strftime("%d/%m/%Y %H:%M:%S")
 
     registrar_audit_log(
         operador_pm=f"{cargo_usuario} {nome_usuario} ({num_login})",
@@ -81,7 +80,6 @@ def resolver_horas_celula_passo7(val_str, dt_ref, eh_sup=False):
     if v_clean in SIGLAS_DIAS_NEUTROS or v_clean in ["F", "D", "X", "FE", "LM", "ATE", "LUT", "NUP", "DIS", "NAN", "NONE", ""]:
         return 0.0
 
-    # Aplicação direta da regra oficial da PMMG
     if v_clean == "1":
         return 12.5
     elif v_clean == "2":
@@ -108,24 +106,34 @@ def resolver_horas_celula_passo7(val_str, dt_ref, eh_sup=False):
 
 def apurar_dados_escala_militar_no_mes(m_id, mes_alvo, ano_alvo, subunidade_alvo, grade_dados, chaves_quadro_dados, bh_configs_dados, avulsos_dados):
     """Retorna exatamente: Carga Trabalhada, Meta Efetiva, Horas Avulsas e Saldo do Mês."""
-    # 1. Se houver totalizadores extraídos do Passo 6 para este mês, prioriza-os
+    # 1. Se houver totalizadores extraídos do Passo 6 para este mês específico, prioriza-os
     resumo_p6 = st.session_state.get("resumo_horas_passo6", {})
     dados_p6 = resumo_p6.get(str(m_id))
 
-    if dados_p6 and dados_p6.get("horas_trabalhadas") is not None:
-        tot_trabalhado = float(dados_p6["horas_trabalhadas"])
-        meta_efetiva = float(dados_p6["meta"]) if dados_p6.get("meta") is not None else 160.0
-        horas_avulsas = float(dados_p6.get("tpb", 0.0))
-        saldo_periodo = (tot_trabalhado + horas_avulsas) - meta_efetiva
-        return tot_trabalhado, meta_efetiva, horas_avulsas, saldo_periodo
-
-    # 2. Caso contrário (escala criada no app), apura dia a dia
     num_dias = calendar.monthrange(ano_alvo, mes_alvo)[1]
     cfg = bh_configs_dados.get(str(m_id), {})
     eh_reduzida = cfg.get("reduzida", False)
     carga_base_mes = 80.0 if eh_reduzida else 160.0
-    taxa_diaria = carga_base_mes / float(num_dias)
+    taxa_diaria = 5.16 if num_dias == 31 else (carga_base_mes / float(num_dias))
 
+    # Filtra as horas avulsas estritamente do mês_alvo e ano_alvo
+    horas_avulsas = 0.0
+    for l in avulsos_dados:
+        if str(l.get("id_militar")) == str(m_id):
+            try:
+                dt_av = datetime.datetime.strptime(l.get("data", ""), "%d/%m/%Y")
+                if dt_av.month == mes_alvo and dt_av.year == ano_alvo:
+                    horas_avulsas += float(l.get("horas", 0.0))
+            except Exception:
+                pass
+
+    if dados_p6 and dados_p6.get("horas_trabalhadas") is not None:
+        tot_trabalhado = float(dados_p6["horas_trabalhadas"])
+        meta_efetiva = float(dados_p6["meta"]) if dados_p6.get("meta") is not None else carga_base_mes
+        saldo_periodo = (tot_trabalhado + horas_avulsas) - meta_efetiva
+        return tot_trabalhado, meta_efetiva, horas_avulsas, saldo_periodo
+
+    # 2. Caso contrário (escala criada manualmente no app), apura dia a dia
     eqs_militar = [
         str(pair[1]) for pair in chaves_quadro_dados
         if isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[0]) == str(m_id)
@@ -156,7 +164,7 @@ def apurar_dados_escala_militar_no_mes(m_id, mes_alvo, ano_alvo, subunidade_alvo
                 continue
 
             tokens_dia = set(val_str.replace("/", " ").split())
-            if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
+            if any(sig in tokens_dia for sig in ["FE", "LI", "LM", "ATE", "DIS", "LUT", "NUP"]):
                 dia_teve_afastamento = True
             
             eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
@@ -165,19 +173,7 @@ def apurar_dados_escala_militar_no_mes(m_id, mes_alvo, ano_alvo, subunidade_alvo
         if dia_teve_afastamento:
             dias_abatidos += 1
 
-    dias_efetivos = num_dias - dias_abatidos
-    meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
-
-    horas_avulsas = 0.0
-    for l in avulsos_dados:
-        if str(l.get("id_militar")) == str(m_id):
-            try:
-                dt_av = datetime.datetime.strptime(l.get("data", ""), "%d/%m/%Y")
-                if dt_av.month == mes_alvo and dt_av.year == ano_alvo:
-                    horas_avulsas += float(l.get("horas", 0.0))
-            except Exception:
-                pass
-
+    meta_efetiva = max(0.0, carga_base_mes - (dias_abatidos * taxa_diaria))
     saldo_periodo = (tot_trabalhado + horas_avulsas) - meta_efetiva
     return tot_trabalhado, meta_efetiva, horas_avulsas, saldo_periodo
 
@@ -232,17 +228,21 @@ def renderizar_passo7():
         ))
 
         # ----------------------------------------------------------------------
-        # 1. REGISTRO DE SERVIÇOS EXTRA E LANÇAMENTOS AVULSOS
+        # 1. REGISTRO DE SERVIÇOS EXTRA E LANÇAMENTOS AVULSOS (FILTRADO POR MÊS)
         # ----------------------------------------------------------------------
-        with st.expander("➕ 1. Registrar Serviço Extra / Lançamento Avulso (Fórum, Instrução)", expanded=False):
+        with st.expander(f"➕ 1. Registrar Serviço Extra / Lançamento Avulso ({lista_meses_nomes[m_mes_atual - 1]}/{m_ano})", expanded=False):
             mapa_select_mils = {formatar_rotulo_completo_militar(m): str(m["id"]) for m in mils_ordenados}
             
+            # Garante que a data inicial seja dentro do mês ativo da escala
+            dia_padrao = min(datetime.date.today().day, calendar.monthrange(m_ano, m_mes_atual)[1])
+            data_sugerida = datetime.date(m_ano, m_mes_atual, dia_padrao)
+
             with st.form("form_avulsos_auto"):
                 c_av1, c_av2, c_av3, c_av4 = st.columns([3.5, 1.8, 2.0, 1.7])
                 with c_av1: 
                     mil_label_sel = st.selectbox("Selecione o Militar (Busca por Nome de Guerra, Completo ou Matrícula):", list(mapa_select_mils.keys()))
                 with c_av2: 
-                    data_av = st.date_input("Data do Evento:", datetime.date.today())
+                    data_av = st.date_input("Data do Evento:", data_sugerida)
                 with c_av3: 
                     tipo_av = st.selectbox("Tipo de Evento:", ["Fórum / Audiência", "Instrução / Curso", "Reunião Operacional", "Operação Extra", "Outros"])
                 with c_av4: 
@@ -251,8 +251,8 @@ def renderizar_passo7():
                 obs_av = st.text_input("Descrição / NPU / Motivo:")
                 
                 if st.form_submit_button("📥 Creditar Horas Avulsas", type="primary"):
-                    if data_av.month != m_mes_atual:
-                        st.warning(f"⚠️ Atenção: Você está lançando horas no mês {data_av.strftime('%m/%Y')}, diferente da escala ativa ({m_mes_atual:02d}/{m_ano}).")
+                    if data_av.month != m_mes_atual or data_av.year != m_ano:
+                        st.warning(f"⚠️ Atenção: Você está lançando horas na data {data_av.strftime('%d/%m/%Y')}, diferente da escala ativa ({m_mes_atual:02d}/{m_ano}). O crédito será computado no mês da data informada.")
 
                     if escala_fechada and not eh_admin and data_av < hoje:
                         st.error("🔒 Eventos passados não podem ser inseridos pois a escala já está homologada.")
@@ -270,8 +270,23 @@ def renderizar_passo7():
                         st.success("Adicionado com sucesso!")
                         st.rerun()
 
-            if st.session_state["bh_lancamentos_avulsos"]:
-                df_av = pd.DataFrame(st.session_state["bh_lancamentos_avulsos"])
+            # FILTRO DINÂMICO: Exibe apenas os lançamentos que pertencem ao mês e ano ativos
+            todos_avulsos = st.session_state.get("bh_lancamentos_avulsos", [])
+            avulsos_do_mes = []
+            mapa_indices_reais = {}
+
+            for idx_real, item_av in enumerate(todos_avulsos):
+                try:
+                    dt_parsed = datetime.datetime.strptime(item_av.get("data", ""), "%d/%m/%Y")
+                    if dt_parsed.month == m_mes_atual and dt_parsed.year == m_ano:
+                        avulsos_do_mes.append(item_av)
+                        mapa_indices_reais[len(avulsos_do_mes) - 1] = idx_real
+                except Exception:
+                    pass
+
+            if avulsos_do_mes:
+                st.caption(f"📅 Exibindo lançamentos avulsos de **{lista_meses_nomes[m_mes_atual - 1]}/{m_ano}** ({len(avulsos_do_mes)} registro(s)):")
+                df_av = pd.DataFrame(avulsos_do_mes)
                 df_av["Excluir"] = False
                 
                 df_visual_av = df_av.drop(columns=["id_militar"]) if "id_militar" in df_av.columns else df_av
@@ -288,36 +303,39 @@ def renderizar_passo7():
                     },
                     hide_index=True, 
                     use_container_width=True, 
-                    key="editor_del_avulsos_auto"
+                    key=f"editor_del_avulsos_{m_mes_atual}_{m_ano}"
                 )
                 
                 if any(df_edit_av["Excluir"]):
-                    indices_manter = []
+                    indices_reais_remover = set()
                     teve_bloqueio = False
                     
-                    for i in range(len(df_edit_av)):
-                        if df_edit_av.iloc[i]["Excluir"]:
+                    for idx_visivel in range(len(df_edit_av)):
+                        if df_edit_av.iloc[idx_visivel]["Excluir"]:
+                            idx_original = mapa_indices_reais.get(idx_visivel)
                             try: 
-                                data_l = datetime.datetime.strptime(st.session_state["bh_lancamentos_avulsos"][i]["data"], "%d/%m/%Y").date()
+                                data_l = datetime.datetime.strptime(todos_avulsos[idx_original]["data"], "%d/%m/%Y").date()
                             except Exception: 
                                 data_l = hoje
                                 
                             if escala_fechada and not eh_admin and data_l < hoje:
                                 teve_bloqueio = True
-                                indices_manter.append(i)
                             else:
-                                mil_removido = st.session_state["bh_lancamentos_avulsos"][i]["nome_militar"]
-                                data_removida = st.session_state["bh_lancamentos_avulsos"][i]["data"]
+                                mil_removido = todos_avulsos[idx_original]["nome_militar"]
+                                data_removida = todos_avulsos[idx_original]["data"]
                                 registrar_log_auditoria_local("Banco de Horas", f"Exclusão de Lançamento Avulso de {mil_removido} no dia {data_removida}.")
-                        else:
-                            indices_manter.append(i)
+                                indices_reais_remover.add(idx_original)
                             
                     if teve_bloqueio: 
                         st.error("🔒 A exclusão de lançamentos do passado foi bloqueada pela Auditoria.")
                         
-                    st.session_state["bh_lancamentos_avulsos"] = [st.session_state["bh_lancamentos_avulsos"][idx] for idx in indices_manter]
+                    st.session_state["bh_lancamentos_avulsos"] = [
+                        item for i, item in enumerate(todos_avulsos) if i not in indices_reais_remover
+                    ]
                     executar_auto_save_banco_local()
                     st.rerun()
+            else:
+                st.info(f"💡 Nenhum serviço extra ou lançamento avulso registrado para **{lista_meses_nomes[m_mes_atual - 1]} de {m_ano}**.")
 
         # ----------------------------------------------------------------------
         # 2. CONFIGURAÇÃO DE SALDO INICIAL FIXO (PRESERVADO NO BANCO DO SIOP)
@@ -447,7 +465,7 @@ def renderizar_passo7():
                     eh_reduzida = cfg.get("reduzida", False)
                     saldo_inicial_base = float(cfg.get("saldo_anterior", 0.0))
                     
-                    # 1. Saldo acumulado dos meses anteriores já cadastrados no SIOP
+                    # 1. Saldo acumulado dos meses anteriores cadastrados no SIOP
                     saldo_acumulado_anterior = saldo_inicial_base
                     for m_prev in range(1, menor_mes_sel):
                         if m_prev in historico_banco_meses:
@@ -458,7 +476,7 @@ def renderizar_passo7():
                             )
                             saldo_acumulado_anterior += s_liq
 
-                    # 2. Apuração do mês atual
+                    # 2. Apuração estrita do período selecionado
                     total_trabalhado_escala = 0.0
                     meta_efetiva_acumulada = 0.0
                     horas_avulsas_totais = 0.0
