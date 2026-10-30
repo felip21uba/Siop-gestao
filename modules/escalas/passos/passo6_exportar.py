@@ -2,7 +2,8 @@
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
 Atua estritamente como a camada visual/espelho estilizada do Passo 5,
-com leitor universal e robusto de upload de planilhas (XLSX, Strict OpenXML, CSV, PDF).
+com leitor universal e robusto de upload de planilhas (XLSX, Strict OpenXML, CSV, PDF)
+e varredura linha a linha por Militar + Equipe + Dias (Multi-Emprego).
 ==============================================================================
 """
 
@@ -51,9 +52,20 @@ CORES_EQUIPES = {
 }
 
 
+def extrair_apenas_digitos(valor):
+    """Extrai estritamente os dígitos de qualquer string para cruzamento de matrícula."""
+    if valor is None or pd.isna(valor):
+        return ""
+    val_str = str(valor).strip()
+    if val_str.endswith('.0'):
+        val_str = val_str[:-2]
+    digitos = re.sub(r'\D', '', val_str)
+    return digitos.lstrip('0')
+
+
 def carregar_planilha_universal_passo6(file_bytes_or_content):
     """
-    Leitor universal capaz de abrir arquivos Excel regulares, CSV
+    Leitor universal capaz de abrir arquivos Excel regulares (.xlsx, .xls), CSV
     e planilhas no padrão Strict OpenXML geradas por sistemas corporativos da PMMG.
     """
     if hasattr(file_bytes_or_content, 'getvalue'):
@@ -150,13 +162,6 @@ def obter_cor_equipe(eq):
     return CORES_EQUIPES.get(str(eq).upper().strip(), "#475569")
 
 
-def extrair_matricula_limpa(valor):
-    val_str = str(valor).strip()
-    if val_str.endswith('.0'):
-        val_str = val_str[:-2]
-    return re.sub(r'\D', '', val_str).lstrip('0')
-
-
 def extrair_texto_pdf(arq_pdf):
     try:
         import pypdf
@@ -224,16 +229,21 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
 
 
 def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes):
-    """Executa a importação linha a linha da planilha carregada atualizando o Passo 5 e o Passo 6."""
+    """
+    Executa a importação linha a linha da planilha carregada.
+    Varre a linha procurando o militar e a equipe daquela linha, cruzando
+    com as colunas dos dias para suportar militares em múltiplas equipes/períodos.
+    """
     try:
         df_raw = carregar_planilha_universal_passo6(arquivo_up)
         if df_raw.empty:
             return False, "O arquivo enviado não contém dados legíveis."
 
+        # 1. Localiza a linha do cabeçalho
         header_idx = None
         for idx_r, r_vals in df_raw.iterrows():
-            linha_str = [str(v).strip().upper() for v in r_vals.values if pd.notna(v)]
-            if any(k in linha_str for k in ["EQUIPE", "MILITAR", "Nº POLÍCIA", "POLICIA", "NUMERO", "MATRICULA"]):
+            linha_str = " ".join([str(v).strip().upper() for v in r_vals.values if pd.notna(v)])
+            if any(k in linha_str for k in ["EQUIPE", "MILITAR", "Nº POLÍCIA", "POLICIA", "MATRICULA", "NOME"]):
                 header_idx = idx_r
                 break
 
@@ -248,61 +258,89 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes):
 
         grade_nova = copy.deepcopy(st.session_state.get("grade_escala_lancamentos", {}))
         chaves_novas = list(st.session_state.get("militares_no_quadro_chaves", []))
+        
         mils_cad = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
         
+        # Mapeia militares por matrícula limpa
         mapa_mils_digitos = {}
         for m in mils_cad:
-            num_p_dig = extrair_matricula_limpa(m.get("num_policia", ""))
-            if num_p_dig:
-                mapa_mils_digitos[num_p_dig] = m
+            num_limpo = extrair_apenas_digitos(m.get("num_policia", ""))
+            if num_limpo:
+                mapa_mils_digitos[num_limpo] = m
+                if len(num_limpo) == 7:
+                    mapa_mils_digitos[num_limpo[:6]] = m
 
+        # Identifica colunas estruturais
         col_equipe = next((c for c in df_imp.columns if "EQUIPE" in str(c)), None)
-        col_matricula = next((c for c in df_imp.columns if any(k in str(c) for k in ["POLICIA", "POLÍCIA", "NUMERO", "MATRICULA"])), None)
+        col_matricula = next((c for c in df_imp.columns if any(k in str(c) for k in ["POLICIA", "POLÍCIA", "NUMERO", "Nº", "MATRICULA", "MATRÍCULA"])), None)
         col_militar = next((c for c in df_imp.columns if any(k in str(c) for k in ["MILITAR", "NOME", "SERVIDOR"])), None)
 
         # Mapeia colunas dos dias do mês (1 a num_dias_mes)
         mapa_colunas_dias = {}
-        for d in range(1, num_dias_mes + 1):
-            for c in df_imp.columns:
-                c_clean = str(c).strip().upper()
-                # Localiza se a coluna começa ou corresponde ao número do dia
-                numeros = re.findall(r'\d+', c_clean)
-                if numeros and int(numeros[0]) == d:
-                    mapa_colunas_dias[d] = c
-                    break
+        termos_ignorar_dias = ["EQUIPE", "MILITAR", "POLICIA", "POLÍCIA", "Nº", "NOME", "HORAS", "META", "CIA", "BPM", "PEL"]
+        
+        for c in df_imp.columns:
+            c_clean = str(c).strip().upper()
+            if any(termo in c_clean for termo in termos_ignorar_dias):
+                continue
+            numeros = re.findall(r'\b\d{1,2}\b', c_clean)
+            if numeros:
+                dia_num = int(numeros[0])
+                if 1 <= dia_num <= num_dias_mes and dia_num not in mapa_colunas_dias:
+                    mapa_colunas_dias[dia_num] = c
 
         linhas_importadas = 0
+        militares_nao_localizados = []
 
+        # 2. Varredura Linha a Linha: Militar + Equipe + Cruzamento Dias
         for idx_row, row in df_imp.iterrows():
-            eq_imp = str(row.get(col_equipe, "RP")).strip().upper() if col_equipe else "RP"
-            if eq_imp in ["NONE", "NAN", "", "N/I"]:
-                eq_imp = "RP"
-
             val_militar_txt = str(row.get(col_militar, "")).strip().upper() if col_militar else ""
             val_mat_txt = str(row.get(col_matricula, "")).strip() if col_matricula else ""
+            val_equipe_txt = str(row.get(col_equipe, "RP")).strip().upper() if col_equipe else "RP"
 
-            if any(k in f"{eq_imp} {val_militar_txt}".upper() for k in ["RESPONSÁVEL", "COMANDANTE DA CIA", "LEGENDA"]):
+            if val_equipe_txt in ["NONE", "NAN", "", "N/I"]:
+                val_equipe_txt = "RP"
+
+            texto_linha_inteira = f"{val_equipe_txt} {val_militar_txt} {val_mat_txt}".upper()
+            if any(k in texto_linha_inteira for k in ["RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE", "LEGENDA DE HORÁRIOS", "QUADRO GERAL"]):
                 break
 
-            digitos_mat = extrair_matricula_limpa(val_mat_txt)
-            if not digitos_mat and val_militar_txt:
-                digitos_mat = extrair_matricula_limpa(val_militar_txt)
+            m_obj_encontrado = None
 
-            m_obj_encontrado = mapa_mils_digitos.get(digitos_mat)
+            # Extração de matrícula na coluna dedicada
+            digitos_mat = extrair_apenas_digitos(val_mat_txt)
+            if digitos_mat:
+                m_obj_encontrado = mapa_mils_digitos.get(digitos_mat)
+                if not m_obj_encontrado and len(digitos_mat) == 7:
+                    m_obj_encontrado = mapa_mils_digitos.get(digitos_mat[:6])
+
+            # Extração de matrícula embutida no nome
             if not m_obj_encontrado and val_militar_txt:
-                # Busca por nome de guerra
+                candidatos_nums = re.findall(r'\b\d{6,7}\b', re.sub(r'[\.\-]', '', val_militar_txt))
+                for num_cand in candidatos_nums:
+                    cand_limpo = extrair_apenas_digitos(num_cand)
+                    if cand_limpo in mapa_mils_digitos:
+                        m_obj_encontrado = mapa_mils_digitos[cand_limpo]
+                        break
+
+            # Fallback por nome de guerra
+            if not m_obj_encontrado and val_militar_txt:
+                tokens_linha = set(re.findall(r'\b[A-Z0-9]+\b', val_militar_txt))
                 for m_b in mils_cad:
                     nome_g = str(m_b.get("nome_guerra", "")).strip().upper()
-                    if nome_g and nome_g in val_militar_txt:
+                    if nome_g and nome_g in tokens_linha:
                         m_obj_encontrado = m_b
                         break
 
             if m_obj_encontrado:
                 m_id = str(m_obj_encontrado.get("id"))
-                pair = (m_id, eq_imp)
-                if pair not in chaves_novas:
-                    chaves_novas.append(pair)
+                
+                # Registra o par individual para esta linha (permite o militar em equipes distintas)
+                pair_linha = (m_id, val_equipe_txt)
+                if pair_linha not in chaves_novas:
+                    chaves_novas.append(pair_linha)
 
+                # Cruza os dias especificamente para a equipe desta linha
                 for d in range(1, num_dias_mes + 1):
                     col_dia = mapa_colunas_dias.get(d)
                     if col_dia is not None and col_dia in row:
@@ -310,21 +348,32 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes):
                         if val_celula and val_celula.upper() not in ["NAN", "NONE", ""]:
                             if val_celula.endswith(".0"):
                                 val_celula = val_celula[:-2]
-                            grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula.upper()
+                            grade_nova[f"{m_id}_{val_equipe_txt}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula.upper()
                         else:
-                            grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
+                            grade_nova[f"{m_id}_{val_equipe_txt}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
                     else:
-                        grade_nova[f"{m_id}_{eq_imp}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
+                        grade_nova[f"{m_id}_{val_equipe_txt}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
+                        
                 linhas_importadas += 1
+            else:
+                identificador = val_militar_txt or val_mat_txt
+                if identificador and len(identificador) > 2:
+                    militares_nao_localizados.append(identificador)
 
         if linhas_importadas > 0:
             st.session_state["militares_no_quadro_chaves"] = chaves_novas
             st.session_state["grade_escala_lancamentos"] = grade_nova
             executar_auto_save_banco()
             emitir_sinal_atualizacao_espelho()
-            return True, f"✅ {linhas_importadas} militar(es) importado(s) com sucesso para o Quadro Geral!"
+            
+            msg_retorno = f"✅ {linhas_importadas} linha(s) de emprego/equipe importada(s) com sucesso para o Quadro Geral!"
+            if militares_nao_localizados:
+                nao_loc_amostra = ", ".join(militares_nao_localizados[:3])
+                msg_retorno += f" (Aviso: {len(militares_nao_localizados)} registro(s) não constavam no efetivo da unidade: {nao_loc_amostra})"
+            return True, msg_retorno
         else:
-            return False, "Nenhum militar da planilha foi localizado na base de dados de efetivo da unidade."
+            detalhe_tentativa = f" (Amostra na planilha: '{militares_nao_localizados[0]}')" if militares_nao_localizados else ""
+            return False, f"Nenhum militar da planilha foi localizado na base de dados de efetivo da unidade{detalhe_tentativa}. Verifique se a matrícula ou nome constam no Passo 3."
     except Exception as ex_imp:
         return False, f"Erro ao processar importação: {ex_imp}"
 
@@ -628,7 +677,7 @@ def renderizar_passo6():
         
         with c_act1:
             arq_escala_up = st.file_uploader(
-                "📥 Importar Escala (.xlsx / .pdf):", 
+                "📥 Importar Escala (.xlsx / .pdf / .csv):", 
                 type=["xlsx", "xls", "pdf", "csv"], 
                 key="p6_uploader_escala_bottom",
                 label_visibility="collapsed"
@@ -648,7 +697,7 @@ def renderizar_passo6():
 
                 elif ext_arq.endswith((".xlsx", ".xls", ".csv")):
                     if st.button("🚀 Processar Escala Importada", type="secondary", use_container_width=True, key="btn_proc_escala_p6"):
-                        with st.spinner("Processando planilha e sincronizando Quadro..."):
+                        with st.spinner("Realizando varredura inteligente por matrícula e sincronizando Quadro..."):
                             sucesso_imp, msg_imp = processar_planilha_escala_passo6(
                                 arq_escala_up, 
                                 m_ano, 
