@@ -2,8 +2,8 @@
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
 Atua estritamente como a camada visual/espelho estilizada do Passo 5,
-com leitor universal de planilhas e Painel Interativo de Mapeamento de Horas
-filtrando rigorosamente apenas legendas de turnos reais (sem dias da semana ou afastamentos).
+com leitor universal de planilhas, Painel Interativo de Mapeamento de Horas
+e cálculo rigoroso de meta proporcional (apenas afastamentos legais abatem a meta).
 ==============================================================================
 """
 
@@ -54,11 +54,10 @@ CORES_EQUIPES = {
     "F": "#0f766e"
 }
 
+# Folgas e dias da semana nunca abatem meta e não devem ser configurados como turnos
 SIGLAS_NAO_TURNO = {
-    # Folgas e dias neutros
     "F", "D", "X", "FE", "LM", "ATE", "LUT", "NUP", "DIS", "LI", "LP", "DN", "DNT", "DES", "TPB",
     "NAN", "NONE", "NULL", "", "0",
-    # Dias da semana (para nunca entrarem como legendas)
     "DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB", "SÁB",
     "DOMINGO", "SEGUNDA", "TERÇA", "TERCA", "QUARTA", "QUINTA", "SEXTA", "SÁBADO", "SABADO"
 }
@@ -77,7 +76,7 @@ def extrair_apenas_digitos(valor):
 
 def carregar_planilha_universal_passo6(file_bytes_or_content):
     """
-    Leitor universal capaz de abrir arquivos Excel regulares (.xlsx, .xls), CSV
+    Leitor universal capaz de abrir arquivos Excel (.xlsx, .xls), CSV
     e planilhas no padrão Strict OpenXML geradas por sistemas corporativos da PMMG.
     """
     if hasattr(file_bytes_or_content, 'getvalue'):
@@ -186,8 +185,8 @@ def extrair_texto_pdf(arq_pdf):
 
 def escanear_siglas_da_planilha(df_raw, num_dias_mes):
     """
-    Varre a planilha procurando estritamente linhas onde haja militares com matrícula,
-    ignorando linhas de cabeçalho de dias da semana (DOM, SEG, etc.) e afastamentos regulamentares.
+    Varre a planilha procurando exclusivamente linhas onde haja militares com matrícula,
+    ignorando linhas de cabeçalho com dias da semana (DOM, SEG, etc.) e afastamentos regulamentares.
     """
     header_idx = None
     for idx_r, r_vals in df_raw.iterrows():
@@ -246,7 +245,6 @@ def escanear_siglas_da_planilha(df_raw, num_dias_mes):
             if val and val not in SIGLAS_NAO_TURNO:
                 siglas_encontradas.add(val)
 
-    # Ordenação lógica: números primeiro (1, 2, 3...) e depois letras (S, EE...)
     def ordem_siglas(item):
         nums = re.findall(r'\d+', item)
         val_n = int(nums[0]) if nums else 999
@@ -312,6 +310,7 @@ def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_ho
     """
     Executa a importação linha a linha da planilha carregada.
     Aplica os valores exatos de horas informados pelo operador para cada sigla de turno.
+    Calcula a meta de forma rigorosa: APENAS afastamentos legais autorizados diminuem a meta.
     """
     try:
         header_idx = None
@@ -415,7 +414,7 @@ def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_ho
                     chaves_novas.append(pair_linha)
 
                 total_horas_linha = 0.0
-                dias_abatidos = 0
+                dias_afastamento_real = 0
 
                 for d in range(1, num_dias_mes + 1):
                     col_dia = mapa_colunas_dias.get(d)
@@ -427,11 +426,13 @@ def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_ho
                             val_u = val_celula.upper()
                             grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_u
 
+                            # Soma a hora se for um turno configurado
                             h_turno = float(mapa_horas_informadas.get(val_u, 0.0))
                             total_horas_linha += h_turno
 
+                            # APENAS siglas de afastamento legal diminuem a meta (F e D NUNCA diminuem a meta)
                             if val_u in SIGLAS_ABATEM_META:
-                                dias_abatidos += 1
+                                dias_afastamento_real += 1
                         else:
                             grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
                     else:
@@ -440,7 +441,10 @@ def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_ho
                 cfg_bh = st.session_state.get("bh_configs", {}).get(m_id, {})
                 carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
                 taxa_diaria = carga_base_mes / float(num_dias_mes)
-                meta_apurada = max(0.0, (num_dias_mes - dias_abatidos) * taxa_diaria)
+                
+                # Meta proporcional correta
+                dias_efetivos_dever = num_dias_mes - dias_afastamento_real
+                meta_apurada = max(0.0, dias_efetivos_dever * taxa_diaria)
 
                 st.session_state["resumo_horas_passo6"][m_id] = {
                     "horas_trabalhadas": total_horas_linha,
@@ -627,7 +631,7 @@ def renderizar_passo6():
 
                 linha_xls = [eq_nome, num_pol, f"{pg} {nome_g}"]
                 total_horas_calc = 0.0
-                neutros = 0
+                dias_afastamento_real = 0
 
                 for d in range(1, num_dias_mes + 1):
                     val = grade_lancamentos.get(f"{m_id}_{eq_nome}_{m_ano}_{m_mes:02d}_{d:02d}", "F")
@@ -639,8 +643,9 @@ def renderizar_passo6():
                     total_horas_calc += calcular_horas_efetivas_turno(val_str, dt_ref_dia, eh_supervisao=eh_sup)
 
                     tokens_dia = set(val_str.replace("/", " ").split())
-                    if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
-                        neutros += 1
+                    # Apenas afastamento diminui a meta
+                    if any(sig in tokens_dia for sig in SIGLAS_ABATEM_META):
+                        dias_afastamento_real += 1
 
                     cell_content = ""
                     if val_raw not in ["F", "D", "X", "", None, "0"]:
@@ -660,16 +665,16 @@ def renderizar_passo6():
                         
                     row_html += f'<td class="td-day">{cell_content}</td>'
 
+                # Cálculo de meta correto (só afasta com FE, LM, etc.)
+                cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
+                carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
+                taxa_diaria = carga_base_mes / float(num_dias_mes)
+                meta_efetiva = max(0.0, (num_dias_mes - dias_afastamento_real) * taxa_diaria)
+
                 dados_m_p6 = resumo_p6.get(m_id, {})
                 if dados_m_p6.get("horas_trabalhadas") is not None:
                     total_horas = dados_m_p6["horas_trabalhadas"]
-                    meta_efetiva = dados_m_p6["meta"] if dados_m_p6.get("meta") is not None else 160.0
                 else:
-                    cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
-                    carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
-                    taxa_diaria = carga_base_mes / float(num_dias_mes)
-                    dias_efetivos = num_dias_mes - neutros
-                    meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
                     total_horas = total_horas_calc
 
                 saldo_horas = total_horas - meta_efetiva
