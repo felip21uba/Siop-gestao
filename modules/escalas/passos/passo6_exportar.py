@@ -2,8 +2,8 @@
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
 Atua estritamente como a camada visual/espelho estilizada do Passo 5,
-com leitor universal de planilhas, Painel Interativo de Mapeamento de Horas
-e cálculo rigoroso de meta proporcional (apenas afastamentos legais abatem a meta).
+com leitor de dados puros (ignora fórmulas do Excel), painel interativo de horas
+e motor de cálculo próprio e autônomo da PMMG para Horas Trabalhadas e Meta.
 ==============================================================================
 """
 
@@ -54,7 +54,7 @@ CORES_EQUIPES = {
     "F": "#0f766e"
 }
 
-# Folgas e dias da semana nunca abatem meta e não devem ser configurados como turnos
+# Folgas e dias da semana não são turnos de serviço
 SIGLAS_NAO_TURNO = {
     "F", "D", "X", "FE", "LM", "ATE", "LUT", "NUP", "DIS", "LI", "LP", "DN", "DNT", "DES", "TPB",
     "NAN", "NONE", "NULL", "", "0",
@@ -77,7 +77,7 @@ def extrair_apenas_digitos(valor):
 def carregar_planilha_universal_passo6(file_bytes_or_content):
     """
     Leitor universal capaz de abrir arquivos Excel (.xlsx, .xls), CSV
-    e planilhas no padrão Strict OpenXML geradas por sistemas corporativos da PMMG.
+    e planilhas no padrão Strict OpenXML extraindo apenas valores puros.
     """
     if hasattr(file_bytes_or_content, 'getvalue'):
         conteudo = file_bytes_or_content.getvalue()
@@ -85,6 +85,14 @@ def carregar_planilha_universal_passo6(file_bytes_or_content):
         conteudo = file_bytes_or_content
     else:
         conteudo = file_bytes_or_content.read()
+
+    # Leitura apenas de valores calculados/texto, ignorando fórmulas
+    try:
+        df = pd.read_excel(io.BytesIO(conteudo), engine='openpyxl', data_only=True, header=None)
+        if df is not None and not df.empty:
+            return df
+    except Exception:
+        pass
 
     try:
         df = pd.read_excel(io.BytesIO(conteudo), engine='openpyxl', header=None)
@@ -186,7 +194,7 @@ def extrair_texto_pdf(arq_pdf):
 def escanear_siglas_da_planilha(df_raw, num_dias_mes):
     """
     Varre a planilha procurando exclusivamente linhas onde haja militares com matrícula,
-    ignorando linhas de cabeçalho com dias da semana (DOM, SEG, etc.) e afastamentos regulamentares.
+    ignorando linhas de cabeçalho secundário com dias da semana (DOM, SEG, etc.) e afastamentos regulamentares.
     """
     header_idx = None
     for idx_r, r_vals in df_raw.iterrows():
@@ -224,7 +232,6 @@ def escanear_siglas_da_planilha(df_raw, num_dias_mes):
         val_mat = str(row.get(col_matricula, "")).strip() if col_matricula else ""
         val_mil = str(row.get(col_militar, "")).strip() if col_militar else ""
 
-        # Descarta linhas de cabeçalho secundário (dias da semana como DOM, SEG) ou sem militar
         digs_mat = extrair_apenas_digitos(val_mat)
         if not digs_mat and val_mil:
             cand = re.findall(r'\b\d{6,7}\b', re.sub(r'[\.\-]', '', val_mil))
@@ -309,8 +316,7 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
 def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_horas_informadas, substituir_quadro=True):
     """
     Executa a importação linha a linha da planilha carregada.
-    Aplica os valores exatos de horas informados pelo operador para cada sigla de turno.
-    Calcula a meta de forma rigorosa: APENAS afastamentos legais autorizados diminuem a meta.
+    Lê os dados puros (sem usar fórmulas da planilha) e executa o cálculo próprio e autônomo do sistema.
     """
     try:
         header_idx = None
@@ -370,6 +376,9 @@ def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_ho
         if "resumo_horas_passo6" not in st.session_state:
             st.session_state["resumo_horas_passo6"] = {}
 
+        # ----------------------------------------------------------------------
+        # CÁLCULO PRÓPRIO DO SISTEMA (SEM DEPENDER DE FÓRMULAS DA PLANILHA)
+        # ----------------------------------------------------------------------
         for idx_row, row in df_imp.iterrows():
             val_equipe_raw = str(row.get(col_equipe, "")).strip().upper() if col_equipe else ""
             val_militar_txt = str(row.get(col_militar, "")).strip().upper() if col_militar else ""
@@ -426,25 +435,25 @@ def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_ho
                             val_u = val_celula.upper()
                             grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_u
 
-                            # Soma a hora se for um turno configurado
+                            # 1. Soma horas de trabalho com base nos valores informados pelo operador
                             h_turno = float(mapa_horas_informadas.get(val_u, 0.0))
                             total_horas_linha += h_turno
 
-                            # APENAS siglas de afastamento legal diminuem a meta (F e D NUNCA diminuem a meta)
-                            if val_u in SIGLAS_ABATEM_META:
+                            # 2. Apenas afastamentos legais abatem meta (FE, LI, LM, etc.)
+                            if val_u in ["FE", "LI", "LM", "ATE", "DIS", "LUT", "NUP"]:
                                 dias_afastamento_real += 1
                         else:
                             grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
                     else:
                         grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
 
+                # 3. Cálculo da Meta Próprio da PMMG:
                 cfg_bh = st.session_state.get("bh_configs", {}).get(m_id, {})
                 carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
-                taxa_diaria = carga_base_mes / float(num_dias_mes)
+                taxa_diaria = 5.16 if num_dias_mes == 31 else (carga_base_mes / float(num_dias_mes))
                 
-                # Meta proporcional correta
-                dias_efetivos_dever = num_dias_mes - dias_afastamento_real
-                meta_apurada = max(0.0, dias_efetivos_dever * taxa_diaria)
+                # Meta = 160h - (dias de afastamento * 5.16h)
+                meta_apurada = max(0.0, carga_base_mes - (dias_afastamento_real * taxa_diaria))
 
                 st.session_state["resumo_horas_passo6"][m_id] = {
                     "horas_trabalhadas": total_horas_linha,
@@ -494,7 +503,7 @@ def renderizar_passo6():
     with st.expander("📌 PASSO 6: Visualização da Escala, Importação e Exportação Oficial", expanded=True):
 
         # ----------------------------------------------------------------------
-        # SEÇÃO DE UPLOAD COM PAINEL LIMPO DE CONFIRMAÇÃO DE LEGENDAS
+        # SEÇÃO DE UPLOAD COM PAINEL DE CONFIRMAÇÃO DE LEGENDAS
         # ----------------------------------------------------------------------
         st.markdown("##### 📥 **Importar Escala Mensal (.xlsx / .csv / .pdf):**")
         arq_escala_up = st.file_uploader(
@@ -643,8 +652,8 @@ def renderizar_passo6():
                     total_horas_calc += calcular_horas_efetivas_turno(val_str, dt_ref_dia, eh_supervisao=eh_sup)
 
                     tokens_dia = set(val_str.replace("/", " ").split())
-                    # Apenas afastamento diminui a meta
-                    if any(sig in tokens_dia for sig in SIGLAS_ABATEM_META):
+                    # Somente afastamento formal (Férias/Licença/Atestado) abate meta
+                    if any(sig in tokens_dia for sig in ["FE", "LI", "LM", "ATE", "DIS", "LUT", "NUP"]):
                         dias_afastamento_real += 1
 
                     cell_content = ""
@@ -665,13 +674,18 @@ def renderizar_passo6():
                         
                     row_html += f'<td class="td-day">{cell_content}</td>'
 
-                # Cálculo de meta correto (só afasta com FE, LM, etc.)
-                cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
-                carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
-                taxa_diaria = carga_base_mes / float(num_dias_mes)
-                meta_efetiva = max(0.0, (num_dias_mes - dias_afastamento_real) * taxa_diaria)
-
                 dados_m_p6 = resumo_p6.get(m_id, {})
+
+                # 1. Meta oficial calculada pelo motor próprio da PMMG
+                if dados_m_p6.get("meta") is not None:
+                    meta_efetiva = dados_m_p6["meta"]
+                else:
+                    cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
+                    carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
+                    taxa_diaria = 5.16 if num_dias_mes == 31 else (carga_base_mes / float(num_dias_mes))
+                    meta_efetiva = max(0.0, carga_base_mes - (dias_afastamento_real * taxa_diaria))
+
+                # 2. Horas trabalhadas calculadas de acordo com os valores de cada turno
                 if dados_m_p6.get("horas_trabalhadas") is not None:
                     total_horas = dados_m_p6["horas_trabalhadas"]
                 else:
