@@ -1,8 +1,9 @@
 """
 ==============================================================================
 Módulo do Passo 7 - Banco de Horas Consolidado e Gestão de Carga
-Versão Reescrevida do Zero: Conecta 100% com o Passo 5 e Passo 6 e garante 
-o encadeamento automático do Saldo Acumulado de Mês a Mês.
+Versão Conectada ao Passo 5 e Passo 6: Computa automaticamente turnos numéricos (1, 2, 3, 4),
+intervalos customizados, encadeia o Saldo Acumulado de Mês a Mês
+e permite busca universal por Nome Completo, Nome de Guerra e Matrícula nas caixas de seleção.
 ==============================================================================
 """
 
@@ -16,6 +17,7 @@ from modules.escalas.passos.passo3_efetivo import padronizar_graduacao, PESOS_HI
 from modules.escalas.passos.passo5_quadro import (
     calcular_horas_efetivas_turno,
     SIGLAS_ABATEM_META,
+    SIGLAS_DIAS_NEUTROS,
     executar_auto_save_banco
 )
 from core.database import supabase, registrar_audit_log
@@ -25,6 +27,27 @@ MESES_MAP = {
     "Maio": 5, "Junho": 6, "Julho": 7, "Agosto": 8, 
     "Setembro": 9, "Outubro": 10, "Novembro": 11, "Dezembro": 12
 }
+
+
+def formatar_rotulo_completo_militar(militar_dict: dict) -> str:
+    """
+    Gera um rótulo enriquecido com Posto/Graduação, Nome de Guerra, Nome Completo e Matrícula.
+    Permite busca instantânea por qualquer parte do nome nas caixas de seleção (selectbox/multiselect).
+    """
+    if not isinstance(militar_dict, dict):
+        return "MILITAR"
+
+    pg = padronizar_graduacao(militar_dict.get("posto_grad", "SD"))
+    ng = str(militar_dict.get("nome_guerra", "MILITAR")).strip().upper()
+    nc = str(militar_dict.get("nome_completo") or militar_dict.get("nome_servidor") or "").strip().upper()
+    mat = str(militar_dict.get("num_policia", "")).strip()
+
+    if nc and nc != ng and not nc.startswith(ng):
+        return f"{pg} {ng} • {nc} ({mat})"
+    elif nc and nc != ng:
+        return f"{pg} {nc} ({mat})"
+    else:
+        return f"{pg} {ng} ({mat})"
 
 
 def registrar_log_auditoria_local(acao, detalhe):
@@ -39,33 +62,49 @@ def registrar_log_auditoria_local(acao, detalhe):
     timezone_br = datetime.timezone(datetime.timedelta(hours=-3))
     dt_agora = datetime.datetime.now(timezone_br).strftime("%d/%m/%Y %H:%M:%S")
 
-    log_entry = {
-        "data_hora": dt_agora,
-        "usuario": f"{cargo_usuario} {nome_usuario}".strip(),
-        "acao": acao,
-        "detalhe": detalhe
-    }
-
-    if "logs_auditoria_lista" not in st.session_state:
-        st.session_state["logs_auditoria_lista"] = []
-
-    st.session_state["logs_auditoria_lista"].insert(0, log_entry)
-
-    try:
-        registrar_audit_log(
-            operador_pm=num_login if num_login else nome_usuario,
-            alvo_pm=None,
-            tipo_acao=f"BANCO_HORAS_{acao.upper().replace(' ', '_')}",
-            descricao=detalhe
-        )
-    except Exception as ex:
-        print(f"Aviso ao registrar log do Banco de Horas no Supabase: {ex}")
+    registrar_audit_log(
+        operador_pm=f"{cargo_usuario} {nome_usuario} ({num_login})",
+        alvo_pm="SISTEMA",
+        tipo_acao=acao,
+        descricao=detalhe
+    )
 
 
 def executar_auto_save_banco_local():
-    status_escala = st.session_state.get("status_escala_ativo", "RASCUNHO")
-    executar_auto_save_banco(status_escala=status_escala)
-    st.session_state["exibir_toast_autosave"] = True
+    """Aciona a persistência imediata das configurações do Banco de Horas."""
+    executar_auto_save_banco()
+
+
+def resolver_horas_celula_passo7(val_str, dt_ref, eh_sup=False):
+    """Calcula as horas da célula considerando siglas (1, 2, 3, 4), legendas customizadas e horários explícitos."""
+    if not val_str:
+        return 0.0
+
+    v_clean = str(val_str).strip().upper()
+
+    if v_clean in SIGLAS_DIAS_NEUTROS or v_clean in ["F", "D", "X", "FE", "LM", "ATE", "LUT", "NUP", "DIS", "NAN", "NONE", ""]:
+        return 0.0
+
+    # Consulta mapeamento customizado do Passo 6
+    mapa_leg = st.session_state.get("mapa_legendas_custom", {})
+    if v_clean in mapa_leg:
+        h_i = mapa_leg[v_clean].get("inicio", "")
+        h_f = mapa_leg[v_clean].get("fim", "")
+        if h_i and h_f:
+            v_clean = f"{h_i} ÀS {h_f}"
+
+    # Normalização de formatos com 'H' (Ex: 06H AS 18H -> 06:00 ÀS 18:00)
+    v_clean = re.sub(r'(\d{1,2})H(\d{2})?', lambda m: f"{m.group(1).zfill(2)}:{m.group(2) or '00'}", v_clean)
+
+    # Siglas padrão caso não haja horário mapeado
+    if v_clean == "1":
+        v_clean = "07:00 ÀS 19:00"
+    elif v_clean == "2":
+        v_clean = "19:00 ÀS 07:00"
+    elif v_clean in ["3", "4"]:
+        v_clean = "07:00 ÀS 19:00"
+
+    return calcular_horas_efetivas_turno(v_clean, dt_ref, eh_supervisao=eh_sup)
 
 
 def apurar_dados_escala_militar_no_mes(m_id, mes_alvo, ano_alvo, subunidade_alvo, grade_dados, chaves_quadro_dados, bh_configs_dados, avulsos_dados):
@@ -76,30 +115,46 @@ def apurar_dados_escala_militar_no_mes(m_id, mes_alvo, ano_alvo, subunidade_alvo
     carga_base_mes = 80.0 if eh_reduzida else 160.0
     taxa_diaria = carga_base_mes / float(num_dias)
 
-    # Identifica equipes ativas
+    # Identifica equipes ativas do militar
     eqs_militar = [
         str(pair[1]) for pair in chaves_quadro_dados
         if isinstance(pair, (tuple, list)) and len(pair) == 2 and str(pair[0]) == str(m_id)
     ]
     if not eqs_militar:
-        eqs_militar = ["ADMINISTRAÇÃO"]
+        # Busca equipes registradas na grade diretamente se não estiver nas chaves
+        for k in grade_dados.keys():
+            partes = k.split("_")
+            if len(partes) >= 5 and partes[0] == str(m_id):
+                eq_k = partes[1]
+                if eq_k not in eqs_militar:
+                    eqs_militar.append(eq_k)
+                    
+    if not eqs_militar:
+        eqs_militar = ["A", "RP", "ADMINISTRAÇÃO"]
 
     tot_trabalhado = 0.0
     dias_abatidos = 0
 
     for d in range(1, num_dias + 1):
         dt_ref = datetime.date(ano_alvo, mes_alvo, d)
-        
+        dia_teve_afastamento = False
+
         for eq in eqs_militar:
-            val = grade_dados.get(f"{m_id}_{eq}_{ano_alvo}_{mes_alvo:02d}_{d:02d}", "F")
+            val = grade_dados.get(f"{m_id}_{eq}_{ano_alvo}_{mes_alvo:02d}_{d:02d}", "")
             val_str = str(val).upper().strip() if val else ""
-            tokens_dia = set(val_str.replace("/", " ").split())
             
+            if not val_str or val_str in ["F", "D", "X", "0"]:
+                continue
+
+            tokens_dia = set(val_str.replace("/", " ").split())
             if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
-                dias_abatidos += 1
+                dia_teve_afastamento = True
             
             eh_sup = (eq == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
-            tot_trabalhado += calcular_horas_efetivas_turno(val_str, dt_ref, eh_supervisao=eh_sup)
+            tot_trabalhado += resolver_horas_celula_passo7(val_str, dt_ref, eh_sup=eh_sup)
+
+        if dia_teve_afastamento:
+            dias_abatidos += 1
 
     dias_efetivos = num_dias - dias_abatidos
     meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
@@ -160,7 +215,13 @@ def renderizar_passo7():
             st.warning("⚠️ Nenhum militar encontrado na base de dados.")
             return
 
-        mils_ordenados = sorted(mils_todos, key=lambda x: (
+        # Filtra preferencialmente os militares que estão no Quadro Geral ativo
+        ids_no_quadro = set(str(pair[0]) for pair in chaves_quadro if isinstance(pair, (tuple, list)) and len(pair) == 2)
+        mils_ativos_quadro = [m for m in mils_todos if str(m.get("id")) in ids_no_quadro]
+        
+        mils_base_exibicao = mils_ativos_quadro if mils_ativos_quadro else mils_todos
+
+        mils_ordenados = sorted(mils_base_exibicao, key=lambda x: (
             PESOS_HIERARQUIA.get(padronizar_graduacao(x.get("posto_grad", "SD")), 99), 
             x.get("nome_guerra", "")
         ))
@@ -169,12 +230,13 @@ def renderizar_passo7():
         # 1. REGISTRO DE SERVIÇOS EXTRA E LANÇAMENTOS AVULSOS
         # ----------------------------------------------------------------------
         with st.expander("➕ 1. Registrar Serviço Extra / Lançamento Avulso (Fórum, Instrução)", expanded=False):
-            mapa_select_mils = {f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')} ({m.get('num_policia', '')})": str(m["id"]) for m in mils_ordenados}
+            # Mapeamento do Selectbox enriquecido com o Nome Completo
+            mapa_select_mils = {formatar_rotulo_completo_militar(m): str(m["id"]) for m in mils_ordenados}
             
             with st.form("form_avulsos_auto"):
-                c_av1, c_av2, c_av3, c_av4 = st.columns([3, 2, 2, 2])
+                c_av1, c_av2, c_av3, c_av4 = st.columns([3.5, 1.8, 2.0, 1.7])
                 with c_av1: 
-                    mil_label_sel = st.selectbox("Selecione o Militar:", list(mapa_select_mils.keys()))
+                    mil_label_sel = st.selectbox("Selecione o Militar (Busca por Nome de Guerra, Completo ou Matrícula):", list(mapa_select_mils.keys()))
                 with c_av2: 
                     data_av = st.date_input("Data do Evento:", datetime.date.today())
                 with c_av3: 
@@ -262,10 +324,14 @@ def renderizar_passo7():
             for m in mils_ordenados:
                 m_id = str(m["id"])
                 cfg = st.session_state["bh_configs"].get(m_id, {})
+                nome_c_linha = str(m.get("nome_completo") or m.get("nome_servidor") or "").strip().upper()
+                nome_g_linha = str(m.get("nome_guerra", "MILITAR")).strip().upper()
+                nome_exibir_tb = f"{padronizar_graduacao(m.get('posto_grad'))} {nome_g_linha} • {nome_c_linha}" if nome_c_linha and nome_c_linha != nome_g_linha else f"{padronizar_graduacao(m.get('posto_grad'))} {nome_g_linha}"
+
                 dados_input.append({
                     "ID": m_id,
                     "Nº PM": m.get("num_policia", ""),
-                    "MILITAR": f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')}",
+                    "MILITAR": nome_exibir_tb,
                     "Carga Reduzida (80h)": cfg.get("reduzida", False),
                     "Saldo Inicial Base (h)": float(cfg.get("saldo_anterior", 0.0))
                 })
@@ -278,11 +344,11 @@ def renderizar_passo7():
                 df_input, 
                 column_config={
                     "Nº PM": st.column_config.TextColumn("Nº PM", disabled=True),
-                    "MILITAR": st.column_config.TextColumn("MILITAR", disabled=True),
+                    "MILITAR": st.column_config.TextColumn("MILITAR (NOME DE GUERRA / COMPLETO)", disabled=True),
                     "Carga Reduzida (80h)": st.column_config.CheckboxColumn("Carga Reduzida (80h)", help="Altera meta base para 80h"),
                     "Saldo Inicial Base (h)": st.column_config.NumberColumn("Saldo Inicial Base (h)", step=0.5, format="%.1f h")
                 },
-                hide_index=True,
+                hide_index=True, 
                 use_container_width=True, 
                 key="editor_bh_auto"
             )
@@ -308,7 +374,10 @@ def renderizar_passo7():
         # ----------------------------------------------------------------------
         with st.expander("📊 3. Apuração e Extrato Consolidado do Banco de Horas", expanded=True):
             
-            c_filtro1, c_filtro2 = st.columns([1, 1])
+            # Dicionário reverso para permitir filtro pelo rótulo enriquecido com Nome Completo
+            mapa_filtro_mils = {formatar_rotulo_completo_militar(m): str(m["id"]) for m in mils_ordenados}
+
+            c_filtro1, c_filtro2 = st.columns([1, 1.5])
             with c_filtro1:
                 meses_selecionados_nomes = st.multiselect(
                     "📅 Selecione o(s) Mês(es):", 
@@ -318,11 +387,12 @@ def renderizar_passo7():
                 meses_selecionados_num = sorted([MESES_MAP[m] for m in meses_selecionados_nomes])
                 
             with c_filtro2:
-                mils_filtrados = st.multiselect(
-                    "🔍 Filtrar Militares Específicos:", 
-                    options=[f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')}" for m in mils_ordenados], 
+                mils_filtrados_rotulos = st.multiselect(
+                    "🔍 Filtrar Militares Específicos (Busca por Nome de Guerra, Completo ou Matrícula):", 
+                    options=list(mapa_filtro_mils.keys()), 
                     default=[]
                 )
+                ids_filtrados_set = set(mapa_filtro_mils[rot] for rot in mils_filtrados_rotulos) if mils_filtrados_rotulos else set()
                 
             st.divider()
 
@@ -362,12 +432,15 @@ def renderizar_passo7():
                 bh_configs_sessao = st.session_state.get("bh_configs", {})
 
                 for m in mils_ordenados:
-                    nome_formatado = f"{padronizar_graduacao(m.get('posto_grad'))} {m.get('nome_guerra')}"
+                    m_id = str(m["id"])
                     
-                    if mils_filtrados and nome_formatado not in mils_filtrados: 
+                    if ids_filtrados_set and m_id not in ids_filtrados_set: 
                         continue
 
-                    m_id = str(m["id"])
+                    pg = padronizar_graduacao(m.get("posto_grad", "SD"))
+                    ng = str(m.get("nome_guerra", "MILITAR")).strip().upper()
+                    nome_formatado = f"{pg} {ng}"
+
                     cfg = bh_configs_sessao.get(m_id, {})
                     eh_reduzida = cfg.get("reduzida", False)
                     saldo_inicial_base = float(cfg.get("saldo_anterior", 0.0))
@@ -383,7 +456,7 @@ def renderizar_passo7():
                             )
                             saldo_acumulado_anterior += s_liq
 
-                    # 2. CALCULA O MÊS ATUAL LENDO DIRETO DO PASSO 5
+                    # 2. CALCULA O MÊS ATUAL LENDO DIRETO DO PASSO 5 E DAS LEGENDAS
                     total_trabalhado_escala = 0.0
                     meta_efetiva_acumulada = 0.0
                     horas_avulsas_totais = 0.0
@@ -444,35 +517,75 @@ def renderizar_passo7():
                 <head>
                     <meta charset="utf-8">
                     <style>
-                        body {{ font-family: Arial, sans-serif; background-color: #ffffff; padding: 20px; }}
-                        h3, h4 {{ text-align: center; margin: 5px 0; }}
-                        table {{ width: 100%; border-collapse: collapse; font-size: 11px; text-align: center; margin-top: 20px; }}
-                        th, td {{ border: 1px solid black; padding: 6px; }}
-                        th {{ background-color: #e2e8f0; font-weight: bold; }}
-                        @media print {{ @page {{ size: A4 portrait; }} }}
+                        body {{ font-family: Arial, sans-serif; margin: 10px; color: #1e293b; }}
+                        h2, h3, h4 {{ text-align: center; margin: 2px; }}
+                        table {{ width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }}
+                        th, td {{ border: 1px solid #cbd5e1; padding: 6px; text-align: center; }}
+                        th {{ background-color: #f1f5f9; font-weight: bold; }}
                     </style>
                 </head>
                 <body>
-                    <h3>POLÍCIA MILITAR DE MINAS GERAIS</h3>
+                    <h2>POLÍCIA MILITAR DE MINAS GERAIS</h2>
+                    <h3>{sub_ativa}</h3>
                     <h4>EXTRATO DO BANCO DE HORAS - {tipo_apuracao}</h4>
-                    <h4>Período: {', '.join(meses_selecionados_nomes)} de {m_ano}</h4>
-                    {df_extrato.to_html(index=False, justify='center', border=1)}
-                    
-                    <p style="text-align: right; font-size: 10px; margin-top: 20px;">
-                        Documento gerado pelo SIOP em {datetime.datetime.now().strftime('%d/%m/%Y às %H:%M:%S')}
-                    </p>
+                    <p style="text-align: center; font-size: 11px;">Referência: {lista_meses_nomes[m_mes_atual-1]}/{m_ano}</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nº PM</th>
+                                <th>MILITAR</th>
+                                <th>CARGA</th>
+                                <th>SALDO ANTERIOR</th>
+                                <th>META APURADA</th>
+                                <th>ESCALA</th>
+                                <th>AVULSAS</th>
+                                <th>SALDO PERÍODO</th>
+                                <th>SALDO GERAL FINAL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                """
+                for row_e in extrato_dados:
+                    html_extrato_pdf += f"""
+                        <tr>
+                            <td>{row_e['Nº PM']}</td>
+                            <td style="text-align: left;">{row_e['MILITAR']}</td>
+                            <td>{row_e['CARGA/MÊS']}</td>
+                            <td>{row_e['SALDO ANTERIOR']}</td>
+                            <td>{row_e['META APURADA']}</td>
+                            <td>{row_e['ESCALA (P5)']}</td>
+                            <td>{row_e['AVULSAS']}</td>
+                            <td><b>{row_e['SALDO PERÍODO']}</b></td>
+                            <td><b>{row_e['SALDO GERAL FINAL']}</b></td>
+                        </tr>
+                    """
+                html_extrato_pdf += """
+                        </tbody>
+                    </table>
                 </body>
                 </html>
                 """
 
-                c_btn1, c_btn2, c_btn3 = st.columns([1, 1, 1])
-                with c_btn1: 
-                    st.download_button("📥 Exportar Extrato (CSV)", data=df_extrato.to_csv(index=False).encode('utf-8'), file_name=f"Banco_Horas_{sub_ativa}_{m_ano}.csv", mime="text/csv", use_container_width=True)
-                with c_btn2: 
-                    if st.button("🖨️ Imprimir / PDF Oficial", use_container_width=True):
-                        st.html(f"{html_extrato_pdf}<script>window.print();</script>")
-                with c_btn3: 
-                    if st.button("💾 Fechar Período e Salvar", type="primary", use_container_width=True): 
-                        registrar_log_auditoria_local("Banco de Horas", "Gestor salvou o fechamento da apuração do banco de horas.")
-                        executar_auto_save_banco_local()
-                        st.success("Salvo com sucesso no Supabase!")
+                col_b1, col_b2 = st.columns([1, 1])
+                with col_b1:
+                    st.download_button(
+                        "📊 Baixar Extrato em Excel (.xlsx)", 
+                        data=df_extrato.to_csv(index=False).encode('utf-8-sig'),
+                        file_name=f"Extrato_BH_{sub_ativa}_{m_mes_atual:02d}_{m_ano}.csv", 
+                        mime="text/csv", 
+                        use_container_width=True
+                    )
+                with col_b2:
+                    if st.button("🖨️ Imprimir Extrato (PDF)", type="primary", use_container_width=True):
+                        components.html(
+                            f"""
+                            <script>
+                            const printWin = window.open('', '_blank');
+                            printWin.document.write(`{html_extrato_pdf}`);
+                            printWin.document.close();
+                            printWin.focus();
+                            setTimeout(() => {{ printWin.print(); }}, 600);
+                            </script>
+                            """,
+                            height=0
+                        )
