@@ -258,7 +258,16 @@ def aplicar_filtros_logs(lista_logs, reds_q="", busca_txt="", militar_q="", peri
 def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
     injetar_estilo_passo3_tco()
     st.markdown("### 📄 Importação e Registro Individual de Ocorrência")
-    st.markdown(f"👤 **Fiel Depositário Inicial:** `{nome_militar_atual}` ({unidade_militar_atual})")
+    
+    # CARD TÁTICO: Substituição da tag em verde pelo componente oficial
+    st.markdown(f"""
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; font-size: 0.90rem;">
+        <span>👤 <b>Fiel Depositário Inicial:</b> {nome_militar_atual}</span>
+        <span style="background-color: #1e293b; color: #f8fafc; border: 1.5px solid #38bdf8; border-radius: 6px; padding: 3px 10px; font-size: 0.82rem; font-weight: 800; display: inline-flex; align-items: center; gap: 5px;">
+            🏢 CREDS {unidade_militar_atual}
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
 
     if "temp_reds_extraido" not in st.session_state:
         st.session_state["temp_reds_extraido"] = None
@@ -880,6 +889,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # =========================================================================
+    # FORMULÁRIO RÁPIDO AO CLICAR EM "🛒 MOVIMENTAR" NO CARD INDIVIDUAL
+    # =========================================================================
     mat_mov_indiv = st.session_state.get("material_selecionado_mov")
     if mat_mov_indiv:
         st.markdown("---")
