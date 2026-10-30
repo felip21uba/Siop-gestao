@@ -2,8 +2,8 @@
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
 Atua estritamente como a camada visual/espelho estilizada do Passo 5,
-com leitor universal e robusto de upload de planilhas (XLSX, Strict OpenXML, CSV, PDF),
-varredura linha a linha por Equipes Mescladas + Matrícula e trava rigorosa contra linhas ocultas/fantasmas.
+com leitor universal de planilhas e Painel Interativo de Mapeamento de Horas
+para que o operador confirme os valores das siglas detectadas na importação.
 ==============================================================================
 """
 
@@ -78,7 +78,6 @@ def carregar_planilha_universal_passo6(file_bytes_or_content):
     else:
         conteudo = file_bytes_or_content.read()
 
-    # 1. Tentativa padrão via OpenPyXL
     try:
         df = pd.read_excel(io.BytesIO(conteudo), engine='openpyxl', header=None)
         if df is not None and not df.empty:
@@ -86,7 +85,6 @@ def carregar_planilha_universal_passo6(file_bytes_or_content):
     except Exception:
         pass
 
-    # 2. Tentativa direta via CSV
     try:
         df_csv = pd.read_csv(io.BytesIO(conteudo), encoding='utf-8', sep=None, engine='python', header=None)
         if df_csv is not None and not df_csv.empty:
@@ -99,7 +97,6 @@ def carregar_planilha_universal_passo6(file_bytes_or_content):
         except Exception:
             pass
 
-    # 3. Parser nativo para Strict OpenXML (REDS/PMMG)
     try:
         with zipfile.ZipFile(io.BytesIO(conteudo), 'r') as z:
             if 'xl/sharedStrings.xml' in z.namelist() and 'xl/worksheets/sheet1.xml' in z.namelist():
@@ -178,6 +175,50 @@ def extrair_texto_pdf(arq_pdf):
         return ""
 
 
+def escanear_siglas_da_planilha(df_raw, num_dias_mes):
+    """Varre a planilha procurando o cabeçalho e descobre todas as siglas de turnos lançadas."""
+    header_idx = None
+    for idx_r, r_vals in df_raw.iterrows():
+        linha_str = " ".join([str(v).strip().upper() for v in r_vals.values if pd.notna(v)])
+        if any(k in linha_str for k in ["EQUIPES", "EQUIPE", "MATRÍCULA", "MATRICULA", "Nº POLÍCIA", "POLICIA", "MILITARES", "MILITAR"]):
+            header_idx = idx_r
+            break
+
+    if header_idx is None:
+        return []
+
+    col_names = [str(c).strip().upper() for c in df_raw.iloc[header_idx].values]
+    df_imp = df_raw.iloc[header_idx + 1:].copy()
+    df_imp.columns = col_names
+
+    mapa_colunas_dias = {}
+    termos_ignorar = ["EQUIPE", "MILITAR", "POLICIA", "POLÍCIA", "Nº", "NOME", "HORAS", "META", "CIA", "BPM", "PEL", "SALDO", "AUX", "TPB"]
+
+    for c in df_imp.columns:
+        c_clean = str(c).strip().upper()
+        if any(termo in c_clean for termo in termos_ignorar):
+            continue
+        numeros = re.findall(r'\b\d{1,2}\b', c_clean)
+        if numeros:
+            dia_num = int(numeros[0])
+            if 1 <= dia_num <= num_dias_mes and dia_num not in mapa_colunas_dias:
+                mapa_colunas_dias[dia_num] = c
+
+    siglas_encontradas = set()
+    for _, row in df_imp.iterrows():
+        texto_linha = " ".join([str(v).strip().upper() for v in row.values if pd.notna(v)])
+        if any(k in texto_linha for k in ["LEGENDA", "RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE", "QTDE DE MILITARES"]):
+            break
+        for col_d in mapa_colunas_dias.values():
+            val = str(row.get(col_d, "")).strip().upper()
+            if val.endswith(".0"):
+                val = val[:-2]
+            if val and val not in ["F", "D", "X", "FE", "LM", "ATE", "LUT", "NUP", "DIS", "NAN", "NONE", "NULL", ""]:
+                siglas_encontradas.add(val)
+
+    return sorted(list(siglas_encontradas))
+
+
 def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, resp_escala_str, obs_escala, texto_legenda=""):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -231,18 +272,12 @@ def gerar_excel_escala(df_dados, unidade, subunidade, mes_ano_str, cmt_cia_str, 
     return output.getvalue()
 
 
-def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, substituir_quadro=True):
+def processar_planilha_escala_passo6(df_raw, m_ano, m_mes, num_dias_mes, mapa_horas_informadas, substituir_quadro=True):
     """
     Executa a importação linha a linha da planilha carregada.
-    Varre a coluna de equipes tratando células mescladas (propagação para baixo).
-    Apenas militares com matrícula válida E com serviços/turnos efetivamente lançados são incluídos.
+    Aplica os valores exatos de horas informados/confirmados pelo operador no painel de legendas.
     """
     try:
-        df_raw = carregar_planilha_universal_passo6(arquivo_up)
-        if df_raw.empty:
-            return False, "O arquivo enviado não contém dados legíveis."
-
-        # 1. Localiza a linha do cabeçalho
         header_idx = None
         for idx_r, r_vals in df_raw.iterrows():
             linha_str = " ".join([str(v).strip().upper() for v in r_vals.values if pd.notna(v)])
@@ -259,7 +294,6 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
             df_imp.columns = [str(c).strip().upper() for c in df_imp.iloc[0].values]
             df_imp = df_imp.iloc[1:].copy()
 
-        # Substitui o quadro integralmente ao carregar nova planilha
         if substituir_quadro:
             grade_nova = {}
             chaves_novas = []
@@ -269,7 +303,6 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
         
         mils_cad = st.session_state.get("lista_militares", []) or carregar_militares_supabase() or []
         
-        # Mapeia militares por matrícula limpa
         mapa_mils_digitos = {}
         for m in mils_cad:
             num_limpo = extrair_apenas_digitos(m.get("num_policia", ""))
@@ -278,14 +311,12 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
                 if len(num_limpo) == 7:
                     mapa_mils_digitos[num_limpo[:6]] = m
 
-        # Identifica colunas estruturais
         col_equipe = next((c for c in df_imp.columns if "EQUIP" in str(c)), None)
         col_matricula = next((c for c in df_imp.columns if any(k in str(c) for k in ["POLICIA", "POLÍCIA", "NUMERO", "Nº", "MATRICULA", "MATRÍCULA"])), None)
         col_militar = next((c for c in df_imp.columns if any(k in str(c) for k in ["MILITAR", "NOME", "SERVIDOR"])), None)
 
-        # Mapeia colunas dos dias do mês (1 a num_dias_mes)
         mapa_colunas_dias = {}
-        termos_ignorar_dias = ["EQUIPE", "MILITAR", "POLICIA", "POLÍCIA", "Nº", "NOME", "HORAS", "META", "CIA", "BPM", "PEL", "SALDO", "AUX"]
+        termos_ignorar_dias = ["EQUIPE", "MILITAR", "POLICIA", "POLÍCIA", "Nº", "NOME", "HORAS", "META", "CIA", "BPM", "PEL", "SALDO", "AUX", "TPB"]
         
         for c in df_imp.columns:
             c_clean = str(c).strip().upper()
@@ -299,26 +330,23 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
 
         linhas_importadas = 0
         militares_nao_localizados = []
-        
-        # Variável para reter a equipe em células mescladas
         equipe_corrente = "A"
 
-        # 2. Varredura Linha a Linha: Propagação de Equipes Mescladas + Matrícula + Cruzamento Dias
+        if "resumo_horas_passo6" not in st.session_state:
+            st.session_state["resumo_horas_passo6"] = {}
+
         for idx_row, row in df_imp.iterrows():
             val_equipe_raw = str(row.get(col_equipe, "")).strip().upper() if col_equipe else ""
             val_militar_txt = str(row.get(col_militar, "")).strip().upper() if col_militar else ""
             val_mat_txt = str(row.get(col_matricula, "")).strip() if col_matricula else ""
 
-            # Para a leitura ao atingir seções de legenda, rodapés ou totalizadores
             texto_linha_inteira = f"{val_equipe_raw} {val_militar_txt} {val_mat_txt}".upper()
             if any(k in texto_linha_inteira for k in ["LEGENDA", "RESPONSÁVEL", "RESPONSAVEL", "COMANDANTE", "QTDE DE MILITARES", "OBS.:", "QUADRO GERAL"]):
                 break
 
-            # Se a célula da equipe contém uma equipe válida, atualiza a equipe_corrente
             if val_equipe_raw and val_equipe_raw not in ["NAN", "NONE", "N/I", ""]:
                 equipe_corrente = val_equipe_raw
 
-            # REGRA FUNDAMENTAL: Verifica se a linha tem ao menos 1 serviço ou lançamento real nos dias
             tem_lancamento_real = False
             for d in range(1, num_dias_mes + 1):
                 col_d = mapa_colunas_dias.get(d)
@@ -328,36 +356,31 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
                         tem_lancamento_real = True
                         break
 
-            # Se a linha não tem nenhum serviço marcado no mês inteiro, descarta sumariamente
             if not tem_lancamento_real:
                 continue
 
-            # Extração rigorosa de matrícula (na coluna ou no nome)
             digitos_mat = extrair_apenas_digitos(val_mat_txt)
             if not digitos_mat and val_militar_txt:
                 candidatos_nums = re.findall(r'\b\d{6,7}\b', re.sub(r'[\.\-]', '', val_militar_txt))
                 if candidatos_nums:
                     digitos_mat = extrair_apenas_digitos(candidatos_nums[0])
 
-            # Sem matrícula identificada, não cria nada no sistema
             if not digitos_mat or len(digitos_mat) < 5:
                 continue
 
-            # Localiza o militar no efetivo
             m_obj_encontrado = mapa_mils_digitos.get(digitos_mat)
             if not m_obj_encontrado and len(digitos_mat) == 7:
                 m_obj_encontrado = mapa_mils_digitos.get(digitos_mat[:6])
 
-            # Se o militar foi localizado no cadastro oficial da unidade
             if m_obj_encontrado:
                 m_id = str(m_obj_encontrado.get("id"))
-                
-                # Registra o par (militar, equipe_corrente)
                 pair_linha = (m_id, equipe_corrente)
                 if pair_linha not in chaves_novas:
                     chaves_novas.append(pair_linha)
 
-                # Cruza os dias especificamente para a equipe desta linha
+                total_horas_linha = 0.0
+                dias_abatidos = 0
+
                 for d in range(1, num_dias_mes + 1):
                     col_dia = mapa_colunas_dias.get(d)
                     if col_dia is not None and col_dia in row:
@@ -365,12 +388,31 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
                         if val_celula and val_celula.upper() not in ["NAN", "NONE", ""]:
                             if val_celula.endswith(".0"):
                                 val_celula = val_celula[:-2]
-                            grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_celula.upper()
+                            val_u = val_celula.upper()
+                            grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = val_u
+
+                            # Computa a hora da célula de acordo com o painel informado pelo operador
+                            h_turno = float(mapa_horas_informadas.get(val_u, 0.0))
+                            total_horas_linha += h_turno
+
+                            if val_u in SIGLAS_ABATEM_META:
+                                dias_abatidos += 1
                         else:
                             grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
                     else:
                         grade_nova[f"{m_id}_{equipe_corrente}_{m_ano}_{m_mes:02d}_{d:02d}"] = "F"
-                        
+
+                cfg_bh = st.session_state.get("bh_configs", {}).get(m_id, {})
+                carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
+                taxa_diaria = carga_base_mes / float(num_dias_mes)
+                meta_apurada = max(0.0, (num_dias_mes - dias_abatidos) * taxa_diaria)
+
+                st.session_state["resumo_horas_passo6"][m_id] = {
+                    "horas_trabalhadas": total_horas_linha,
+                    "meta": meta_apurada,
+                    "tpb": 0.0
+                }
+
                 linhas_importadas += 1
             else:
                 identificador = val_militar_txt or val_mat_txt
@@ -382,16 +424,11 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
             st.session_state["grade_escala_lancamentos"] = grade_nova
             executar_auto_save_banco()
             emitir_sinal_atualizacao_espelho()
-            
-            msg_retorno = f"✅ {linhas_importadas} militar(es) importado(s) com sucesso para suas respectivas equipes!"
-            if militares_nao_localizados:
-                nao_loc_amostra = ", ".join(militares_nao_localizados[:3])
-                msg_retorno += f" (Militares não cadastrados no efetivo: {nao_loc_amostra})"
-            return True, msg_retorno
+            return True, f"✅ {linhas_importadas} militar(es) importado(s) com sucesso!"
         else:
-            return False, "Nenhum militar com serviços lançados foi localizado na base de efetivo. Verifique se as matrículas constam no Passo 3."
+            return False, "Nenhum militar localizado na base de efetivo."
     except Exception as ex_imp:
-        return False, f"Erro ao processar importação: {ex_imp}"
+        return False, f"Erro ao processar: {ex_imp}"
 
 
 def renderizar_passo6():
@@ -416,35 +453,76 @@ def renderizar_passo6():
     grade_lancamentos = st.session_state.get("grade_escala_lancamentos", {})
 
     with st.expander("📌 PASSO 6: Visualização da Escala, Importação e Exportação Oficial", expanded=True):
-        
-        turnos_encontrados = set()
-        for d in range(1, num_dias_mes + 1):
-            for pair in chaves_quadro:
-                if len(pair) == 2:
-                    val = grade_lancamentos.get(f"{pair[0]}_{pair[1]}_{m_ano}_{m_mes:02d}_{d:02d}", "")
-                    val_s = str(val).strip().upper()
-                    if val_s and val_s not in ["F", "D", "X", "FE", "LM", "ATE", "NONE", "NAN", "", "0"]:
-                        turnos_encontrados.add(val_s)
 
-        legendas_lista = sorted(list(turnos_encontrados)) if turnos_encontrados else ["1", "2", "RH", "TPB"]
-        mapa_horarios = st.session_state.get("mapa_legendas_custom", {})
+        # ----------------------------------------------------------------------
+        # SEÇÃO DE UPLOAD COM PAINEL DE CONFIRMAÇÃO DE LEGENDAS / VALORES
+        # ----------------------------------------------------------------------
+        st.markdown("##### 📥 **Importar Escala Mensal (.xlsx / .csv / .pdf):**")
+        arq_escala_up = st.file_uploader(
+            "Selecione o arquivo da escala:", 
+            type=["xlsx", "xls", "pdf", "csv"], 
+            key="p6_uploader_escala_principal",
+            label_visibility="collapsed"
+        )
 
-        with st.expander("⚙️ Editar / Mapear Legendas de Horários (Clique para Expandir)", expanded=False):
-            st.caption("Verifique ou troque os horários das siglas detectadas na escala para que a contagem final de horas e PDF fiquem exatos.")
-            
-            cols_leg = st.columns(min(4, max(1, len(legendas_lista))))
-            for idx_leg, leg_code in enumerate(legendas_lista):
-                with cols_leg[idx_leg % len(cols_leg)]:
-                    st.markdown(f"**Sigla/Legenda: `{leg_code}`**")
-                    def_ini = mapa_horarios.get(leg_code, {}).get("inicio", "19:00" if leg_code == "2" else "07:00")
-                    def_fim = mapa_horarios.get(leg_code, {}).get("fim", "07:00" if leg_code == "2" else "19:00")
+        if arq_escala_up is not None:
+            ext_arq = arq_escala_up.name.lower()
+
+            if ext_arq.endswith((".xlsx", ".xls", ".csv")):
+                df_temp = carregar_planilha_universal_passo6(arq_escala_up)
+                siglas_detectadas = escanear_siglas_da_planilha(df_temp, num_dias_mes)
+
+                if siglas_detectadas:
+                    st.info(f"📋 **Legendas identificadas na planilha ({len(siglas_detectadas)} siglas):** Confirme ou ajuste a quantidade de horas de cada turno:")
                     
-                    h_ini = st.text_input(f"Início ({leg_code})", value=def_ini, key=f"leg_ini_{leg_code}")
-                    h_fim = st.text_input(f"Término ({leg_code})", value=def_fim, key=f"leg_fim_{leg_code}")
-                    mapa_horarios[leg_code] = {"inicio": h_ini, "fim": h_fim}
-            
-            st.session_state["mapa_legendas_custom"] = mapa_horarios
+                    # Sugestões inteligentes padrão PMMG
+                    sugestoes_padrao = {
+                        "1": 12.5, "2": 13.5, "3": 10.5, "4": 10.5, 
+                        "7": 3.0, "S": 6.0, "EE": 6.0, "TPB": 0.0
+                    }
 
+                    mapa_valores_confirmados = {}
+                    cols_sig = st.columns(min(6, max(1, len(siglas_detectadas))))
+
+                    for idx_s, s_code in enumerate(siglas_detectadas):
+                        val_padrao = sugestoes_padrao.get(s_code, 12.0)
+                        with cols_sig[idx_s % len(cols_sig)]:
+                            h_inf = st.number_input(
+                                f"Turno `{s_code}` (Horas):",
+                                min_value=0.0,
+                                max_value=24.0,
+                                value=float(val_padrao),
+                                step=0.5,
+                                key=f"input_h_sig_{s_code}"
+                            )
+                            mapa_valores_confirmados[s_code] = h_inf
+
+                    if st.button("🚀 Processar e Carregar Escala com os Valores Confirmados", type="primary", use_container_width=True):
+                        with st.spinner("Processando equipes, matrículas e aplicando horas..."):
+                            sucesso, msg = processar_planilha_escala_passo6(
+                                df_temp, m_ano, m_mes, num_dias_mes, mapa_valores_confirmados, substituir_quadro=True
+                            )
+                            if sucesso:
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                else:
+                    if st.button("🚀 Processar Escala Importada", type="secondary", use_container_width=True):
+                        sucesso, msg = processar_planilha_escala_passo6(
+                            df_temp, m_ano, m_mes, num_dias_mes, {}, substituir_quadro=True
+                        )
+                        if sucesso:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+        st.divider()
+
+        # ----------------------------------------------------------------------
+        # TABELA VISUAL / ESPELHO OFICIAL
+        # ----------------------------------------------------------------------
         mils_linhas_quadro = []
         for pair in chaves_quadro:
             if isinstance(pair, (tuple, list)) and len(pair) == 2:
@@ -486,6 +564,8 @@ def renderizar_passo6():
         linhas_excel_data = []
         equipes_unicas = list(dict.fromkeys([m["equipe"] for m in mils_escala_ord]))
 
+        resumo_p6 = st.session_state.get("resumo_horas_passo6", {})
+
         for eq_nome in equipes_unicas:
             mils_da_eq = [m for m in mils_escala_ord if m["equipe"] == eq_nome]
             rowspan_eq = len(mils_da_eq)
@@ -512,7 +592,7 @@ def renderizar_passo6():
                 """
 
                 linha_xls = [eq_nome, num_pol, f"{pg} {nome_g}"]
-                total_horas = 0.0
+                total_horas_calc = 0.0
                 neutros = 0
 
                 for d in range(1, num_dias_mes + 1):
@@ -522,10 +602,9 @@ def renderizar_passo6():
 
                     dt_ref_dia = datetime.date(m_ano, m_mes, d)
                     eh_sup = (eq_nome == "SUPERVISÃO" or "SUPERVISÃO" in val_str)
-                    total_horas += calcular_horas_efetivas_turno(val_str, dt_ref_dia, eh_supervisao=eh_sup)
+                    total_horas_calc += calcular_horas_efetivas_turno(val_str, dt_ref_dia, eh_supervisao=eh_sup)
 
                     tokens_dia = set(val_str.replace("/", " ").split())
-                    
                     if any(sig in tokens_dia for siglic in [SIGLAS_ABATEM_META] for sig in siglic if sig not in ["F", "D", "X"]):
                         neutros += 1
 
@@ -547,14 +626,19 @@ def renderizar_passo6():
                         
                     row_html += f'<td class="td-day">{cell_content}</td>'
 
-                cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
-                carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
-                taxa_diaria = carga_base_mes / float(num_dias_mes)
+                dados_m_p6 = resumo_p6.get(m_id, {})
+                if dados_m_p6.get("horas_trabalhadas") is not None:
+                    total_horas = dados_m_p6["horas_trabalhadas"]
+                    meta_efetiva = dados_m_p6["meta"] if dados_m_p6.get("meta") is not None else 160.0
+                else:
+                    cfg_bh = st.session_state.get("bh_configs", {}).get(str(m_id), {})
+                    carga_base_mes = 80.0 if cfg_bh.get("reduzida") else 160.0
+                    taxa_diaria = carga_base_mes / float(num_dias_mes)
+                    dias_efetivos = num_dias_mes - neutros
+                    meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
+                    total_horas = total_horas_calc
 
-                dias_efetivos = num_dias_mes - neutros
-                meta_efetiva = max(0.0, dias_efetivos * taxa_diaria)
-                saldo_horas = (total_horas + float(st.session_state.get("ajuste_saldo_map", {}).get(str(m_id), 0.0))) - meta_efetiva
-                
+                saldo_horas = total_horas - meta_efetiva
                 prefixo_alerta = "⚠️ " if saldo_horas > 0 else ""
                 cor_saldo = "#b91c1c" if saldo_horas > 0 else "#2563eb"
 
@@ -572,20 +656,7 @@ def renderizar_passo6():
         df_excel_export = pd.DataFrame(linhas_excel_data, columns=cols_excel_names)
         mes_ano_str = f"{m_mes:02d}/{m_ano}"
         
-        leg_str_list = []
-        for k in legendas_lista:
-            if k == "TPB":
-                leg_str_list.append(f"TPB = Treinamento Policial Básico (Contagem no Banco de Horas)")
-            elif k in mapa_horarios:
-                leg_str_list.append(f"{k} = {mapa_horarios[k]['inicio']} às {mapa_horarios[k]['fim']}")
-            elif "08:00" in k and "17:00" in k:
-                leg_str_list.append(f"ADM = 08:00 às 12:00 | 13:30 às 17:00")
-            elif "08:30" in k:
-                leg_str_list.append(f"ADM (QUA) = 08:30 às 13:00")
-            elif k not in ["F", "D", "X"]:
-                leg_str_list.append(f"{k} = {k}")
-
-        texto_legenda_final = "LEGENDA DE HORÁRIOS:   " + "   |   ".join(leg_str_list) if leg_str_list else ""
+        texto_legenda_final = "LEGENDA DE HORÁRIOS: 1 = 06:00 às 18:00 | 2 = 18:00 às 06:00 | 3 = 13:00 às 23:00 | 4 = 06:00 às 16:00 | S = SOBREAVISO | EE = ESCALA ESPECIAL"
 
         html_documento = f"""
         <!DOCTYPE html>
@@ -689,45 +760,8 @@ def renderizar_passo6():
 
         st.divider()
 
-        c_act1, c_act2, c_act3 = st.columns([1.3, 1, 1], gap="small")
-        
+        c_act1, c_act2 = st.columns([1, 1], gap="small")
         with c_act1:
-            arq_escala_up = st.file_uploader(
-                "📥 Importar Escala (.xlsx / .pdf / .csv):", 
-                type=["xlsx", "xls", "pdf", "csv"], 
-                key="p6_uploader_escala_bottom",
-                label_visibility="collapsed"
-            )
-
-            if arq_escala_up is not None:
-                ext_arq = arq_escala_up.name.lower()
-                
-                if ext_arq.endswith(".pdf"):
-                    if st.button("🚀 Processar Texto do PDF", type="secondary", use_container_width=True, key="btn_proc_pdf_p6"):
-                        texto_pdf = extrair_texto_pdf(arq_escala_up)
-                        if texto_pdf:
-                            st.session_state["p6_texto_pdf_lido"] = texto_pdf
-                            st.success("✅ Texto do PDF extraído com sucesso!")
-                        else:
-                            st.warning("⚠️ Não foi possível extrair texto legível deste PDF.")
-
-                elif ext_arq.endswith((".xlsx", ".xls", ".csv")):
-                    if st.button("🚀 Processar Escala Importada", type="secondary", use_container_width=True, key="btn_proc_escala_p6"):
-                        with st.spinner("Processando equipes, matrículas e dias da escala..."):
-                            sucesso_imp, msg_imp = processar_planilha_escala_passo6(
-                                arq_escala_up, 
-                                m_ano, 
-                                m_mes, 
-                                num_dias_mes,
-                                substituir_quadro=True
-                            )
-                            if sucesso_imp:
-                                st.success(msg_imp)
-                                st.rerun()
-                            else:
-                                st.error(msg_imp)
-
-        with c_act2:
             bytes_xls = gerar_excel_escala(df_excel_export, unidade, subunidade, mes_ano_str, nome_homologador, nome_resp_escala, "", texto_legenda_final)
             st.download_button(
                 "📊 Baixar Escala em Excel (.xlsx)", 
@@ -737,7 +771,7 @@ def renderizar_passo6():
                 use_container_width=True
             )
             
-        with c_act3: 
+        with c_act2: 
             if st.button("🖨️ Imprimir / Salvar PDF", type="primary", use_container_width=True):
                 components.html(
                     f"""
