@@ -9,11 +9,13 @@ from core.database import (
     supabase,
     carregar_militares_supabase,
     atualizar_usuario_supabase,
-    registrar_audit_log
+    registrar_audit_log,
+    obter_ip_cliente_real
 )
 from core.permissions import usuario_eh_gestor_creds, usuario_eh_admin_ou_programador
 from modules.tco.parser_reds import extrair_dados_reds_pdf
-from modules.tco.storage import upload_midia_supabase
+from modules.tco.storage import upload_midia_supabase, upload_recibo_transferencia_supabase
+from modules.tco.pdf_generator import gerar_pdf_recibo_transferencia
 from modules.tco.database import salvar_material_supabase, atualizar_material_supabase, registrar_log_supabase, carregar_logs_supabase
 from modules.tco.estilo_tco import (
     injetar_estilo_passo3_tco,
@@ -470,6 +472,28 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     if "material_selecionado_mov" not in st.session_state:
         st.session_state["material_selecionado_mov"] = None
 
+    if "ultimo_recibo_transferencia" in st.session_state and st.session_state["ultimo_recibo_transferencia"]:
+        recibo_info = st.session_state["ultimo_recibo_transferencia"]
+        with st.container(border=True):
+            st.success("🎉 **Transferência Concluída e Recibo Digital Oficial Gerado com Sucesso!**")
+            col_rec1, col_rec2 = st.columns([3.5, 1.5])
+            with col_rec1:
+                st.markdown(f"📄 **Nº Controlo:** `{recibo_info.get('id_transferencia')}` | 🛡️ **SHA-256:** `{recibo_info.get('hash_sha')[:24]}...`")
+                st.caption(f"Assinado eletronicamente por **{recibo_info.get('recebedor')}** em conformidade com o Art. 158-A do CPP.")
+            with col_rec2:
+                st.download_button(
+                    label="📥 Baixar Recibo (PDF)",
+                    data=recibo_info.get("pdf_bytes"),
+                    file_name=f"Recibo_Custodia_{recibo_info.get('id_transferencia')}.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True,
+                    key="btn_dl_recibo_instantaneo"
+                )
+            if st.button("✖ Fechar Alerta de Recibo", use_container_width=True, key="btn_close_recibo_alert"):
+                st.session_state["ultimo_recibo_transferencia"] = None
+                st.rerun()
+
     # =========================================================================
     # BARRA SUPERIOR: FILTRO DE UNIDADE, PERÍODO E BUSCA POR REDS / AUTOR
     # =========================================================================
@@ -856,9 +880,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # =========================================================================
-    # FORMULÁRIO RÁPIDO AO CLICAR EM "🛒 MOVIMENTAR" NO CARD INDIVIDUAL
-    # =========================================================================
     mat_mov_indiv = st.session_state.get("material_selecionado_mov")
     if mat_mov_indiv:
         st.markdown("---")
@@ -1029,6 +1050,71 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
             if bens_pendentes_aceite_creds:
                 for num_reds_p, df_grupo_p in df_pend_creds.groupby("num_reds", sort=False):
                     with st.expander(f"📥 **REDS: {num_reds_p}** ({len(df_grupo_p)} item/ns pendentes)", expanded=True):
+                        if len(df_grupo_p) > 1:
+                            col_lote_txt, col_lote_btn = st.columns([3, 1.5])
+                            with col_lote_txt:
+                                st.caption("💡 Confirmar o recebimento de todos os materiais deste REDS simultaneamente:")
+                            with col_lote_btn:
+                                if st.button(f"⚡ Aceitar Todos ({len(df_grupo_p)} itens)", key=f"btn_aceitar_lote_reds_{num_reds_p}", type="primary", use_container_width=True):
+                                    agora_iso_lote = datetime.datetime.now().isoformat()
+                                    ip_cliente = obter_ip_cliente_real()[cite: 6]
+                                    id_transf_lote = f"TR-{num_reds_p}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+                                    
+                                    lista_mats_lote = df_grupo_p.to_dict("records")
+                                    remetente_lote = str(lista_mats_lote[0].get("fiel_depositario_atual") or "Policial Militar")
+                                    remetente_unid_lote = str(lista_mats_lote[0].get("unidade_posse_atual") or "Unidade Origem")
+
+                                    pdf_bytes, hash_sha = gerar_pdf_recibo_transferencia(
+                                        id_transferencia=id_transf_lote,
+                                        remetente_nome=remetente_lote,
+                                        remetente_unidade=remetente_unid_lote,
+                                        recebedor_nome=nome_militar_atual,
+                                        recebedor_unidade=f"CREDS TCO - {unidade_militar_atual}",
+                                        lista_materiais=lista_mats_lote,
+                                        ip_origem=ip_cliente,
+                                        observacao="Aceite em lote realizado na sede do CREDS."
+                                    )
+
+                                    url_recibo = upload_recibo_transferencia_supabase(pdf_bytes, id_transf_lote, num_reds_p)
+
+                                    for _, row_l in df_grupo_p.iterrows():
+                                        id_bem_l = str(row_l.get("id_bem") or row_l.get("id"))
+                                        payload_lote = {
+                                            "destinatario_pendente": None,
+                                            "unidade_destinatario_pendente": None,
+                                            "fiel_depositario_atual": f"CREDS TCO - {unidade_militar_atual}",
+                                            "unidade_posse_atual": unidade_militar_atual,
+                                            "status_tramite": "Em Custódia",
+                                            "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
+                                            "ultimo_gestor_movimentou": nome_militar_atual,
+                                            "data_posse_atual": agora_iso_lote
+                                        }
+                                        atualizar_material_supabase(id_bem_l, payload_lote)
+
+                                    registrar_log_supabase({
+                                        "data_hora": agora_iso_lote,
+                                        "num_reds": num_reds_p,
+                                        "bem_id": f"LOTE ({len(lista_mats_lote)} itens)",
+                                        "acao": "ACEITE_CUSTODIA_CREDS_LOTE",
+                                        "origem": remetente_lote,
+                                        "unidade_origem": remetente_unid_lote,
+                                        "destino": f"CREDS TCO - {unidade_militar_atual}",
+                                        "unidade_destino": unidade_militar_atual,
+                                        "detalhe": f"Aceite em lote por {nome_militar_atual}. Recibo: {id_transf_lote} | SHA-256: {hash_sha} | URL: {url_recibo or 'N/I'}"
+                                    })
+
+                                    st.session_state["ultimo_recibo_transferencia"] = {
+                                        "id_transferencia": id_transf_lote,
+                                        "pdf_bytes": pdf_bytes,
+                                        "hash_sha": hash_sha,
+                                        "recebedor": nome_militar_atual,
+                                        "url": url_recibo
+                                    }
+                                    st.cache_data.clear()
+                                    st.rerun()
+
+                            st.markdown("<hr style='margin: 8px 0;'>", unsafe_allow_html=True)
+
                         for idx_p, item_p in df_grupo_p.iterrows():
                             id_bem_p = str(item_p.get("id_bem") or item_p.get("id"))
                             desc_p = item_p.get("descricao", "N/I")
@@ -1049,6 +1135,23 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 col_bt_a, col_bt_r = st.columns(2)
                                 with col_bt_a:
                                     if st.button("✅ Aceitar Custódia", key=f"btn_aceitar_item_indiv_{id_bem_p}_{idx_p}", type="primary", use_container_width=True):
+                                        agora_iso_item = datetime.datetime.now().isoformat()
+                                        ip_cliente = obter_ip_cliente_real()[cite: 6]
+                                        id_transf_item = f"TR-{num_reds_p}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+                                        pdf_bytes, hash_sha = gerar_pdf_recibo_transferencia(
+                                            id_transferencia=id_transf_item,
+                                            remetente_nome=str(remetente_p),
+                                            remetente_unidade=str(item_p.get("unidade_posse_atual") or item_p.get("unidade_remetente") or "N/I"),
+                                            recebedor_nome=nome_militar_atual,
+                                            recebedor_unidade=f"CREDS TCO - {unidade_militar_atual}",
+                                            lista_materiais=[item_p.to_dict()],
+                                            ip_origem=ip_cliente,
+                                            observacao="Aceite individual realizado pelo Gestor do CREDS."
+                                        )
+
+                                        url_recibo = upload_recibo_transferencia_supabase(pdf_bytes, id_transf_item, num_reds_p)
+
                                         payload_aceite = {
                                             "destinatario_pendente": None,
                                             "unidade_destinatario_pendente": None,
@@ -1057,11 +1160,12 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                             "status_tramite": "Em Custódia",
                                             "fase_destinacao": "Aguardando no CREDS-TC / Custódia",
                                             "ultimo_gestor_movimentou": nome_militar_atual,
-                                            "data_posse_atual": datetime.datetime.now().isoformat()
+                                            "data_posse_atual": agora_iso_item
                                         }
+
                                         if atualizar_material_supabase(id_bem_p, payload_aceite):
                                             registrar_log_supabase({
-                                                "data_hora": datetime.datetime.now().isoformat(),
+                                                "data_hora": agora_iso_item,
                                                 "num_reds": num_reds_p,
                                                 "bem_id": f"{desc_p} (Lacre: {lacre_p})",
                                                 "acao": "ACEITE_CUSTODIA_CREDS",
@@ -1069,9 +1173,16 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                                 "unidade_origem": item_p.get("unidade_remetente", "N/I"),
                                                 "destino": f"CREDS TCO - {unidade_militar_atual}",
                                                 "unidade_destino": unidade_militar_atual,
-                                                "detalhe": f"Aceite de custódia confirmado pelo operador {nome_militar_atual}."
+                                                "detalhe": f"Aceite confirmado por {nome_militar_atual}. Recibo: {id_transf_item} | SHA-256: {hash_sha} | URL: {url_recibo or 'N/I'}"
                                             })
-                                            st.success("✅ Aceite de custódia registrado com sucesso!")
+
+                                            st.session_state["ultimo_recibo_transferencia"] = {
+                                                "id_transferencia": id_transf_item,
+                                                "pdf_bytes": pdf_bytes,
+                                                "hash_sha": hash_sha,
+                                                "recebedor": nome_militar_atual,
+                                                "url": url_recibo
+                                            }
                                             st.cache_data.clear()
                                             st.rerun()
 
@@ -1342,7 +1453,7 @@ def renderizar_aba_logs(all_logs_banco):
 # =============================================================================
 def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21º BPM", cargo_operador="MILITAR", perfil_operador="GESTOR"):
     usr_logado = st.session_state.get("usuario_dados", {})
-    eh_autorizado = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)
+    eh_autorizado = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)[cite: 9]
 
     if not eh_autorizado:
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS, Comandantes de Cia ou Administradores do SIOP podem gerenciar funções do TCO.")
@@ -1351,8 +1462,7 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
     perfil_creds_usr = str(usr_logado.get("perfil_creds", "TROPA")).upper()
     perfil_geral_usr = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
     
-    # Valida se possui nível avançado (Gestor Unidade / Admin / Programador) para alterar e revogar
-    pode_excluir_e_revogar = usuario_eh_admin_ou_programador(usr_logado) or perfil_creds_usr in ["GESTOR_UNIDADE", "ADMIN", "PROGRAMADOR"]
+    pode_excluir_e_revogar = usuario_eh_admin_ou_programador(usr_logado) or perfil_creds_usr in ["GESTOR_UNIDADE", "ADMIN", "PROGRAMADOR"][cite: 9]
     eh_gestor_unidade = (perfil_creds_usr == "GESTOR_UNIDADE" or pode_excluir_e_revogar)
 
     st.markdown("### 👥 Designação e Estrutura de Gestores do CREDS / TCO")
@@ -1425,12 +1535,10 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                     key="sel_novo_perfil_creds_aba7_select"
                 )
 
-                # Direcionamento explicito incluindo Acesso Global (Batalhão / Todas as Cias)
                 lista_creds_direcionamento = ["🌐 TODAS AS CIAS (ACESSO GLOBAL / BATALHÃO)"] + [
                     u.replace("CREDS TCO - ", "").strip() for u in obter_lista_creds_dinamica()
                 ]
                 
-                # Mapeia index atual
                 if creds_acesso_atual in ["TODOS", "BATALHAO", "GLOBAL", "TODAS AS CIAS"]:
                     index_creds_def = 0
                 elif creds_acesso_atual in lista_creds_direcionamento:
@@ -1445,7 +1553,6 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                     key="sel_novo_creds_atribuido_aba7"
                 )
 
-                # Se selecionou Acesso Global, grava "TODOS" no banco para liberar o filtro de escopo
                 if "TODAS AS CIAS" in novo_creds_atribuido_label:
                     val_creds_banco = "TODOS"
                 else:
@@ -1532,5 +1639,5 @@ renderizar_aba_importar_reds = renderizar_aba_importacao
 
 def renderizar_aba_painel_creds(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     usr_logado = st.session_state.get("usuario_dados", {})
-    eh_gestor = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)
+    eh_gestor = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)[cite: 9]
     return renderizar_aba_creds(all_bens_banco, eh_gestor, nome_militar_atual, unidade_militar_atual)

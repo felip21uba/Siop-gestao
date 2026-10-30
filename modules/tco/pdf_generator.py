@@ -1,8 +1,8 @@
 """
 ==============================================================================
 Módulo Gerador de PDFs Oficiais do TCO (modules/tco/pdf_generator.py)
-Gera os PDFs dos Ofícios de Remessa de Bens com fuso de Brasília,
-Assinatura Digital do Emissor, QR Code e Hash SHA-256.
+Gera os PDFs dos Ofícios de Remessa de Bens e Recibos Digitais de Transferência
+com fuso de Brasília, Assinatura Digital do Emissor, QR Code e Hash SHA-256.
 ==============================================================================
 """
 
@@ -153,6 +153,143 @@ def gerar_pdf_oficio(num_oficio, destinatario_nome, destinatario_cargo, orgao_de
     else:
         elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=8, spaceAfter=6))
         elements.append(rodape_p1)
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.getvalue(), hash_doc
+
+
+def gerar_pdf_recibo_transferencia(id_transferencia: str, remetente_nome: str, remetente_unidade: str, recebedor_nome: str, recebedor_unidade: str, lista_materiais: list, ip_origem: str = "N/I", observacao: str = "") -> tuple:
+    """Gera o Recibo Digital de Transferência de Custódia (Art. 158-A CPP) com SHA-256 e QR Code."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=letter,
+        rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36
+    )
+
+    agora_br = obter_agora_br()
+    data_formatada = agora_br.strftime("%d/%m/%Y às %H:%M:%S")
+
+    styles = getSampleStyleSheet()
+    style_header = ParagraphStyle('HdrRecibo', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=10, leading=12, alignment=1, textColor=colors.HexColor('#1E293B'))
+    style_title = ParagraphStyle('TitRecibo', parent=styles['Heading2'], fontName='Helvetica-Bold', fontSize=11, leading=14, alignment=1, textColor=colors.HexColor('#0F172A'))
+    style_body = ParagraphStyle('BdyRecibo', parent=styles['Normal'], fontName='Helvetica', fontSize=8.5, leading=12, alignment=4, textColor=colors.HexColor('#334155'))
+    style_meta_box = ParagraphStyle('MtxRecibo', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=11, textColor=colors.HexColor('#0F172A'))
+    style_table_hdr = ParagraphStyle('ThRecibo', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=8, leading=10, textColor=colors.HexColor('#0F172A'))
+    style_table_cell = ParagraphStyle('TdRecibo', parent=styles['Normal'], fontName='Helvetica', fontSize=7.5, leading=10, textColor=colors.HexColor('#334155'))
+
+    elements = []
+
+    header_text = "<b>POLÍCIA MILITAR DE MINAS GERAIS</b><br/>" \
+                  "<b>SISTEMA INTEGRADO DE OPERAÇÕES - SIOP</b><br/>" \
+                  "SEÇÃO DE CUSTÓDIA DE MATERIAIS E TCO - CREDS"
+    elements.append(Paragraph(header_text, style_header))
+    elements.append(Spacer(1, 6))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0F172A'), spaceAfter=8))
+
+    elements.append(Paragraph("<b>RECIBO DIGITAL DE TRANSFERÊNCIA DE CUSTÓDIA (ART. 158-A DO CPP)</b>", style_title))
+    elements.append(Spacer(1, 6))
+
+    bloco_partes = [
+        [
+            Paragraph(f"<b>ORIGEM / REMETENTE:</b><br/>{remetente_nome.upper()}<br/><font color='#64748B'>Lotação: {remetente_unidade.upper()}</font>", style_meta_box),
+            Paragraph(f"<b>DESTINO / RECEBEDOR:</b><br/>{recebedor_nome.upper()}<br/><font color='#64748B'>Lotação: {recebedor_unidade.upper()}</font>", style_meta_box)
+        ],
+        [
+            Paragraph(f"<b>Nº CONTROLO:</b> {id_transferencia}<br/><b>DATA/HORA:</b> {data_formatada}", style_meta_box),
+            Paragraph(f"<b>IP DE REGISTRO:</b> {ip_origem}<br/><b>STATUS:</b> ACEITE CONFIRMADO NO SIOP", style_meta_box)
+        ]
+    ]
+
+    tabela_partes = Table(bloco_partes, colWidths=[270, 270])
+    tabela_partes.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
+        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    elements.append(tabela_partes)
+    elements.append(Spacer(1, 8))
+
+    dados_tabela = [
+        [
+            Paragraph("<b>Nº REDS</b>", style_table_hdr),
+            Paragraph("<b>DESCRIÇÃO DO BEM</b>", style_table_hdr),
+            Paragraph("<b>QTD / UNID</b>", style_table_hdr),
+            Paragraph("<b>INVÓLUCRO / LACRE</b>", style_table_hdr),
+            Paragraph("<b>AUTOR / ENVOLVIDO</b>", style_table_hdr)
+        ]
+    ]
+
+    for item in lista_materiais:
+        r_num = str(item.get("num_reds", "N/I"))
+        r_desc = str(item.get("descricao", "N/I"))
+        r_qtd = f"{item.get('quantidade', 1)} {item.get('unidade_medida', 'UN')}"
+        r_lacre = str(item.get("involucro_lacre", "SEM LACRE"))
+        r_autor = str(item.get("autores", "N/I"))
+
+        dados_tabela.append([
+            Paragraph(r_num, style_table_cell),
+            Paragraph(r_desc, style_table_cell),
+            Paragraph(r_qtd, style_table_cell),
+            Paragraph(r_lacre, style_table_cell),
+            Paragraph(r_autor, style_table_cell)
+        ])
+
+    tabela_materiais = Table(dados_tabela, colWidths=[90, 180, 60, 100, 110])
+    tabela_materiais.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E2E8F0')),
+        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP')
+    ]))
+    elements.append(tabela_materiais)
+    elements.append(Spacer(1, 8))
+
+    declaracao_txt = (
+        "<b>DECLARAÇÃO DE FIEL CUSTÓDIA E ACEITE:</b><br/>"
+        "O recebedor qualificado declara que realizou a conferência física e documental dos bens e invólucros acima discriminados, "
+        "assumindo formalmente a sua posse e guarda na condição de Fiel Custodiante, comprometendo-se com a rigorosa preservação da "
+        "Cadeia de Custódia e inalterabilidade dos lacres nos termos dos artigos 158-A a 158-F do Código de Processo Penal."
+    )
+    if observacao:
+        declaracao_txt += f"<br/><br/><b>RESSALVAS NO ATO DO ACEITE:</b> {observacao}"
+
+    elements.append(Paragraph(declaracao_txt, style_body))
+    elements.append(Spacer(1, 14))
+
+    ass_tabela = Table([
+        [
+            Paragraph(f"_________________________________________<br/><b>{remetente_nome.upper()}</b><br/>Remetente / Custodiante Anterior", ParagraphStyle('Ass1', parent=style_header, fontSize=7.5, leading=10)),
+            Paragraph(f"_________________________________________<br/><b>{recebedor_nome.upper()}</b><br/>Recebedor / Novo Fiel Custodiante", ParagraphStyle('Ass2', parent=style_header, fontSize=7.5, leading=10))
+        ]
+    ], colWidths=[270, 270])
+    elements.append(ass_tabela)
+    elements.append(Spacer(1, 10))
+
+    concat_mats = "".join([f"{m.get('id_bem')}{m.get('involucro_lacre')}" for m in lista_materiais])
+    hash_doc = gerar_hash_oficio(f"{id_transferencia}{remetente_nome}{recebedor_nome}{concat_mats}{data_formatada}{ip_origem}")
+    qr_draw = criar_draw_qrcode(f"SIOP-PMMG | RECIBO CUSTODIA: {id_transferencia} | RECEBEDOR: {recebedor_nome} | SHA: {hash_doc}")
+
+    txt_rodape = Paragraph(
+        f"<b>CHANCELA ELETRÔNICA DE AUTENTICIDADE E NÃO-REPUDIABILIDADE:</b><br/>"
+        f"<font size=6.5 color='#64748B'>SHA-256: {hash_doc}</font><br/>"
+        f"<font size=6.5 color='#64748B'>Recibo emitido automaticamente pelo SIOP em {data_formatada} sob o endereço IP {ip_origem}.</font>",
+        ParagraphStyle('RodapeRecibo', parent=styles['Normal'], alignment=0)
+    )
+
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#E2E8F0'), spaceBefore=6, spaceAfter=4))
+    if qr_draw:
+        tabela_rodape = Table([[txt_rodape, qr_draw]], colWidths=[475, 65])
+        tabela_rodape.setStyle(TableStyle([('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('ALIGN', (1, 0), (1, 0), 'RIGHT')]))
+        elements.append(tabela_rodape)
+    else:
+        elements.append(txt_rodape)
 
     doc.build(elements)
     buffer.seek(0)

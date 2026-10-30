@@ -57,14 +57,12 @@ def upload_midia_supabase(file_bytes: bytes, file_name: str, file_type: str, num
         else:
             caminho_storage = f"{reds_sanitizado}/doc_{timestamp_str}{extensao}"
 
-        # 1. Upload do arquivo binário para o bucket 'midias_tco'
         supabase.storage.from_(BUCKET_NAME).upload(
             path=caminho_storage,
             file=file_bytes,
             file_options={"content-type": file_type or "application/octet-stream", "upsert": "true"}
         )
 
-        # 2. Obtenção da URL pública
         url_publica = supabase.storage.from_(BUCKET_NAME).get_public_url(caminho_storage)
 
         novo_anexo = {
@@ -76,7 +74,6 @@ def upload_midia_supabase(file_bytes: bytes, file_name: str, file_type: str, num
             "data_upload": datetime.datetime.now().isoformat()
         }
 
-        # 3. Atualização na coluna jsonb 'midias_anexas' do material se id_bem informado
         if id_bem:
             res_bem = supabase.table("tco_materiais").select("midias_anexas").eq("id_bem", str(id_bem)).execute()
             midias_existentes = []
@@ -93,6 +90,31 @@ def upload_midia_supabase(file_bytes: bytes, file_name: str, file_type: str, num
 
     except Exception as e:
         st.error(f"Erro ao realizar upload da mídia no Supabase Storage: {e}")
+        return None
+
+
+def upload_recibo_transferencia_supabase(pdf_bytes: bytes, id_transferencia: str, num_reds: str) -> str:
+    """
+    Realiza o upload automático do Recibo Digital de Transferência para o Supabase Storage.
+    Retorna a URL pública do documento.
+    """
+    if not supabase or not pdf_bytes:
+        return None
+
+    try:
+        reds_sanitizado = str(num_reds).replace("/", "_").replace("-", "_").strip()
+        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        nome_arquivo = f"recibos/{reds_sanitizado}/RECIBO_{id_transferencia}_{timestamp_str}.pdf"
+
+        supabase.storage.from_(BUCKET_NAME).upload(
+            path=nome_arquivo,
+            file=pdf_bytes,
+            file_options={"content-type": "application/pdf", "upsert": "true"}
+        )
+
+        return supabase.storage.from_(BUCKET_NAME).get_public_url(nome_arquivo)
+    except Exception as e:
+        print(f"Aviso ao salvar recibo de transferência no Supabase: {e}")
         return None
 
 
