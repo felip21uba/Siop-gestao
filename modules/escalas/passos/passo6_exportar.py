@@ -2,8 +2,8 @@
 ==============================================================================
 Módulo do Passo 6 - Exportação, Impressão e Assinaturas Oficiais da Escala
 Atua estritamente como a camada visual/espelho estilizada do Passo 5,
-com leitor universal e robusto de upload de planilhas (XLSX, Strict OpenXML, CSV, PDF)
-e varredura linha a linha por Equipes Mescladas + Matrícula + Dias.
+com leitor universal e robusto de upload de planilhas (XLSX, Strict OpenXML, CSV, PDF),
+varredura linha a linha por Equipes Mescladas + Matrícula e trava rigorosa contra linhas ocultas/fantasmas.
 ==============================================================================
 """
 
@@ -235,7 +235,7 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
     """
     Executa a importação linha a linha da planilha carregada.
     Varre a coluna de equipes tratando células mescladas (propagação para baixo).
-    Depois extrai a matrícula do militar e cruza com os dias (1 a 31).
+    Apenas militares com matrícula válida E com serviços/turnos efetivamente lançados são incluídos.
     """
     try:
         df_raw = carregar_planilha_universal_passo6(arquivo_up)
@@ -259,7 +259,7 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
             df_imp.columns = [str(c).strip().upper() for c in df_imp.iloc[0].values]
             df_imp = df_imp.iloc[1:].copy()
 
-        # Substitui o quadro para evitar militares fantasmas de meses anteriores
+        # Substitui o quadro integralmente ao carregar nova planilha
         if substituir_quadro:
             grade_nova = {}
             chaves_novas = []
@@ -318,34 +318,37 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
             if val_equipe_raw and val_equipe_raw not in ["NAN", "NONE", "N/I", ""]:
                 equipe_corrente = val_equipe_raw
 
-            m_obj_encontrado = None
+            # REGRA FUNDAMENTAL: Verifica se a linha tem ao menos 1 serviço ou lançamento real nos dias
+            tem_lancamento_real = False
+            for d in range(1, num_dias_mes + 1):
+                col_d = mapa_colunas_dias.get(d)
+                if col_d is not None and col_d in row:
+                    v_raw = str(row.get(col_d, "")).strip().upper()
+                    if v_raw and v_raw not in ["NAN", "NONE", "NULL", ""]:
+                        tem_lancamento_real = True
+                        break
 
-            # 1. Extração de matrícula na coluna de matrícula
+            # Se a linha não tem nenhum serviço marcado no mês inteiro, descarta sumariamente
+            if not tem_lancamento_real:
+                continue
+
+            # Extração rigorosa de matrícula (na coluna ou no nome)
             digitos_mat = extrair_apenas_digitos(val_mat_txt)
-            if digitos_mat:
-                m_obj_encontrado = mapa_mils_digitos.get(digitos_mat)
-                if not m_obj_encontrado and len(digitos_mat) == 7:
-                    m_obj_encontrado = mapa_mils_digitos.get(digitos_mat[:6])
-
-            # 2. Extração de matrícula embutida no nome
-            if not m_obj_encontrado and val_militar_txt:
+            if not digitos_mat and val_militar_txt:
                 candidatos_nums = re.findall(r'\b\d{6,7}\b', re.sub(r'[\.\-]', '', val_militar_txt))
-                for num_cand in candidatos_nums:
-                    cand_limpo = extrair_apenas_digitos(num_cand)
-                    if cand_limpo in mapa_mils_digitos:
-                        m_obj_encontrado = mapa_mils_digitos[cand_limpo]
-                        break
+                if candidatos_nums:
+                    digitos_mat = extrair_apenas_digitos(candidatos_nums[0])
 
-            # 3. Fallback inteligente por Nome de Guerra
-            if not m_obj_encontrado and val_militar_txt:
-                tokens_linha = set(re.findall(r'\b[A-Z0-9]+\b', val_militar_txt))
-                for m_b in mils_cad:
-                    nome_g = str(m_b.get("nome_guerra", "")).strip().upper()
-                    if nome_g and nome_g in tokens_linha:
-                        m_obj_encontrado = m_b
-                        break
+            # Sem matrícula identificada, não cria nada no sistema
+            if not digitos_mat or len(digitos_mat) < 5:
+                continue
 
-            # Se encontrou um militar válido na linha
+            # Localiza o militar no efetivo
+            m_obj_encontrado = mapa_mils_digitos.get(digitos_mat)
+            if not m_obj_encontrado and len(digitos_mat) == 7:
+                m_obj_encontrado = mapa_mils_digitos.get(digitos_mat[:6])
+
+            # Se o militar foi localizado no cadastro oficial da unidade
             if m_obj_encontrado:
                 m_id = str(m_obj_encontrado.get("id"))
                 
@@ -371,7 +374,7 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
                 linhas_importadas += 1
             else:
                 identificador = val_militar_txt or val_mat_txt
-                if identificador and len(identificador) > 2 and not any(ign in identificador for ign in ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SAB"]):
+                if identificador and len(identificador) > 2:
                     militares_nao_localizados.append(identificador)
 
         if linhas_importadas > 0:
@@ -383,11 +386,10 @@ def processar_planilha_escala_passo6(arquivo_up, m_ano, m_mes, num_dias_mes, sub
             msg_retorno = f"✅ {linhas_importadas} militar(es) importado(s) com sucesso para suas respectivas equipes!"
             if militares_nao_localizados:
                 nao_loc_amostra = ", ".join(militares_nao_localizados[:3])
-                msg_retorno += f" (Linhas ignoradas ou não cadastradas: {nao_loc_amostra})"
+                msg_retorno += f" (Militares não cadastrados no efetivo: {nao_loc_amostra})"
             return True, msg_retorno
         else:
-            detalhe_tentativa = f" (Amostra na planilha: '{militares_nao_localizados[0]}')" if militares_nao_localizados else ""
-            return False, f"Nenhum militar da planilha foi localizado na base de dados de efetivo da unidade{detalhe_tentativa}. Verifique se a matrícula consta no Passo 3."
+            return False, "Nenhum militar com serviços lançados foi localizado na base de efetivo. Verifique se as matrículas constam no Passo 3."
     except Exception as ex_imp:
         return False, f"Erro ao processar importação: {ex_imp}"
 
