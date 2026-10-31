@@ -281,7 +281,6 @@ def renderizar_aba_importacao(nome_militar_atual, unidade_militar_atual):
 
     texto_creds_badge = lotacao_dinamica if lotacao_dinamica.startswith("CREDS") else f"CREDS {lotacao_dinamica}"
 
-    # CARD TÁTICO: Renderização oficial no formato solicitado
     st.markdown(f"""
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px; font-size: 0.90rem;">
         <span style="color: #cbd5e1;">👤 <b>Fiel Depositário Inicial:</b> {militar_identificado}</span>
@@ -492,7 +491,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS-TCO têm acesso às funções deste painel.")
         return
 
-    # Leitura dinâmica da sessão do operador
     usr_sessao = st.session_state.get("usuario_dados", {})
     if isinstance(usr_sessao, str):
         usr_sessao = {}
@@ -506,7 +504,6 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     texto_creds_cabecalho = lotacao_creds_dinamica if lotacao_creds_dinamica.startswith("CREDS") else f"CREDS {lotacao_creds_dinamica}"
     nome_gestor_dinamico = str(usr_sessao.get("nome_guerra") or usr_sessao.get("nome_completo") or nome_militar_atual).strip().upper()
 
-    # CABEÇALHO DO PAINEL DO CREDS: Aplicação do Card Tático Dinâmico
     st.markdown(f"""
     <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 0.88rem;">
         <span style="color: #94a3b8;">⚙ <b>Gestão Institucional Ativa:</b> Operando como</span>
@@ -936,6 +933,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # =========================================================================
+    # FORMULÁRIO RÁPIDO AO CLICAR EM "🛒 MOVIMENTAR" NO CARD INDIVIDUAL
+    # =========================================================================
     mat_mov_indiv = st.session_state.get("material_selecionado_mov")
     if mat_mov_indiv:
         st.markdown("---")
@@ -1093,7 +1093,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 3: ⏳ MATERIAIS PENDENTES DE ACEITE PELO CREDS
+    # RETÂNGULO 3: ⏳ MATERIAIS PENDENTES DE ACEITE PELO CREDS (CARDS TÁTICOS)
     # =========================================================================
     if filtro_card in ["TODOS", "CREDS"]:
         with st.container(border=True):
@@ -1175,22 +1175,31 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             id_bem_p = str(item_p.get("id_bem") or item_p.get("id"))
                             desc_p = item_p.get("descricao", "N/I")
                             qtd_p_val = item_p.get("quantidade", 1)
-                            lacre_p = item_p.get("involucro_lacre", "N/I")
+                            unid_med = item_p.get("unidade_medida", "UN")
+                            lacre_p = item_p.get("involucro_lacre", "SEM LACRE")
                             remetente_p = item_p.get("remetente_ultimo") or item_p.get("fiel_depositario_atual") or "Policial Remetente"
+                            unid_remet_raw = str(item_p.get("unidade_remetente") or item_p.get("unidade_posse_atual") or "N/I").strip().upper()
+                            texto_unid_badge = unid_remet_raw if unid_remet_raw.startswith("CREDS") or unid_remet_raw == "N/I" else f"CREDS {unid_remet_raw}"
                             dt_p_exata = formatar_data_hora_exata(item_p.get("data_envio_tramite") or item_p.get("data_posse_atual"))
 
-                            col_pa1, col_pa2 = st.columns([6, 4])
+                            bg_card_pend = "linear-gradient(135deg, #574431 0%, #423324 100%)" if (idx_p % 2 == 0) else "linear-gradient(135deg, #3b2e23 0%, #291f17 100%)"
+
+                            # ENCAPSULAMENTO NO CARD TÁTICO PADRONIZADO
+                            col_pa1, col_pa2 = st.columns([7.2, 2.8], vertical_alignment="center")
                             with col_pa1:
-                                st.markdown(
-                                    f"📦 **Material:** {desc_p} (Qtd: {qtd_p_val}) | **Lacre:** `{lacre_p}`  \n"
-                                    f"👤 **Enviado por:** `{remetente_p}` (`{item_p.get('unidade_remetente', 'N/I')}`)  \n"
-                                    f"⏱️ **Data/Hora do Envio:** `{dt_p_exata}`"
-                                )
+                                html_card_pend = f"""
+                                <div style="background: {bg_card_pend}; border: 1.5px solid #a3824b; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; color: #ffffff;">
+                                    📦 Material: <strong style="color: #ffffff;">{desc_p}</strong> (Qtd: {qtd_p_val} {unid_med}) | 🏷️ Lacre: <b style="font-family: monospace; color: #ffe0b2;">{lacre_p}</b><br/>
+                                    👤 <b>Enviado por:</b> <b>{remetente_p}</b> | 🏢 <b>Lotação:</b> <span style="background-color: #1e293b; color: #f8fafc; border: 1.5px solid #38bdf8; border-radius: 6px; padding: 2px 7px; font-size: 0.78rem; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">🏢 {texto_unid_badge}</span><br/>
+                                    <div style="margin-top: 6px;">⏱️ <b>Data/Hora do Envio:</b> <span class="tag-info-retangulo">{dt_p_exata}</span></div>
+                                </div>
+                                """
+                                st.markdown(html_card_pend, unsafe_allow_html=True)
 
                             with col_pa2:
                                 col_bt_a, col_bt_r = st.columns(2)
                                 with col_bt_a:
-                                    if st.button("✅ Aceitar Custódia", key=f"btn_aceitar_item_indiv_{id_bem_p}_{idx_p}", type="primary", use_container_width=True):
+                                    if st.button("✅ Aceitar", key=f"btn_aceitar_item_indiv_{id_bem_p}_{idx_p}", type="primary", use_container_width=True):
                                         agora_iso_item = datetime.datetime.now().isoformat()
                                         ip_cliente = obter_ip_cliente_real()[cite: 6]
                                         id_transf_item = f"TR-{num_reds_p}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -1245,7 +1254,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                 with col_bt_r:
                                     with st.popover("❌ Recusar", use_container_width=True):
                                         motivo_recusa = st.text_input("Motivo da Recusa:", placeholder="Ex: Lacre violado", key=f"txt_motivo_rec_{id_bem_p}").strip()
-                                        if st.button("Confirmar Recusa", key=f"btn_confirm_recusa_{id_bem_p}_{idx_p}", type="primary", use_container_width=True):
+                                        if st.button("Confirmar", key=f"btn_confirm_recusa_{id_bem_p}_{idx_p}", type="primary", use_container_width=True):
                                             if not motivo_recusa:
                                                 st.error("Informe o motivo.")
                                             else:
@@ -1265,7 +1274,7 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
     st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================================
-    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL
+    # RETÂNGULO 4: 🏛️ MATERIAIS EM ÓRGÃOS EXTERNOS / ARQUIVO FINAL (CARDS TÁTICOS)
     # =========================================================================
     if filtro_card in ["TODOS", "PERICIA", "PARADOS", "ARQUIVO"]:
         with st.container(border=True):
@@ -1286,8 +1295,9 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             id_bem_e = str(item_e.get("id_bem") or item_e.get("id"))
                             desc_e = item_e.get("descricao", "N/I")
                             qtd_e_val = item_e.get("quantidade", 1)
+                            unid_e_med = item_e.get("unidade_medida", "UN")
                             dest_e = item_e.get("destinatario_pendente") or item_e.get("fase_destinacao") or "Órgão Externo"
-                            lacre_e = item_e.get("involucro_lacre", "N/I")
+                            lacre_e = item_e.get("involucro_lacre", "SEM LACRE")
                             remetente_orig = item_e.get("ultimo_gestor_movimentou") or "Gestor CREDS"
                             status_tr_e = str(item_e.get("status_tramite") or "")
                             dt_ext_exata = formatar_data_hora_exata(item_e.get("data_envio_tramite") or item_e.get("data_posse_atual"))
@@ -1296,36 +1306,39 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                             e_confirmado_orgao = (status_tr_e == "Transferido Definitivo")
 
                             if e_destruido:
-                                tag_situacao = "<strong style='color: #ef4444;'>🔒 MATERIAL DESTRUÍDO / ENCERRADO</strong>"
+                                tag_situacao_badge = '<span style="background-color: #7f1d1d; color: #fecaca; border: 1px solid #ef4444; border-radius: 6px; padding: 2px 8px; font-size: 0.76rem; font-weight: 800;">🔒 DESTRUÍDO / ENCERRADO</span>'
                             elif e_confirmado_orgao:
-                                tag_situacao = "<strong style='color: #22c55e;'>✅ RECEBIMENTO CONFIRMADO PELO ÓRGÃO EXTERNO</strong>"
+                                tag_situacao_badge = '<span style="background-color: #14532d; color: #bbf7d0; border: 1px solid #22c55e; border-radius: 6px; padding: 2px 8px; font-size: 0.76rem; font-weight: 800;">✅ RECEBIMENTO CONFIRMADO</span>'
                             else:
-                                tag_situacao = "<strong style='color: #38bdf8;'>🔄 EM TRÂMITE / AGUARDANDO DEVOLUÇÃO OU OFÍCIO</strong>"
+                                tag_situacao_badge = '<span style="background-color: #0c4a6e; color: #bae6fd; border: 1px solid #38bdf8; border-radius: 6px; padding: 2px 8px; font-size: 0.76rem; font-weight: 800;">🔄 EM TRÂMITE / AGUARDANDO DEVOLUÇÃO</span>'
 
-                            col_e1, col_e2 = st.columns([6, 4])
+                            bg_card_ext = "linear-gradient(135deg, #574431 0%, #423324 100%)" if (idx_e % 2 == 0) else "linear-gradient(135deg, #3b2e23 0%, #291f17 100%)"
+
+                            # ENCAPSULAMENTO NO CARD TÁTICO PADRONIZADO
+                            col_e1, col_e2 = st.columns([6.8, 3.2], vertical_alignment="center")
                             with col_e1:
                                 html_ext = f"""
-                                <div class="card-material-item card-par">
-                                    📦 <b>Material:</b> {desc_e} (Qtd: {qtd_e_val}) | 🏷️ <b>Lacre:</b> {lacre_e}<br/>
-                                    📍 <b>Destino / Fase:</b> {dest_e}<br/>
-                                    📊 Situação: {tag_situacao}<br/>
-                                    👤 <b>Movimentado por:</b> {remetente_orig}<br/>
-                                    ⏱️ <b>Data/Hora da Transferência:</b> <span class="tag-data-destaque">{dt_ext_exata}</span>
+                                <div style="background: {bg_card_ext}; border: 1.5px solid #a3824b; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; color: #ffffff;">
+                                    📦 Material: <strong style="color: #ffffff;">{desc_e}</strong> (Qtd: {qtd_e_val} {unid_e_med}) | 🏷️ Lacre: <b style="font-family: monospace; color: #ffe0b2;">{lacre_e}</b><br/>
+                                    📍 <b>Destino / Fase:</b> <span style="background-color: #1e293b; color: #f8fafc; border: 1.5px solid #38bdf8; border-radius: 6px; padding: 2px 7px; font-size: 0.78rem; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">🏛️ {dest_e}</span><br/>
+                                    📊 <b>Situação:</b> {tag_situacao_badge} | 👤 <b>Movimentado por:</b> <b>{remetente_orig}</b><br/>
+                                    <div style="margin-top: 6px;">⏱️ <b>Data/Hora da Transferência:</b> <span class="tag-info-retangulo">{dt_ext_exata}</span></div>
                                 </div>
                                 """
                                 st.markdown(html_ext, unsafe_allow_html=True)
 
-                                c_sp_e, c_cad_e, c_guia_e = st.columns([6, 2, 2])
-                                with c_cad_e:
+                            with col_e2:
+                                c_sp_b1, c_sp_b2 = st.columns(2)
+                                with c_sp_b1:
                                     if st.button("🔗 FAV", key=f"btn_cad_ext_{id_bem_e}_{idx_e}", use_container_width=True):
                                         modal_cadeia_custodia_timeline(item_e.to_dict())
-                                with c_guia_e:
+                                with c_sp_b2:
                                     if st.button("🖨️ Guia", key=f"btn_guia_ext_{id_bem_e}_{idx_e}", use_container_width=True):
                                         modal_guia_termo_oficial(item_e.to_dict(), nome_gestor_dinamico, mat_op, unidade_militar_atual)
 
-                            with col_e2:
                                 if not e_destruido and not e_confirmado_orgao:
-                                    if st.button("📥 Confirmar Devolução ao CREDS", key=f"btn_devolucao_creds_{id_bem_e}_{idx_e}", type="primary", use_container_width=True):
+                                    st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+                                    if st.button("📥 Aceitar Retorno", key=f"btn_devolucao_creds_{id_bem_e}_{idx_e}", type="primary", use_container_width=True):
                                         agora_iso_r = datetime.datetime.now().isoformat()
                                         payload_ret = {
                                             "destinatario_pendente": None,
@@ -1353,11 +1366,11 @@ def renderizar_aba_creds(all_bens_banco, eh_gestor_creds, nome_militar_atual, un
                                             st.cache_data.clear()
                                             st.rerun()
 
-                                    with st.popover("📄 Encerrar Procedimento / Definitivo", use_container_width=True):
-                                        num_oficio_rec = st.text_input("Nº do Ofício / Protocolo / Laudo (OBRIGATÓRIO):", placeholder="Ex: Ofício 45/2026-PCMG", key=f"txt_ofic_{id_bem_e}").strip()
+                                    with st.popover("📄 Encerrar Procedimento", use_container_width=True):
+                                        num_oficio_rec = st.text_input("Nº do Ofício / Protocolo (OBRIGATÓRIO):", placeholder="Ex: Ofício 45/2026-PCMG", key=f"txt_ofic_{id_bem_e}").strip()
                                         foto_recibo = st.file_uploader("Foto ou PDF do Recibo/Laudo (OPCIONAL):", type=["jpg", "jpeg", "png", "pdf"], key=f"upl_rec_{id_bem_e}")
                                         
-                                        if st.button("🔒 Confirmar Encerramento Definitivo", key=f"btn_conf_ext_manual_{id_bem_e}_{idx_e}", type="primary", use_container_width=True):
+                                        if st.button("🔒 Confirmar Encerramento", key=f"btn_conf_ext_manual_{id_bem_e}_{idx_e}", type="primary", use_container_width=True):
                                             if not num_oficio_rec:
                                                 st.error("⚠️ O preenchimento do Nº do Ofício / Protocolo é OBRIGATÓRIO.")
                                             else:
@@ -1509,7 +1522,7 @@ def renderizar_aba_logs(all_logs_banco):
 # =============================================================================
 def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21º BPM", cargo_operador="MILITAR", perfil_operador="GESTOR"):
     usr_logado = st.session_state.get("usuario_dados", {})
-    eh_autorizado = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)[cite: 9]
+    eh_autorizado = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)[cite: 15]
 
     if not eh_autorizado:
         st.error("🔒 **Acesso Restrito:** Apenas Gestores do CREDS, Comandantes de Cia ou Administradores do SIOP podem gerenciar funções do TCO.")
@@ -1518,7 +1531,7 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
     perfil_creds_usr = str(usr_logado.get("perfil_creds", "TROPA")).upper()
     perfil_geral_usr = str(usr_logado.get("nivel_acesso", "TROPA")).upper()
     
-    pode_excluir_e_revogar = usuario_eh_admin_ou_programador(usr_logado) or perfil_creds_usr in ["GESTOR_UNIDADE", "ADMIN", "PROGRAMADOR"][cite: 9]
+    pode_excluir_e_revogar = usuario_eh_admin_ou_programador(usr_logado) or perfil_creds_usr in ["GESTOR_UNIDADE", "ADMIN", "PROGRAMADOR"][cite: 15]
     eh_gestor_unidade = (perfil_creds_usr == "GESTOR_UNIDADE" or pode_excluir_e_revogar)
 
     st.markdown("### 👥 Designação e Estrutura de Gestores do CREDS / TCO")
@@ -1673,7 +1686,6 @@ def renderizar_aba_gestores_creds(nome_operador="OPERADOR", unidade_operador="21
                                     st.markdown(f"**👤 {grad_correta} {g.get('nome_guerra', 'OPERADOR')}**")
                                     st.caption(f"Nº Polícia: **{pm_key}** | Função: `{g.get('perfil_creds')}`")
                                     
-                                    # CARD TÁTICO: Renderização padronizada nas listas de gestores
                                     html_badge_membro = f"""
                                     <div style="margin-top: 5px;">
                                         <span style="background-color: #1e293b; color: #f8fafc; border: 1.5px solid #38bdf8; border-radius: 6px; padding: 2px 8px; font-size: 0.78rem; font-weight: 800; display: inline-flex; align-items: center; gap: 5px;">
@@ -1708,5 +1720,5 @@ renderizar_aba_importar_reds = renderizar_aba_importacao
 
 def renderizar_aba_painel_creds(all_bens_banco, nome_militar_atual, unidade_militar_atual):
     usr_logado = st.session_state.get("usuario_dados", {})
-    eh_gestor = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)[cite: 9]
+    eh_gestor = usuario_eh_gestor_creds(usr_logado) or usuario_eh_admin_ou_programador(usr_logado)[cite: 15]
     return renderizar_aba_creds(all_bens_banco, eh_gestor, nome_militar_atual, unidade_militar_atual)
