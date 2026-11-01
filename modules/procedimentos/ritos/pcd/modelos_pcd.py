@@ -1,7 +1,8 @@
 """
 ==============================================================================
-SIOP PMMG - MODELOS LITERAIS DO PCD (BASE: 21º BPM / 4ª RPM / MAPPA)
-Fidelidade aos modelos reais: Termo de Oitiva, TAV de Defesa Prévia e Relatório.
+SIOP PMMG - MODELOS LITERAIS DO PCD / RIP (BASE: 21º BPM / 4ª RPM / MAPPA)
+Fidelidade aos modelos reais: Portaria Inaugural, Termo de Oitiva, TAV e Relatório.
+Assinaturas centralizadas e estrutura paramétrica do 21º BPM.
 ==============================================================================
 """
 
@@ -10,9 +11,73 @@ import datetime
 
 def gerar_cabecalho_oficial(dados: dict) -> str:
     """Gera o cabeçalho institucional em caixa alta no padrão PMMG."""
-    rpm = dados.get("regiao_rpm", "QUARTA REGIÃO DA POLÍCIA MILITAR").upper()
-    unidade = dados.get("unidade_lotacao", "VIGÉSIMO PRIMEIRO BATALHÃO DE POLICIA MILITAR").upper()
+    rpm = str(dados.get("regiao_rpm", "QUARTA REGIÃO DA POLÍCIA MILITAR")).upper()
+    unidade = str(dados.get("unidade_lotacao", "VIGÉSIMO PRIMEIRO BATALHÃO DE POLICIA MILITAR")).upper()
     return f"POLICIA MILITAR DE MINAS GERAIS\n{rpm}\n{unidade}\n"
+
+
+def renderizar_portaria_despacho(dados: dict) -> str:
+    """
+    Modelo literal de Despacho de Instauração / Portaria Delegatória
+    Fiel ao padrão expedido pelo Comando do 21º BPM / 4ª RPM.
+    """
+    rpm_abrev = dados.get("regiao_rpm_abrev", "4ª RPM")
+    bpm_abrev = dados.get("unidade_abreviada", "21º BPM")
+    despacho_num = dados.get("numero_despacho", dados.get("numero_pcd", "105016/26-RIP/21 BPM"))
+    protocolo_sicor = dados.get("protocolo_sicor", "2026-000364620")
+    
+    encarregado_num = dados.get("encarregado_numero", "133.746-8")
+    encarregado_posto = dados.get("encarregado_posto", "CAP PM")
+    encarregado_nome = dados.get("encarregado_nome", "FELIPE DE OLIVEIRA ALVES PEREIRA")
+    
+    comandante_posto = dados.get("autoridade_delegante_posto", "TENENTE CORONEL PM")
+    comandante_nome = dados.get("autoridade_delegante_nome", "ERICK LEAL LOPES")
+    
+    reclamante_ofendido = dados.get("ofendido_nome", "Ismael Carlos da Silva Martins")
+    data_fato = dados.get("data_fato_ocorrencia", "10/04/2026")
+    prazo_estipulado = dados.get("prazo_dias_estipulado", 15)
+    municipio = dados.get("municipio", "Ubá")
+
+    sintese_portaria = dados.get(
+        "sintese_fato_portaria",
+        f"noticia a suposta ocorrência de agressões físicas praticadas por policiais militares em desfavor do "
+        f"reclamante {reclamante_ofendido}, durante sua prisão, ocorrida em {data_fato}. Consta dos autos que o "
+        f"reclamante relatou ter sido agredido por militares, restando lesões corporais, com atendimento médico "
+        f"no Hospital São Vicente de Paulo."
+    )
+
+    return (
+        f"POLÍCIA MILITAR DE MINAS GERAIS\n"
+        f"{rpm_abrev}\n"
+        f"{bpm_abrev}/{rpm_abrev}\n\n"
+        f"DESPACHO N°: {despacho_num}\n"
+        f"Ao nº {encarregado_num} {encarregado_posto} {encarregado_nome} - Encarregado.\n"
+        f"Anexos: Protocolo SICOR: {protocolo_sicor}\n\n"
+        f"O {comandante_posto}, COMANDANTE DO {bpm_abrev}, no uso de suas atribuições legais, "
+        f"previstas no art. 107 do Manual de Processos e Procedimentos Administrativos (MAPPA), criado pela "
+        f"Resolução n° 4.220, de 28/06/2012, e:\n\n"
+        f"CONSIDERANDO QUE:\n\n"
+        f"1- Submeteu-se ao crivo desta Autoridade Administrativa a documentação em epígrafe, na qual se {sintese_portaria}\n\n"
+        f"2- Mostra-se exigível a elucidação dos fatos narrados de forma a constatar suas circunstâncias, confirmar a "
+        f"materialidade e identificar sua autoria bem como possíveis afrontas ao CPM e/ou CEDM, para decisão quanto às "
+        f"eventuais medidas penais e/ou administrativo-disciplinares decorrentes, conforme o que restar aflorado nos autos.\n\n"
+        f"RESOLVE:\n\n"
+        f"a) determinar que seja, com a possível urgência, elaborado o procedimento apuratório, delegando-lhe, para este fim, "
+        f"as atribuições que me competem, devendo o encarregado observar as orientações que regulam o assunto;\n"
+        f"b) Neste sentido, o encarregado deverá:\n"
+        f"   b.1) Ter pleno conhecimento do Capítulo V do MAPPA;\n"
+        f"   b.2) Tomar conhecimento desta portaria e de seus anexos;\n"
+        f"   b.3) Realizar demais diligências necessárias para a elucidação do fato;\n"
+        f"c) recomendar ao encarregado que comunique, via painel administrativo, o Núcleo de Justiça e Disciplina, "
+        f"a data efetiva na qual recebeu esta documentação, para fins de agendamento e acompanhamento dos prazos;\n"
+        f"d) determinar ao encarregado que ao final entregue cópia digitalizada em formato .pdf juntamente com o procedimento físico;\n"
+        f"e) determinar o prazo de {prazo_estipulado} (quinze) dias;\n"
+        f"f) lançar no sistema de controle da IME.\n\n"
+        f"Quartel em {municipio}, data da assinatura eletrônica.\n\n"
+        f"                                ________________________________________________\n"
+        f"                                           {comandante_nome}, {comandante_posto}\n"
+        f"                                                COMANDANTE DO {bpm_abrev}\n"
+    )
 
 
 def renderizar_tav(dados: dict) -> str:
@@ -36,7 +101,7 @@ def renderizar_tav(dados: dict) -> str:
     art_mapa = dados.get("artigo_mappa", "____")
     enquadramento = dados.get("enquadramento_cedm", "inciso _____ do art. _____ do CEDM")
     sintese_fato = dados.get("sintese_fato", "No dia __/__/____, na cidade de Ubá/MG, o militar comunicado cometeu conduta que em tese afronta os preceitos regulamentares.")
-    anexos = dados.get("anexos_especificados", "Cópia da Portaria de instauração e documentos que instruem a acusação.")
+    anexos = dados.get("anexos_especificados", "Cópia da Portaria inaugural de instauração e documentos que instruem a acusação.")
 
     return (
         f"{rpm_bpm}\n\n"
@@ -231,7 +296,7 @@ def renderizar_relatorio_pcd(dados: dict) -> str:
 
 
 def renderizar_termo_juntada(dados: dict) -> str:
-    """Modelo formal de Termo de Juntada com assinaturas centralizadas."""
+    """Modelo formal de Termo de Juntada com fechos centralizados."""
     cabecalho = gerar_cabecalho_oficial(dados)
     hoje = datetime.date.today()
     dia_str = str(hoje.day).zfill(2)
