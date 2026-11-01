@@ -18,6 +18,7 @@ import re
 import pyotp
 import traceback
 import streamlit as st
+import streamlit.components.v1 as components
 
 # ==============================================================================
 # 🌐 REGISTRO DO DIRETÓRIO RAIZ NO SYS.PATH
@@ -98,6 +99,7 @@ from core.session_manager import (
     gerenciar_timeout_sessao, 
     restaurar_rascunho_escala_supabase
 )
+from core.permissions import verificar_acesso_procedimentos
 
 # ==============================================================================
 # 🛡️ CARREGAMENTO ISOLADO DOS MÓDULOS (SANDBOX IMPORTS)
@@ -170,6 +172,19 @@ except Exception:
         st.error("⚠️ A tela de Perfil está temporariamente indisponível.")
         with st.expander("🔍 Ver Detalhes Técnicos do Erro (Perfil)"):
             st.code(erro_perfil_trace, language="python")
+
+# 7. MÓDULO DE PROCEDIMENTOS ADMINISTRATIVOS (PCD / PAD / SAD)
+try:
+    from modules.procedimentos.index_procedimentos import renderizar_modulo_procedimentos_html
+except Exception:
+    erro_proc_trace = traceback.format_exc()
+    def renderizar_modulo_procedimentos_html(*args, **kwargs):
+        return f"""
+        <div style="background:#0b1120; color:#ef4444; padding:20px; border-radius:6px; font-family:sans-serif;">
+            <h3>⚠️ Falha ao inicializar o Módulo de Procedimentos</h3>
+            <pre style="color:#94a3b8; font-size:12px;">{html.escape(erro_proc_trace)}</pre>
+        </div>
+        """
 
 # ==============================================================================
 # ⚙️ CONFIGURAÇÃO INICIAL DA PÁGINA STREAMLIT
@@ -736,13 +751,7 @@ LISTA_GESTORES = [
 ]
 
 eh_gestor_real = any(p in perfil_op for p in LISTA_GESTORES)
-
-if eh_gestor_real:
-    simular_tropa = st.session_state.get("simular_visao_tropa", False)
-    perfil_ativo = "TROPA" if simular_tropa else perfil_op
-else:
-    perfil_ativo = "TROPA"
-
+perfil_ativo = perfil_op
 eh_gestor_ou_admin = (perfil_ativo != "TROPA")
 
 if "modulo_ativo" not in st.session_state:
@@ -762,63 +771,58 @@ with st.sidebar:
             st.markdown("🛡️")
 
     if eh_gestor_real:
-        if st.toggle("👁️ Visão da Tropa (Simulador)", value=st.session_state.get("simular_visao_tropa", False), key="toggle_visao_tropa_nav"):
-            st.session_state["simular_visao_tropa"] = not st.session_state.get("simular_visao_tropa", False)
-            st.rerun()
+        st.markdown("---")
+        st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
+        
+        bpms_encontrados = set()
 
-        if not st.session_state.get("simular_visao_tropa", False):
-            st.markdown("---")
-            st.markdown("🏛️ **Seletor de Unidade (Multi-Tenant):**")
-            
-            bpms_encontrados = set()
+        # 1. Busca na Tabela de Configurações de Unidade
+        if supabase:
+            try:
+                res_u = supabase.table("unidades_config").select("batalhao").execute()
+                if res_u and res_u.data:
+                    for u in res_u.data:
+                        bat = str(u.get("batalhao", "")).strip().upper()
+                        if bat and bat not in ["NONE", "N/I", ""]:
+                            bpms_encontrados.add(bat)
+            except Exception:
+                pass
 
-            # 1. Busca na Tabela de Configurações de Unidade
-            if supabase:
-                try:
-                    res_u = supabase.table("unidades_config").select("batalhao").execute()
-                    if res_u and res_u.data:
-                        for u in res_u.data:
-                            bat = str(u.get("batalhao", "")).strip().upper()
-                            if bat and bat not in ["NONE", "N/I", ""]:
-                                bpms_encontrados.add(bat)
-                except Exception:
-                    pass
+            # 2. Busca e extrai Batalhão das lotações do Efetivo
+            try:
+                mils = carregar_militares_supabase() or []
+                for m in mils:
+                    uni_m = str(m.get("unidade", "")).strip().upper()
+                    if uni_m and uni_m not in ["NONE", "N/I", "UNIDADE N/I", ""]:
+                        bat_extraido = uni_m.split("/")[0].strip() if "/" in uni_m else uni_m
+                        bpms_encontrados.add(bat_extraido)
+            except Exception:
+                pass
 
-                # 2. Busca e extrai Batalhão das lotações do Efetivo
-                try:
-                    mils = carregar_militares_supabase() or []
-                    for m in mils:
-                        uni_m = str(m.get("unidade", "")).strip().upper()
-                        if uni_m and uni_m not in ["NONE", "N/I", "UNIDADE N/I", ""]:
-                            bat_extraido = uni_m.split("/")[0].strip() if "/" in uni_m else uni_m
-                            bpms_encontrados.add(bat_extraido)
-                except Exception:
-                    pass
+        opcoes_bpm = ["🌐 TODAS AS UNIDADES"] + sorted(list(bpms_encontrados))
 
-            opcoes_bpm = ["🌐 TODAS AS UNIDADES"] + sorted(list(bpms_encontrados))
+        for bpm_padr in ["21º BPM", "2º BPM", "27º BPM"]:
+            if bpm_padr not in opcoes_bpm:
+                opcoes_bpm.append(bpm_padr)
 
-            for bpm_padr in ["21º BPM", "2º BPM", "27º BPM"]:
-                if bpm_padr not in opcoes_bpm:
-                    opcoes_bpm.append(bpm_padr)
+        idx_sel = 0
+        bpm_atual_sessao = st.session_state.get("unidade_ativa_bpm", "🌐 TODAS AS UNIDADES")
+        if bpm_atual_sessao in opcoes_bpm:
+            idx_sel = opcoes_bpm.index(bpm_atual_sessao)
 
-            idx_sel = 0
-            bpm_atual_sessao = st.session_state.get("unidade_ativa_bpm", "🌐 TODAS AS UNIDADES")
-            if bpm_atual_sessao in opcoes_bpm:
-                idx_sel = opcoes_bpm.index(bpm_atual_sessao)
+        sel_bpm_sidebar = st.selectbox(
+            "Unidade em Operação (BPM):",
+            opcoes_bpm,
+            index=idx_sel,
+            key="sb_multi_tenant_bpm_nav",
+            label_visibility="collapsed"
+        )
+        st.session_state["unidade_ativa_bpm"] = sel_bpm_sidebar
 
-            sel_bpm_sidebar = st.selectbox(
-                "Unidade em Operação (BPM):",
-                opcoes_bpm,
-                index=idx_sel,
-                key="sb_multi_tenant_bpm_nav",
-                label_visibility="collapsed"
-            )
-            st.session_state["unidade_ativa_bpm"] = sel_bpm_sidebar
-
-            if sel_bpm_sidebar != "🌐 TODAS AS UNIDADES":
-                st.session_state["cfg_unidade"] = sel_bpm_sidebar
-            else:
-                st.session_state["cfg_unidade"] = usr.get("unidade", "21º BPM")
+        if sel_bpm_sidebar != "🌐 TODAS AS UNIDADES":
+            st.session_state["cfg_unidade"] = sel_bpm_sidebar
+        else:
+            st.session_state["cfg_unidade"] = usr.get("unidade", "21º BPM")
 
     st.divider()
 
@@ -980,8 +984,49 @@ elif modulo == "TCO":
     renderizar_modulo_tco(subnav_ativo=subnav_tco_atual)
 
 elif modulo == "PROCEDIMENTOS":
-    st.title("📑 Módulo de Procedimentos Administrativos")
-    st.info("ℹ️ Módulo em desenvolvimento operacional.")
+    matricula_usuario_logado = str(usr.get("usuario_login") or usr.get("usuario") or "1337468").strip()
+    status_licenca = verificar_acesso_procedimentos(usr)
+
+    if not status_licenca.get("autorizado", False):
+        st.title("⚖️ Módulo de Procedimentos Administrativos")
+        st.error(f"🔒 Acesso Restrito: {status_licenca.get('motivo', 'Licença não autorizada.')}")
+        st.info("Entre em contacto com o administrador do sistema para concessão ou renovação da licença deste módulo.")
+    else:
+        # Carregamento de procedimentos ativos associados ao encarregado
+        procedimentos_ativos = []
+        if supabase:
+            try:
+                res_proc = supabase.table("procedimentos_cadastrados").select("*").eq("encarregado_matricula", matricula_usuario_logado).execute()
+                procedimentos_ativos = res_proc.data or []
+            except Exception:
+                pass
+
+        # Exemplo estruturado caso a tabela esteja no início
+        if not procedimentos_ativos:
+            procedimentos_ativos = [
+                {
+                    "id": "pcd-001-piloto",
+                    "numero_pcd": "001/2026 - PCD",
+                    "dias_restantes": 12,
+                    "data_recebimento_autos": datetime.date.today().strftime("%Y-%m-%d"),
+                    "prazo_dias_estipulado": 15,
+                    "comunicado_posto_nome": "Cb PM 150.123-4 Silva",
+                    "comunicado_numero": "1501234",
+                    "enquadramento_cedm": "inciso II do art. 13 do CEDM",
+                    "unidade_lotacao": str(usr.get("unidade") or "21º BATALHÃO DE POLÍCIA MILITAR").upper(),
+                    "regiao_rpm": "4ª REGIÃO DA POLÍCIA MILITAR",
+                    "municipio": "Ubá",
+                    "encarregado_posto_nome": f"{cargo_op} {nome_op}"
+                }
+            ]
+
+        html_procedimentos = renderizar_modulo_procedimentos_html(
+            supabase_client=supabase,
+            usuario_matricula=matricula_usuario_logado,
+            procedimentos_ativos=procedimentos_ativos,
+            etapa_ativa_id="TAV"
+        )
+        components.html(html_procedimentos, height=1300, scrolling=True)
 
 elif modulo == "GESTOES_USUARIOS":
     exibir_tela_gestao_usuarios()
