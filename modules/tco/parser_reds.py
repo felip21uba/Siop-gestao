@@ -6,6 +6,7 @@ Relator e Recibo do JECRIM) de PDFs da Polícia Militar de Minas Gerais.
 ==============================================================================
 """
 
+import io
 import re
 import pypdf
 import hashlib
