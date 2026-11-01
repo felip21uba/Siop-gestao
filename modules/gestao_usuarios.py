@@ -261,20 +261,53 @@ def exibir_painel_gestao_unidades():
 
 
 def exibir_painel_licencas_comerciais(usr_id_operador):
-    """Painel do Programador/Admin para comercialização de licenças temporárias de Procedimentos."""
+    """
+    Painel do Programador/Admin para comercialização de licenças temporárias de Procedimentos.
+    Permite selecionar militar diretamente da tabela 'usuarios' ou digitar manualmente.
+    """
     st.markdown("##### 💼 Concessão e Gestão de Licenças Comerciais (Módulo Procedimentos)")
     st.caption("Libere o acesso ao rito PCD, PAD e SAD por prazos pré-determinados (30 dias, 6 meses, 1 ano).")
 
+    efetivo_banco = carregar_militares_supabase() or []
+
+    # Monta mapa de opções com militares já cadastrados na base para preenchimento ágil
+    opcoes_militares = {"-- DIGITAR MATRÍCULA MANUALMENTE --": None}
+    for m in efetivo_banco:
+        num_pm = str(m.get("num_policia", "")).strip().upper()
+        if num_pm and num_pm != "N/I":
+            nome_comp = m.get("nome_completo") or f"{m.get('posto_grad','')} {m.get('nome_guerra','')}"
+            rotulo = f"[{num_pm}] {m.get('posto_grad','')} {nome_comp}"
+            opcoes_militares[rotulo] = m
+
     with st.container(border=True):
         st.markdown("###### ➕ Ativar / Renovar Licença de Militar")
-        with st.form("form_conceder_licenca_procedimentos", clear_on_submit=True):
+
+        militar_selecionado_rotulo = st.selectbox(
+            "Puxar Militar da Base SIOP (ou escolha digitar manual):",
+            options=list(opcoes_militares.keys()),
+            index=0,
+            key="sb_selecionar_militar_licenca"
+        )
+
+        dados_auto = opcoes_militares.get(militar_selecionado_rotulo)
+
+        val_matricula_def = ""
+        val_nome_def = ""
+        val_unidade_def = ""
+
+        if dados_auto:
+            val_matricula_def = str(dados_auto.get("num_policia", "")).strip()
+            val_nome_def = str(dados_auto.get("nome_completo") or dados_auto.get("nome_guerra", "")).strip().upper()
+            val_unidade_def = str(dados_auto.get("lotacao") or dados_auto.get("unidade", "21º BPM")).strip().upper()
+
+        with st.form("form_conceder_licenca_procedimentos", clear_on_submit=False):
             c_mat, c_nome, c_uni = st.columns(3)
             with c_mat:
-                mat_lic = st.text_input("Matrícula / PM:", placeholder="Ex: 1412295 ou 141.229-5").strip()
+                mat_lic = st.text_input("Matrícula / PM (Login):", value=val_matricula_def, placeholder="Ex: 1337468 ou 1412295").strip()
             with c_nome:
-                nome_lic = st.text_input("Nome de Guerra / Posto:", placeholder="Ex: 3º SGT DANIEL").strip().upper()
+                nome_lic = st.text_input("Nome / Posto e Graduação:", value=val_nome_def, placeholder="Ex: CAP OLIVEIRA").strip().upper()
             with c_uni:
-                uni_lic = st.text_input("Unidade / BPM:", placeholder="Ex: 21º BPM").strip().upper()
+                uni_lic = st.text_input("Unidade / Lotação:", value=val_unidade_def, placeholder="Ex: 21º BPM / 4ª RPM").strip().upper()
 
             c_plan, c_tempo, c_lim = st.columns(3)
             with c_plan:
