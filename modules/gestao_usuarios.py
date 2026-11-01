@@ -1,16 +1,19 @@
 """
 ==============================================================================
 Módulo de Gestão de Usuários e Permissões SIOP
-Gerencia acessos por perfil desacoplado (CREDS e Nível Geral/Escala), unidades e limpeza seletiva.
-Mapeamento de colunas fiel ao esquema SQL public.usuarios.
+Gerencia acessos por perfil desacoplado (CREDS, Nível Geral/Escala e Módulo Procedimentos),
+unidades, licenças comerciais temporárias e limpeza seletiva.
+Mapeamento de colunas fiel ao esquema SQL public.usuarios e public.procedimentos_licencas_acesso.
 ==============================================================================
 """
 
 import streamlit as st
 import pandas as pd
 import re
+from datetime import datetime, timedelta, timezone
 from core.database import supabase, registrar_audit_log, carregar_militares_supabase, extrair_bpm_mae
 from core.auth import gerar_hash_senha
+from core.permissions import usuario_eh_admin_ou_programador
 
 PERFIS_NIVEL_GERAL = [
     "PROGRAMADOR / ADMIN", 
@@ -145,6 +148,43 @@ def salvar_permissao_militar(matricula, perfil_creds=None, nivel_acesso=None, at
     return False
 
 
+def obter_mapa_licencas_procedimentos():
+    """Retorna um dicionário indexado pela matrícula contendo os dados da licença de procedimentos."""
+    if not supabase:
+        return {}
+    try:
+        res = supabase.table("procedimentos_licencas_acesso").select("*").execute()
+        mapa = {}
+        agora = datetime.now(timezone.utc)
+        for lic in (res.data or []):
+            matr = extrair_digitos_matricula(lic.get("usuario_matricula", ""))
+            if not matr:
+                continue
+            
+            status = str(lic.get("status", "")).upper()
+            exp = lic.get("data_expiracao")
+            
+            if status != "ATIVO":
+                rotulo = f"❌ {status}"
+            elif not exp:
+                rotulo = "⭐ VITALÍCIO"
+            else:
+                d_exp = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+                restantes = (d_exp - agora).days
+                if restantes < 0:
+                    rotulo = "⌛ EXPIRADO"
+                else:
+                    rotulo = f"✅ ATIVO ({restantes}d)"
+                    
+            mapa[matr] = {
+                "dados": lic,
+                "status_rotulo": rotulo
+            }
+        return mapa
+    except Exception:
+        return {}
+
+
 def exibir_painel_gestao_unidades():
     st.markdown("##### 📋 Unidades Cadastradas no SIOP")
     st.caption("Visualização e administração global das unidades no Supabase.")
@@ -220,9 +260,134 @@ def exibir_painel_gestao_unidades():
         st.divider()
 
 
+def exibir_painel_licencas_comerciais(usr_id_operador):
+    """Painel do Programador/Admin para comercialização de licenças temporárias de Procedimentos."""
+    st.markdown("##### 💼 Concessão e Gestão de Licenças Comerciais (Módulo Procedimentos)")
+    st.caption("Libere o acesso ao rito PCD, PAD e SAD por prazos pré-determinados (30 dias, 6 meses, 1 ano).")
+
+    with st.container(border=True):
+        st.markdown("###### ➕ Ativar / Renovar Licença de Militar")
+        with st.form("form_conceder_licenca_procedimentos", clear_on_submit=True):
+            c_mat, c_nome, c_uni = st.columns(3)
+            with c_mat:
+                mat_lic = st.text_input("Matrícula / PM:", placeholder="Ex: 1412295 ou 141.229-5").strip()
+            with c_nome:
+                nome_lic = st.text_input("Nome de Guerra / Posto:", placeholder="Ex: 3º SGT DANIEL").strip().upper()
+            with c_uni:
+                uni_lic = st.text_input("Unidade / BPM:", placeholder="Ex: 21º BPM").strip().upper()
+
+            c_plan, c_tempo, c_lim = st.columns(3)
+            with c_plan:
+                plano_lic = st.selectbox("Tipo de Assinatura:", ["INDIVIDUAL", "COMISSÃO", "BATALHÃO COMPLETO"])
+            with c_tempo:
+                prazo_opcao = st.selectbox("Período de Liberação:", [
+                    "30 Dias (Mensal)", 
+                    "180 Dias (Semestral - 6 Meses)", 
+                    "365 Dias (Anual - 1 Ano)", 
+                    "Vitalício (Ilimitado)"
+                ])
+            with c_lim:
+                limite_proc = st.number_input("Limite de Procedimentos Simultâneos:", min_value=1, max_value=500, value=50)
+
+            btn_ativar_lic = st.form_submit_button("🔑 Emitir / Atualizar Licença Comercial", type="primary", use_container_width=True)
+
+            if btn_ativar_lic:
+                mat_limpa = extrair_digitos_matricula(mat_lic)
+                if not mat_limpa:
+                    st.error("⚠️ Informe a matrícula do militar para ativar a licença.")
+                else:
+                    agora = datetime.now(timezone.utc)
+                    data_exp = None
+                    if "30 Dias" in prazo_opcao:
+                        data_exp = agora + timedelta(days=30)
+                    elif "180 Dias" in prazo_opcao:
+                        data_exp = agora + timedelta(days=180)
+                    elif "365 Dias" in prazo_opcao:
+                        data_exp = agora + timedelta(days=365)
+
+                    payload_lic = {
+                        "usuario_matricula": mat_limpa,
+                        "usuario_nome": nome_lic or f"MILITAR MATR. {mat_limpa}",
+                        "unidade_lotacao": uni_lic or "PMMG",
+                        "tipo_plano": plano_lic,
+                        "status": "ATIVO",
+                        "data_inicio": agora.isoformat(),
+                        "data_expiracao": data_exp.isoformat() if data_exp else None,
+                        "limite_procedimentos_ativos": limite_proc,
+                        "updated_at": agora.isoformat()
+                    }
+
+                    try:
+                        supabase.table("procedimentos_licencas_acesso").upsert(
+                            payload_lic, on_conflict="usuario_matricula"
+                        ).execute()
+                        registrar_audit_log(usr_id_operador, mat_limpa, "LICENCA_PROCEDIMENTOS_EMITIDA", f"Plano: {plano_lic} | Validade: {prazo_opcao}")
+                        st.success(f"✅ Licença para a matrícula {mat_limpa} concedida com sucesso! ({prazo_opcao})")
+                        st.rerun()
+                    except Exception as err:
+                        st.error(f"Erro ao registrar licença no Supabase: {err}")
+
+    st.markdown("---")
+    st.markdown("###### 📋 Lista Geral de Licenças Emitidas")
+
+    try:
+        res_lics = supabase.table("procedimentos_licencas_acesso").select("*").order("created_at", desc=True).execute()
+        lics_lista = res_lics.data or []
+
+        if not lics_lista:
+            st.info("ℹ️ Nenhuma licença comercial cadastrada até ao momento.")
+            return
+
+        agora = datetime.now(timezone.utc)
+        linhas_lic = []
+        for l in lics_lista:
+            exp_val = l.get("data_expiracao")
+            if not exp_val:
+                validade_str = "⭐ Vitalício"
+            else:
+                d_exp = datetime.fromisoformat(exp_val.replace("Z", "+00:00"))
+                dias_rest = (d_exp - agora).days
+                validade_str = f"{dias_rest} dias restantes" if dias_rest >= 0 else "🚨 EXPIRADA"
+
+            linhas_lic.append({
+                "MATRÍCULA": l.get("usuario_matricula"),
+                "NOME DO MILITAR": l.get("usuario_nome"),
+                "UNIDADE": l.get("unidade_lotacao"),
+                "PLANO": l.get("tipo_plano"),
+                "STATUS": l.get("status"),
+                "VALIDADE": validade_str,
+                "LIMITE": l.get("limite_procedimentos_ativos", 50)
+            })
+
+        st.dataframe(pd.DataFrame(linhas_lic), use_container_width=True, hide_index=True)
+
+        st.markdown("###### ⚙️ Revogação / Bloqueio Rápido")
+        col_rev1, col_rev2 = st.columns([3, 1])
+        with col_rev1:
+            mat_rev = st.selectbox("Selecione a matrícula para alterar status:", [f"{x['MATRÍCULA']} - {x['NOME DO MILITAR']}" for x in linhas_lic])
+        with col_rev2:
+            st.write("")
+            st.write("")
+            if st.button("🚫 Suspender / Bloquear Licença", type="secondary", use_container_width=True):
+                mat_alvo_rev = extrair_digitos_matricula(mat_rev.split(" - ")[0])
+                try:
+                    supabase.table("procedimentos_licencas_acesso").update({
+                        "status": "BLOQUEADO",
+                        "updated_at": agora.isoformat()
+                    }).eq("usuario_matricula", mat_alvo_rev).execute()
+                    registrar_audit_log(usr_id_operador, mat_alvo_rev, "LICENCA_PROCEDIMENTOS_BLOQUEADA", "Licença bloqueada pelo administrador.")
+                    st.warning(f"Licença da matrícula {mat_alvo_rev} bloqueada com sucesso!")
+                    st.rerun()
+                except Exception as ex_rev:
+                    st.error(f"Erro ao revogar: {ex_rev}")
+
+    except Exception as e_carregar:
+        st.error(f"Falha ao carregar licenças: {e_carregar}")
+
+
 def exibir_tela_gestao_usuarios():
     st.title("⚙ Painel de Gestão de Níveis de Acesso e Permissões SIOP")
-    st.caption("Atribua permissões independentes para a Função CREDS (TCO) e Nível Geral (Menu & Escalas), cadastre novos operadores e administre as unidades.")
+    st.caption("Atribua permissões independentes para a Função CREDS (TCO), Nível Geral (Menu & Escalas), Licenças do Módulo Procedimentos e Unidades.")
     st.divider()
 
     if "gestao_usr_version" not in st.session_state:
@@ -284,8 +449,10 @@ def exibir_tela_gestao_usuarios():
 
     st.divider()
 
+    # ABAS PRINCIPAIS - INCLUÍDA ABA EXCLUSIVA DE LICENÇAS
     abas_titulos = [
         "👥 Permissões do Efetivo",
+        "💼 Licenças Comerciais (Procedimentos)",
         "🏛 Cadastrar Nova Unidade / Batalhão",
         "📋 Lista de Unidades Cadastradas",
         "🚨 Limpeza Seletiva (Programador)"
@@ -293,6 +460,7 @@ def exibir_tela_gestao_usuarios():
 
     abas = st.tabs(abas_titulos)
     efetivo_banco = carregar_militares_supabase() or []
+    mapa_licencas = obter_mapa_licencas_procedimentos()
 
     # ABA 1: GERENCIAMENTO DE ACESSOS EM LOTE E TABELA EDITÁVEL
     with abas[0]:
@@ -305,7 +473,9 @@ def exibir_tela_gestao_usuarios():
             if num_pm and num_pm != "N/I":
                 nome_comp = m.get("nome_completo") or f"{m.get('posto_grad','')} {m.get('nome_guerra','')}"
                 p_geral_display = normalizar_perfil_geral_banco(m.get('nivel_acesso') or m.get('perfil_escala'))
-                status_txt = f"GERAL: {p_geral_display} | CREDS: {m.get('perfil_creds', 'TROPA')}"
+                m_dig = extrair_digitos_matricula(num_pm)
+                lic_info = mapa_licencas.get(m_dig, {}).get("status_rotulo", "SEM LICENÇA")
+                status_txt = f"GERAL: {p_geral_display} | CREDS: {m.get('perfil_creds', 'TROPA')} | PROC: {lic_info}"
                 rotulo = f"[{num_pm}] {m.get('posto_grad','')} {nome_comp} - ({status_txt})"
                 dict_mils_options[rotulo] = m
 
@@ -369,7 +539,7 @@ def exibir_tela_gestao_usuarios():
                     st.session_state["gestao_usr_version"] += 1
                     st.rerun()
 
-            st.caption("💡 Edite o Nível Geral ou a Função CREDS diretamente na tabela. As alterações serão salvas imediatamente no Supabase.")
+            st.caption("💡 Edite o Nível Geral ou a Função CREDS diretamente na tabela. A coluna 'MÓDULO PROCEDIMENTOS' reflete a licença comercial ativa.")
 
             if efetivo_banco:
                 linhas_display = []
@@ -380,8 +550,10 @@ def exibir_tela_gestao_usuarios():
                     posto_str = str(m.get("posto_grad", "SD"))
                     nivel_geral_str = normalizar_perfil_geral_banco(m.get("nivel_acesso") or m.get("perfil_escala"))
 
+                    num_pm_limpo = extrair_digitos_matricula(num_pm)
+                    lic_col = mapa_licencas.get(num_pm_limpo, {}).get("status_rotulo", "SEM LICENÇA")
+
                     if termo_busca_militar:
-                        num_pm_limpo = extrair_digitos_matricula(num_pm)
                         termo_limpo = extrair_digitos_matricula(termo_busca_militar)
                         
                         match_texto = (
@@ -405,6 +577,7 @@ def exibir_tela_gestao_usuarios():
                         "LOTAÇÃO": lotacao_str,
                         "NÍVEL GERAL (MENU/ESCALA)": nivel_geral_str,
                         "FUNÇÃO CREDS (TCO)": m.get("perfil_creds", "TROPA"),
+                        "MÓDULO PROCEDIMENTOS": lic_col,
                         "CONTA ATIVA": bool(m.get("ativo", True))
                     })
 
@@ -420,6 +593,7 @@ def exibir_tela_gestao_usuarios():
                         "LOTAÇÃO": st.column_config.TextColumn("LOTAÇÃO / CIA", disabled=True),
                         "NÍVEL GERAL (MENU/ESCALA)": st.column_config.SelectboxColumn("NÍVEL GERAL (MENU/ESCALA)", options=PERFIS_NIVEL_GERAL, required=True),
                         "FUNÇÃO CREDS (TCO)": st.column_config.SelectboxColumn("FUNÇÃO CREDS (TCO)", options=PERFIS_CREDS, required=True),
+                        "MÓDULO PROCEDIMENTOS": st.column_config.TextColumn("MÓDULO PROCEDIMENTOS", disabled=True),
                         "CONTA ATIVA": st.column_config.CheckboxColumn("CONTA ATIVA")
                     }
 
@@ -472,8 +646,12 @@ def exibir_tela_gestao_usuarios():
                         st.toast("✅ Permissões salvas com sucesso no Supabase!", icon="🟢")
                         st.rerun()
 
-    # ABA 2: CADASTRO DE UNIDADES
+    # ABA 2: LICENÇAS COMERCIAIS DEDICADAS AO MÓDULO PROCEDIMENTOS
     with abas[1]:
+        exibir_painel_licencas_comerciais(usr_id_operador)
+
+    # ABA 3: CADASTRO DE UNIDADES
+    with abas[2]:
         st.markdown("##### 🏛 Cadastrar Nova Unidade / Batalhão (Multi-Tenant)")
         with st.form("form_nova_unidade_multitenant", clear_on_submit=True):
             c_un_a, c_un_b = st.columns(2)
@@ -509,12 +687,12 @@ def exibir_tela_gestao_usuarios():
                         except Exception as e:
                             st.error(f"Erro ao salvar unidade: {e}")
 
-    # ABA 3: LISTAGEM E EXCLUSÃO DE UNIDADES
-    with abas[2]:
+    # ABA 4: LISTAGEM E EXCLUSÃO DE UNIDADES
+    with abas[3]:
         exibir_painel_gestao_unidades()
 
-    # ABA 4: LIMPEZA SELETIVA DE DADOS
-    with abas[3]:
+    # ABA 5: LIMPEZA SELETIVA DE DADOS
+    with abas[4]:
         st.markdown("### 🚨 Limpeza Seletiva do Banco de Dados (Acesso Restrito ao Programador)")
         st.warning("⚠️ **ATENÇÃO:** Esta ferramenta exclui usuários da tabela **`usuarios`** do Supabase. O login do Programador (`123456`) **NUNCA** será apagado.")
 
