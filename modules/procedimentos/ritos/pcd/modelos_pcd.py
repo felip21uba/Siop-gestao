@@ -1,156 +1,257 @@
 """
-SIOP PMMG - MODELOS DOCUMENTAIS OFICIAIS DO RITO PCD
-Parametrizados pelo MAPPA e Código de Ética e Disciplina dos Militares de Minas Gerais.
-Todos os cabeçalhos, datas, comarcas e dados funcionais são dinâmicos.
+==============================================================================
+SIOP PMMG - MODELOS LITERAIS DO PCD (BASE: 21º BPM / 4ª RPM / MAPPA)
+Fidelidade aos modelos reais: Termo de Oitiva, TAV de Defesa Prévia e Relatório.
+==============================================================================
 """
-from typing import Dict, Any
 
-def gerar_cabecalho_oficial(dados: Dict[str, Any]) -> str:
-    """Gera o cabeçalho timbrado oficial da PMMG."""
-    regiao = dados.get("regiao_rpm", "4ª REGIÃO DA POLÍCIA MILITAR").upper()
-    unidade = dados.get("unidade_lotacao", "VIGÉSIMO PRIMEIRO BATALHÃO DE POLÍCIA MILITAR").upper()
-    return f"POLÍCIA MILITAR DE MINAS GERAIS\n{regiao}\n{unidade}\n"
+import datetime
 
-def renderizar_tav(dados: Dict[str, Any]) -> str:
-    """
-    Renderiza o Termo de Abertura de Vista (TAV) para Alegações de Defesa.
-    Prazo legal: 5 dias úteis com cominação de revelia e defensor ad hoc.
-    """
-    cabecalho = gerar_cabecalho_oficial(dados)
+
+def gerar_cabecalho_oficial(dados: dict) -> str:
+    """Gera o cabeçalho institucional em caixa alta no padrão PMMG."""
+    rpm = dados.get("regiao_rpm", "QUARTA REGIÃO DA POLÍCIA MILITAR").upper()
+    unidade = dados.get("unidade_lotacao", "VIGÉSIMO PRIMEIRO BATALHÃO DE POLICIA MILITAR").upper()
+    return f"POLICIA MILITAR DE MINAS GERAIS\n{rpm}\n{unidade}\n"
+
+
+def renderizar_tav(dados: dict) -> str:
+    """Modelo literal de Termo de Abertura de Vista (TAV) para Apresentação das Alegações de Defesa."""
+    rpm_bpm = f"{dados.get('regiao_rpm_abrev', '4ª RPM')} / {dados.get('unidade_abreviada', '21º BPM')}"
+    hoje = datetime.date.today()
+    dia_str = str(hoje.day).zfill(2)
+    mes_extenso = hoje.strftime("%B")
+    ano_str = str(hoje.year)
+
+    municipio = dados.get("municipio", "Ubá")
+    unidade_quartel = dados.get("unidade_abreviada", "21º BPM")
+    encarregado = dados.get("encarregado_posto_nome", "Cap PM Felipe de Oliveira Alves Pereira")
+    comunicado_num = dados.get("comunicado_numero", "__________")
+    comunicado_posto = dados.get("comunicado_posto", "Cb PM")
+    comunicado_nome = dados.get("comunicado_nome", "______________________________")
+    comunicado_lotacao = dados.get("comunicado_lotacao", "35ª CIA PM / 21º BPM")
+    fls_total = dados.get("fls_total_autos", "_____")
+    fls_ini = dados.get("fls_inicial_autos", "01")
+    fls_fim = dados.get("fls_final_autos", "_____")
+    art_mapa = dados.get("artigo_mappa", "____")
+    enquadramento = dados.get("enquadramento_cedm", "inciso _____ do art. _____ do CEDM")
+    sintese_fato = dados.get("sintese_fato", "No dia __/__/____, na cidade de Ubá/MG, o militar comunicado cometeu conduta que em tese afronta os preceitos regulamentares.")
+    anexos = dados.get("anexos_especificados", "Cópia da Portaria de instauração e documentos que instruem a acusação.")
+
     return (
-        f"{cabecalho}\n"
+        f"{rpm_bpm}\n\n"
         f"TERMO DE ABERTURA DE VISTA (TAV) PARA\n"
         f"APRESENTAÇÃO DAS ALEGAÇÕES DE DEFESA\n\n"
-        f"Anexo(s): {dados.get('anexos_especificados', 'Cópia da Comunicação Disciplinar e Despacho')}\n\n"
-        f"Aos {dados.get('dia_extenso', '..........')} dias do mês de {dados.get('mes_extenso', '..........................')} "
-        f"do ano de {dados.get('ano_extenso', '................')}, nesta cidade de {dados.get('municipio', '..............................')}, "
-        f"Estado de Minas Gerais, no Quartel do {dados.get('unidade_abreviada', '........................')}, onde eu, "
-        f"{dados.get('encarregado_posto_nome', '......................................................')}, encarregado do processo, encontrava-me, "
-        f"compareceu o n. {dados.get('comunicado_numero', '........................')}, {dados.get('comunicado_posto_nome', '..............................')}, "
-        f"lotado no {dados.get('comunicado_lotacao', '..............................')}, (ou o seu defensor), ao qual foi feita a abertura de vista "
-        f"da comunicação disciplinar anexa, contendo {dados.get('qtd_fls', '.....')} fls., numeradas de {dados.get('fls_inicial', '.....')} a "
-        f"{dados.get('fls_final', '.....')}, nos termos do inciso LV, do art. 5º, da Constituição Federal, e em observância ao MAPPA, que asseguram "
-        f"o amplo direito de defesa e do exercício do contraditório, e, considerando que o militar supracitado cometeu, em tese, atos que configuram "
-        f"transgressão(ões) disciplinar(es), especificada(s) no(s) {dados.get('enquadramento_cedm', 'inciso(s)........... do art.................')} "
-        f"do Código de Ética e Disciplina dos Militares, conforme síntese abaixo:\n\n"
-        f"\"{dados.get('sintese_fato_motivada', 'Descrever a síntese circunstanciada da conduta imputada.')}\"\n\n"
-        f"Posto isto, encontra-se esse comunicado incurso, em tese, no {dados.get('enquadramento_cedm', 'inciso.... do art....')} do CEDM.\n\n"
-        f"Passo os documentos anexos, que compõem as peças acusatórias, para que, no prazo de 05 (cinco) dias úteis, apresente suas alegações de defesa, "
-        f"diretamente ou através de defensor constituído, ficando advertido quanto ao previsto no art. 316 do CPM, que trata da divulgação/extravio "
-        f"de documentos e alertado que a não apresentação das alegações de defesa, injustificadamente, dentro do prazo estipulado, será considerado como "
-        f"precluso o direito, operando-se os efeitos da revelia, quando lhe será nomeado defensor ad hoc.\n\n"
+        f"Anexo(s): {anexos}\n\n"
+        f"Aos {dia_str} dias do mês de {mes_extenso} do ano de {ano_str}, nesta cidade de {municipio}, "
+        f"Estado de Minas Gerais, no Quartel do {unidade_quartel}, onde eu, {encarregado}, encarregado do processo, "
+        f"encontrava-me, compareceu o n. {comunicado_num}, {comunicado_posto} {comunicado_nome}, lotado no(a) {comunicado_lotacao}, "
+        f"(ou o seu defensor), ao qual foi feita a abertura de vista da comunicação disciplinar anexa, contendo {fls_total} fls., "
+        f"numeradas de {fls_ini} a {fls_fim}, nos termos do inciso LV, do art. 5º, da Constituição Federal, e em observância ao art. {art_mapa} do MAPPA, "
+        f"que asseguram o amplo direito de defesa e do exercício do contraditório, e, considerando que o militar supracitado cometeu, "
+        f"em tese, atos que configuram transgressão(ões) disciplinar(es), especificada(s) no {enquadramento}, conforme síntese abaixo:\n\n"
+        f"“{sintese_fato} Posto isto, encontra-se esse comunicado incurso, em tese, no {enquadramento}.”\n\n"
+        f"Passo os documentos anexos, que compõem as peças acusatórias, para que, no prazo de 05 (cinco) dias úteis, "
+        f"apresente suas alegações de defesa, diretamente ou através de defensor constituído, ficando advertido quanto ao previsto no "
+        f"art. 316 do CPM, que trata da divulgação/extravio de documentos e alertado que a não apresentação das alegações de defesa, "
+        f"injustificadamente, dentro do prazo estipulado, será considerado como precluso o direito, operando-se os efeitos da revelia, "
+        f"quando lhe será nomeado defensor ad hoc.\n\n"
         f"Recebi 01 (uma) via do presente termo e os autos anexos.\n\n"
-        f"Quartel em {dados.get('municipio', '....................')}, {dados.get('dia_numero', '....')} de "
-        f"{dados.get('mes_nome', '................')} de {dados.get('ano_numero', '........')}.\n\n"
-        f"________________________________________________\n"
-        f"{dados.get('comunicado_posto_nome', 'COMUNICADO')}\n\n"
-        f"________________________________________________\n"
-        f"TESTEMUNHA\n\n"
-        f"________________________________________________\n"
-        f"TESTEMUNHA\n\n"
-        f"________________________________________________\n"
-        f"{dados.get('encarregado_posto_nome', 'ENCARREGADO DO PROCESSO')}\n"
+        f"Quartel em {municipio}, {dia_str} de {mes_extenso} de {ano_str}.\n\n"
+        f"                                ________________________________________________\n"
+        f"                                                   COMUNICADO\n\n"
+        f"                                ________________________________________________\n"
+        f"                                                   TESTEMUNHA\n\n"
+        f"                                ________________________________________________\n"
+        f"                                                   TESTEMUNHA\n\n"
+        f"                                ________________________________________________\n"
+        f"                                            ENCARREGADO DO PROCESSO\n"
     )
 
-def renderizar_termo_oitiva(dados: Dict[str, Any]) -> str:
-    """
-    Renderiza o Termo Oficial de Depoimento/Oitiva de Testemunha (Padrão 21º BPM / MAPPA).
-    Contém qualificação completa e certidão de cientificação do investigado.
-    """
+
+def renderizar_termo_oitiva(dados: dict) -> str:
+    """Modelo literal de Termo de Depoimento de Testemunha conforme modelo 21º BPM."""
     cabecalho = gerar_cabecalho_oficial(dados)
-    certidao = dados.get(
+    ordem_testemunha = dados.get("ordem_testemunha", "PRIMEIRA TESTEMUNHA").upper()
+    local = dados.get("local_oitiva", f"Quartel do {dados.get('unidade_abreviada', '21º BPM')}, em {dados.get('municipio', 'Ubá')}")
+    data_oitiva = dados.get("data_oitiva", datetime.date.today().strftime("%d/%m/%Y - %A"))
+    encarregado = dados.get("encarregado_posto_nome", "Cap PM Felipe de Oliveira Alves Pereira")
+
+    nome_dep = dados.get("depoente_nome", "LETÍCIA FELÍCIO PEREIRA DO VALE")
+    prof_dep = dados.get("depoente_profissao", "Policial Militar")
+    posto_dep = dados.get("depoente_posto", "Cb PM")
+    num_dep = dados.get("depoente_numero", "150.411-7")
+    pai_dep = dados.get("depoente_pai", "José Raimundo Pereira da Silva")
+    mae_dep = dados.get("depoente_mae", "Maria Alice Balbi Felício Pereira")
+    idade_dep = dados.get("depoente_idade", "44 anos")
+    nasc_dep = dados.get("depoente_nasc", "11/03/1981")
+    sexo_dep = dados.get("depoente_sexo", "F")
+    nac_dep = dados.get("depoente_nacionalidade", "Brasileira")
+    nat_dep = dados.get("depoente_naturalidade", "Ubá/MG")
+    apelido_dep = dados.get("depoente_apelido", "(se houver)")
+    est_civil = dados.get("depoente_est_civil", "Casada")
+    cpf_dep = dados.get("depoente_cpf", "048.523.716-44")
+    rg_dep = dados.get("depoente_rg", "10892502")
+    trab_dep = dados.get("depoente_trabalho", "Rua Farmacêutico José Rodrigues de Andrade, 545 A – São Sebastião. Ubá/MG")
+    res_dep = dados.get("depoente_residencia", "Rua Amélia Duarte Sol, 121, bairro Vitória, Ubá/MG, CEP: 36.500-240.")
+    cel_dep = dados.get("depoente_celular", "(32) 9 9944-1149")
+    tel_res = dados.get("depoente_tel_res", "")
+    tel_com = dados.get("depoente_tel_com", "")
+    escolaridade = dados.get("depoente_escolaridade", "Superior Completo")
+    le_dep = dados.get("depoente_le", "sim")
+    escreve_dep = dados.get("depoente_escreve", "sim")
+
+    processo_despacho = dados.get("despacho_numero", f"despacho nº {dados.get('numero_pcd', '109.186-2025-21º BPM')} – PCD")
+    depoimento_corpo = dados.get(
+        "depoimento_corpo_texto",
+        "PERGUNTADO acerca dos fatos constantes na Portaria/Despacho, que lhe foi lida, respondeu que..."
+    )
+
+    comparecimento_comunicado = dados.get(
         "certidao_presenca_comunicado",
-        f"NOTIFICADO PARA ACOMPANHAR A AUDIÇÃO DA TESTEMUNHA, CONFORME FLS. {dados.get('fls_notificacao', '_______')}, "
-        f"O COMUNICADO NÃO COMPARECEU."
+        "NOTIFICADO PARA ACOMPANHAR A AUDIÇÃO DA TESTEMUNHA, CONFORME FLS. _________ O COMUNICADO NÃO COMPARECEU."
     )
-    
+
+    hora_ini = dados.get("hora_inicio", "14hs")
+    hora_fim = dados.get("hora_fim", "14h30min")
+
     return (
-        f"{cabecalho}\n"
-        f"TERMO DE DEPOIMENTO - {dados.get('ordem_testemunha', 'PRIMEIRA')} TESTEMUNHA\n\n"
-        f"Local: Quartel do {dados.get('unidade_abreviada', '21º BPM')}, em {dados.get('municipio', 'Ubá')}\n"
-        f"Data da oitiva: {dados.get('data_oitiva', '__/__/____')} – {dados.get('dia_semana', 'Segunda-feira')}\n"
-        f"Nome do encarregado: {dados.get('encarregado_posto_nome', 'Cap PM Encarregado')}\n\n"
+        f"{cabecalho}\n\n"
+        f"TERMO DE DEPOIMENTO - {ordem_testemunha}\n\n"
+        f"Local: {local}\n"
+        f"Data da oitiva: {data_oitiva}\n"
+        f"Nome do encarregado: {encarregado}\n\n"
         f"DEPOIMENTO OU INFORMAÇÃO (caso não seja compromissada) que presta:\n"
-        f"NOME: {dados.get('depoente_nome', '')}\n"
-        f"Profissão: {dados.get('depoente_profissao', 'Policial Militar')}; Posto/Grad: {dados.get('depoente_posto', '')}; Número: {dados.get('depoente_numero', '')}.\n"
-        f"Filiação: Pai: {dados.get('depoente_pai', '')},\n"
-        f"          Mãe: {dados.get('depoente_mae', '')}\n"
-        f"Idade: {dados.get('depoente_idade', '')} anos. Data de nascimento: {dados.get('depoente_nascimento', '')}; Sexo: {dados.get('depoente_sexo', '')}.\n"
-        f"Nacionalidade: {dados.get('depoente_nacionalidade', 'Brasileira')}, Naturalidade: {dados.get('depoente_naturalidade', '')}\n"
-        f"Apelido: {dados.get('depoente_apelido', '(nada)')} Estado civil: {dados.get('depoente_estado_civil', '')}\n"
-        f"CPF: {dados.get('depoente_cpf', '')}           Identidade: {dados.get('depoente_rg', '')}\n"
-        f"Local de trabalho: {dados.get('depoente_local_trabalho', '')}\n"
-        f"Residência: {dados.get('depoente_residencia', '')}, CEP: {dados.get('depoente_cep', '')}.\n"
-        f"Tel. celular: {dados.get('depoente_celular', '')}       Tel. residencial: {dados.get('depoente_tel_fixo', '')}\n"
-        f"Escolaridade: {dados.get('depoente_escolaridade', '')}\n"
-        f"Lê: {dados.get('depoente_le', 'sim')}           Escreve: {dados.get('depoente_escreve', 'sim')}\n"
-        f"Costumes: {dados.get('depoente_costumes', 'disse nada')}. Compromisso legal: {dados.get('depoente_compromisso', 'na forma da lei')}.\n\n"
-        f"PERGUNTADO acerca dos fatos constantes no despacho nº {dados.get('num_pcd', '____')} – PCD, que lhe foi lida, respondeu {dados.get('depoimento_corpo_texto', 'que nada disse.')}\n\n"
-        f"{certidao}\n\n"
-        f"Nada mais disse, nem lhe foi perguntado e para constar, lavrei este termo, que iniciado às {dados.get('hora_inicio', '__:__')}hs, "
-        f"foi encerrado às {dados.get('hora_fim', '__:__')}min do mesmo dia, o qual depois de lido e achado conforme, vai assinado.\n\n"
-        f"________________________________________________\n"
-        f"{dados.get('depoente_nome', '')}, {dados.get('depoente_posto', '')}\n"
-        f"TESTEMUNHA\n\n"
-        f"________________________________________________\n"
-        f"{dados.get('encarregado_posto_nome', '')}\n"
-        f"ENCARREGADO\n"
+        f"NOME: {nome_dep}\n"
+        f"Profissão: {prof_dep}; Posto/Grad: {posto_dep}; Número: {num_dep}.\n"
+        f"Filiação: Pai: {pai_dep},\n"
+        f"          Mãe: {mae_dep}\n"
+        f"Idade: {idade_dep}. Data de nascimento: {nasc_dep}; Sexo: {sexo_dep}.\n"
+        f"Nacionalidade: {nac_dep}, Naturalidade: {nat_dep}\n"
+        f"Apelido: {apelido_dep} Estado civil: {est_civil}\n"
+        f"CPF: {cpf_dep}           Identidade: {rg_dep}\n"
+        f"Local de trabalho: {trab_dep}\n"
+        f"Residência: {res_dep}\n"
+        f"Tel. celular: {cel_dep}       Tel. residencial: {tel_res}         Tel. comercial: {tel_com}\n"
+        f"Escolaridade: {escolaridade}\n"
+        f"Lê: {le_dep}           Escreve: {escreve_dep}\n\n"
+        f"Costumes: disse nada. Compromisso legal: na forma da lei. "
+        f"PERGUNTADO acerca dos fatos constantes no {processo_despacho}, que lhe foi lida, "
+        f"respondeu que {depoimento_corpo}\n\n"
+        f"{comparecimento_comunicado}\n\n"
+        f"Nada mais disse, nem lhe foi perguntado e para constar, lavrei este termo, que iniciado às {hora_ini}, "
+        f"foi encerrado às {hora_fim} do mesmo dia, o qual depois de lido e achado conforme, vai assinado.\n\n"
+        f"                                ________________________________________________\n"
+        f"                                         {nome_dep}, {posto_dep}\n"
+        f"                                                    TESTEMUNHA\n\n"
+        f"                                ________________________________________________\n"
+        f"                                         {encarregado}\n"
+        f"                                                    ENCARREGADO\n"
     )
 
-def renderizar_termo_juntada(dados: Dict[str, Any]) -> str:
-    """Renderiza o Termo de Juntada para acoplar alegações, certidões ou laudos."""
-    cabecalho = gerar_cabecalho_oficial(dados)
-    return (
-        f"{cabecalho}\n"
-        f"TERMO DE JUNTADA\n\n"
-        f"Aos {dados.get('dia_extenso', '..........')} dias do mês de {dados.get('mes_extenso', '..........................')} "
-        f"do ano de {dados.get('ano_extenso', '................')}, nesta cidade de {dados.get('municipio', '..............................')}, "
-        f"Estado de Minas Gerais, no Quartel do {dados.get('unidade_abreviada', '........................')}, faço a juntada a estes autos "
-        f"de Processo de Comunicação Disciplinar nº {dados.get('num_pcd', '________')} do(s) documento(s) "
-        f"{dados.get('origem_documento_desc', 'apresentados pela defesa')}, constante(s) de {dados.get('qtd_folhas', '...')} folha(s), "
-        f"numeradas de Fls. {dados.get('fls_inicial', '...')} a Fls. {dados.get('fls_final', '...')}.\n"
-        f"Do que para constar, lavrei este termo que assino.\n\n"
-        f"Quartel em {dados.get('municipio', '....................')}, {dados.get('dia_numero', '....')} de "
-        f"{dados.get('mes_nome', '................')} de {dados.get('ano_numero', '........')}.\n\n"
-        f"________________________________________________\n"
-        f"{dados.get('encarregado_posto_nome', 'ENCARREGADO DO PROCESSO')}\n"
+
+def renderizar_relatorio_pcd(dados: dict) -> str:
+    """Modelo literal de Relatório do Encarregado em 6 Tópicos do MAPPA."""
+    rpm_bpm = f"{dados.get('regiao_rpm_abrev', '4ª RPM')} / {dados.get('unidade_abreviada', '21º BPM')}"
+    hoje = datetime.date.today()
+    dia_str = str(hoje.day).zfill(2)
+    mes_extenso = hoje.strftime("%B")
+    ano_str = str(hoje.year)
+    municipio = dados.get("municipio", "Ubá")
+    encarregado = dados.get("encarregado_posto_nome", "Cap PM Felipe de Oliveira Alves Pereira")
+
+    num_pcd = dados.get("numero_pcd", "001/2026")
+    data_pcd = dados.get("data_pcd", hoje.strftime("%d/%m/%Y"))
+    comunicado_num = dados.get("comunicado_numero", "150.123-4")
+    comunicado_posto = dados.get("comunicado_posto", "Cb PM")
+    comunicado_nome = dados.get("comunicado_nome", "SILVA")
+    enquadramento = dados.get("enquadramento_cedm", "art. 13, inciso II, do CEDM")
+    vitima = dados.get("ofendidos_vitimas", "O Estado / A Administração Militar (fls. 02)")
+    fato_sucinto = dados.get("fato_sucinto", "apurar conduta atribuída ao militar comunicado constante na Portaria inaugural.")
+    local_fato = dados.get("local_fato", "Ubá/MG")
+    data_hora_fato = dados.get("data_hora_fato", "__/__/____ às __:__ hs")
+    em_servico = dados.get("em_servico", "Sim")
+    testemunhas_ouvidas = dados.get("testemunhas_ouvidas_lista", "Cb PM Letícia Felício Pereira do Vale (fls. 05/06)")
+    objetos_apreendidos = dados.get("objetos_apreendidos", "Nenhum")
+    outras_provas = dados.get("outras_provas_lista", "Cópia do REDS, extrato funcional e registros de escalas.")
+
+    analise_fatos = dados.get(
+        "analise_fatos_provas",
+        "Do que foi apurado, constata-se que os fatos ocorreram da seguinte forma: "
+        "No dia do ocorrido, o militar... (Descrever de forma motivada nas provas, sem cópias integrais de depoimentos, "
+        "observando o limite regulamentar de até 20 linhas por tese/fato apurado)."
+    )
+    analise_defesa = dados.get(
+        "analise_alegacoes_defesa",
+        "A defesa sustentou em suas razões escritas que... No entanto, da análise probatória restou comprovado que..."
+    )
+    incidentes = dados.get(
+        "incidentes_processuais",
+        "O procedimento transcorreu em estrita observância ao contraditório e ampla defesa, cumprindo-se os prazos do Art. 86 e Art. 57, §1º do CEDM, sem intercorrências."
+    )
+    conclusao = dados.get(
+        "conclusao_texto",
+        f"Restou comprovado, em síntese, o cometimento da transgressão disciplinar imputada, praticada pelo seguinte militar:\n"
+        f"- N. {comunicado_num}, {comunicado_posto} {comunicado_nome}, {enquadramento}."
+    )
+    parecer = dados.get(
+        "parecer_proposta",
+        f"Concluídos os trabalhos, somos de parecer que:\n"
+        f"- o militar N. {comunicado_num}, {comunicado_posto} {comunicado_nome}, seja enquadrado e sancionado disciplinarmente pela autoridade competente."
     )
 
-def renderizar_relatorio_pcd(dados: Dict[str, Any]) -> str:
-    """
-    Renderiza o Relatório Conclusivo de PCD de acordo com a matriz do MAPPA.
-    Comporta os 6 tópicos analíticos estritos.
-    """
-    cabecalho = gerar_cabecalho_oficial(dados)
     return (
-        f"{cabecalho}\n"
+        f"{rpm_bpm}\n\n"
         f"RELATÓRIO\n\n"
         f"1. Dados\n"
-        f"a. Processo de Comunicação Disciplinar n. {dados.get('num_pcd', '_________')}, de {dados.get('data_pcd', '__/__/____')}.\n"
+        f"a. Processo de Comunicação Disciplinar n. {num_pcd}, de {data_pcd}.\n"
         f"b. Comunicado, com a tipificação da(s) transgressão(ões) disciplinar(es) imputada(s):\n"
-        f"N. {dados.get('comunicado_numero', '_________')}, {dados.get('comunicado_posto_nome', '______________________')}, {dados.get('enquadramento_cedm', 'art. ____ do CEDM')};\n"
-        f"c. Ofendido(s)/vítima(s): {dados.get('vitima_dados', 'A Administração Militar')} - (fls. {dados.get('fls_vitima', '___')});\n"
-        f"d. Fato: Este Processo de Comunicação Disciplinar teve por finalidade apurar {dados.get('sintese_apuracao', 'o fato constante da comunicação disciplinar')};\n"
-        f"e. Local: {dados.get('local_fato', '__________')} Data/hora: {dados.get('data_hora_fato', '__________')} Em serviço? {dados.get('em_servico', 'Sim')};\n"
-        f"f. Testemunhas ouvidas: {dados.get('testemunhas_relacao_fls', '__________ (fls. ___ )')};\n"
-        f"g. Objetos apreendidos/arrecadados: {dados.get('objetos_relacionados', 'Nada a registrar')};\n"
-        f"h. Outras provas: {dados.get('outras_provas_fls', 'Documentos anexos')}.\n\n"
+        f"N. {comunicado_num}, {comunicado_posto} {comunicado_nome}, {enquadramento};\n"
+        f"c. Ofendido(s)/vítima(s): {vitima};\n"
+        f"d. Fato: Este Processo de Comunicação Disciplinar teve por finalidade {fato_sucinto};\n"
+        f"e. Local: {local_fato} | Data/hora: {data_hora_fato} | Em serviço? {em_servico};\n"
+        f"f. Testemunhas ouvidas: {testemunhas_ouvidas};\n"
+        f"g. Objetos apreendidos/arrecadados: {objetos_apreendidos};\n"
+        f"h. Outras provas: {outras_provas}.\n\n"
         f"2. Dos fatos e da análise das provas\n"
-        f"Do que foi apurado, constata-se que os fatos ocorreram da seguinte forma:\n"
-        f"{dados.get('analise_fatos_provas', 'No dia __/__/__, ...')}\n\n"
+        f"{analise_fatos}\n\n"
         f"3. Das alegações de defesa\n"
-        f"{dados.get('analise_alegacoes_defesa', 'A defesa alegou em síntese...')}\n\n"
+        f"{analise_defesa}\n\n"
         f"4. Incidentes processuais\n"
-        f"{dados.get('incidentes_processuais', 'Não ocorreram incidentes ou pedidos de prorrogação.')}\n\n"
+        f"{incidentes}\n\n"
         f"5. Conclusão\n"
-        f"Restou comprovado, em síntese, o cometimento da(s) transgressão(ões) disciplinar(es) abaixo descrita(s), praticada(s) pelo seguinte militar:\n"
-        f"- N. {dados.get('comunicado_numero', '_________')}, {dados.get('comunicado_posto_nome', '______________________')}, {dados.get('enquadramento_cedm', 'art. ____ do CEDM')}.\n"
-        f"{dados.get('conclusao_justificacao_ou_crime', '')}\n\n"
+        f"{conclusao}\n\n"
         f"6. Parecer\n"
-        f"Concluídos os trabalhos, somos de parecer que:\n"
-        f"{dados.get('parecer_proposta_final', '- o comunicado seja enquadrado disciplinarmente na transgressão cometida;')}\n\n"
-        f"Quartel em {dados.get('municipio', '....................')}, {dados.get('dia_numero', '....')} de "
-        f"{dados.get('mes_nome', '................')} de {dados.get('ano_numero', '........')}.\n\n"
-        f"_________________________________________\n"
-        f"{dados.get('encarregado_posto_nome', 'ENCARREGADO')}\n"
+        f"{parecer}\n\n"
+        f"Quartel em {municipio}, {dia_str} de {mes_extenso} de {ano_str}.\n\n"
+        f"                                _________________________________________\n"
+        f"                                            {encarregado}\n"
+        f"                                                    ENCARREGADO\n"
+    )
+
+
+def renderizar_termo_juntada(dados: dict) -> str:
+    """Modelo formal de Termo de Juntada com assinaturas centralizadas."""
+    cabecalho = gerar_cabecalho_oficial(dados)
+    hoje = datetime.date.today()
+    dia_str = str(hoje.day).zfill(2)
+    mes_extenso = hoje.strftime("%B")
+    ano_str = str(hoje.year)
+    municipio = dados.get("municipio", "Ubá")
+    encarregado = dados.get("encarregado_posto_nome", "Cap PM Felipe de Oliveira Alves Pereira")
+    doc_desc = dados.get("origem_documento_desc", "documento apresentado aos autos")
+    fls_ini = dados.get("fls_inicial", "___")
+    fls_fim = dados.get("fls_final", "___")
+
+    return (
+        f"{cabecalho}\n\n"
+        f"TERMO DE JUNTADA\n\n"
+        f"Aos {dia_str} dias do mês de {mes_extenso} do ano de {ano_str}, nesta cidade de {municipio}, "
+        f"Estado de Minas Gerais, no Quartel do {dados.get('unidade_abreviada', '21º BPM')}, faço a juntada aos autos "
+        f"do Processo de Comunicação Disciplinar n.º {dados.get('numero_pcd', '____/____')} do(s) seguinte(s) documento(s): {doc_desc}, "
+        f"o(s) qual(is) segue(m) autuado(s) e numerado(s) da(s) folha(s) {fls_ini} até {fls_fim}, do que, para constar, lavrei o presente termo.\n\n"
+        f"Quartel em {municipio}, {dia_str} de {mes_extenso} de {ano_str}.\n\n"
+        f"                                _________________________________________\n"
+        f"                                            {encarregado}\n"
+        f"                                                    ENCARREGADO\n"
     )
