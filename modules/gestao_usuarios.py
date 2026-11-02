@@ -2,7 +2,7 @@
 ==============================================================================
 Módulo de Gestão de Usuários e Permissões SIOP
 Gerencia acessos por perfil desacoplado (CREDS, Nível Geral/Escala e Módulo Procedimentos),
-unidades, licenças comerciais temporárias e limpeza seletiva.
+unidades, licenças comerciais temporárias, sessões ativas e limpeza seletiva.
 Mapeamento de colunas fiel ao esquema SQL public.usuarios e public.procedimentos_licencas_acesso.
 ==============================================================================
 """
@@ -62,6 +62,60 @@ def normalizar_perfil_geral_banco(perfil_str):
         return "AUXILIAR DE CIA / OPERADOR"
     else:
         return "TROPA"
+
+
+def derrubar_sessao_usuario(usuario_login: str, operador_pm: str) -> bool:
+    """Encerra a sessão ativa do usuário no Supabase, forçando desconexão imediata."""
+    if not supabase or not usuario_login:
+        return False
+    try:
+        u_clean = extrair_digitos_matricula(usuario_login)
+        condicao = f"usuario_login.eq.{u_clean},usuario.eq.{u_clean}"
+        supabase.table("usuarios").update({
+            "session_token": None
+        }).or_(condicao).execute()
+
+        # Opcional: Atualizar status em historico_logins se existir
+        try:
+            supabase.table("historico_logins").update({
+                "status_sessao": "DERRUBADA_PELO_ADMIN"
+            }).eq("num_policia", u_clean).execute()
+        except Exception:
+            pass
+
+        registrar_audit_log(operador_pm, u_clean, "DERRUBAR_SESSAO", f"Sessão do militar {u_clean} encerrada pelo Programador/Admin.")
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        print(f"Erro ao derrubar sessão: {e}")
+        return False
+
+
+def resetar_senha_primeiro_acesso(usuario_login: str, operador_pm: str, senha_padrao: str = "Pmmg@190") -> bool:
+    """Redefine a senha do usuário para o padrão de primeiro acesso."""
+    if not supabase or not usuario_login:
+        return False
+    try:
+        u_clean = extrair_digitos_matricula(usuario_login)
+        hash_nova = gerar_hash_senha(senha_padrao)
+        condicao = f"usuario_login.eq.{u_clean},usuario.eq.{u_clean}"
+        
+        supabase.table("usuarios").update({
+            "senha": senha_padrao,
+            "senha_hash": hash_nova,
+            "primeiro_acesso": True,
+            "termo_compliance_aceito": False,
+            "tentativas_erradas": 0,
+            "ativo": True,
+            "session_token": None
+        }).or_(condicao).execute()
+
+        registrar_audit_log(operador_pm, u_clean, "RESET_SENHA_ADMIN", f"Acesso do militar {u_clean} resetado para o padrão inicial.")
+        st.cache_data.clear()
+        return True
+    except Exception as e:
+        print(f"Erro ao resetar senha: {e}")
+        return False
 
 
 def cadastrar_novo_operador_supabase(num_policia, nome_guerra, nome_completo, posto_grad, unidade, perfil_creds, nivel_acesso, senha_inicial="Pmmg@190"):
@@ -185,6 +239,89 @@ def obter_mapa_licencas_procedimentos():
         return {}
 
 
+def exibir_painel_sessoes_e_reset(usr_id_operador: str):
+    """
+    Exibe a tabela de conexões/sessões e os botões de ação para derrubar login
+    ou resetar senhas, exclusivo para o perfil de Programador/Admin.
+    """
+    st.markdown("##### 🔑 Registros de Conexão e Sessões (historico_logins)")
+    st.caption("Rastreabilidade de acessos por usuário, endereço IP e identificador de dispositivo. Permite derrubar sessões ativas ou resetar senhas.")
+
+    if not supabase:
+        st.error("⚠️ Conexão com o Supabase indisponível.")
+        return
+
+    # 1. Carrega os registros de login do Supabase
+    logs_login = []
+    try:
+        res = supabase.table("historico_logins").select("*").order("created_at", desc=True).limit(50).execute()
+        logs_login = res.data or []
+    except Exception:
+        # Fallback para tabela de auditoria se historico_logins não existir
+        try:
+            res = supabase.table("historico_auditoria").select("*").ilike("tipo_acao", "%LOGIN%").order("created_at", desc=True).limit(50).execute()
+            logs_login = res.data or []
+        except Exception:
+            pass
+
+    # Seletor rápido de militar para ação direta
+    efetivo = carregar_militares_supabase() or []
+    opcoes_mils = {}
+    for m in efetivo:
+        pm = str(m.get("num_policia", "")).strip().upper()
+        if pm and pm != "N/I":
+            nome = m.get("nome_completo") or f"{m.get('posto_grad','')} {m.get('nome_guerra','')}"
+            opcoes_mils[f"[{pm}] {m.get('posto_grad','')} {nome}"] = pm
+
+    with st.container(border=True):
+        st.markdown("###### ⚡ Ações Rápidas de Sessão e Credenciais")
+        c_sel, c_btn1, c_btn2 = st.columns([3, 1.5, 1.5], vertical_alignment="bottom")
+        
+        with c_sel:
+            mil_escolhido = st.selectbox("Selecione o Policial Militar:", options=list(opcoes_mils.keys()), key="sb_mil_reset_sessao")
+        
+        pm_alvo = opcoes_mils.get(mil_escolhido) if mil_escolhido else None
+
+        with c_btn1:
+            if st.button("🚫 Derrubar Sessão", type="secondary", use_container_width=True, disabled=not pm_alvo):
+                if derrubar_sessao_usuario(pm_alvo, usr_id_operador):
+                    st.success(f"✅ Sessão do militar {pm_alvo} encerrada com sucesso!")
+                    st.rerun()
+                else:
+                    st.error("Erro ao derrubar sessão.")
+
+        with c_btn2:
+            if st.button("🔄 Resetar Senha", type="primary", use_container_width=True, disabled=not pm_alvo):
+                if resetar_senha_primeiro_acesso(pm_alvo, usr_id_operador):
+                    st.success(f"✅ Senha do militar {pm_alvo} redefinida para 'Pmmg@190'!")
+                    st.rerun()
+                else:
+                    st.error("Erro ao resetar senha.")
+
+    st.markdown("---")
+
+    # 2. Exibição da tabela de registros de conexão
+    if logs_login:
+        linhas_tabela = []
+        for l in logs_login:
+            dt_raw = l.get("created_at") or l.get("data_hora") or "N/I"
+            try:
+                dt_fmt = pd.to_datetime(dt_raw).strftime("%d/%m/%Y %H:%M:%S")
+            except Exception:
+                dt_fmt = str(dt_raw)[:19]
+
+            linhas_tabela.append({
+                "Data / Hora Conexão": dt_fmt,
+                "Nº Polícia / Usuário": l.get("num_policia") or l.get("usuario_login") or l.get("militar_operador", "N/I"),
+                "Endereço IP": l.get("ip_origem") or l.get("ip", "127.0.0.1"),
+                "Navegador / Dispositivo": l.get("dispositivo") or l.get("navegador") or l.get("tipo_acao", "Conexão Web")
+            })
+
+        st.dataframe(pd.DataFrame(linhas_tabela), use_container_width=True, hide_index=True)
+    else:
+        st.info("ℹ️ Nenhum registro de login encontrado na base de dados.")
+
+
 def exibir_painel_gestao_unidades():
     st.markdown("##### 📋 Unidades Cadastradas no SIOP")
     st.caption("Visualização e administração global das unidades no Supabase.")
@@ -270,7 +407,6 @@ def exibir_painel_licencas_comerciais(usr_id_operador):
 
     efetivo_banco = carregar_militares_supabase() or []
 
-    # Monta mapa de opções com militares já cadastrados na base para preenchimento ágil
     opcoes_militares = {"-- DIGITAR MATRÍCULA MANUALMENTE --": None}
     for m in efetivo_banco:
         num_pm = str(m.get("num_policia", "")).strip().upper()
@@ -420,7 +556,7 @@ def exibir_painel_licencas_comerciais(usr_id_operador):
 
 def exibir_tela_gestao_usuarios():
     st.title("⚙ Painel de Gestão de Níveis de Acesso e Permissões SIOP")
-    st.caption("Atribua permissões independentes para a Função CREDS (TCO), Nível Geral (Menu & Escalas), Licenças do Módulo Procedimentos e Unidades.")
+    st.caption("Atribua permissões independentes para a Função CREDS (TCO), Nível Geral (Menu & Escalas), Licenças do Módulo Procedimentos, Sessões Ativas e Unidades.")
     st.divider()
 
     if "gestao_usr_version" not in st.session_state:
@@ -428,6 +564,7 @@ def exibir_tela_gestao_usuarios():
 
     usr = st.session_state.get("usuario_dados") or {}
     usr_id_operador = str(usr.get("usuario_login") or usr.get("usuario") or "123456").strip()
+    eh_admin_prog = usuario_eh_admin_ou_programador(usr)
 
     st.markdown("### ➕ Cadastrar / Ativar Novo Operador no SIOP")
     with st.container(border=True):
@@ -482,14 +619,20 @@ def exibir_tela_gestao_usuarios():
 
     st.divider()
 
-    # ABAS PRINCIPAIS - INCLUÍDA ABA EXCLUSIVA DE LICENÇAS
+    # ABAS PRINCIPAIS - INCLUÍDA ABA EXCLUSIVA DE SESSÕES PARA O PROGRAMADOR
     abas_titulos = [
         "👥 Permissões do Efetivo",
-        "💼 Licenças Comerciais (Procedimentos)",
+        "💼 Licenças Comerciais (Procedimentos)"
+    ]
+
+    if eh_admin_prog:
+        abas_titulos.append("🔑 Sessões Ativas & Redefinição")
+
+    abas_titulos.extend([
         "🏛 Cadastrar Nova Unidade / Batalhão",
         "📋 Lista de Unidades Cadastradas",
         "🚨 Limpeza Seletiva (Programador)"
-    ]
+    ])
 
     abas = st.tabs(abas_titulos)
     efetivo_banco = carregar_militares_supabase() or []
@@ -549,7 +692,6 @@ def exibir_tela_gestao_usuarios():
 
         st.divider()
 
-        # TABELA EDITÁVEL DE PERMISSÕES COM BARRA DE BUSCA
         with st.expander("📜 Tabela Geral de Permissões", expanded=True):
             c_src1, c_src2, c_src3 = st.columns([3, 1.5, 1])
             with c_src1:
@@ -683,8 +825,16 @@ def exibir_tela_gestao_usuarios():
     with abas[1]:
         exibir_painel_licencas_comerciais(usr_id_operador)
 
-    # ABA 3: CADASTRO DE UNIDADES
-    with abas[2]:
+    idx_aba = 2
+
+    # ABA EXCLUSIVA DE SESSÕES ATIVAS (SE FOR PROGRAMADOR/ADMIN)
+    if eh_admin_prog:
+        with abas[idx_aba]:
+            exibir_painel_sessoes_e_reset(usr_id_operador)
+        idx_aba += 1
+
+    # ABA: CADASTRO DE UNIDADES
+    with abas[idx_aba]:
         st.markdown("##### 🏛 Cadastrar Nova Unidade / Batalhão (Multi-Tenant)")
         with st.form("form_nova_unidade_multitenant", clear_on_submit=True):
             c_un_a, c_un_b = st.columns(2)
@@ -719,13 +869,15 @@ def exibir_tela_gestao_usuarios():
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar unidade: {e}")
+        idx_aba += 1
 
-    # ABA 4: LISTAGEM E EXCLUSÃO DE UNIDADES
-    with abas[3]:
+    # ABA: LISTAGEM E EXCLUSÃO DE UNIDADES
+    with abas[idx_aba]:
         exibir_painel_gestao_unidades()
+        idx_aba += 1
 
-    # ABA 5: LIMPEZA SELETIVA DE DADOS
-    with abas[4]:
+    # ABA: LIMPEZA SELETIVA DE DADOS
+    with abas[idx_aba]:
         st.markdown("### 🚨 Limpeza Seletiva do Banco de Dados (Acesso Restrito ao Programador)")
         st.warning("⚠️ **ATENÇÃO:** Esta ferramenta exclui usuários da tabela **`usuarios`** do Supabase. O login do Programador (`123456`) **NUNCA** será apagado.")
 
