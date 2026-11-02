@@ -65,22 +65,31 @@ def normalizar_perfil_geral_banco(perfil_str):
 
 
 def derrubar_sessao_usuario(usuario_login: str, operador_pm: str) -> bool:
-    """Encerra a sessão ativa do usuário no Supabase, forçando desconexão imediata."""
+    """Encerra a sessão ativa do utilizador no Supabase, forçando desconexão imediata."""
     if not supabase or not usuario_login:
+        st.error("❌ Conexão com o Supabase indisponível ou utilizador não informado.")
         return False
     try:
         u_clean = extrair_digitos_matricula(usuario_login)
-        payload = {}
         
-        # Tenta anular o session_token se a coluna existir
-        try:
-            supabase.table("usuarios").update({"session_token": None}).eq("usuario_login", u_clean).execute()
-        except Exception:
-            try:
-                supabase.table("usuarios").update({"session_token": None}).eq("usuario", u_clean).execute()
-            except Exception:
-                pass
+        # Localiza o ID primário do utilizador
+        check = supabase.table("usuarios").select("id").or_(
+            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean}"
+        ).execute()
 
+        if not check.data:
+            st.error(f"❌ Matrícula '{u_clean}' não encontrada na tabela 'usuarios'.")
+            return False
+
+        id_militar = check.data[0]["id"]
+
+        # Tenta anular o session_token na tabela usuarios
+        try:
+            supabase.table("usuarios").update({"session_token": None}).eq("id", id_militar).execute()
+        except Exception:
+            pass
+
+        # Atualiza status em historico_logins se a tabela existir
         try:
             supabase.table("historico_logins").update({
                 "status_sessao": "DERRUBADA_PELO_ADMIN"
@@ -92,52 +101,62 @@ def derrubar_sessao_usuario(usuario_login: str, operador_pm: str) -> bool:
         st.cache_data.clear()
         return True
     except Exception as e:
-        st.error(f"Detalhe do erro: {e}")
+        st.error(f"❌ Erro ao derrubar sessão: {e}")
         return False
 
 
 def resetar_senha_primeiro_acesso(usuario_login: str, operador_pm: str, senha_padrao: str = "Pmmg@190") -> bool:
-    """Redefine a senha do usuário com verificação direta de colunas e fallback robusto."""
-    if not supabase or not usuario_login:
+    """Redefine a palavra-passe do utilizador diagnosticando a causa exata no ecrã."""
+    if not supabase:
+        st.error("❌ Conexão com o Supabase indisponível.")
         return False
-    try:
-        u_clean = extrair_digitos_matricula(usuario_login)
-        u_raw = str(usuario_login).strip().upper()
-        hash_nova = gerar_hash_senha(senha_padrao)
+        
+    u_clean = extrair_digitos_matricula(usuario_login)
+    if not u_clean:
+        st.error("❌ Matrícula inválida ou não informada.")
+        return False
 
-        payload_base = {
+    hash_nova = gerar_hash_senha(senha_padrao)
+
+    try:
+        # 1. Localiza o militar pelo ID primário
+        check = supabase.table("usuarios").select("id").or_(
+            f"usuario_login.eq.{u_clean},usuario.eq.{u_clean}"
+        ).execute()
+
+        if not check.data:
+            st.error(f"❌ Matrícula '{u_clean}' não encontrada na tabela 'usuarios'.")
+            return False
+
+        id_militar = check.data[0]["id"]
+
+        # 2. Atualiza os dados obrigatórios diretamente pelo ID
+        res = supabase.table("usuarios").update({
             "senha": senha_padrao,
             "senha_hash": hash_nova,
             "ativo": True,
-            "tentativas_erradas": 0,
-            "primeiro_acesso": True
-        }
+            "primeiro_acesso": True,
+            "tentativas_erradas": 0
+        }).eq("id", id_militar).execute()
 
-        # 1. Tentativa por usuario_login
-        res = supabase.table("usuarios").update(payload_base).eq("usuario_login", u_clean).execute()
-        
-        # 2. Fallback por usuario (caso usuario_login não seja a chave principal)
         if not res.data:
-            res = supabase.table("usuarios").update(payload_base).eq("usuario", u_clean).execute()
+            st.error("⚠️ Linha não alterada. Verifique as permissões de escrita (RLS) no Supabase.")
+            return False
 
-        # 3. Fallback pela string original informada
-        if not res.data and u_raw != u_clean:
-            res = supabase.table("usuarios").update(payload_base).eq("usuario_login", u_raw).execute()
-
-        # Atualiza termo_compliance se coluna existir (sem interromper se não existir)
+        # 3. Tenta limpar a sessão ativa se a coluna existir
         try:
-            supabase.table("usuarios").update({"termo_compliance_aceito": False}).eq("usuario_login", u_clean).execute()
+            supabase.table("usuarios").update({"session_token": None}).eq("id", id_militar).execute()
         except Exception:
             pass
 
-        # Limpa session_token se coluna existir
+        # 4. Tenta redefinir o termo de compliance se a coluna existir
         try:
-            supabase.table("usuarios").update({"session_token": None}).eq("usuario_login", u_clean).execute()
+            supabase.table("usuarios").update({"termo_compliance_aceito": False}).eq("id", id_militar).execute()
         except Exception:
             pass
 
-        registrar_audit_log(operador_pm, u_clean, "RESET_SENHA_ADMIN", f"Acesso do militar {u_clean} resetado para o padrão inicial ({senha_padrao}).")
-        
+        registrar_audit_log(operador_pm, u_clean, "RESET_SENHA_ADMIN", f"Senha resetada para '{senha_padrao}'.")
+
         try:
             carregar_militares_supabase.clear()
         except Exception:
@@ -145,8 +164,8 @@ def resetar_senha_primeiro_acesso(usuario_login: str, operador_pm: str, senha_pa
         st.cache_data.clear()
         return True
 
-    except Exception as e:
-        st.error(f"Falha ao conectar/atualizar banco: {e}")
+    except Exception as ex:
+        st.error(f"❌ Erro do Supabase/Banco: {ex}")
         return False
 
 
@@ -283,7 +302,7 @@ def exibir_painel_sessoes_e_reset(usr_id_operador: str):
         st.error("⚠️ Conexão com o Supabase indisponível.")
         return
 
-    # Seletor rápido de militar para ação direta
+    # Seletor de militar para ação direta
     efetivo = carregar_militares_supabase() or []
     opcoes_mils = {}
     for m in efetivo:
@@ -306,20 +325,16 @@ def exibir_painel_sessoes_e_reset(usr_id_operador: str):
                 if derrubar_sessao_usuario(pm_alvo, usr_id_operador):
                     st.success(f"✅ Sessão do militar {pm_alvo} encerrada com sucesso!")
                     st.rerun()
-                else:
-                    st.error("Erro ao derrubar sessão.")
 
         with c_btn2:
             if st.button("🔄 Resetar Senha", type="primary", use_container_width=True, disabled=not pm_alvo):
                 if resetar_senha_primeiro_acesso(pm_alvo, usr_id_operador):
                     st.success(f"✅ Senha de {pm_alvo} resetada para Pmmg@190 com sucesso!")
                     st.rerun()
-                else:
-                    st.error("Erro ao resetar senha.")
 
     st.markdown("---")
 
-    # Carrega os registros de login do Supabase
+    # Carrega os registos de login do Supabase
     logs_login = []
     try:
         res = supabase.table("historico_logins").select("*").order("created_at", desc=True).limit(50).execute()
