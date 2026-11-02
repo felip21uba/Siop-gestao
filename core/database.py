@@ -76,13 +76,53 @@ def obter_unidade_operacao_atual() -> str:
     return extrair_bpm_mae(unidade_usuario)
 
 def obter_ip_cliente_real() -> str:
+    """
+    Obtém o endereço IP real do cliente através dos cabeçalhos HTTP do Streamlit
+    ou do WebSocket, tratando proxies, CDN e conexões diretas.
+    """
+    # 1. Tentativa nativa recomendada (Streamlit >= 1.37)
     try:
-        from streamlit.web.server.websocket_headers import _get_websocket_headers  # type: ignore
-        headers = _get_websocket_headers()
-        if headers and headers.get("X-Forwarded-For"):
-            return headers.get("X-Forwarded-For").split(",")[0].strip()
+        headers = getattr(st, "context", None)
+        if headers and hasattr(headers, "headers"):
+            hdrs = headers.headers
+            if hdrs:
+                # X-Forwarded-For: "IP_CLIENTE, PROXY1, PROXY2"
+                fwd = hdrs.get("X-Forwarded-For") or hdrs.get("x-forwarded-for")
+                if fwd:
+                    ip_fwd = str(fwd).split(",")[0].strip()
+                    if ip_fwd and ip_fwd != "127.0.0.1":
+                        return ip_fwd
+
+                # X-Real-IP
+                r_ip = hdrs.get("X-Real-IP") or hdrs.get("x-real-ip")
+                if r_ip and str(r_ip).strip() != "127.0.0.1":
+                    return str(r_ip).strip()
+
+                # Cloudflare
+                cf_ip = hdrs.get("CF-Connecting-IP") or hdrs.get("cf-connecting-ip")
+                if cf_ip and str(cf_ip).strip() != "127.0.0.1":
+                    return str(cf_ip).strip()
     except Exception:
         pass
+
+    # 2. Tentativa via websocket headers internos
+    try:
+        from streamlit.web.server.websocket_headers import _get_websocket_headers  # type: ignore
+        ws_headers = _get_websocket_headers()
+        if ws_headers:
+            fwd_ws = ws_headers.get("X-Forwarded-For") or ws_headers.get("x-forwarded-for")
+            if fwd_ws:
+                ip_ws = str(fwd_ws).split(",")[0].strip()
+                if ip_ws and ip_ws != "127.0.0.1":
+                    return ip_ws
+
+            real_ws = ws_headers.get("X-Real-IP") or ws_headers.get("x-real-ip")
+            if real_ws and str(real_ws).strip() != "127.0.0.1":
+                return str(real_ws).strip()
+    except Exception:
+        pass
+
+    # 3. Fallback em caso de execução exclusivamente local (localhost)
     return "127.0.0.1"
 
 # =========================================================================
