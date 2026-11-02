@@ -70,12 +70,17 @@ def derrubar_sessao_usuario(usuario_login: str, operador_pm: str) -> bool:
         return False
     try:
         u_clean = extrair_digitos_matricula(usuario_login)
-        condicao = f"usuario_login.eq.{u_clean},usuario.eq.{u_clean}"
-        supabase.table("usuarios").update({
-            "session_token": None
-        }).or_(condicao).execute()
+        payload = {}
+        
+        # Tenta anular o session_token se a coluna existir
+        try:
+            supabase.table("usuarios").update({"session_token": None}).eq("usuario_login", u_clean).execute()
+        except Exception:
+            try:
+                supabase.table("usuarios").update({"session_token": None}).eq("usuario", u_clean).execute()
+            except Exception:
+                pass
 
-        # Opcional: Atualizar status em historico_logins se existir
         try:
             supabase.table("historico_logins").update({
                 "status_sessao": "DERRUBADA_PELO_ADMIN"
@@ -87,34 +92,61 @@ def derrubar_sessao_usuario(usuario_login: str, operador_pm: str) -> bool:
         st.cache_data.clear()
         return True
     except Exception as e:
-        print(f"Erro ao derrubar sessão: {e}")
+        st.error(f"Detalhe do erro: {e}")
         return False
 
 
 def resetar_senha_primeiro_acesso(usuario_login: str, operador_pm: str, senha_padrao: str = "Pmmg@190") -> bool:
-    """Redefine a senha do usuário para o padrão de primeiro acesso."""
+    """Redefine a senha do usuário com verificação direta de colunas e fallback robusto."""
     if not supabase or not usuario_login:
         return False
     try:
         u_clean = extrair_digitos_matricula(usuario_login)
+        u_raw = str(usuario_login).strip().upper()
         hash_nova = gerar_hash_senha(senha_padrao)
-        condicao = f"usuario_login.eq.{u_clean},usuario.eq.{u_clean}"
-        
-        supabase.table("usuarios").update({
+
+        payload_base = {
             "senha": senha_padrao,
             "senha_hash": hash_nova,
-            "primeiro_acesso": True,
-            "termo_compliance_aceito": False,
-            "tentativas_erradas": 0,
             "ativo": True,
-            "session_token": None
-        }).or_(condicao).execute()
+            "tentativas_erradas": 0,
+            "primeiro_acesso": True
+        }
 
-        registrar_audit_log(operador_pm, u_clean, "RESET_SENHA_ADMIN", f"Acesso do militar {u_clean} resetado para o padrão inicial.")
+        # 1. Tentativa por usuario_login
+        res = supabase.table("usuarios").update(payload_base).eq("usuario_login", u_clean).execute()
+        
+        # 2. Fallback por usuario (caso usuario_login não seja a chave principal)
+        if not res.data:
+            res = supabase.table("usuarios").update(payload_base).eq("usuario", u_clean).execute()
+
+        # 3. Fallback pela string original informada
+        if not res.data and u_raw != u_clean:
+            res = supabase.table("usuarios").update(payload_base).eq("usuario_login", u_raw).execute()
+
+        # Atualiza termo_compliance se coluna existir (sem interromper se não existir)
+        try:
+            supabase.table("usuarios").update({"termo_compliance_aceito": False}).eq("usuario_login", u_clean).execute()
+        except Exception:
+            pass
+
+        # Limpa session_token se coluna existir
+        try:
+            supabase.table("usuarios").update({"session_token": None}).eq("usuario_login", u_clean).execute()
+        except Exception:
+            pass
+
+        registrar_audit_log(operador_pm, u_clean, "RESET_SENHA_ADMIN", f"Acesso do militar {u_clean} resetado para o padrão inicial ({senha_padrao}).")
+        
+        try:
+            carregar_militares_supabase.clear()
+        except Exception:
+            pass
         st.cache_data.clear()
         return True
+
     except Exception as e:
-        print(f"Erro ao resetar senha: {e}")
+        st.error(f"Falha ao conectar/atualizar banco: {e}")
         return False
 
 
@@ -251,19 +283,6 @@ def exibir_painel_sessoes_e_reset(usr_id_operador: str):
         st.error("⚠️ Conexão com o Supabase indisponível.")
         return
 
-    # 1. Carrega os registros de login do Supabase
-    logs_login = []
-    try:
-        res = supabase.table("historico_logins").select("*").order("created_at", desc=True).limit(50).execute()
-        logs_login = res.data or []
-    except Exception:
-        # Fallback para tabela de auditoria se historico_logins não existir
-        try:
-            res = supabase.table("historico_auditoria").select("*").ilike("tipo_acao", "%LOGIN%").order("created_at", desc=True).limit(50).execute()
-            logs_login = res.data or []
-        except Exception:
-            pass
-
     # Seletor rápido de militar para ação direta
     efetivo = carregar_militares_supabase() or []
     opcoes_mils = {}
@@ -293,14 +312,25 @@ def exibir_painel_sessoes_e_reset(usr_id_operador: str):
         with c_btn2:
             if st.button("🔄 Resetar Senha", type="primary", use_container_width=True, disabled=not pm_alvo):
                 if resetar_senha_primeiro_acesso(pm_alvo, usr_id_operador):
-                    st.success(f"✅ Senha do militar {pm_alvo} redefinida para 'Pmmg@190'!")
+                    st.success(f"✅ Senha de {pm_alvo} resetada para Pmmg@190 com sucesso!")
                     st.rerun()
                 else:
                     st.error("Erro ao resetar senha.")
 
     st.markdown("---")
 
-    # 2. Exibição da tabela de registros de conexão
+    # Carrega os registros de login do Supabase
+    logs_login = []
+    try:
+        res = supabase.table("historico_logins").select("*").order("created_at", desc=True).limit(50).execute()
+        logs_login = res.data or []
+    except Exception:
+        try:
+            res = supabase.table("historico_auditoria").select("*").ilike("tipo_acao", "%LOGIN%").order("created_at", desc=True).limit(50).execute()
+            logs_login = res.data or []
+        except Exception:
+            pass
+
     if logs_login:
         linhas_tabela = []
         for l in logs_login:
@@ -398,10 +428,7 @@ def exibir_painel_gestao_unidades():
 
 
 def exibir_painel_licencas_comerciais(usr_id_operador):
-    """
-    Painel do Programador/Admin para comercialização de licenças temporárias de Procedimentos.
-    Permite selecionar militar diretamente da tabela 'usuarios' ou digitar manualmente.
-    """
+    """Painel do Programador/Admin para comercialização de licenças temporárias de Procedimentos."""
     st.markdown("##### 💼 Concessão e Gestão de Licenças Comerciais (Módulo Procedimentos)")
     st.caption("Libere o acesso ao rito PCD, PAD e SAD por prazos pré-determinados (30 dias, 6 meses, 1 ano).")
 
@@ -619,7 +646,6 @@ def exibir_tela_gestao_usuarios():
 
     st.divider()
 
-    # ABAS PRINCIPAIS - INCLUÍDA ABA EXCLUSIVA DE SESSÕES PARA O PROGRAMADOR
     abas_titulos = [
         "👥 Permissões do Efetivo",
         "💼 Licenças Comerciais (Procedimentos)"
